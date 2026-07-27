@@ -43,6 +43,9 @@
   --app-orange: #ff642d;
   --app-purple: #8649e1;
   --app-yellow: #fdc23c;
+  /* 2026-07-28 실측: 로그인 앱의 링크/강조 색은 #235FE2 (기존 --app-blue 와 다름) */
+  --app-link: #235fe2;
+  --app-link-soft: #eaf0fd;
 }
 
 @theme inline {
@@ -70,6 +73,8 @@
   --color-app-orange: var(--app-orange);
   --color-app-purple: var(--app-purple);
   --color-app-yellow: var(--app-yellow);
+  --color-app-link: var(--app-link);
+  --color-app-link-soft: var(--app-link-soft);
 
   /* 폰트 패밀리 (layout.tsx next/font 변수와 연결) */
   --font-lazzer: var(--font-lazzer), Inter, sans-serif;

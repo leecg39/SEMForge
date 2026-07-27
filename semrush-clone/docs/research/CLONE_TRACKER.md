@@ -374,6 +374,34 @@
 | APC-C15 | /apps/collection/new/ | APP-STORE | B |
 | APC-C16 | /apps/collection/Toolkits/ | APP-STORE | B |
 
+## CRUD 앱 (2026-07-28 추가, 실측 기반 재구축)
+
+> 정적 UI 클론과 라우트가 겹치지 않도록 `/app/*` 아래에 구현. API 는 `/api/*`.
+> 증거 등급: `O` 직접 관찰 · `P` 안전한 재구축을 위한 제안
+
+| ID | Path | 화면 | 증거 | Status |
+|---|---|---|---|---|
+| CRUD-001 | /app/signin/ | 로그인 | `P` | Q |
+| CRUD-002 | /app/home/ | 폴더 목록(카드/테이블, 소유권·태그 필터, 검색, kebab) | `O` | Q |
+| CRUD-003 | /app/site-audits/ | 사이트 감사 캠페인 | `P` | Q |
+| CRUD-004 | /app/position-tracking/ | 순위 추적 캠페인 | `P` | Q |
+| CRUD-005 | /app/keyword-lists/ | 키워드 목록 | `P` | Q |
+| CRUD-006 | /app/media-lists/ | 미디어 리스트 | `P` | Q |
+| CRUD-007 | /app/reports/ | 보고서 | `P` | Q |
+| CRUD-008 | /app/content/ | 콘텐츠 문서 | `P` | Q |
+| CRUD-009 | /app/trash/ | 휴지통(복구·영구 삭제) | `P` | Q |
+| CRUD-010 | /app/audit/ | 엔티티 감사 로그 | `P` | Q |
+| CRUD-011 | /app/account/profile/ | 프로필 설정 | `O` | Q |
+| CRUD-012 | /app/account/members/ | 사용자 관리 | `P` | Q |
+| CRUD-013 | /app/account/notifications/ | 알림 설정(즉시 저장) | `O` | Q |
+| CRUD-014 | /app/account/activities/ | 인증 활동 로그 | `O` | Q |
+
+- DB: SQLite 24개 테이블 (플랫폼 5 + 도메인 19), Drizzle 마이그레이션 `src/db/migrations/`
+- API: 제네릭 리소스 라우트 6종 + 인증 3종 + 계정/멤버/감사/활동/알림/휴지통 7종
+- 검증: `node scripts/verify-crud.mjs` 60개 항목 통과 (2026-07-28, 반복 실행 2회 확인)
+- 시각 검증: 폴더 목록 데스크톱 1420px / 모바일 375px, 생성 다이얼로그를 원본 스크린샷과 대조 후 3건 보정
+  (검색 입력 폭, 행 아이콘 SVG 전환, 생성 폼 필드 순서)
+
 ## 집계 (2026-07-28 기준)
 
 - 총 행: 266 (인벤토리 교차 노출 포함) = B 246 + dup 15 + ext 5
