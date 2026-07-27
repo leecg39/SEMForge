@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Semrush 마케팅 디자인 토큰 (www.semrush.com :root 추출값)
+   ============================================================ */
+:root {
+  --mp-white: #fff;
+  --mp-off-black: #181e15;
+  --mp-lavendar: #c190ff;
+  --mp-lavendar-hover: #b072ff;
+  --mp-mint: #dceeeb;
+  --mp-light-mint: #f7fbfa;
+  --mp-dark-grey: #6c6e79;
+  --mp-medium-grey: #d1d2d5;
+  --mp-light-grey: #f0f1f2;
+  --mp-off-white: #f3f6f6;
+  --mp-aqua: #18f0bf;
+  --mp-lime: #89ff75;
+  --mp-product-gradient: linear-gradient(180deg, #dceeeb 0%, #eee9ff 100%);
+  --mp-hero-gradient: linear-gradient(180deg, #dceeeb 0%, #e8e1ff 75%, #fff 100%);
+  --mp-focus-color: #008ff87f;
+  --mp-focus-color-invert: rgba(255, 255, 255, 0.7);
+  --mp-focus-border: #006dca;
+  --mp-vertical-padding: 120px;
+  --mp-grid-margin: 32px;
+  --mp-transition-duration: 200ms;
+  --mp-transition-easing: ease-in-out;
+  --mp-border-radius: 100px;
+  --mp-shadow-glass: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
+  --mp-section-margin-top: 60px;
+  --mp-button-height: 60px;
+  --mp-max-container-width: 1440px;
+
+  /* 로그인 앱(Intergalactic 계열) 기본 토큰 — 앱 셸 추출 후 보정 */
+  --app-blue: #008ff8;
+  --app-blue-dark: #006dca;
+  --app-text: #191b23;
+  --app-text-secondary: #6c6e79;
+  --app-border: #e0e1e9;
+  --app-bg: #f4f5f9;
+  --app-green: #009f81;
+  --app-red: #d1002f;
+  --app-orange: #ff642d;
+  --app-purple: #8649e1;
+  --app-yellow: #fdc23c;
+}
+
+@theme inline {
+  /* 컬러 유틸리티 매핑 (bg-mp-mint, text-mp-off-black 등) */
+  --color-mp-white: var(--mp-white);
+  --color-mp-off-black: var(--mp-off-black);
+  --color-mp-lavendar: var(--mp-lavendar);
+  --color-mp-lavendar-hover: var(--mp-lavendar-hover);
+  --color-mp-mint: var(--mp-mint);
+  --color-mp-light-mint: var(--mp-light-mint);
+  --color-mp-dark-grey: var(--mp-dark-grey);
+  --color-mp-medium-grey: var(--mp-medium-grey);
+  --color-mp-light-grey: var(--mp-light-grey);
+  --color-mp-off-white: var(--mp-off-white);
+  --color-mp-aqua: var(--mp-aqua);
+  --color-mp-lime: var(--mp-lime);
+  --color-app-blue: var(--app-blue);
+  --color-app-blue-dark: var(--app-blue-dark);
+  --color-app-text: var(--app-text);
+  --color-app-text-secondary: var(--app-text-secondary);
+  --color-app-border: var(--app-border);
+  --color-app-bg: var(--app-bg);
+  --color-app-green: var(--app-green);
+  --color-app-red: var(--app-red);
+  --color-app-orange: var(--app-orange);
+  --color-app-purple: var(--app-purple);
+  --color-app-yellow: var(--app-yellow);
+
+  /* 폰트 패밀리 (layout.tsx next/font 변수와 연결) */
+  --font-lazzer: var(--font-lazzer), Inter, sans-serif;
+  --font-factor-a: var(--font-factor-a), var(--font-lazzer), sans-serif;
+  --font-inter: var(--font-inter), system-ui, sans-serif;
+
+  --shadow-glass: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
+  --radius-pill: 100px;
+}
+
+body {
+  background: var(--mp-white);
+  color: var(--mp-off-black);
+  font-family: var(--font-inter), Inter, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 마케팅 페이지 공통 패턴 */
+.mp-container {
+  max-width: var(--mp-max-container-width);
+  margin-inline: auto;
+  padding-inline: var(--mp-grid-margin);
+}
+
+.mp-transition {
+  transition-duration: var(--mp-transition-duration);
+  transition-timing-function: var(--mp-transition-easing);
+}
+
+/* 스크린리더 전용 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}

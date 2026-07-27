@@ -1,0 +1,14 @@
+# dependencies / build
+node_modules/
+.next/
+out/
+
+# system / logs
+.DS_Store
+*.log
+
+# scratch
+_staging/
+
+# env
+.env*

@@ -1,0 +1,14 @@
+# Semrush UI/UX Clone
+
+> A UI/UX study clone for prototyping. Not affiliated with Semrush. Content is representative/placeholder.
+
+## Pages
+- /features/ : feature catalog
+- /solutions/ : solutions by use case, size, role, industry
+- /pricing/ : plans and pricing
+- /free-tools/ : free marketing tools
+- /blog/ , /kb/ , /academy/ : resources
+
+## Notes
+- This project reproduces layout, components, and interaction patterns for learning purposes.
+- Marketing copy, brand names, and data shown are placeholders, not the original site's content.
