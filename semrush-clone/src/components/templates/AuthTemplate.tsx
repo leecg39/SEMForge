@@ -1,6 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { ClientApiError, api } from "@/lib/client-api";
 import type { AuthPageData } from "@/types/templates";
 
 function GoogleIcon() {
@@ -49,6 +52,41 @@ const socialButtonCls =
   "flex h-10 w-full cursor-pointer items-center justify-center gap-2.5 rounded-[6px] border border-[#d1d2d5] bg-white text-[14px] font-medium text-[#181e15] transition-colors duration-200 ease-in-out hover:bg-[#f7f8f8]";
 
 export function AuthTemplate({ data }: { data: AuthPageData }) {
+  const router = useRouter();
+  const isSignup = data.mode === "signup";
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [formError, setFormError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setPending(true);
+    setFormError(null);
+    setFieldErrors({});
+    setNotice(null);
+    try {
+      await api.post(isSignup ? "/api/auth/signup/" : "/api/auth/login/", {
+        email,
+        password,
+      });
+      // 인증 후에는 원본과 같은 경로(/home/)로 이동한다. 이 경로는 세션이 있으면 실제 폴더 화면을 렌더한다.
+      router.push("/home/");
+      router.refresh();
+    } catch (caught) {
+      if (caught instanceof ClientApiError) {
+        setFormError(caught.message);
+        setFieldErrors(caught.fields ?? {});
+      } else {
+        setFormError("요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      }
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-[#f7fbfa]">
       <header className="flex items-center justify-between px-6 py-5 md:px-10">
@@ -80,10 +118,7 @@ export function AuthTemplate({ data }: { data: AuthPageData }) {
             </p>
           )}
 
-          <form
-            className="mt-6 flex flex-col gap-4"
-            onSubmit={(e) => e.preventDefault()}
-          >
+          <form className="mt-6 flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
             <div className="flex flex-col gap-1.5">
               <label
                 htmlFor="auth-email"
@@ -95,9 +130,16 @@ export function AuthTemplate({ data }: { data: AuthPageData }) {
                 id="auth-email"
                 type="email"
                 autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                aria-invalid={Boolean(fieldErrors.email)}
                 placeholder="name@company.com"
-                className="h-10 w-full rounded-[6px] border border-[#d1d2d5] px-3 text-[14px] text-[#181e15] outline-none transition-colors duration-200 ease-in-out placeholder:text-[#9a9ca5] focus:border-[#008ff8]"
+                className="h-10 w-full rounded-[6px] border border-[#d1d2d5] px-3 text-[14px] text-[#181e15] outline-none transition-colors duration-200 ease-in-out placeholder:text-[#9a9ca5] focus:border-[#008ff8] aria-[invalid=true]:border-[#d1002f]"
               />
+              {fieldErrors.email && (
+                <p className="text-[12px] text-[#d1002f]">{fieldErrors.email}</p>
+              )}
             </div>
             <div className="flex flex-col gap-1.5">
               <label
@@ -109,19 +151,40 @@ export function AuthTemplate({ data }: { data: AuthPageData }) {
               <input
                 id="auth-password"
                 type="password"
-                autoComplete={
-                  data.mode === "signup" ? "new-password" : "current-password"
-                }
+                autoComplete={isSignup ? "new-password" : "current-password"}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                aria-invalid={Boolean(fieldErrors.password)}
                 placeholder="Enter your password"
-                className="h-10 w-full rounded-[6px] border border-[#d1d2d5] px-3 text-[14px] text-[#181e15] outline-none transition-colors duration-200 ease-in-out placeholder:text-[#9a9ca5] focus:border-[#008ff8]"
+                className="h-10 w-full rounded-[6px] border border-[#d1d2d5] px-3 text-[14px] text-[#181e15] outline-none transition-colors duration-200 ease-in-out placeholder:text-[#9a9ca5] focus:border-[#008ff8] aria-[invalid=true]:border-[#d1002f]"
               />
+              {fieldErrors.password && (
+                <p className="text-[12px] text-[#d1002f]">{fieldErrors.password}</p>
+              )}
             </div>
+
+            {formError && (
+              <p
+                role="alert"
+                className="rounded-[6px] bg-[#fdecef] px-3 py-2 text-[13px] text-[#d1002f]"
+              >
+                {formError}
+              </p>
+            )}
             <button
               type="submit"
-              className="h-10 w-full cursor-pointer rounded-[6px] bg-[#181e15] text-[14px] font-semibold text-white transition-colors duration-200 ease-in-out hover:bg-[#2a2f27]"
+              disabled={pending}
+              className="h-10 w-full cursor-pointer rounded-[6px] bg-[#181e15] text-[14px] font-semibold text-white transition-colors duration-200 ease-in-out hover:bg-[#2a2f27] disabled:cursor-default disabled:opacity-60"
             >
-              {data.submitLabel}
+              {pending ? "처리 중…" : data.submitLabel}
             </button>
+
+            {!isSignup && (
+              <p className="text-center text-[12px] text-[#6c6e79]">
+                시드 계정: <code>owner@example.com</code> / <code>password1234</code>
+              </p>
+            )}
           </form>
 
           <div className="my-5 flex items-center gap-3">
@@ -130,15 +193,37 @@ export function AuthTemplate({ data }: { data: AuthPageData }) {
             <span className="h-px flex-1 bg-[#e0e1e9]" />
           </div>
 
+          {/* 소셜/SSO 는 외부 IdP 연동이 필요해 이 클론의 범위 밖이다.
+              조용히 아무 일도 하지 않는 대신 이유를 알려준다. */}
           <div className="flex flex-col gap-3">
-            <button type="button" className={socialButtonCls}>
+            <button
+              type="button"
+              onClick={() =>
+                setNotice("소셜 로그인은 이 클론에서 지원하지 않습니다. 이메일로 계속해 주세요.")
+              }
+              className={socialButtonCls}
+            >
               <GoogleIcon />
               Continue with Google
             </button>
-            <button type="button" className={socialButtonCls}>
+            <button
+              type="button"
+              onClick={() =>
+                setNotice("SSO 는 이 클론에서 지원하지 않습니다. 이메일로 계속해 주세요.")
+              }
+              className={socialButtonCls}
+            >
               <SsoIcon />
               Continue with SSO
             </button>
+            {notice && (
+              <p
+                role="status"
+                className="rounded-[6px] bg-[#f0f4ff] px-3 py-2 text-[13px] text-[#235fe2]"
+              >
+                {notice}
+              </p>
+            )}
           </div>
 
           <p className="mt-6 text-center text-[14px] text-[#6c6e79]">

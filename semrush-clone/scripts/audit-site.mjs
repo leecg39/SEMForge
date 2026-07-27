@@ -87,6 +87,15 @@ async function head(url) {
   }
 }
 
+/**
+ * Next.js 는 RSC 플라이트 페이로드에 내장 404/500 바운더리 템플릿을 항상 포함시킨다.
+ * 따라서 <script> 내용을 제거한 렌더 결과에서만 오류 문구를 찾아야 오탐이 없다.
+ */
+function hasRenderedError(html) {
+  const visible = html.replace(/<script[\s\S]*?<\/script>/gi, "");
+  return /Application error|Internal Server Error|This page could not be found/i.test(visible);
+}
+
 function extractLinks(html) {
   const links = new Set();
   for (const match of html.matchAll(/href="(\/[^"#?]*)"/g)) links.add(match[1]);
@@ -128,8 +137,7 @@ async function main() {
 
   for (const route of routes) {
     const { status, body, error } = await head(`${BASE}${route}`);
-    const hasErrorMarker =
-      /Application error|Internal Server Error|This page could not be found/i.test(body);
+    const hasErrorMarker = hasRenderedError(body);
 
     if (status !== 200 || hasErrorMarker) {
       pageProblems.push({ route, status, hasErrorMarker, error });

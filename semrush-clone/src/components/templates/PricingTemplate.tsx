@@ -19,6 +19,25 @@ function CellValue({ value }: { value: string }) {
   return <>{value}</>;
 }
 
+/**
+ * 연간 결제 할인율.
+ * 원본에서 실제 할인율을 관찰하지는 못했고, 플랜 금액 자체도 중립 플레이스홀더이므로
+ * 토글이 금액에 반영된다는 동작만 재현하기 위한 값이다.
+ */
+const ANNUAL_DISCOUNT = 0.17;
+
+/** "$99" → 연간 환산 "$986". 숫자가 아닌 값(Custom, Free 등)은 그대로 둔다. */
+function priceFor(price: string, billing: "monthly" | "annual"): string {
+  if (billing === "monthly") return price;
+  const match = price.match(/^([^\d]*)([\d,.]+)(.*)$/);
+  if (!match) return price;
+  const [, prefix, digits, suffix] = match;
+  const amount = Number(digits.replace(/,/g, ""));
+  if (!Number.isFinite(amount) || amount === 0) return price;
+  const yearly = Math.round(amount * 12 * (1 - ANNUAL_DISCOUNT));
+  return `${prefix}${yearly.toLocaleString("en-US")}${suffix}`;
+}
+
 export function PricingTemplate({ data }: { data: PricingPageData }) {
   const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
   const periodLabel = billing === "monthly" ? "/mo" : "/yr";
@@ -123,12 +142,17 @@ export function PricingTemplate({ data }: { data: PricingPageData }) {
                 </h2>
                 <div className="mt-4 flex items-baseline gap-1">
                   <span className="font-[family-name:var(--font-lazzer)] text-[48px] font-semibold leading-none tracking-[-1.5px] text-[#181e15]">
-                    {plan.price}
+                    {priceFor(plan.price, billing)}
                   </span>
                   {plan.period && (
                     <span className="text-[14px] text-[#6c6e79]">{periodLabel}</span>
                   )}
                 </div>
+                {plan.period && billing === "annual" && (
+                  <p className="mt-1 text-[13px] text-[#6c6e79]">
+                    월 {plan.price} 대비 {Math.round(ANNUAL_DISCOUNT * 100)}% 절약
+                  </p>
+                )}
                 <p className="mt-3 text-[14px] leading-[1.5] text-[#6c6e79]">
                   {plan.tagline}
                 </p>
