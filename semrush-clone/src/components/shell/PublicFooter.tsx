@@ -2,14 +2,17 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   footerCta,
   footerGroups,
-  footerLanguages,
   footerLegal,
   footerSocial,
   type NavLink,
 } from "@/data/nav";
+import { LANGUAGE_OPTIONS, type Locale } from "@/i18n/config";
+import type { Dictionary } from "@/i18n/dictionaries";
+import { api } from "@/lib/client-api";
 import {
   adobeLogoDataUri,
   langCheckDataUri,
@@ -68,9 +71,33 @@ function ChevronDownIcon({ className }: { className?: string }) {
   );
 }
 
-export default function PublicFooter() {
+export default function PublicFooter({
+  locale,
+  dict,
+}: {
+  locale: Locale;
+  dict: Dictionary;
+}) {
+  const router = useRouter();
   const [openGroups, setOpenGroups] = useState<string[]>([]);
   const [langOpen, setLangOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
+
+  /** 쿠키만 바꾸고 현재 URL 을 그대로 다시 렌더한다. */
+  async function switchLocale(next: Locale) {
+    if (next === locale) {
+      setLangOpen(false);
+      return;
+    }
+    setSwitching(true);
+    try {
+      await api.post("/api/locale/", { locale: next });
+      setLangOpen(false);
+      router.refresh();
+    } finally {
+      setSwitching(false);
+    }
+  }
 
   const toggleGroup = (heading: string) =>
     setOpenGroups((cur) =>
@@ -162,28 +189,44 @@ export default function PublicFooter() {
           <div className="relative">
             <button
               type="button"
-              className="rounded-pill border border-mp-medium-grey px-4 py-2 font-lazzer text-[14px] font-medium text-mp-off-black transition-colors duration-200 ease-in-out hover:border-mp-off-black"
+              className="rounded-pill border border-mp-medium-grey px-4 py-2 font-lazzer text-[14px] font-medium text-mp-off-black transition-colors duration-200 ease-in-out hover:border-mp-off-black disabled:opacity-60"
               aria-expanded={langOpen}
+              disabled={switching}
               onClick={() => setLangOpen((v) => !v)}
             >
-              English
+              {dict.footer.languageLabel}
             </button>
             {langOpen ? (
-              <ul className="absolute bottom-full left-0 mb-2 w-56 rounded-2xl bg-white p-2 shadow-[0_2px_12px_rgba(0,0,0,0.05),0_12px_40px_rgba(0,0,0,0.08)]">
-                {footerLanguages.map((lang) => (
-                  <li key={lang}>
-                    <button
-                      type="button"
-                      className="flex w-full items-center justify-between rounded-[10px] px-3 py-2 text-left font-lazzer text-[14px] text-mp-off-black hover:bg-[rgba(0,0,0,0.06)]"
-                      onClick={() => setLangOpen(false)}
-                    >
-                      {lang}
-                      {lang === "English" ? (
-                        <img src={langCheckDataUri} alt="" width={18} height={18} />
-                      ) : null}
-                    </button>
-                  </li>
-                ))}
+              <ul className="absolute bottom-full left-0 mb-2 max-h-[320px] w-56 overflow-y-auto rounded-2xl bg-white p-2 shadow-[0_2px_12px_rgba(0,0,0,0.05),0_12px_40px_rgba(0,0,0,0.08)]">
+                {LANGUAGE_OPTIONS.map((option) => {
+                  const selected = option.locale === locale;
+                  // 실제로 전환되는 언어만 활성. 나머지는 사전이 없어 선택할 수 없음을 알린다.
+                  const supported = Boolean(option.locale);
+                  return (
+                    <li key={option.label}>
+                      <button
+                        type="button"
+                        aria-current={selected ? "true" : undefined}
+                        title={supported ? undefined : "이 클론에서는 아직 제공하지 않는 언어입니다"}
+                        className={cn(
+                          "flex w-full items-center justify-between rounded-[10px] px-3 py-2 text-left font-lazzer text-[14px] hover:bg-[rgba(0,0,0,0.06)]",
+                          supported
+                            ? "text-mp-off-black"
+                            : "cursor-not-allowed text-mp-medium-grey hover:bg-transparent"
+                        )}
+                        onClick={() => {
+                          if (!supported) return;
+                          void switchLocale(option.locale!);
+                        }}
+                      >
+                        {option.label}
+                        {selected ? (
+                          <img src={langCheckDataUri} alt="" width={18} height={18} />
+                        ) : null}
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             ) : null}
           </div>

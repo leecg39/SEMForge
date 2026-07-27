@@ -106,6 +106,17 @@ node scripts/verify-crud.mjs http://localhost:4320
 역할 권한과 소유권, 관계 데이터 연쇄, 일괄 작업, CSV 내보내기, 감사 로그, 로그인 레이트 리밋까지
 60개 항목을 검사합니다. 반복 실행이 가능하도록 생성 데이터는 실행마다 고유 접미사를 붙이고 끝에 정리합니다.
 
+## 언어 전환
+
+원본은 `ko.semrush.com` / `www.semrush.com` 처럼 서브도메인으로 언어를 나눕니다. 이 클론은 단일
+호스트에서 동작하므로 **쿠키(`sc_locale`)로 로케일을 유지**하고 URL 은 그대로 둡니다. 246개 라우트를
+언어별로 복제하지 않기 위한 선택이며, 원본과 다른 점입니다.
+
+- 전환 지점: 푸터 언어 선택기 → `POST /api/locale/` → `router.refresh()`
+- 지원 로케일: `en`, `ko`. 목록의 나머지 언어는 사전이 없어 비활성으로 표시하고 사유를 알려줍니다.
+- 사전 범위: 헤더·푸터·인증 폼 등 **모든 페이지가 공유하는 셸 UI** (`src/i18n/dictionaries.ts`).
+  페이지 본문 마케팅 카피는 영문 그대로입니다.
+
 ## 기술 스택
 
 Next.js 16 (App Router, Turbopack) · React 19 · TypeScript · Tailwind CSS 4 ·

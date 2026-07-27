@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { headerMenus, type MegaMenu, type NavLink } from "@/data/nav";
 import { burgerDataUri, logoDataUri } from "@/components/shell/icon-data";
+import type { Dictionary } from "@/i18n/dictionaries";
 import { cn } from "@/lib/utils";
 
 type HeaderNavItem =
@@ -164,7 +165,7 @@ function MegaPanel({ menu, open }: { menu: MegaMenu; open: boolean }) {
   );
 }
 
-export default function GlobalHeader() {
+export default function GlobalHeader({ dict }: { dict: Dictionary }) {
   const [scrolled, setScrolled] = useState(false);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -238,13 +239,13 @@ export default function GlobalHeader() {
             href="/login/"
             className="rounded-pill border border-mp-off-black px-6 py-3 font-lazzer text-[16px] font-semibold leading-none tracking-[-0.32px] text-mp-off-black transition-colors duration-200 ease-in-out hover:bg-[rgba(0,0,0,0.05)]"
           >
-            Log In
+            {dict.header.logIn}
           </Link>
           <Link
             href="/signup/"
             className="rounded-pill bg-mp-off-black px-6 py-3 font-lazzer text-[16px] font-semibold leading-none tracking-[-0.32px] text-white transition-colors duration-200 ease-in-out hover:bg-[#2a2f27]"
           >
-            Sign Up
+            {dict.header.signUp}
           </Link>
         </div>
 
@@ -252,7 +253,7 @@ export default function GlobalHeader() {
         <button
           type="button"
           className="ml-auto flex h-10 w-10 items-center justify-center lg:hidden"
-          aria-label="Open menu"
+          aria-label={dict.header.openMenu}
           onClick={() => setDrawerOpen(true)}
         >
           <img src={burgerDataUri} alt="" width={18} height={18} />
@@ -273,7 +274,7 @@ export default function GlobalHeader() {
                 <button
                   type="button"
                   className="flex h-10 w-10 items-center justify-center text-mp-off-black"
-                  aria-label="Back"
+                  aria-label={dict.header.back}
                   onClick={() => setDrawerSubmenu(null)}
                 >
                   <ChevronLeftIcon />
@@ -286,7 +287,7 @@ export default function GlobalHeader() {
             <button
               type="button"
               className="flex h-10 w-10 items-center justify-center text-mp-off-black"
-              aria-label="Close menu"
+              aria-label={dict.header.closeMenu}
               onClick={closeDrawer}
             >
               <CloseIcon />
@@ -353,14 +354,14 @@ export default function GlobalHeader() {
                   className="flex h-12 w-full items-center justify-center rounded-pill border border-mp-off-black font-lazzer text-[16px] font-semibold text-mp-off-black transition-colors duration-200 ease-in-out hover:bg-[rgba(0,0,0,0.05)]"
                   onClick={closeDrawer}
                 >
-                  Log In
+                  {dict.header.logIn}
                 </Link>
                 <Link
                   href="/signup/"
                   className="flex h-12 w-full items-center justify-center rounded-pill bg-mp-off-black font-lazzer text-[16px] font-semibold text-white transition-colors duration-200 ease-in-out hover:bg-[#2a2f27]"
                   onClick={closeDrawer}
                 >
-                  Sign Up
+                  {dict.header.signUp}
                 </Link>
               </div>
             </>

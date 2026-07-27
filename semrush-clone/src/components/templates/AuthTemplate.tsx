@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ClientApiError, api } from "@/lib/client-api";
+import type { Dictionary } from "@/i18n/dictionaries";
 import type { AuthPageData } from "@/types/templates";
 
 function GoogleIcon() {
@@ -51,7 +52,13 @@ function SsoIcon() {
 const socialButtonCls =
   "flex h-10 w-full cursor-pointer items-center justify-center gap-2.5 rounded-[6px] border border-[#d1d2d5] bg-white text-[14px] font-medium text-[#181e15] transition-colors duration-200 ease-in-out hover:bg-[#f7f8f8]";
 
-export function AuthTemplate({ data }: { data: AuthPageData }) {
+export function AuthTemplate({
+  data,
+  dict,
+}: {
+  data: AuthPageData;
+  dict: Dictionary;
+}) {
   const router = useRouter();
   const isSignup = data.mode === "signup";
   const [email, setEmail] = useState("");
@@ -80,7 +87,7 @@ export function AuthTemplate({ data }: { data: AuthPageData }) {
         setFormError(caught.message);
         setFieldErrors(caught.fields ?? {});
       } else {
-        setFormError("요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+        setFormError(dict.auth.genericError);
       }
     } finally {
       setPending(false);
@@ -124,7 +131,7 @@ export function AuthTemplate({ data }: { data: AuthPageData }) {
                 htmlFor="auth-email"
                 className="text-[13px] font-semibold text-[#181e15]"
               >
-                Email
+                {dict.auth.email}
               </label>
               <input
                 id="auth-email"
@@ -134,7 +141,7 @@ export function AuthTemplate({ data }: { data: AuthPageData }) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 aria-invalid={Boolean(fieldErrors.email)}
-                placeholder="name@company.com"
+                placeholder={dict.auth.emailPlaceholder}
                 className="h-10 w-full rounded-[6px] border border-[#d1d2d5] px-3 text-[14px] text-[#181e15] outline-none transition-colors duration-200 ease-in-out placeholder:text-[#9a9ca5] focus:border-[#008ff8] aria-[invalid=true]:border-[#d1002f]"
               />
               {fieldErrors.email && (
@@ -146,7 +153,7 @@ export function AuthTemplate({ data }: { data: AuthPageData }) {
                 htmlFor="auth-password"
                 className="text-[13px] font-semibold text-[#181e15]"
               >
-                Password
+                {dict.auth.password}
               </label>
               <input
                 id="auth-password"
@@ -156,7 +163,7 @@ export function AuthTemplate({ data }: { data: AuthPageData }) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 aria-invalid={Boolean(fieldErrors.password)}
-                placeholder="Enter your password"
+                placeholder={dict.auth.passwordPlaceholder}
                 className="h-10 w-full rounded-[6px] border border-[#d1d2d5] px-3 text-[14px] text-[#181e15] outline-none transition-colors duration-200 ease-in-out placeholder:text-[#9a9ca5] focus:border-[#008ff8] aria-[invalid=true]:border-[#d1002f]"
               />
               {fieldErrors.password && (
@@ -177,19 +184,19 @@ export function AuthTemplate({ data }: { data: AuthPageData }) {
               disabled={pending}
               className="h-10 w-full cursor-pointer rounded-[6px] bg-[#181e15] text-[14px] font-semibold text-white transition-colors duration-200 ease-in-out hover:bg-[#2a2f27] disabled:cursor-default disabled:opacity-60"
             >
-              {pending ? "처리 중…" : data.submitLabel}
+              {pending ? dict.auth.processing : data.submitLabel}
             </button>
 
             {!isSignup && (
               <p className="text-center text-[12px] text-[#6c6e79]">
-                시드 계정: <code>owner@example.com</code> / <code>password1234</code>
+                {dict.auth.seedHint}
               </p>
             )}
           </form>
 
           <div className="my-5 flex items-center gap-3">
             <span className="h-px flex-1 bg-[#e0e1e9]" />
-            <span className="text-[12px] uppercase text-[#6c6e79]">or</span>
+            <span className="text-[12px] uppercase text-[#6c6e79]">{dict.auth.or}</span>
             <span className="h-px flex-1 bg-[#e0e1e9]" />
           </div>
 
@@ -199,22 +206,22 @@ export function AuthTemplate({ data }: { data: AuthPageData }) {
             <button
               type="button"
               onClick={() =>
-                setNotice("소셜 로그인은 이 클론에서 지원하지 않습니다. 이메일로 계속해 주세요.")
+                setNotice(dict.auth.unsupportedSocial)
               }
               className={socialButtonCls}
             >
               <GoogleIcon />
-              Continue with Google
+              {dict.auth.continueWithGoogle}
             </button>
             <button
               type="button"
               onClick={() =>
-                setNotice("SSO 는 이 클론에서 지원하지 않습니다. 이메일로 계속해 주세요.")
+                setNotice(dict.auth.unsupportedSso)
               }
               className={socialButtonCls}
             >
               <SsoIcon />
-              Continue with SSO
+              {dict.auth.continueWithSso}
             </button>
             {notice && (
               <p
