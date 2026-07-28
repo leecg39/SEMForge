@@ -1,3 +1,4 @@
+import { Agentation } from "agentation";
 import type { Metadata } from "next";
 import { Inter, Sora } from "next/font/google";
 import "./globals.css";
@@ -37,7 +38,11 @@ export default function RootLayout({
       className={`${sora.variable} ${inter.variable} h-full antialiased`}
       style={{ ["--font-factor-a" as string]: "var(--font-lazzer)" }}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {children}
+        {/* 개발 중에만 로드되는 주석 툴바 */}
+        {process.env.NODE_ENV === "development" && <Agentation />}
+      </body>
     </html>
   );
 }
