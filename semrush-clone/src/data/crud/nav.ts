@@ -1,41 +1,51 @@
 /**
- * CRUD 앱 내비게이션.
- * 원본 좌측 레일의 11개 툴킷 구성(홈/SEO/AI/트래픽/지역/콘텐츠/광고/AI PR/소셜/보고서/App Center)을
- * 실제로 구현한 도메인에 맞춰 축약했다. 구현하지 않은 툴킷은 노출하지 않는다.
+ * 앱 좌측 레일 구성.
+ *
+ * 원본 `ko.semrush.com/home/` 의 `<snav-sidebar>` 를 실측해 11개 툴킷과 링크를 그대로 옮겼다.
+ * 그룹 구분(간격 15px)도 원본과 동일하다.
+ * 근거: docs/research/components/app-rail.spec.md
  */
 
-export interface CrudNavItem {
+export interface RailItem {
   key: string;
   label: string;
   href: string;
   icon: string;
-  /** 원본에서 관찰된 진입점 여부 (문서용) */
-  evidence: "O" | "P";
 }
 
-export const crudNavGroups: { items: CrudNavItem[] }[] = [
-  {
-    items: [
-      { key: "home", label: "홈페이지", href: "/app/home/", icon: "home", evidence: "O" },
-    ],
-  },
-  {
-    items: [
-      { key: "siteaudit", label: "사이트 감사", href: "/app/site-audits/", icon: "seo", evidence: "P" },
-      { key: "position", label: "순위 추적", href: "/app/position-tracking/", icon: "traffic", evidence: "P" },
-      { key: "keywords", label: "키워드 목록", href: "/app/keyword-lists/", icon: "ai", evidence: "P" },
-      { key: "media", label: "미디어 리스트", href: "/app/media-lists/", icon: "pr", evidence: "P" },
-      { key: "content", label: "콘텐츠", href: "/app/content/", icon: "content", evidence: "P" },
-      { key: "reports", label: "보고서", href: "/app/reports/", icon: "reports", evidence: "P" },
-    ],
-  },
-  {
-    items: [
-      { key: "trash", label: "휴지통", href: "/app/trash/", icon: "local", evidence: "P" },
-      { key: "audit", label: "감사 로그", href: "/app/audit/", icon: "apps", evidence: "P" },
-      { key: "account", label: "계정", href: "/app/account/profile/", icon: "social", evidence: "O" },
-    ],
-  },
+export const railGroups: RailItem[][] = [
+  [
+    { key: "home", label: "홈페이지", href: "/home/", icon: "home" },
+    { key: "seo", label: "SEO", href: "/seo/", icon: "seo" },
+    { key: "ai", label: "AI", href: "/ai-seo/overview/", icon: "ai" },
+    { key: "traffic", label: "트래픽 & 시장", href: "/analytics/traffic/", icon: "traffic" },
+  ],
+  [
+    { key: "local", label: "지역", href: "/local-business/", icon: "local" },
+    { key: "content", label: "콘텐츠", href: "/content/", icon: "content" },
+    { key: "advertising", label: "광고", href: "/advertising/", icon: "advertising" },
+    { key: "pr", label: "AI PR", href: "/pr-toolkit/", icon: "pr" },
+    { key: "social", label: "소셜", href: "/social-media/", icon: "social" },
+  ],
+  [
+    { key: "reports", label: "보고서", href: "/my_reports/grid/", icon: "reports" },
+    { key: "apps", label: "App Center", href: "/apps/", icon: "apps" },
+  ],
+];
+
+/**
+ * 이 클론에서만 존재하는 CRUD 작업 화면.
+ * 원본 레일에는 없는 항목이므로 프로필 메뉴 아래에 따로 노출한다.
+ */
+export const crudTools = [
+  { label: "사이트 감사", href: "/app/site-audits/" },
+  { label: "순위 추적", href: "/app/position-tracking/" },
+  { label: "키워드 목록", href: "/app/keyword-lists/" },
+  { label: "미디어 리스트", href: "/app/media-lists/" },
+  { label: "콘텐츠 문서", href: "/app/content/" },
+  { label: "보고서", href: "/app/reports/" },
+  { label: "휴지통", href: "/app/trash/" },
+  { label: "감사 로그", href: "/app/audit/" },
 ];
 
 export const accountNav = [

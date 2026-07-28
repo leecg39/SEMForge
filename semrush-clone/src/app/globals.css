@@ -46,6 +46,28 @@
   /* 2026-07-28 실측: 로그인 앱의 링크/강조 색은 #235FE2 (기존 --app-blue 와 다름) */
   --app-link: #235fe2;
   --app-link-soft: #eaf0fd;
+
+  /* ko.semrush.com/home/ 실측 토큰 (getComputedStyle 기준, 1440px)
+     docs/research/ko.semrush.com/PAGE_TOPOLOGY.md 참조 */
+  --a2-surface: rgb(244, 245, 245); /* 헤더·본문·푸터 배경 */
+  --a2-card: rgb(255, 255, 255);
+  --a2-text: rgba(1, 5, 0, 0.898); /* 기본 텍스트 */
+  --a2-text-muted: rgba(0, 3, 0, 0.584); /* 보조 텍스트·비활성 레일 */
+  --a2-text-faint: rgba(0, 4, 1, 0.525); /* 레일 라벨 */
+  --a2-value-muted: oklch(0.088 0.026 147.7 / 0.583); /* 지표 n/a */
+  --a2-accent-purple: oklch(0.53 0.157 279.2); /* 언급 값 */
+  --a2-rail-active: rgb(227, 227, 227);
+  --a2-btn-bg: rgba(0, 22, 16, 0.027);
+  --a2-btn-border: rgba(0, 12, 8, 0.16);
+  --a2-card-shadow: 0 0 1px 0 rgba(0, 21, 16, 0.07), 0 1px 3px 0 rgba(0, 21, 16, 0.07);
+  --a2-tooltip-bg: rgb(26, 30, 26);
+  --a2-tooltip-fg: rgba(254, 255, 255, 0.95);
+  --a2-footer-text: rgb(108, 110, 121);
+  --a2-cta-green: rgb(0, 170, 125);
+  --a2-cta-outline-bg: rgba(138, 142, 155, 0.1);
+  --a2-cta-outline-border: rgb(196, 199, 207);
+  --a2-rail-width: 77px;
+  --a2-header-height: 53px;
 }
 
 @theme inline {
@@ -75,6 +97,22 @@
   --color-app-yellow: var(--app-yellow);
   --color-app-link: var(--app-link);
   --color-app-link-soft: var(--app-link-soft);
+  --color-a2-surface: var(--a2-surface);
+  --color-a2-card: var(--a2-card);
+  --color-a2-text: var(--a2-text);
+  --color-a2-text-muted: var(--a2-text-muted);
+  --color-a2-text-faint: var(--a2-text-faint);
+  --color-a2-value-muted: var(--a2-value-muted);
+  --color-a2-accent-purple: var(--a2-accent-purple);
+  --color-a2-rail-active: var(--a2-rail-active);
+  --color-a2-btn-bg: var(--a2-btn-bg);
+  --color-a2-btn-border: var(--a2-btn-border);
+  --color-a2-tooltip-bg: var(--a2-tooltip-bg);
+  --color-a2-tooltip-fg: var(--a2-tooltip-fg);
+  --color-a2-footer-text: var(--a2-footer-text);
+  --color-a2-cta-green: var(--a2-cta-green);
+  --color-a2-cta-outline-bg: var(--a2-cta-outline-bg);
+  --color-a2-cta-outline-border: var(--a2-cta-outline-border);
 
   /* 폰트 패밀리 (layout.tsx next/font 변수와 연결) */
   --font-lazzer: var(--font-lazzer), Inter, sans-serif;

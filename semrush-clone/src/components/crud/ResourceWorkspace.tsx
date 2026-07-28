@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ClientApiError, api, buildListQuery, type ListMetaShape } from "@/lib/client-api";
 import { cn } from "@/lib/utils";
@@ -64,6 +65,26 @@ function FolderGlyph({ pinned }: { pinned: boolean }) {
     </svg>
   );
 }
+
+/**
+ * 폴더 행의 지표 스트립.
+ * 라벨과 문구는 ko.semrush.com/home/ 실측값 그대로다. 값이 외부 SEO 데이터에 의존하는 항목은
+ * 원본이 이 계정에서 보여주는 것과 동일하게 `n/a` 로 둔다 (숫자를 지어내지 않는다).
+ */
+const FOLDER_METRICS: {
+  label: string;
+  value?: string;
+  hint?: string;
+  accent?: boolean;
+}[] = [
+  { label: "AI 가시성", value: "n/a" },
+  { label: "언급", value: "0", accent: true },
+  { label: "Site Health", hint: "웹사이트 문제를 확인하세요" },
+  { label: "가시성", hint: "키워드 포지션을 추적하세요" },
+  { label: "자연검색 트래픽", value: "n/a" },
+  { label: "자연 키워드", value: "n/a" },
+  { label: "백링크", value: "n/a" },
+];
 
 const dateFormatter = new Intl.DateTimeFormat("ko-KR", {
   timeZone: "Asia/Seoul",
@@ -531,11 +552,28 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
   const showNoResults = !loading && !loadError && rows.length === 0 && (Boolean(q) || activeFilterCount > 0);
 
   return (
-    <div className="flex flex-col gap-4 p-6">
+    // 폴더 화면은 원본처럼 제목·버튼·목록이 하나의 흰 카드 안에 들어간다 (내부 패딩 20px).
+    <div
+      className={cn(
+        "flex flex-col gap-4",
+        spec.view === "folder" &&
+          "rounded-[8px] bg-a2-card px-[20px] py-[14px] shadow-[var(--a2-card-shadow)]"
+      )}
+    >
       {/* 헤더 */}
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0">
-          <h1 className="text-[20px] font-semibold leading-[1.3]">{spec.title}</h1>
+          <h1
+            className={cn(
+              "leading-[1.3]",
+              // 원본 폴더 제목: 16px / 700 / line-height 24px
+              spec.view === "folder"
+                ? "text-[16px] font-bold leading-[24px]"
+                : "text-[20px] font-semibold"
+            )}
+          >
+            {spec.title}
+          </h1>
           <p className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-app-text-secondary">
             <span
               className={cn(
@@ -575,7 +613,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
       </div>
 
       {/* 필터 행 — 원본 폴더 목록의 필터 바 구성을 따른다 */}
-      <div className="flex flex-wrap items-center gap-2 rounded-[8px] border border-app-border bg-white px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-2 rounded-[8px] bg-a2-card px-3 py-2.5 shadow-[var(--a2-card-shadow)]">
         {/* 원본 필터 바의 검색 입력은 전체 폭이 아니라 260px 내외의 고정 폭이다 (증거 O) */}
         <div className="flex h-[32px] w-full max-w-[260px] items-center gap-2 rounded-[6px] border border-app-border px-2.5">
           <SearchGlyph />
@@ -712,7 +750,14 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
       )}
 
       {/* 목록 */}
-      <div className="overflow-hidden rounded-[8px] border border-app-border bg-white">
+      <div
+        className={cn(
+          "overflow-hidden rounded-[8px]",
+          spec.view === "folder"
+            ? "border-t border-black/[0.06]"
+            : "bg-a2-card shadow-[var(--a2-card-shadow)]"
+        )}
+      >
         {loading && (
           <div className="flex flex-col gap-2 p-4">
             <p className="text-[13px] text-app-text-secondary">데이터 로드 중</p>
@@ -878,14 +923,49 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                       )}
                     </div>
                   </div>
-                  <div className="flex flex-wrap items-start gap-x-10 gap-y-3 border-t border-[#eef0f2] bg-[#fcfcfd] px-4 py-3">
-                    {metricColumns.map((column) => (
-                      <div key={column.key} className="min-w-[110px]">
-                        <p className="text-[12px] text-app-text-secondary">{column.label}</p>
-                        <p className="mt-0.5 text-[13px]">{formatCell(row, column)}</p>
+                  {/* 지표 스트립 — 원본 8열 구성을 그대로 재현.
+                      실제 SEO 데이터는 외부 의존이라 원본과 동일하게 n/a 로 표기한다. */}
+                  <div className="grid grid-cols-[repeat(8,minmax(0,1fr))] gap-x-[8px] px-[20px] pb-[20px] pt-[8px] max-lg:flex max-lg:overflow-x-auto">
+                    <div className="min-w-[110px]">
+                      <Link
+                        href="/seo/"
+                        className="text-[14px] font-medium text-app-link hover:underline"
+                      >
+                        SEO
+                      </Link>
+                    </div>
+                    {FOLDER_METRICS.map((metric) => (
+                      <div key={metric.label} className="min-w-[110px]">
+                        <p className="text-[14px] leading-[20px] text-a2-text">{metric.label}</p>
+                        {metric.hint ? (
+                          <p className="mt-[4px] text-[12px] leading-[16px] text-a2-value-muted">
+                            {metric.hint}
+                          </p>
+                        ) : (
+                          <p
+                            className={cn(
+                              "mt-[4px] text-[20px] leading-[26px]",
+                              metric.accent
+                                ? "font-bold text-a2-accent-purple"
+                                : "font-semibold text-a2-value-muted"
+                            )}
+                          >
+                            {metric.value}
+                          </p>
+                        )}
                       </div>
                     ))}
                   </div>
+                  {metricColumns.length > 0 && (
+                    <div className="flex flex-wrap items-start gap-x-10 gap-y-2 border-t border-[#eef0f2] px-[20px] py-[10px]">
+                      {metricColumns.map((column) => (
+                        <div key={column.key} className="min-w-[110px]">
+                          <p className="text-[12px] text-app-text-secondary">{column.label}</p>
+                          <p className="mt-0.5 text-[13px]">{formatCell(row, column)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </li>
               );
             })}
