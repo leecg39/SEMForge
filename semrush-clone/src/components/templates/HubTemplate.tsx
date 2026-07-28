@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useLocalizedValue, useSiteText } from "@/i18n/useLocalizedValue";
 import Link from "next/link";
 import { Container } from "@/components/ui/Container";
 import { Button } from "@/components/ui/Button";
@@ -37,9 +38,11 @@ function HubCardItem({ card }: { card: HubCard }) {
   );
 }
 
-export function HubTemplate({ data }: { data: HubPageData }) {
+export function HubTemplate({ data: sourceData }: { data: HubPageData }) {
+  const data = useLocalizedValue(sourceData);
+  const tx = useSiteText();
   const [activeTab, setActiveTab] = useState(data.tabs?.[0] ?? "All");
-  const showAll = activeTab.toLowerCase() === "all";
+  const showAll = activeTab === data.tabs?.[0];
   const visibleCards = showAll
     ? data.cards
     : data.cards.filter((card) => !card.tag || card.tag === activeTab);
@@ -87,7 +90,7 @@ export function HubTemplate({ data }: { data: HubPageData }) {
           )}
           {visibleCards.length === 0 ? (
             <p className="py-12 text-center text-[15px] text-[#6c6e79]">
-              No items found for this category.
+              {tx("No items found for this category.")}
             </p>
           ) : (
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">

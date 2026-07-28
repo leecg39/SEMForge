@@ -1,13 +1,16 @@
 "use client";
 
 import { logoWall } from "@/data/pages/home";
+import { useSiteText } from "@/i18n/useLocalizedValue";
 
 const MARQUEE_KEYFRAMES = `@keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }`;
 
 export default function LogoMarquee() {
+  const tx = useSiteText();
+
   return (
     <section
-      aria-label="Trusted by leading brands"
+      aria-label={tx("Trusted by leading brands")}
       className="flex h-[180px] items-center overflow-hidden py-[40px]"
     >
       <style>{MARQUEE_KEYFRAMES}</style>

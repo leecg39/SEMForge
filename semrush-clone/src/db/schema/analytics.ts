@@ -1,0 +1,148 @@
+import { sql } from "drizzle-orm";
+import {
+  index,
+  integer,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
+
+/**
+ * 데이터 인텔리전스 원천 스토어.
+ *
+ * docs/data-architecture.md의 구조를 작은 로컬 데이터셋으로 재현한다.
+ * 이 테이블에는 계산된 Authority Score, KD, Organic Traffic을 저장하지 않는다.
+ * 파생 지표는 원천 행을 읽어 src/lib/analytics/metrics.ts의 순수 함수로 계산한다.
+ */
+
+const timestampMs = (name: string) => integer(name, { mode: "timestamp_ms" });
+
+/** 지역·기기별 키워드 메타. 검색량은 월별 관측/모델 값을 대표한다. */
+export const keywordMetrics = sqliteTable(
+  "keyword_metrics",
+  {
+    id: text("id").primaryKey(),
+    keyword: text("keyword").notNull(),
+    normalizedKeyword: text("normalized_keyword").notNull(),
+    countryCode: text("country_code").notNull(),
+    device: text("device", { enum: ["desktop", "mobile"] }).notNull(),
+    periodStart: timestampMs("period_start").notNull(),
+    volume: integer("volume").notNull(),
+    cpcCents: integer("cpc_cents").notNull().default(0),
+    currencyCode: text("currency_code").notNull().default("USD"),
+    intent: text("intent", {
+      enum: ["informational", "navigational", "commercial", "transactional"],
+    }).notNull(),
+    source: text("source").notNull().default("demo-keyword-model"),
+    updatedAt: timestampMs("updated_at")
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [
+    uniqueIndex("keyword_metrics_scope_unique").on(
+      t.normalizedKeyword,
+      t.countryCode,
+      t.device,
+      t.periodStart,
+    ),
+    index("keyword_metrics_scope_idx").on(
+      t.normalizedKeyword,
+      t.countryCode,
+      t.device,
+      t.periodStart,
+    ),
+  ],
+);
+
+/** 원천 1: 키워드별 SERP 스냅샷. 동일 시점의 순위 행을 그대로 보존한다. */
+export const serpSnapshots = sqliteTable(
+  "serp_snapshots",
+  {
+    id: text("id").primaryKey(),
+    keywordMetricId: text("keyword_metric_id")
+      .notNull()
+      .references(() => keywordMetrics.id, { onDelete: "cascade" }),
+    searchEngine: text("search_engine", { enum: ["google", "bing"] })
+      .notNull()
+      .default("google"),
+    domain: text("domain").notNull(),
+    url: text("url").notNull(),
+    position: integer("position").notNull(),
+    isAd: integer("is_ad", { mode: "boolean" }).notNull().default(false),
+    /** featured_snippet, local_pack 같은 피처 이름의 JSON 배열. */
+    serpFeatures: text("serp_features").notNull().default("[]"),
+    source: text("source").notNull().default("demo-serp-collector"),
+    capturedAt: timestampMs("captured_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("serp_snapshot_position_unique").on(
+      t.keywordMetricId,
+      t.searchEngine,
+      t.capturedAt,
+      t.position,
+      t.isAd,
+    ),
+    index("serp_snapshot_domain_idx").on(t.domain, t.capturedAt),
+    index("serp_snapshot_keyword_idx").on(t.keywordMetricId, t.capturedAt),
+  ],
+);
+
+/** 원천 2: 익명 클릭스트림 이벤트. 세션·사용자 키는 데모용 해시 값이다. */
+export const clickstreamEvents = sqliteTable(
+  "clickstream_events",
+  {
+    id: text("id").primaryKey(),
+    anonymousUserHash: text("anonymous_user_hash").notNull(),
+    sessionHash: text("session_hash").notNull(),
+    domain: text("domain").notNull(),
+    path: text("path").notNull().default("/"),
+    countryCode: text("country_code").notNull(),
+    device: text("device", { enum: ["desktop", "mobile"] }).notNull(),
+    channel: text("channel", {
+      enum: ["direct", "organic", "paid", "referral", "social", "email"],
+    }).notNull(),
+    /** 이 표본 세션 한 건이 대표하는 모집단 세션 수. */
+    populationWeight: integer("population_weight").notNull().default(1),
+    source: text("source").notNull().default("demo-panel"),
+    occurredAt: timestampMs("occurred_at").notNull(),
+  },
+  (t) => [
+    index("clickstream_domain_scope_idx").on(
+      t.domain,
+      t.countryCode,
+      t.device,
+      t.occurredAt,
+    ),
+    index("clickstream_session_idx").on(t.sessionHash),
+  ],
+);
+
+/** 원천 3: 자체 크롤러가 발견한 링크 그래프의 엣지. */
+export const linkGraphEdges = sqliteTable(
+  "link_graph_edges",
+  {
+    id: text("id").primaryKey(),
+    sourceDomain: text("source_domain").notNull(),
+    targetDomain: text("target_domain").notNull(),
+    sourceUrl: text("source_url").notNull(),
+    targetUrl: text("target_url").notNull(),
+    /** 동일 네트워크의 비정상 링크 집중도를 계산하기 위한 가명 네트워크 키. */
+    sourceNetwork: text("source_network").notNull(),
+    isFollow: integer("is_follow", { mode: "boolean" }).notNull().default(true),
+    /** 크롤 당시 source domain의 0~100 품질 피처. */
+    sourceAuthority: integer("source_authority").notNull(),
+    source: text("source").notNull().default("demo-link-crawler"),
+    firstSeenAt: timestampMs("first_seen_at").notNull(),
+    lastSeenAt: timestampMs("last_seen_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("link_graph_edge_unique").on(t.sourceUrl, t.targetUrl),
+    index("link_graph_target_idx").on(t.targetDomain, t.lastSeenAt),
+    index("link_graph_source_network_idx").on(t.sourceNetwork, t.targetDomain),
+  ],
+);
+
+export type KeywordMetric = typeof keywordMetrics.$inferSelect;
+export type SerpSnapshot = typeof serpSnapshots.$inferSelect;
+export type ClickstreamEvent = typeof clickstreamEvents.$inferSelect;
+export type LinkGraphEdge = typeof linkGraphEdges.$inferSelect;

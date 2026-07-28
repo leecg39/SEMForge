@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import { statsSection } from "@/data/pages/home";
+import { useLocalizedValue } from "@/i18n/useLocalizedValue";
 
 function ArrowUp({ className }: { className?: string }) {
   return (
@@ -19,16 +22,17 @@ const rowGridClass =
   "grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.5fr)_minmax(0,1fr)] md:items-end md:gap-8";
 
 export default function StatsSection() {
-  const [first, ...rest] = statsSection.stats;
+  const section = useLocalizedValue(statsSection);
+  const [first, ...rest] = section.stats;
 
   return (
     <section className="py-[120px]">
       <div className="mp-container">
         <h2 className="text-[12px] font-semibold uppercase tracking-[0.24px] text-[#181e15]">
-          {statsSection.label}
+          {section.label}
         </h2>
         <h3 className="mt-6 max-w-[980px] font-lazzer text-[36px] font-semibold uppercase leading-none tracking-[-0.04em] text-[#181e15] md:text-[64px] md:leading-[64px]">
-          {statsSection.heading}
+          {section.heading}
         </h3>
 
         <div className="mt-[60px]">
@@ -59,10 +63,10 @@ export default function StatsSection() {
         </div>
 
         <Link
-          href={statsSection.cta.href}
+          href={section.cta.href}
           className="mt-[60px] inline-flex items-center justify-center rounded-[100px] border border-[#181e15] px-[30px] py-4 text-[16px] font-semibold text-[#181e15] transition-colors duration-200 ease-in-out hover:bg-[#181e15] hover:text-white"
         >
-          {statsSection.cta.label}
+          {section.cta.label}
         </Link>
       </div>
     </section>

@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useLocalizedValue, useSiteText } from "@/i18n/useLocalizedValue";
 import { Container } from "@/components/ui/Container";
 import { Button } from "@/components/ui/Button";
 import { SectionHeader } from "@/components/ui/SectionHeader";
@@ -46,7 +49,9 @@ function FeatureCard({
 }
 
 /** PUB-SOLUTION: 역할/문제/산업 솔루션 랜딩 템플릿 */
-export function SolutionTemplate({ data }: { data: SolutionPageData }) {
+export function SolutionTemplate({ data: sourceData }: { data: SolutionPageData }) {
+  const data = useLocalizedValue(sourceData);
+  const tx = useSiteText();
   return (
     <main>
       {/* 1. Hero */}
@@ -88,7 +93,7 @@ export function SolutionTemplate({ data }: { data: SolutionPageData }) {
       {data.problems && data.problems.length > 0 && (
         <section className="py-16 md:py-[120px]">
           <Container>
-            <SectionHeader heading="Challenges we solve" />
+            <SectionHeader heading={tx("Challenges we solve")} />
             <div className="mt-12 grid gap-6 md:mt-16 md:grid-cols-2">
               {data.problems.map((item, i) => (
                 <div key={i} className="rounded-[16px] bg-[#f7fbfa] p-8">
@@ -202,7 +207,7 @@ export function SolutionTemplate({ data }: { data: SolutionPageData }) {
         <section className="py-16 md:py-[120px]">
           <Container>
             <div className="grid gap-12 lg:grid-cols-2 lg:gap-16">
-              <SectionHeader heading="FAQ" className="self-start" />
+              <SectionHeader heading={tx("FAQ")} className="self-start" />
               <FaqAccordion items={data.faqs} />
             </div>
           </Container>

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { headerMenus, type MegaMenu, type NavLink } from "@/data/nav";
 import { burgerDataUri, logoDataUri } from "@/components/shell/icon-data";
 import type { Dictionary } from "@/i18n/dictionaries";
+import { useLocalizedValue, useSiteText } from "@/i18n/useLocalizedValue";
 import { cn } from "@/lib/utils";
 
 type HeaderNavItem =
@@ -166,6 +167,9 @@ function MegaPanel({ menu, open }: { menu: MegaMenu; open: boolean }) {
 }
 
 export default function GlobalHeader({ dict }: { dict: Dictionary }) {
+  const localizedNavItems = useLocalizedValue(navItems);
+  const localizedHeaderMenus = useLocalizedValue(headerMenus);
+  const tx = useSiteText();
   const [scrolled, setScrolled] = useState(false);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -199,13 +203,13 @@ export default function GlobalHeader({ dict }: { dict: Dictionary }) {
       onMouseLeave={() => setOpenMenu(null)}
     >
       <div className="mx-auto flex h-[84px] max-w-[1440px] items-center px-8">
-        <Link href="/" className="shrink-0" aria-label="Semrush homepage">
+        <Link href="/" className="shrink-0" aria-label={tx("Semrush homepage")}>
           <img src={logoDataUri} alt="Semrush" width={150} height={36} />
         </Link>
 
         {/* 데스크톱 내비게이션 */}
-        <nav className="ml-6 hidden flex-1 items-center gap-1 lg:flex" aria-label="Main">
-          {navItems.map((item) =>
+        <nav className="ml-6 hidden flex-1 items-center gap-1 lg:flex" aria-label={tx("Main")}>
+          {localizedNavItems.map((item) =>
             item.kind === "menu" ? (
               <button
                 key={item.menu.label}
@@ -261,7 +265,7 @@ export default function GlobalHeader({ dict }: { dict: Dictionary }) {
       </div>
 
       {/* 데스크톱 메가메뉴 패널 */}
-      {headerMenus.map((menu) => (
+      {localizedHeaderMenus.map((menu) => (
         <MegaPanel key={menu.label} menu={menu} open={openMenu === menu.label} />
       ))}
 
@@ -281,7 +285,7 @@ export default function GlobalHeader({ dict }: { dict: Dictionary }) {
                 </button>
               ) : null}
             </div>
-            <Link href="/" aria-label="Semrush homepage" onClick={closeDrawer}>
+            <Link href="/" aria-label={tx("Semrush homepage")} onClick={closeDrawer}>
               <img src={logoDataUri} alt="Semrush" width={125} height={30} />
             </Link>
             <button
@@ -321,9 +325,9 @@ export default function GlobalHeader({ dict }: { dict: Dictionary }) {
           ) : (
             /* 1단계: 상위 메뉴 목록 + 하단 고정 버튼 */
             <>
-              <nav className="flex-1 overflow-y-auto px-6 pt-2" aria-label="Mobile">
+              <nav className="flex-1 overflow-y-auto px-6 pt-2" aria-label={tx("Mobile navigation")}>
                 <ul>
-                  {navItems.map((item) => (
+                  {localizedNavItems.map((item) => (
                     <li key={item.kind === "menu" ? item.menu.label : item.link.label}>
                       {item.kind === "menu" ? (
                         <button

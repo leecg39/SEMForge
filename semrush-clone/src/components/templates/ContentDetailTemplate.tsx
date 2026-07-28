@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useLocalizedValue, useSiteText } from "@/i18n/useLocalizedValue";
 import { Container } from "@/components/ui/Container";
 import { Button } from "@/components/ui/Button";
 import { SectionHeader } from "@/components/ui/SectionHeader";
@@ -70,6 +73,7 @@ function BodyBlocks({ blocks }: { blocks: BodyBlock[] }) {
 }
 
 function RelatedCard({ card }: { card: HubCard }) {
+  const tx = useSiteText();
   return (
     <Link
       href={card.href}
@@ -87,13 +91,15 @@ function RelatedCard({ card }: { card: HubCard }) {
         <p className="mt-2 text-[14px] leading-[1.6] text-[#6c6e79]">{card.body}</p>
       )}
       <span className="mt-auto pt-5 text-[14px] font-semibold text-[#181e15] group-hover:underline">
-        Read more →
+        {tx("Read more")} →
       </span>
     </Link>
   );
 }
 
-export function ContentDetailTemplate({ data }: { data: ContentDetailData }) {
+export function ContentDetailTemplate({ data: sourceData }: { data: ContentDetailData }) {
+  const data = useLocalizedValue(sourceData);
+  const tx = useSiteText();
   const meta = [data.author, data.date, data.readingTime].filter(Boolean);
   const hasToc = Boolean(data.toc && data.toc.length > 0);
 
@@ -132,7 +138,7 @@ export function ContentDetailTemplate({ data }: { data: ContentDetailData }) {
               <aside className="hidden lg:block">
                 <div className="sticky top-24">
                   <div className="text-[12px] font-semibold uppercase tracking-[0.24px] text-[#181e15]">
-                    On this page
+                    {tx("On this page")}
                   </div>
                   <ul className="mt-4 flex flex-col gap-2.5">
                     {data.toc.map((item) => (
@@ -157,7 +163,7 @@ export function ContentDetailTemplate({ data }: { data: ContentDetailData }) {
       {data.related && data.related.length > 0 && (
         <section className="py-16 md:py-[120px]">
           <Container>
-            <SectionHeader heading="Related" className="mb-10" />
+            <SectionHeader heading={tx("Related")} className="mb-10" />
             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
               {data.related.map((card) => (
                 <RelatedCard key={card.href} card={card} />
@@ -172,15 +178,15 @@ export function ContentDetailTemplate({ data }: { data: ContentDetailData }) {
         <Container>
           <div className="flex flex-col items-center gap-6 rounded-[24px] bg-[#dceeeb] px-6 py-14 text-center md:py-16">
             <h2 className="max-w-[560px] font-[family-name:var(--font-lazzer)] text-[28px] font-semibold leading-[1.1] tracking-[-1px] text-[#181e15] md:text-[36px]">
-              Get weekly insights in your inbox
+              {tx("Get weekly insights in your inbox")}
             </h2>
             <div className="flex w-full max-w-[480px] flex-col gap-3 sm:flex-row">
               <input
                 type="email"
-                placeholder="Enter your email"
+                placeholder={tx("Enter your email")}
                 className="h-12 min-w-0 flex-1 rounded-full border border-[#d1d2d5] bg-white px-5 text-[15px] text-[#181e15] outline-none placeholder:text-[#6c6e79] focus:border-[#181e15]"
               />
-              <Button variant="primary">Subscribe</Button>
+              <Button variant="primary">{tx("Subscribe")}</Button>
             </div>
           </div>
         </Container>

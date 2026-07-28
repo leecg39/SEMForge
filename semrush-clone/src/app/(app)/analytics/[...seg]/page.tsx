@@ -7,7 +7,6 @@ import { seoAnalysis, otherAnalysis, workspaces } from "@/data/app-pages";
 const analysisAll = { ...seoAnalysis, ...otherAnalysis };
 
 const params: string[][] = [
-  ["overview"],
   ["organic", "overview"],
   ["toppages"],
   ["comparedomains"],

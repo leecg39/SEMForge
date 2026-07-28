@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useLocalizedValue, useSiteText } from "@/i18n/useLocalizedValue";
 import { Container } from "@/components/ui/Container";
 import { Button } from "@/components/ui/Button";
 import { SectionHeader } from "@/components/ui/SectionHeader";
@@ -21,6 +24,7 @@ function PostCard({
   post: HubCard;
   variant?: ContentListData["variant"];
 }) {
+  const tx = useSiteText();
   return (
     <Link
       href={post.href}
@@ -36,7 +40,7 @@ function PostCard({
       <div className="flex flex-1 flex-col gap-2 p-6">
         {variant === "academy" && (
           <span className="inline-flex w-fit items-center rounded-full bg-[#dceeeb] px-3 py-1 text-[12px] font-semibold text-[#181e15]">
-            Course
+            {tx("Course")}
           </span>
         )}
         {post.tag && (
@@ -60,7 +64,7 @@ function PostCard({
         {variant === "webinars" && (
           <div className="mt-auto flex items-center gap-2 pt-4 text-[13px] text-[#6c6e79]">
             <span aria-hidden className="h-6 w-6 shrink-0 rounded-full bg-[#dceeeb]" />
-            <span>Speaker · Date to be announced</span>
+            <span>{tx("Speaker · Date to be announced")}</span>
           </div>
         )}
       </div>
@@ -68,8 +72,10 @@ function PostCard({
   );
 }
 
-export function ContentListTemplate({ data }: { data: ContentListData }) {
-  const label = data.variant ? variantLabels[data.variant] : undefined;
+export function ContentListTemplate({ data: sourceData }: { data: ContentListData }) {
+  const data = useLocalizedValue(sourceData);
+  const tx = useSiteText();
+  const label = data.variant ? tx(variantLabels[data.variant]) : undefined;
 
   return (
     <main>
@@ -147,7 +153,7 @@ export function ContentListTemplate({ data }: { data: ContentListData }) {
                   </p>
                 )}
                 <span className="font-[family-name:var(--font-lazzer)] text-[16px] font-semibold text-[#181e15] group-hover:underline">
-                  Read more →
+                  {tx("Read more")} →
                 </span>
               </div>
             </Link>
@@ -174,16 +180,16 @@ export function ContentListTemplate({ data }: { data: ContentListData }) {
       <section className="pb-[64px] md:pb-[120px]">
         <Container>
           <div className="flex flex-col items-center gap-8 rounded-[24px] bg-[#dceeeb] px-8 py-[64px] text-center">
-            <SectionHeader heading="Stay in the loop" align="center" />
+            <SectionHeader heading={tx("Stay in the loop")} align="center" />
             <form className="flex w-full max-w-[520px] flex-col gap-3 sm:flex-row">
               <input
                 type="email"
-                placeholder="Enter your email"
-                aria-label="Email address"
+                placeholder={tx("Enter your email")}
+                aria-label={tx("Email address")}
                 className="h-[56px] flex-1 rounded-full bg-white px-6 text-[16px] text-[#181e15] outline-none placeholder:text-[#6c6e79]"
               />
               <Button variant="primary" className="h-[56px] px-8">
-                Subscribe
+                {tx("Subscribe")}
               </Button>
             </form>
           </div>

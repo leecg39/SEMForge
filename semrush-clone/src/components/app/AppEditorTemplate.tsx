@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useLocalizedValue } from "@/i18n/useLocalizedValue";
 import { cn } from "@/lib/utils";
 import type { AppEditorData } from "@/types/app";
 
@@ -53,7 +54,8 @@ function ToolbarButton({ children, label }: { children: ReactNode; label: string
   );
 }
 
-export function AppEditorTemplate({ data }: { data: AppEditorData }) {
+export function AppEditorTemplate({ data: sourceData }: { data: AppEditorData }) {
+  const data = useLocalizedValue(sourceData);
   const scoreClamped = Math.max(0, Math.min(100, data.score));
   const gaugeDash = (scoreClamped / 100) * GAUGE_CIRCUMFERENCE;
   const scoreHex = data.score >= 70 ? "#009f81" : "#ff642d";

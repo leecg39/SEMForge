@@ -3,12 +3,15 @@ import {
   apiKeys,
   auditLogs,
   authEvents,
+  clickstreamEvents,
   contentArticles,
   folderShares,
   folderTags,
   folders,
   keywordListItems,
   keywordLists,
+  keywordMetrics,
+  linkGraphEdges,
   mediaContacts,
   mediaLists,
   memberships,
@@ -19,11 +22,13 @@ import {
   siteAuditCampaigns,
   siteAuditIssues,
   sites,
+  serpSnapshots,
   tags,
   trackedKeywords,
   users,
   workspaces,
 } from "@/db/schema";
+import { seedAnalyticsData } from "@/db/seed-analytics";
 import { newId } from "@/lib/ids";
 import { hashPassword } from "@/lib/password";
 
@@ -44,6 +49,10 @@ async function main() {
     authEvents,
     notificationSettings,
     apiKeys,
+    serpSnapshots,
+    clickstreamEvents,
+    linkGraphEdges,
+    keywordMetrics,
     siteAuditIssues,
     siteAuditCampaigns,
     trackedKeywords,
@@ -67,6 +76,8 @@ async function main() {
   for (const table of tablesInOrder) {
     await db.delete(table);
   }
+
+  await seedAnalyticsData(now);
 
   const workspaceId = newId("wsp");
   await db.insert(workspaces).values({

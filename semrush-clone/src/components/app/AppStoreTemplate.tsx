@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useLocalizedValue } from "@/i18n/useLocalizedValue";
 import { cn } from "@/lib/utils";
 import type { AppStoreData, StoreApp } from "@/types/app";
 
@@ -134,7 +135,8 @@ function StoreDetail({ detail }: { detail: NonNullable<AppStoreData["detail"]> }
   );
 }
 
-export function AppStoreTemplate({ data }: { data: AppStoreData }) {
+export function AppStoreTemplate({ data: sourceData }: { data: AppStoreData }) {
+  const data = useLocalizedValue(sourceData);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
   if (data.mode === "detail" && data.detail) {

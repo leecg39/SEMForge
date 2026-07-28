@@ -3,9 +3,12 @@
 import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { heroData } from "@/data/pages/home";
+import { useLocalizedValue, useSiteText } from "@/i18n/useLocalizedValue";
 
 export default function HomeHero() {
   const router = useRouter();
+  const data = useLocalizedValue(heroData);
+  const tx = useSiteText();
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -24,10 +27,10 @@ export default function HomeHero() {
     >
       <div className="mx-auto max-w-[1440px] px-4 pb-16 md:px-8">
         <h1 className="mx-auto max-w-[1050px] font-lazzer text-[44px] font-semibold leading-[48px] tracking-[-1.8px] text-mp-off-black lg:text-[84px] lg:leading-[92.4px] lg:tracking-[-3.36px]">
-          {heroData.title}
+          {data.title}
         </h1>
         <p className="mx-auto my-6 max-w-[540px] text-[18px] font-medium leading-[27px]">
-          {heroData.subtitle}
+          {data.subtitle}
         </p>
 
         <form
@@ -36,16 +39,16 @@ export default function HomeHero() {
         >
           <input
             type="text"
-            aria-label={heroData.inputPlaceholder}
-            placeholder={heroData.inputPlaceholder}
+            aria-label={data.inputPlaceholder}
+            placeholder={data.inputPlaceholder}
             className="h-[56px] flex-1 border-0 bg-transparent pl-6 text-left text-[16px] text-mp-off-black outline-none placeholder:text-mp-dark-grey md:h-[60px]"
           />
           <button
             type="button"
-            aria-label="Select country"
+            aria-label={tx("Select country")}
             className="flex h-[56px] shrink-0 items-center justify-center gap-1.5 px-4 text-[14px] font-semibold text-mp-off-black md:h-[60px]"
           >
-            {heroData.country}
+            {data.country}
             <svg
               width="12"
               height="12"
@@ -66,15 +69,15 @@ export default function HomeHero() {
             type="submit"
             className="h-[60px] w-full shrink-0 rounded-[100px] bg-mp-lavendar px-[30px] font-lazzer text-[16px] font-semibold text-mp-off-black transition-colors duration-200 ease-in-out hover:bg-mp-lavendar-hover md:w-auto"
           >
-            {heroData.cta}
+            {data.cta}
           </button>
         </form>
 
         <div className="mx-auto mt-16 max-w-[1114px] overflow-hidden rounded-[16px] shadow-[0_24px_80px_rgba(0,0,0,0.12)]">
-          {heroData.demoVideo ? (
+          {data.demoVideo ? (
             <video
-              src={heroData.demoVideo}
-              poster={heroData.demoPoster}
+              src={data.demoVideo}
+              poster={data.demoPoster}
               autoPlay
               loop
               muted
@@ -84,8 +87,8 @@ export default function HomeHero() {
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={heroData.demoPoster}
-              alt="Product preview"
+              src={data.demoPoster}
+              alt={tx("Product preview")}
               className="block h-auto w-full"
             />
           )}

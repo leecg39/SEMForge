@@ -4,6 +4,7 @@ import Link from "next/link";
 import { appToolkits } from "@/data/app-nav";
 import { ChevronDownIcon } from "@/components/app/app-icons";
 import { cn } from "@/lib/utils";
+import { useLocalizedValue, useSiteText } from "@/i18n/useLocalizedValue";
 
 interface ToolkitSideNavProps {
   toolkitKey: string;
@@ -12,12 +13,14 @@ interface ToolkitSideNavProps {
 
 /** 2번째 좌측 컬럼: 툴킷별 도구 목록 (240px, 데스크톱 전용) */
 export function ToolkitSideNav({ toolkitKey, activeHref }: ToolkitSideNavProps) {
-  const toolkit = appToolkits[toolkitKey];
-  if (!toolkit) return null;
+  const sourceToolkit = appToolkits[toolkitKey];
+  const toolkit = useLocalizedValue(sourceToolkit);
+  const tx = useSiteText();
+  if (!sourceToolkit || !toolkit) return null;
 
   return (
     <aside
-      aria-label={`${toolkit.label} tools`}
+      aria-label={tx("Toolkit tools").replace("{toolkit}", toolkit.label)}
       className="sticky top-[56px] z-20 hidden h-[calc(100dvh-56px)] w-[240px] shrink-0 flex-col overflow-y-auto border-r border-app-border bg-white lg:flex"
     >
       {/* 툴킷 라벨 + 접기 버튼(시각용) */}
@@ -27,7 +30,7 @@ export function ToolkitSideNav({ toolkitKey, activeHref }: ToolkitSideNavProps) 
         </span>
         <button
           type="button"
-          aria-label="Collapse sidebar"
+          aria-label={tx("Collapse sidebar")}
           className="flex h-[24px] w-[24px] items-center justify-center rounded-[6px] text-app-text-secondary hover:bg-app-bg"
         >
           <ChevronDownIcon width={14} height={14} className="rotate-90" />

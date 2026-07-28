@@ -1,12 +1,17 @@
+"use client";
+
 import Link from "next/link";
 import { promoBlocks } from "@/data/pages/home";
+import { useLocalizedValue } from "@/i18n/useLocalizedValue";
 import { cn } from "@/lib/utils";
 
 export default function PromoBlocks() {
+  const blocks = useLocalizedValue(promoBlocks);
+
   return (
     <section className="mp-container">
       <div className="flex flex-col gap-[12px]">
-        {promoBlocks.map((block) => {
+        {blocks.map((block) => {
           const isImageBg = block.bg.startsWith("image:");
           const label = block.id.replace(/-/g, " ").toUpperCase();
 

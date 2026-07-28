@@ -1,6 +1,8 @@
 import { Agentation } from "agentation";
 import type { Metadata } from "next";
 import { Inter, Sora } from "next/font/google";
+import { LocaleProvider } from "@/i18n/LocaleProvider";
+import { getLocale } from "@/i18n/server";
 import "./globals.css";
 
 // 디스플레이 폰트: 원본 자사 폰트(Lazzer/Factor A) 대신 시각적으로 유사한
@@ -27,21 +29,25 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale = await getLocale();
+
   return (
     <html
-      lang="en"
+      lang={locale}
       className={`${sora.variable} ${inter.variable} h-full antialiased`}
       style={{ ["--font-factor-a" as string]: "var(--font-lazzer)" }}
     >
       <body className="min-h-full flex flex-col">
-        {children}
-        {/* 개발 중에만 로드되는 주석 툴바 */}
-        {process.env.NODE_ENV === "development" && <Agentation />}
+        <LocaleProvider initialLocale={locale}>
+          {children}
+          {/* 개발 중에만 로드되는 주석 툴바 */}
+          {process.env.NODE_ENV === "development" && <Agentation />}
+        </LocaleProvider>
       </body>
     </html>
   );

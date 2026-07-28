@@ -22,6 +22,7 @@ import {
 import type { FilterDef, Kpi, SeriesPoint, TableColumn, TableRow } from "@/types/app";
 import { ChevronDownIcon } from "@/components/app/app-icons";
 import { cn } from "@/lib/utils";
+import { useSiteText } from "@/i18n/useLocalizedValue";
 
 /* ------------------------------------------------------------------ */
 /* MetricCard                                                          */
@@ -65,6 +66,7 @@ interface FilterBarProps {
 
 /** 분석 대상(도메인/키워드) 표시 + 필터 드롭다운 버튼 + Export 버튼 한 줄 */
 export function FilterBar({ entityLabel, entityValue, filters }: FilterBarProps) {
+  const tx = useSiteText();
   return (
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-[12px] text-app-text-secondary">{entityLabel}:</span>
@@ -89,7 +91,7 @@ export function FilterBar({ entityLabel, entityValue, filters }: FilterBarProps)
         type="button"
         className="ml-auto flex h-[36px] items-center rounded-[6px] border border-app-border bg-white px-4 text-[13px] font-medium text-app-text transition-colors hover:bg-app-bg"
       >
-        Export
+        {tx("Export")}
       </button>
     </div>
   );

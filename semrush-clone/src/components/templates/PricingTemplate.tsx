@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { useLocalizedValue, useSiteText } from "@/i18n/useLocalizedValue";
+import { useLocale } from "@/i18n/LocaleProvider";
 import Link from "next/link";
 import { Container } from "@/components/ui/Container";
 import { Button } from "@/components/ui/Button";
@@ -38,9 +40,14 @@ function priceFor(price: string, billing: "monthly" | "annual"): string {
   return `${prefix}${yearly.toLocaleString("en-US")}${suffix}`;
 }
 
-export function PricingTemplate({ data }: { data: PricingPageData }) {
+export function PricingTemplate({ data: sourceData }: { data: PricingPageData }) {
+  const data = useLocalizedValue(sourceData);
+  const tx = useSiteText();
+  const { locale } = useLocale();
   const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
-  const periodLabel = billing === "monthly" ? "/mo" : "/yr";
+  const periodLabel = locale === "ko"
+    ? billing === "monthly" ? "/월" : "/년"
+    : billing === "monthly" ? "/mo" : "/yr";
 
   const planGridCols =
     data.plans.length >= 4
@@ -98,7 +105,7 @@ export function PricingTemplate({ data }: { data: PricingPageData }) {
                     : "text-[#6c6e79]",
                 )}
               >
-                Monthly
+                {tx("Monthly")}
               </button>
               <button
                 type="button"
@@ -111,10 +118,10 @@ export function PricingTemplate({ data }: { data: PricingPageData }) {
                     : "text-[#6c6e79]",
                 )}
               >
-                Annual
+                {tx("Annual")}
                 {billing === "annual" && (
                   <span className="rounded-full bg-[#89ff75] px-2 py-0.5 text-[11px] font-semibold text-[#181e15]">
-                    Save 17%
+                    {locale === "ko" ? "17% 절약" : "Save 17%"}
                   </span>
                 )}
               </button>
@@ -134,7 +141,7 @@ export function PricingTemplate({ data }: { data: PricingPageData }) {
               >
                 {plan.highlight && (
                   <span className="absolute -top-[13px] left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#c190ff] px-3.5 py-1 text-[12px] font-semibold uppercase tracking-[0.24px] text-[#181e15]">
-                    Most popular
+                    {tx("Most popular")}
                   </span>
                 )}
                 <h2 className="font-[family-name:var(--font-lazzer)] text-[22px] font-semibold text-[#181e15]">
@@ -150,7 +157,9 @@ export function PricingTemplate({ data }: { data: PricingPageData }) {
                 </div>
                 {plan.period && billing === "annual" && (
                   <p className="mt-1 text-[13px] text-[#6c6e79]">
-                    월 {plan.price} 대비 {Math.round(ANNUAL_DISCOUNT * 100)}% 절약
+                    {locale === "ko"
+                      ? `월 ${plan.price} 대비 ${Math.round(ANNUAL_DISCOUNT * 100)}% 절약`
+                      : `Save ${Math.round(ANNUAL_DISCOUNT * 100)}% compared with ${plan.price}/mo`}
                   </p>
                 )}
                 <p className="mt-3 text-[14px] leading-[1.5] text-[#6c6e79]">
@@ -187,13 +196,13 @@ export function PricingTemplate({ data }: { data: PricingPageData }) {
       {data.comparison && data.comparison.length > 0 && (
         <section className="pb-16 md:pb-[120px]">
           <Container>
-            <SectionHeader heading="Compare plans" align="center" className="mb-12" />
+            <SectionHeader heading={tx("Compare plans")} align="center" className="mb-12" />
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] border-collapse text-left">
                 <thead>
                   <tr className="border-b border-[#181e15]">
                     <th className="sticky left-0 z-10 min-w-[220px] bg-white py-4 pr-6">
-                      <span className="sr-only">Feature</span>
+                      <span className="sr-only">{tx("Feature")}</span>
                     </th>
                     {data.plans.map((plan) => (
                       <th
@@ -247,7 +256,7 @@ export function PricingTemplate({ data }: { data: PricingPageData }) {
           <Container>
             <div className="mx-auto max-w-[800px]">
               <SectionHeader
-                heading="Frequently asked questions"
+                heading={tx("Frequently asked questions")}
                 align="center"
                 className="mb-10"
               />
@@ -260,9 +269,9 @@ export function PricingTemplate({ data }: { data: PricingPageData }) {
       {/* Enterprise CTA band */}
       <section className="bg-[#181e15] py-16 md:py-[120px]">
         <Container className="flex flex-col items-center gap-8 text-center">
-          <SectionHeader heading="Need a custom plan?" align="center" invert />
+          <SectionHeader heading={tx("Need a custom plan?")} align="center" invert />
           <Button variant="accent" size="lg" href="/company/sales/">
-            Contact sales
+            {tx("Contact sales")}
           </Button>
         </Container>
       </section>

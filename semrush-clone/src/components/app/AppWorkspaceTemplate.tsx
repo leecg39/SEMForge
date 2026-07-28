@@ -1,4 +1,7 @@
+"use client";
+
 import { Fragment } from "react";
+import { useLocalizedValue } from "@/i18n/useLocalizedValue";
 import { cn } from "@/lib/utils";
 import type { AppWorkspaceData } from "@/types/app";
 
@@ -73,7 +76,8 @@ function StepCircle({ step, index }: { step: { title: string; done: boolean }; i
   );
 }
 
-export function AppWorkspaceTemplate({ data }: { data: AppWorkspaceData }) {
+export function AppWorkspaceTemplate({ data: sourceData }: { data: AppWorkspaceData }) {
+  const data = useLocalizedValue(sourceData);
   return (
     <div className="flex flex-col gap-[24px] p-[24px] text-app-text">
       {/* 1. 헤더행: 타이틀 + 프로젝트 pill + 액션 */}

@@ -1,4 +1,7 @@
+"use client";
+
 import { Container } from "@/components/ui/Container";
+import { useLocalizedValue } from "@/i18n/useLocalizedValue";
 import { Button } from "@/components/ui/Button";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { FaqAccordion } from "@/components/ui/FaqAccordion";
@@ -95,7 +98,8 @@ function FormField({
   );
 }
 
-export function CorpTemplate({ data }: { data: CorpPageData }) {
+export function CorpTemplate({ data: sourceData }: { data: CorpPageData }) {
+  const data = useLocalizedValue(sourceData);
   const variant = data.variant ?? "about";
   const isContactLike = variant === "contact" || variant === "sales";
   const isAboutLike = variant === "about" || variant === "partners";

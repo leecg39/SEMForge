@@ -12,7 +12,7 @@ export type Locale = (typeof LOCALES)[number];
 export const DEFAULT_LOCALE: Locale = "en";
 export const LOCALE_COOKIE = "sc_locale";
 
-/** 푸터 언어 선택기에 노출할 목록. 실제로 전환되는 언어만 활성으로 표시한다. */
+/** Semrush가 제공하는 언어 목록. 공통 선택기는 실제 지원하는 en/ko만 노출한다. */
 export const LANGUAGE_OPTIONS: { label: string; locale?: Locale }[] = [
   { label: "English", locale: "en" },
   { label: "한국어", locale: "ko" },

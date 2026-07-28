@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ClientApiError, api, buildListQuery, type ListMetaShape } from "@/lib/client-api";
 import { cn } from "@/lib/utils";
+import { localizeResourceSpec, translateAppText } from "@/i18n/app";
+import { useLocale } from "@/i18n/LocaleProvider";
 import type { BadgeTone, ColumnSpec, FieldSpec, ResourceSpec } from "@/types/crud";
 
 type Row = Record<string, unknown>;
@@ -86,17 +88,7 @@ const FOLDER_METRICS: {
   { label: "백링크", value: "n/a" },
 ];
 
-const dateFormatter = new Intl.DateTimeFormat("ko-KR", {
-  timeZone: "Asia/Seoul",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
-
-function formatCell(row: Row, column: ColumnSpec): React.ReactNode {
+function formatCell(row: Row, column: ColumnSpec, locale: "en" | "ko"): React.ReactNode {
   const value = row[column.key];
   if (value === null || value === undefined || value === "") {
     return <span className="text-app-text-secondary">{column.emptyText ?? "—"}</span>;
@@ -116,10 +108,18 @@ function formatCell(row: Row, column: ColumnSpec): React.ReactNode {
     );
   }
   if (column.type === "date") {
-    return dateFormatter.format(new Date(String(value)));
+    return new Intl.DateTimeFormat(locale === "ko" ? "ko-KR" : "en-US", {
+      timeZone: "Asia/Seoul",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: locale === "en",
+    }).format(new Date(String(value)));
   }
   if (column.type === "number") {
-    return Number(value).toLocaleString("ko-KR");
+    return Number(value).toLocaleString(locale === "ko" ? "ko-KR" : "en-US");
   }
   if (column.type === "primary") {
     return <span className="font-semibold text-app-link">{String(value)}</span>;
@@ -152,6 +152,9 @@ function Dialog({
   footer: React.ReactNode;
   width?: number;
 }) {
+  const { locale } = useLocale();
+  const tx = (text: string) => translateAppText(locale, text) ?? text;
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -179,7 +182,7 @@ function Dialog({
           <h2 className="text-[16px] font-semibold">{title}</h2>
           <button
             type="button"
-            aria-label="닫기"
+            aria-label={tx("닫기")}
             onClick={onClose}
             className="flex h-[28px] w-[28px] items-center justify-center rounded-[6px] text-app-text-secondary hover:bg-app-bg"
           >
@@ -208,6 +211,8 @@ function FieldInput({
   readOnly?: boolean;
   onChange: (value: unknown) => void;
 }) {
+  const { locale } = useLocale();
+  const tx = (text: string) => translateAppText(locale, text) ?? text;
   const id = `field-${field.key}`;
   const invalid = Boolean(error);
   const inputClass = cn(
@@ -235,7 +240,7 @@ function FieldInput({
         {field.label}
         {!field.required && (
           <span className="ml-1 text-[12px] font-normal text-app-text-secondary">
-            (선택사항)
+            ({tx("선택사항")})
           </span>
         )}
       </label>
@@ -297,7 +302,16 @@ export interface ResourceWorkspaceProps {
   capabilities: Record<string, boolean>;
 }
 
-export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps) {
+export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWorkspaceProps) {
+  const { locale } = useLocale();
+  const tx = useCallback(
+    (text: string) => translateAppText(locale, text) ?? text,
+    [locale],
+  );
+  const spec = useMemo(
+    () => localizeResourceSpec(sourceSpec, locale),
+    [locale, sourceSpec],
+  );
   const [rows, setRows] = useState<Row[]>([]);
   const [meta, setMeta] = useState<ListMetaShape | null>(null);
   const [loadError, setLoadError] = useState<{ code: string; message: string } | null>(null);
@@ -585,7 +599,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                     : "bg-app-link-soft text-app-link"
               )}
             >
-              증거 {spec.evidence}
+              {tx("증거")} {spec.evidence}
             </span>
             {spec.evidenceNote}
           </p>
@@ -597,7 +611,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
               href={`/api/${spec.key}/export/${query}`}
               className="flex h-[32px] items-center rounded-[6px] border border-app-border bg-white px-3 text-[13px] font-medium hover:bg-app-bg"
             >
-              CSV 내보내기
+              {tx("CSV 내보내기")}
             </a>
           )}
           {capabilities.create && !isTrash && (
@@ -606,7 +620,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
               onClick={openCreate}
               className="flex h-[32px] items-center rounded-[6px] bg-[#1b1f23] px-3 text-[13px] font-medium text-white"
             >
-              + {spec.label} 만들기
+              + {locale === "ko" ? `${spec.label} 만들기` : `Create ${spec.label}`}
             </button>
           )}
         </div>
@@ -623,7 +637,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder={spec.searchPlaceholder}
-            aria-label={`${spec.title} 검색`}
+            aria-label={locale === "ko" ? `${spec.title} 검색` : `Search ${spec.title}`}
             className="h-full w-full min-w-0 bg-transparent text-[13px] outline-none placeholder:text-app-text-secondary"
           />
         </div>
@@ -649,7 +663,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
         ))}
 
         <label className="flex items-center gap-1.5 text-[13px]">
-          <span className="text-app-text-secondary">정렬</span>
+          <span className="text-app-text-secondary">{tx("정렬")}</span>
           <select
             value={sort}
             onChange={(e) => {
@@ -674,7 +688,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
               onChange={(e) => setTableView(e.target.checked)}
               className="h-[16px] w-[16px]"
             />
-            <span className="text-app-text-secondary">테이블 보기(SEO 전용)</span>
+            <span className="text-app-text-secondary">{tx("테이블 보기(SEO 전용)")}</span>
           </label>
         )}
 
@@ -697,7 +711,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                 scope === value ? "bg-[#1b1f23] text-white" : "text-app-text-secondary"
               )}
             >
-              {label}
+              {tx(label)}
             </button>
           ))}
         </div>
@@ -760,7 +774,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
       >
         {loading && (
           <div className="flex flex-col gap-2 p-4">
-            <p className="text-[13px] text-app-text-secondary">데이터 로드 중</p>
+            <p className="text-[13px] text-app-text-secondary">{tx("데이터 로드 중")}</p>
             {[0, 1, 2].map((i) => (
               <div key={i} className="h-[44px] animate-pulse rounded-[6px] bg-app-bg" />
             ))}
@@ -771,17 +785,17 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
           <div className="flex flex-col items-start gap-3 p-8">
             <p className="text-[14px] font-semibold">
               {loadError.code === "FORBIDDEN"
-                ? "이 목록을 볼 권한이 없습니다."
-                : "목록을 불러오지 못했습니다."}
+                ? tx("이 목록을 볼 권한이 없습니다.")
+                : tx("목록을 불러오지 못했습니다.")}
             </p>
-            <p className="text-[13px] text-app-text-secondary">{loadError.message}</p>
+            <p className="text-[13px] text-app-text-secondary">{tx(loadError.message)}</p>
             {loadError.code !== "FORBIDDEN" && (
               <button
                 type="button"
                 onClick={() => setRetryToken((token) => token + 1)}
                 className="rounded-[6px] border border-app-border px-3 py-1.5 text-[13px] font-medium"
               >
-                다시 시도
+                {tx("다시 시도")}
               </button>
             )}
           </div>
@@ -790,12 +804,18 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
         {showEmptyFirstRun && (
           <div className="flex flex-col items-start gap-3 p-8">
             <p className="text-[14px] font-semibold">
-              {isTrash ? "휴지통이 비어 있습니다." : `아직 ${spec.label}이(가) 없습니다.`}
+              {isTrash
+                ? tx("휴지통이 비어 있습니다.")
+                : locale === "ko"
+                  ? `아직 ${spec.label}이(가) 없습니다.`
+                  : `No ${spec.label.toLowerCase()} yet.`}
             </p>
             <p className="text-[13px] text-app-text-secondary">
               {isTrash
-                ? "삭제한 항목이 여기에 30일간 보관됩니다."
-                : `${spec.label}을(를) 만들면 목록과 지표가 표시됩니다.`}
+                ? tx("삭제한 항목이 여기에 30일간 보관됩니다.")
+                : locale === "ko"
+                  ? `${spec.label}을(를) 만들면 목록과 지표가 표시됩니다.`
+                  : `Create ${spec.label.toLowerCase()} to see the list and metrics.`}
             </p>
             {!isTrash && capabilities.create && (
               <button
@@ -803,7 +823,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                 onClick={openCreate}
                 className="rounded-[6px] bg-[#1b1f23] px-3 py-1.5 text-[13px] font-medium text-white"
               >
-                + {spec.label} 만들기
+                + {locale === "ko" ? `${spec.label} 만들기` : `Create ${spec.label}`}
               </button>
             )}
           </div>
@@ -811,9 +831,9 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
 
         {showNoResults && (
           <div className="flex flex-col items-start gap-3 p-8">
-            <p className="text-[14px] font-semibold">검색 결과가 없습니다.</p>
+            <p className="text-[14px] font-semibold">{tx("검색 결과가 없습니다.")}</p>
             <p className="text-[13px] text-app-text-secondary">
-              다른 검색어를 쓰거나 필터를 해제해 보세요.
+              {tx("다른 검색어를 쓰거나 필터를 해제해 보세요.")}
             </p>
             <button
               type="button"
@@ -823,7 +843,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
               }}
               className="rounded-[6px] border border-app-border px-3 py-1.5 text-[13px] font-medium"
             >
-              검색·필터 초기화
+              {tx("검색·필터 초기화")}
             </button>
           </div>
         )}
@@ -866,7 +886,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                               onClick={() => restore(row)}
                               className="rounded-[6px] border border-app-border px-2 py-1 text-[12px] font-medium"
                             >
-                              복구
+                              {tx("복구")}
                             </button>
                           )}
                           {capabilities.purge && (
@@ -875,7 +895,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                               onClick={() => startPurge(row)}
                               className="rounded-[6px] border border-app-border px-2 py-1 text-[12px] font-medium text-app-red"
                             >
-                              영구 삭제
+                              {tx("영구 삭제")}
                             </button>
                           )}
                         </>
@@ -883,7 +903,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                         <>
                           <button
                             type="button"
-                            aria-label="설정"
+                            aria-label={tx("설정")}
                             aria-haspopup="menu"
                             onClick={() => setMenuRowId(menuRowId === id ? null : id)}
                             className="h-[28px] w-[28px] rounded-[6px] text-app-text-secondary hover:bg-app-bg"
@@ -893,7 +913,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                           {menuRowId === id && (
                             <div
                               role="menu"
-                              aria-label="설정"
+                              aria-label={tx("설정")}
                               className="absolute right-0 top-[32px] z-20 w-[160px] overflow-hidden rounded-[8px] border border-app-border bg-white py-1 shadow-lg"
                             >
                               <button
@@ -902,7 +922,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                                 onClick={() => openEdit(row)}
                                 className="block w-full px-3 py-2 text-left text-[13px] hover:bg-app-bg"
                               >
-                                설정
+                                {tx("설정")}
                               </button>
                               {capabilities.delete && (
                                 <button
@@ -914,7 +934,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                                   }}
                                   className="block w-full border-t border-app-border px-3 py-2 text-left text-[13px] text-app-red hover:bg-app-bg"
                                 >
-                                  삭제
+                                  {tx("삭제")}
                                 </button>
                               )}
                             </div>
@@ -936,10 +956,10 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                     </div>
                     {FOLDER_METRICS.map((metric) => (
                       <div key={metric.label} className="min-w-[110px]">
-                        <p className="text-[14px] leading-[20px] text-a2-text">{metric.label}</p>
+                        <p className="text-[14px] leading-[20px] text-a2-text">{tx(metric.label)}</p>
                         {metric.hint ? (
                           <p className="mt-[4px] text-[12px] leading-[16px] text-a2-value-muted">
-                            {metric.hint}
+                            {tx(metric.hint)}
                           </p>
                         ) : (
                           <p
@@ -961,7 +981,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                       {metricColumns.map((column) => (
                         <div key={column.key} className="min-w-[110px]">
                           <p className="text-[12px] text-app-text-secondary">{column.label}</p>
-                          <p className="mt-0.5 text-[13px]">{formatCell(row, column)}</p>
+                          <p className="mt-0.5 text-[13px]">{formatCell(row, column, locale)}</p>
                         </div>
                       ))}
                     </div>
@@ -981,7 +1001,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                     <th className="w-[40px] px-3 py-2.5">
                       <input
                         type="checkbox"
-                        aria-label="전체 선택"
+                        aria-label={tx("전체 선택")}
                         checked={selected.size === rows.length && rows.length > 0}
                         onChange={(e) =>
                           setSelected(
@@ -1005,7 +1025,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                     </th>
                   ))}
                   <th className="w-[80px] px-4 py-2.5 text-right text-[12px] font-semibold uppercase text-app-text-secondary">
-                    작업
+                    {tx("작업")}
                   </th>
                 </tr>
               </thead>
@@ -1037,7 +1057,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                             column.align === "right" && "text-right tabular-nums"
                           )}
                         >
-                          {formatCell(row, column)}
+                          {formatCell(row, column, locale)}
                         </td>
                       ))}
                       <td className="relative border-b border-[#eef0f2] px-4 py-3 text-right">
@@ -1049,7 +1069,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                                 onClick={() => restore(row)}
                                 className="rounded-[6px] border border-app-border px-2 py-1 text-[12px] font-medium"
                               >
-                                복구
+                                {tx("복구")}
                               </button>
                             )}
                             {capabilities.purge && (
@@ -1058,7 +1078,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                                 onClick={() => startPurge(row)}
                                 className="rounded-[6px] border border-app-border px-2 py-1 text-[12px] font-medium text-app-red"
                               >
-                                영구 삭제
+                                {tx("영구 삭제")}
                               </button>
                             )}
                           </div>
@@ -1066,7 +1086,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                           <>
                             <button
                               type="button"
-                              aria-label="설정"
+                              aria-label={tx("설정")}
                               aria-haspopup="menu"
                               onClick={() => setMenuRowId(menuRowId === id ? null : id)}
                               className="h-[28px] w-[28px] rounded-[6px] text-app-text-secondary hover:bg-app-bg"
@@ -1077,7 +1097,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                               // 원본 kebab 메뉴 순서: 공유 / 핀 고정 / 태그 / 설정 / (구분선) / 삭제
                               <div
                                 role="menu"
-                                aria-label="설정"
+                                aria-label={tx("설정")}
                                 className="absolute right-4 top-[44px] z-20 w-[160px] overflow-hidden rounded-[8px] border border-app-border bg-white py-1 text-left shadow-lg"
                               >
                                 <button
@@ -1086,7 +1106,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                                   onClick={() => openEdit(row)}
                                   className="block w-full px-3 py-2 text-left text-[13px] hover:bg-app-bg"
                                 >
-                                  설정
+                                  {tx("설정")}
                                 </button>
                                 {capabilities.delete && (
                                   <button
@@ -1098,7 +1118,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                                     }}
                                     className="block w-full border-t border-app-border px-3 py-2 text-left text-[13px] text-app-red hover:bg-app-bg"
                                   >
-                                    삭제
+                                    {tx("삭제")}
                                   </button>
                                 )}
                               </div>
@@ -1119,7 +1139,9 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
       {meta && meta.total > 0 && (
         <div className="flex flex-wrap items-center gap-3 text-[13px]">
           <span className="text-app-text-secondary">
-            전체 {meta.total.toLocaleString("ko-KR")}건 · {meta.page}/{meta.totalPages} 페이지
+            {locale === "ko"
+              ? `전체 ${meta.total.toLocaleString("ko-KR")}건 · ${meta.page}/${meta.totalPages} 페이지`
+              : `${meta.total.toLocaleString("en-US")} total · Page ${meta.page} of ${meta.totalPages}`}
           </span>
           <div className="ml-auto flex items-center gap-1">
             <button
@@ -1128,7 +1150,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               className="h-[30px] rounded-[6px] border border-app-border bg-white px-2.5 font-medium disabled:opacity-40"
             >
-              이전
+              {locale === "ko" ? "이전" : "Previous"}
             </button>
             <button
               type="button"
@@ -1136,7 +1158,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
               onClick={() => setPage((p) => p + 1)}
               className="h-[30px] rounded-[6px] border border-app-border bg-white px-2.5 font-medium disabled:opacity-40"
             >
-              다음
+              {locale === "ko" ? "다음" : "Next"}
             </button>
           </div>
         </div>
@@ -1145,7 +1167,15 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
       {/* 생성 / 수정 다이얼로그 */}
       {(creating || editorRow) && (
         <Dialog
-          title={creating ? `${spec.label} 만들기` : `${spec.label} 설정`}
+          title={
+            locale === "ko"
+              ? creating
+                ? `${spec.label} 만들기`
+                : `${spec.label} 설정`
+              : creating
+                ? `Create ${spec.label}`
+                : `${spec.label} settings`
+          }
           onClose={closeEditor}
           footer={
             <>
@@ -1158,7 +1188,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                   }}
                   className="mr-auto rounded-[6px] border border-app-border px-3 py-1.5 text-[13px] font-medium text-app-red"
                 >
-                  {spec.label} 삭제
+                  {locale === "ko" ? `${spec.label} 삭제` : `Delete ${spec.label}`}
                 </button>
               )}
               <button
@@ -1166,7 +1196,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                 onClick={closeEditor}
                 className="rounded-[6px] border border-app-border px-3 py-1.5 text-[13px] font-medium"
               >
-                취소
+                {tx("취소")}
               </button>
               <button
                 type="button"
@@ -1174,7 +1204,11 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                 disabled={saving}
                 className="rounded-[6px] bg-[#1b1f23] px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-60"
               >
-                {saving ? "저장 중…" : creating ? "생성" : "저장"}
+                {saving
+                  ? tx("저장 중…")
+                  : creating
+                    ? locale === "ko" ? "생성" : "Create"
+                    : tx("저장")}
               </button>
             </>
           }
@@ -1182,7 +1216,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
           <div className="flex flex-col gap-4">
             {formError && (
               <p role="alert" className="rounded-[6px] bg-[#fdecef] px-3 py-2 text-[13px] text-app-red">
-                {formError}
+                {tx(formError)}
               </p>
             )}
             {orderedFields
@@ -1204,7 +1238,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
       {/* 소프트 삭제 확인 (제안: 원본은 즉시 영구 삭제) */}
       {deleteTarget && (
         <Dialog
-          title={`${spec.label}을(를) 휴지통으로 이동`}
+          title={locale === "ko" ? `${spec.label}을(를) 휴지통으로 이동` : `Move ${spec.label} to trash`}
           onClose={() => setDeleteTarget(null)}
           footer={
             <>
@@ -1213,25 +1247,29 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                 onClick={() => setDeleteTarget(null)}
                 className="rounded-[6px] border border-app-border px-3 py-1.5 text-[13px] font-medium"
               >
-                취소
+                {tx("취소")}
               </button>
               <button
                 type="button"
                 onClick={confirmSoftDelete}
                 className="rounded-[6px] bg-app-red px-3 py-1.5 text-[13px] font-medium text-white"
               >
-                휴지통으로 이동
+                {locale === "ko" ? "휴지통으로 이동" : "Move to trash"}
               </button>
             </>
           }
         >
           <p className="text-[14px]">
-            <strong>{String(deleteTarget[spec.columns[0].key])}</strong>을(를) 휴지통으로
-            옮깁니다.
+            {locale === "ko" ? (
+              <><strong>{String(deleteTarget[spec.columns[0].key])}</strong>을(를) 휴지통으로 옮깁니다.</>
+            ) : (
+              <>Move <strong>{String(deleteTarget[spec.columns[0].key])}</strong> to trash.</>
+            )}
           </p>
           <p className="mt-2 text-[13px] text-app-text-secondary">
-            하위 데이터도 함께 휴지통으로 이동하며, 휴지통에서 복구할 수 있습니다. 완전히
-            지우려면 휴지통에서 영구 삭제하세요.
+            {locale === "ko"
+              ? "하위 데이터도 함께 휴지통으로 이동하며, 휴지통에서 복구할 수 있습니다. 완전히 지우려면 휴지통에서 영구 삭제하세요."
+              : "Related data will also move to trash and can be restored there. To remove it completely, delete it permanently from trash."}
           </p>
         </Dialog>
       )}
@@ -1239,7 +1277,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
       {/* 영구 삭제 확인 — 원본 폴더 삭제의 코드 입력 UX를 재현 (증거 O) */}
       {purgeTarget && (
         <Dialog
-          title={`${spec.label} 영구 삭제`}
+          title={locale === "ko" ? `${spec.label} 영구 삭제` : `Delete ${spec.label} permanently`}
           onClose={() => setPurgeTarget(null)}
           footer={
             <>
@@ -1248,7 +1286,7 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                 onClick={() => setPurgeTarget(null)}
                 className="rounded-[6px] border border-app-border px-3 py-1.5 text-[13px] font-medium"
               >
-                취소
+                {tx("취소")}
               </button>
               <button
                 type="button"
@@ -1256,27 +1294,32 @@ export function ResourceWorkspace({ spec, capabilities }: ResourceWorkspaceProps
                 disabled={codeInput.trim() !== purgeTarget.code}
                 className="rounded-[6px] bg-app-red px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-40"
               >
-                삭제
+                {tx("삭제")}
               </button>
             </>
           }
         >
           <p className="text-[14px]">
-            <strong>{String(purgeTarget.row[spec.columns[0].key])}</strong> 및 연결된 모든
-            데이터가 삭제됩니다
+            {locale === "ko" ? (
+              <><strong>{String(purgeTarget.row[spec.columns[0].key])}</strong> 및 연결된 모든 데이터가 삭제됩니다.</>
+            ) : (
+              <><strong>{String(purgeTarget.row[spec.columns[0].key])}</strong> and all related data will be deleted.</>
+            )}
           </p>
           <p className="mt-3 text-[13px] text-app-text-secondary">
-            다음 도구에 연결된 데이터가 없는지 확인하세요.
+            {locale === "ko"
+              ? "다음 도구에 연결된 데이터가 없는지 확인하세요."
+              : "Make sure no data is connected to the following tools."}
           </p>
           <ul className="mt-1 list-disc pl-5 text-[13px] text-app-text-secondary">
             <li>SEO 프로젝트</li>
-            <li>트래픽 &amp; 시장</li>
-            <li>소셜</li>
-            <li>콘텐츠</li>
-            <li>광고</li>
+            <li>{tx("트래픽 & 시장")}</li>
+            <li>{tx("소셜")}</li>
+            <li>{tx("콘텐츠")}</li>
+            <li>{tx("광고")}</li>
           </ul>
           <label className="mt-4 block text-[13px] font-medium">
-            삭제를 계속 진행하려면 이 코드 입력:{" "}
+            {locale === "ko" ? "삭제를 계속 진행하려면 이 코드 입력: " : "Enter this code to continue: "}
             <span className="font-mono text-[15px] tracking-[0.1em]">{purgeTarget.code}</span>
             <input
               type="text"

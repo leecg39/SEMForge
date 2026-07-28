@@ -6,6 +6,8 @@ import {
   type ResourceWorkspaceProps,
 } from "@/components/crud/ResourceWorkspace";
 import { ToolkitPromoCarousel } from "@/components/crud/ToolkitPromoCarousel";
+import { translateAppText } from "@/i18n/app";
+import { useLocale } from "@/i18n/LocaleProvider";
 
 /**
  * 앱 홈 (폴더) 화면.
@@ -15,6 +17,8 @@ import { ToolkitPromoCarousel } from "@/components/crud/ToolkitPromoCarousel";
  * 근거: docs/research/ko.semrush.com/PAGE_TOPOLOGY.md
  */
 export function FolderWorkspace(props: ResourceWorkspaceProps) {
+  const { locale } = useLocale();
+  const tx = (text: string) => translateAppText(locale, text) ?? text;
   const [monitoringOpen, setMonitoringOpen] = useState(false);
 
   return (
@@ -30,15 +34,17 @@ export function FolderWorkspace(props: ResourceWorkspaceProps) {
           onClick={() => setMonitoringOpen((v) => !v)}
           className="flex h-[44px] w-full items-center justify-between rounded-[8px] bg-a2-card px-[20px] shadow-[var(--a2-card-shadow)]"
         >
-          <span className="text-[16px] font-bold text-a2-text">모니터링할 도메인</span>
+          <span className="text-[16px] font-bold text-a2-text">
+            {tx("모니터링할 도메인")}
+          </span>
           <span className="flex items-center gap-[6px] text-[14px] text-a2-text-muted">
-            Open
+            {tx(monitoringOpen ? "닫기" : "열기")}
             <span aria-hidden="true">{monitoringOpen ? "⌃" : "⌄"}</span>
           </span>
         </button>
         {monitoringOpen && (
           <div className="mt-[8px] rounded-[8px] bg-a2-card px-[20px] py-[16px] text-[14px] text-a2-text-muted shadow-[var(--a2-card-shadow)]">
-            추적 중인 도메인이 없습니다. 폴더에 웹사이트를 추가하면 여기에 표시됩니다.
+            {tx("추적 중인 도메인이 없습니다. 폴더에 웹사이트를 추가하면 여기에 표시됩니다.")}
           </div>
         )}
       </section>
@@ -48,7 +54,7 @@ export function FolderWorkspace(props: ResourceWorkspaceProps) {
         className="flex w-fit items-center gap-[6px] text-[12px] text-a2-text underline underline-offset-2"
       >
         <span aria-hidden="true">💬</span>
-        피드백 전송
+        {tx("피드백 전송")}
       </button>
     </div>
   );

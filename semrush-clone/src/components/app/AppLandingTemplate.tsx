@@ -1,11 +1,15 @@
+"use client";
+
 import Link from "next/link";
 import type { AppLandingData } from "@/types/app";
+import { useLocalizedValue } from "@/i18n/useLocalizedValue";
 
 /**
  * APP-LANDING 템플릿: 툴킷 대시보드/온보딩 본문 (서버 컴포넌트).
  * AppShell <main> 내부 콘텐츠만 렌더 — 라우트에서 AppShell로 감쌀 것.
  */
-export function AppLandingTemplate({ data }: { data: AppLandingData }) {
+export function AppLandingTemplate({ data: sourceData }: { data: AppLandingData }) {
+  const data = useLocalizedValue(sourceData);
   const showInput = Boolean(data.inputLabel || data.inputPlaceholder);
 
   return (

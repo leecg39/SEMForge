@@ -8,6 +8,8 @@ import { AppFooter } from "@/components/crud/AppFooter";
 import { crudTools, railGroups } from "@/data/crud/nav";
 import { api } from "@/lib/client-api";
 import { cn } from "@/lib/utils";
+import { translateAppText } from "@/i18n/app";
+import { useLocale } from "@/i18n/LocaleProvider";
 
 export interface SessionInfo {
   user: { id: string; email: string; name: string };
@@ -35,6 +37,8 @@ export function CrudShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { locale } = useLocale();
+  const tx = (text: string) => translateAppText(locale, text) ?? text;
   const [menuOpen, setMenuOpen] = useState(false);
 
   const isActive = (href: string) =>
@@ -54,7 +58,7 @@ export function CrudShell({
     <div className="flex min-h-screen flex-row bg-a2-surface text-a2-text">
       {/* 좌측 레일 — 실측 77px, 항목 64×64, y=0 부터 */}
       <aside
-        aria-label="툴킷"
+        aria-label={tx("툴킷")}
         className="sticky top-0 hidden h-dvh w-[var(--a2-rail-width)] shrink-0 flex-col overflow-y-auto pt-[6px] lg:flex"
       >
         {railGroups.map((group, groupIndex) => (
@@ -84,7 +88,7 @@ export function CrudShell({
                       active ? "text-a2-text-muted" : "text-a2-text-faint"
                     )}
                   >
-                    {item.label}
+                    {tx(item.label)}
                   </span>
                 </Link>
               );
@@ -100,13 +104,13 @@ export function CrudShell({
         <div className="flex h-[30px] w-full shrink-0 items-center rounded-[6px] bg-white lg:w-[515px]">
           <input
             type="text"
-            placeholder="작업, 웹사이트 또는 키워드를 입력하세요"
-            aria-label="전역 검색"
+            placeholder={tx("작업, 웹사이트 또는 키워드를 입력하세요")}
+            aria-label={tx("전역 검색")}
             className="h-full min-w-0 flex-1 bg-transparent pl-[12px] pr-[8px] text-[14px] text-a2-text outline-none placeholder:text-a2-text-muted"
           />
           <button
             type="button"
-            aria-label="검색"
+            aria-label={tx("검색")}
             className="flex h-[30px] w-[32px] shrink-0 items-center justify-center rounded-r-[6px] bg-[#1a1e1a] text-white"
           >
             <appIcons.search width={16} height={16} />
@@ -118,18 +122,18 @@ export function CrudShell({
             href="/pricing/"
             className="rounded-[6px] px-[12px] py-[9px] text-[14px] text-a2-text hover:bg-black/5"
           >
-            가격 책정
+            {tx("가격 책정")}
           </Link>
           <Link
             href="/enterprise/"
             className="rounded-[6px] px-[12px] py-[9px] text-[14px] text-a2-text hover:bg-black/5"
           >
-            엔터프라이즈
+            {tx("엔터프라이즈")}
           </Link>
           <div className="relative">
             <button
               type="button"
-              aria-label="내 프로필"
+              aria-label={tx("내 프로필")}
               aria-expanded={menuOpen}
               onClick={() => setMenuOpen((v) => !v)}
               className="ml-[4px] flex h-[32px] w-[32px] items-center justify-center rounded-full bg-[#7b5cf0] text-[14px] font-medium text-white"
@@ -139,13 +143,13 @@ export function CrudShell({
             {menuOpen && (
               <div
                 role="menu"
-                aria-label="프로필"
+                aria-label={tx("프로필")}
                 className="absolute right-0 top-[40px] z-50 w-[260px] overflow-hidden rounded-[8px] border border-black/10 bg-white py-1 shadow-lg"
               >
                 <div className="border-b border-black/10 px-[9px] py-[7px]">
                   <p className="truncate text-[14px] text-a2-text">{session.user.name}</p>
                   <p className="truncate text-[12px] text-a2-text-muted">
-                    {session.user.email} · {session.roleLabel}
+                    {session.user.email} · {tx(session.roleLabel)}
                   </p>
                 </div>
                 <Link
@@ -154,7 +158,7 @@ export function CrudShell({
                   onClick={() => setMenuOpen(false)}
                   className="block px-[9px] py-[7px] text-[14px] hover:bg-black/5"
                 >
-                  프로필 설정
+                  {tx("프로필 설정")}
                 </Link>
                 <Link
                   role="menuitem"
@@ -162,12 +166,12 @@ export function CrudShell({
                   onClick={() => setMenuOpen(false)}
                   className="block px-[9px] py-[7px] text-[14px] hover:bg-black/5"
                 >
-                  사용자 관리
+                  {tx("사용자 관리")}
                 </Link>
 
                 {/* 원본 레일에는 없는, 이 클론에서만 동작하는 CRUD 화면 */}
                 <p className="border-t border-black/10 px-[9px] pb-[2px] pt-[7px] text-[11px] text-a2-text-muted">
-                  CRUD 도구 (이 클론 전용)
+                  {tx("CRUD 도구 (이 클론 전용)")}
                 </p>
                 {crudTools.map((tool) => (
                   <Link
@@ -177,7 +181,7 @@ export function CrudShell({
                     onClick={() => setMenuOpen(false)}
                     className="block px-[9px] py-[6px] text-[13px] hover:bg-black/5"
                   >
-                    {tool.label}
+                    {tx(tool.label)}
                   </Link>
                 ))}
 
@@ -187,7 +191,7 @@ export function CrudShell({
                   onClick={logout}
                   className="block w-full border-t border-black/10 px-[9px] py-[7px] text-left text-[14px] hover:bg-black/5"
                 >
-                  로그아웃
+                  {tx("로그아웃")}
                 </button>
               </div>
             )}
@@ -197,7 +201,7 @@ export function CrudShell({
 
       {/* 모바일: 레일이 숨는 구간의 대체 내비 (원본은 햄버거 드로어 — 다른 점) */}
       <nav
-        aria-label="툴킷"
+        aria-label={tx("툴킷")}
         className="flex gap-1 overflow-x-auto bg-a2-surface px-[16px] pb-2 lg:hidden"
       >
         {railItems.map((item) => {
@@ -214,7 +218,7 @@ export function CrudShell({
               )}
             >
               {Icon && <Icon width={16} height={16} />}
-              <span className="whitespace-nowrap">{item.label}</span>
+              <span className="whitespace-nowrap">{tx(item.label)}</span>
             </Link>
           );
         })}

@@ -1,4 +1,7 @@
+"use client";
+
 import type { AnalysisPageData } from "@/types/app";
+import { useLocalizedValue } from "@/i18n/useLocalizedValue";
 import { DataTable, FilterBar, MetricCard, TrendChart } from "@/components/app/app-primitives";
 import { cn } from "@/lib/utils";
 
@@ -6,7 +9,8 @@ import { cn } from "@/lib/utils";
  * APP-ANALYSIS 템플릿: 도메인/키워드/트래픽 분석 보고서 본문.
  * AppShell <main> 내부 콘텐츠만 렌더 — 라우트에서 AppShell로 감쌀 것.
  */
-export function AppAnalysisTemplate({ data }: { data: AnalysisPageData }) {
+export function AppAnalysisTemplate({ data: sourceData }: { data: AnalysisPageData }) {
+  const data = useLocalizedValue(sourceData);
   return (
     <div className="p-6">
       {/* 1. 헤더행: 도구명/설명 + Export to PDF */}

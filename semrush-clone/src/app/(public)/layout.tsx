@@ -10,14 +10,14 @@ export default async function PublicLayout({
   children: React.ReactNode;
 }) {
   // 로케일은 쿠키에 있으므로 셸을 서버에서 렌더하면서 사전을 내려준다.
-  const { locale, dict } = await getServerDictionary();
+  const { dict } = await getServerDictionary();
 
   return (
     <>
       <TopBanner />
       <GlobalHeader dict={dict} />
       <main className="flex-1">{children}</main>
-      <PublicFooter locale={locale} dict={dict} />
+      <PublicFooter />
       <CookieConsentModal />
     </>
   );

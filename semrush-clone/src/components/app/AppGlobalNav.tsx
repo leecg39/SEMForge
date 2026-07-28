@@ -4,15 +4,19 @@ import Link from "next/link";
 import { appGlobalNav } from "@/data/app-nav";
 import { appIcons } from "@/components/app/app-icons";
 import { cn } from "@/lib/utils";
+import { useLocalizedValue, useSiteText } from "@/i18n/useLocalizedValue";
 
 /** 좌측 최외곽 툴킷 아이콘 레일 (64px, 데스크톱 전용) */
 export function AppGlobalNav({ activeKey }: { activeKey: string }) {
+  const globalNav = useLocalizedValue(appGlobalNav);
+  const tx = useSiteText();
+
   return (
     <aside
-      aria-label="Toolkits"
+      aria-label={tx("Toolkits")}
       className="sticky top-[56px] z-30 hidden h-[calc(100dvh-56px)] w-[64px] shrink-0 flex-col items-center gap-[2px] overflow-y-auto border-r border-app-border bg-white pb-4 pt-2 lg:flex"
     >
-      {appGlobalNav.map((item) => {
+      {globalNav.map((item) => {
         const Icon = appIcons[item.icon];
         const active = item.key === activeKey;
         return (

@@ -1,3 +1,7 @@
+"use client";
+
+import { useLocalizedValue, useSiteText } from "@/i18n/useLocalizedValue";
+
 /** 앱 공통 상태 템플릿: 빈 상태 / 로딩 스켈레톤 / 업그레이드 게이트. */
 
 export interface EmptyStateProps {
@@ -7,6 +11,7 @@ export interface EmptyStateProps {
 }
 
 export function EmptyState({ title, body, cta }: EmptyStateProps) {
+  const localized = useLocalizedValue({ title, body, cta });
   return (
     <div className="flex flex-col items-center justify-center p-[64px] text-center text-app-text">
       <div
@@ -20,16 +25,16 @@ export function EmptyState({ title, body, cta }: EmptyStateProps) {
           </svg>
         </div>
       </div>
-      <h2 className="mt-[20px] text-[18px] font-semibold leading-[1.3]">{title}</h2>
+      <h2 className="mt-[20px] text-[18px] font-semibold leading-[1.3]">{localized.title}</h2>
       <p className="mt-[8px] max-w-[400px] text-[14px] leading-[1.6] text-app-text-secondary">
-        {body}
+        {localized.body}
       </p>
-      {cta && (
+      {localized.cta && (
         <button
           type="button"
           className="mt-[20px] h-[36px] rounded-[8px] bg-app-blue px-[20px] text-[13px] font-semibold text-white transition-colors hover:bg-app-blue-dark"
         >
-          {cta}
+          {localized.cta}
         </button>
       )}
     </div>
@@ -39,8 +44,9 @@ export function EmptyState({ title, body, cta }: EmptyStateProps) {
 const skeletonRowWidths = ["w-full", "w-[92%]", "w-[97%]", "w-[88%]", "w-[95%]"];
 
 export function LoadingState() {
+  const tx = useSiteText();
   return (
-    <div className="flex flex-col gap-[24px] p-[24px]" aria-busy="true" aria-label="Loading">
+    <div className="flex flex-col gap-[24px] p-[24px]" aria-busy="true" aria-label={tx("Loading")}>
       {/* KPI 카드 스켈레톤 3개 */}
       <div className="grid grid-cols-1 gap-[16px] md:grid-cols-3">
         {[0, 1, 2].map((i) => (
@@ -71,6 +77,8 @@ export interface UpgradeGateProps {
 }
 
 export function UpgradeGate({ feature }: UpgradeGateProps) {
+  const tx = useSiteText();
+  const localizedFeature = useLocalizedValue(feature);
   return (
     <div className="flex items-center justify-center p-[40px] text-app-text">
       <div className="flex w-full max-w-[480px] flex-col items-center rounded-[12px] border border-app-border bg-white p-[40px] text-center">
@@ -90,24 +98,23 @@ export function UpgradeGate({ feature }: UpgradeGateProps) {
           </svg>
         </div>
         <h2 className="mt-[20px] text-[18px] font-semibold leading-[1.3]">
-          Upgrade to unlock {feature}
+          {tx("Upgrade to unlock")} {localizedFeature}
         </h2>
         <p className="mt-[8px] text-[14px] leading-[1.6] text-app-text-secondary">
-          This feature is available on higher plans. Upgrade your subscription to get
-          instant access to {feature} and more advanced tools.
+          {tx("This feature is available on higher plans. Upgrade your subscription to get instant access to {feature} and more advanced tools.").replace("{feature}", localizedFeature)}
         </p>
         <div className="mt-[24px] flex flex-wrap justify-center gap-[8px]">
           <button
             type="button"
             className="h-[36px] rounded-[8px] bg-app-blue px-[20px] text-[13px] font-semibold text-white transition-colors hover:bg-app-blue-dark"
           >
-            Upgrade
+            {tx("Upgrade")}
           </button>
           <button
             type="button"
             className="h-[36px] rounded-[8px] border border-app-border bg-white px-[20px] text-[13px] font-semibold text-app-text transition-colors hover:bg-[#f9fafb]"
           >
-            See plans
+            {tx("See plans")}
           </button>
         </div>
       </div>

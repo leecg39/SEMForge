@@ -1,4 +1,7 @@
+"use client";
+
 import type { AppHomeData } from "@/types/app";
+import { useLocalizedValue, useSiteText } from "@/i18n/useLocalizedValue";
 
 /** 폴더 카드용 미니 폴더 글리프 */
 function FolderGlyph() {
@@ -35,26 +38,28 @@ function PlusGlyph({ size = 16 }: { size?: number }) {
  * APP-HOME 템플릿: 홈/폴더 그리드 본문.
  * AppShell <main> 내부 콘텐츠만 렌더 — 라우트에서 AppShell로 감쌀 것.
  */
-export function AppHomeTemplate({ data }: { data: AppHomeData }) {
+export function AppHomeTemplate({ data: sourceData }: { data: AppHomeData }) {
+  const data = useLocalizedValue(sourceData);
+  const tx = useSiteText();
   const hasFolders = data.folders.length > 0;
 
   return (
     <div className="p-6">
       {/* 1. 헤더행 */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-[24px] font-semibold leading-[32px] text-app-text">Home</h1>
+        <h1 className="text-[24px] font-semibold leading-[32px] text-app-text">{tx("Home")}</h1>
         <div className="flex gap-2">
           <button
             type="button"
             className="flex h-[36px] items-center rounded-[6px] border border-app-border bg-white px-4 text-[13px] font-medium text-app-text transition-colors hover:bg-app-bg"
           >
-            Share
+            {tx("Share")}
           </button>
           <button
             type="button"
             className="flex h-[36px] items-center rounded-[6px] bg-app-blue px-4 text-[13px] font-medium text-white transition-colors hover:bg-app-blue-dark"
           >
-            Create folder
+            {tx("Create folder")}
           </button>
         </div>
       </div>
@@ -74,12 +79,12 @@ export function AppHomeTemplate({ data }: { data: AppHomeData }) {
                 </span>
                 {folder.shared && (
                   <span className="shrink-0 rounded-[4px] bg-[#eef0f2] px-1.5 py-0.5 text-[11px] leading-[14px] text-app-text-secondary">
-                    Shared
+                    {tx("Shared")}
                   </span>
                 )}
               </div>
               <div className="mt-0.5 text-[13px] leading-[18px] text-app-text-secondary">
-                {folder.sites} websites
+                {folder.sites} {tx("websites")}
               </div>
             </div>
           ))}
@@ -89,7 +94,7 @@ export function AppHomeTemplate({ data }: { data: AppHomeData }) {
             className="flex min-h-[124px] flex-col items-center justify-center gap-2 rounded-[8px] border border-dashed border-app-border text-[13px] font-medium text-app-text-secondary transition-colors hover:border-app-blue hover:text-app-blue"
           >
             <PlusGlyph size={20} />
-            Add website
+            {tx("Add website")}
           </button>
         </div>
       ) : (
@@ -99,17 +104,17 @@ export function AppHomeTemplate({ data }: { data: AppHomeData }) {
             <FolderGlyph />
           </div>
           <h2 className="mt-5 text-[16px] font-semibold leading-[22px] text-app-text">
-            Create your first folder
+            {tx("Create your first folder")}
           </h2>
           <p className="mt-1 max-w-[360px] text-[13px] leading-[18px] text-app-text-secondary">
-            Organize your websites and projects in folders to keep everything in one place.
+            {tx("Organize your websites and projects in folders to keep everything in one place.")}
           </p>
           <button
             type="button"
             className="mt-5 flex h-[36px] items-center gap-1.5 rounded-[6px] bg-app-blue px-4 text-[13px] font-medium text-white transition-colors hover:bg-app-blue-dark"
           >
             <PlusGlyph />
-            Create folder
+            {tx("Create folder")}
           </button>
         </div>
       )}

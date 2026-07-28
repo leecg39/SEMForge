@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useLocalizedValue, useSiteText } from "@/i18n/useLocalizedValue";
 import { Container } from "@/components/ui/Container";
 import { Button } from "@/components/ui/Button";
 import { SectionHeader } from "@/components/ui/SectionHeader";
@@ -25,10 +28,12 @@ function PillLink({ href, children }: { href: string; children: React.ReactNode 
 }
 
 /** PUB-DETAIL: 기능/제품 상세 랜딩 템플릿 */
-export function DetailTemplate({ data }: { data: DetailPageData }) {
+export function DetailTemplate({ data: sourceData }: { data: DetailPageData }) {
+  const data = useLocalizedValue(sourceData);
+  const tx = useSiteText();
   const finalCta = data.finalCta ?? {
-    heading: "START YOUR FREE TRIAL",
-    cta: { label: "Start free trial", href: "/signup/" },
+    heading: tx("START YOUR FREE TRIAL"),
+    cta: { label: tx("Start free trial"), href: "/signup/" },
   };
 
   return (
@@ -137,7 +142,7 @@ export function DetailTemplate({ data }: { data: DetailPageData }) {
         <section className="py-16 md:py-[120px]">
           <Container>
             <h2 className="font-[family-name:var(--font-lazzer)] text-[24px] font-semibold text-[#181e15]">
-              Works with
+              {tx("Works with")}
             </h2>
             <div className="mt-8 flex flex-wrap gap-3">
               {data.connectedTools.map((tool, i) => (
@@ -203,7 +208,7 @@ export function DetailTemplate({ data }: { data: DetailPageData }) {
         <section className="py-16 md:py-[120px]">
           <Container>
             <div className="grid gap-12 lg:grid-cols-2 lg:gap-16">
-              <SectionHeader heading="FAQ" className="self-start" />
+              <SectionHeader heading={tx("FAQ")} className="self-start" />
               <FaqAccordion items={data.faqs} />
             </div>
           </Container>

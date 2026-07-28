@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   footerCta,
   footerGroups,
@@ -10,14 +9,12 @@ import {
   footerSocial,
   type NavLink,
 } from "@/data/nav";
-import { LANGUAGE_OPTIONS, type Locale } from "@/i18n/config";
-import type { Dictionary } from "@/i18n/dictionaries";
-import { api } from "@/lib/client-api";
 import {
   adobeLogoDataUri,
-  langCheckDataUri,
   socialIconDataUris,
 } from "@/components/shell/icon-data";
+import { LanguageSwitcher } from "@/components/shell/LanguageSwitcher";
+import { useLocalizedValue, useSiteText } from "@/i18n/useLocalizedValue";
 import { cn } from "@/lib/utils";
 
 /** '#...' 링크(Cookies Settings, Do not sell my personal info)는 쿠키 설정 이벤트로 연결 */
@@ -71,33 +68,12 @@ function ChevronDownIcon({ className }: { className?: string }) {
   );
 }
 
-export default function PublicFooter({
-  locale,
-  dict,
-}: {
-  locale: Locale;
-  dict: Dictionary;
-}) {
-  const router = useRouter();
+export default function PublicFooter() {
+  const cta = useLocalizedValue(footerCta);
+  const groups = useLocalizedValue(footerGroups);
+  const legal = useLocalizedValue(footerLegal);
+  const tx = useSiteText();
   const [openGroups, setOpenGroups] = useState<string[]>([]);
-  const [langOpen, setLangOpen] = useState(false);
-  const [switching, setSwitching] = useState(false);
-
-  /** 쿠키만 바꾸고 현재 URL 을 그대로 다시 렌더한다. */
-  async function switchLocale(next: Locale) {
-    if (next === locale) {
-      setLangOpen(false);
-      return;
-    }
-    setSwitching(true);
-    try {
-      await api.post("/api/locale/", { locale: next });
-      setLangOpen(false);
-      router.refresh();
-    } finally {
-      setSwitching(false);
-    }
-  }
 
   const toggleGroup = (heading: string) =>
     setOpenGroups((cur) =>
@@ -110,24 +86,24 @@ export default function PublicFooter({
       <section className="pb-12 pt-24">
         <div className="mp-container text-center">
           <h2 className="font-lazzer text-[32px] font-semibold uppercase leading-none tracking-[-1.92px] text-mp-off-black md:text-[48px] md:leading-[48px]">
-            {footerCta.heading}
+            {cta.heading}
           </h2>
           <p className="mb-6 mt-4 font-lazzer text-[16px] text-mp-off-black">
-            {footerCta.subtext}
+            {cta.subtext}
           </p>
           <Link
-            href={footerCta.href}
+            href={cta.href}
             className="inline-block rounded-pill bg-mp-lavendar px-[30px] py-[21px] font-lazzer text-[16px] font-semibold leading-none text-mp-off-black transition-colors duration-200 ease-in-out hover:bg-mp-lavendar-hover"
           >
-            {footerCta.buttonLabel}
+            {cta.buttonLabel}
           </Link>
         </div>
       </section>
 
       {/* 본문 내비: 데스크톱 6열 그리드 / 모바일 아코디언 */}
-      <nav className="mp-container" aria-label="Footer">
+      <nav className="mp-container" aria-label={tx("Footer")}>
         <div className="md:grid md:grid-cols-3 md:gap-8 lg:grid-cols-6">
-          {footerGroups.map((group) => {
+          {groups.map((group) => {
             const isOpen = openGroups.includes(group.heading);
             return (
               <div key={group.heading} className="border-b border-mp-light-grey md:border-0">
@@ -186,50 +162,7 @@ export default function PublicFooter({
             ))}
           </ul>
 
-          <div className="relative">
-            <button
-              type="button"
-              className="rounded-pill border border-mp-medium-grey px-4 py-2 font-lazzer text-[14px] font-medium text-mp-off-black transition-colors duration-200 ease-in-out hover:border-mp-off-black disabled:opacity-60"
-              aria-expanded={langOpen}
-              disabled={switching}
-              onClick={() => setLangOpen((v) => !v)}
-            >
-              {dict.footer.languageLabel}
-            </button>
-            {langOpen ? (
-              <ul className="absolute bottom-full left-0 mb-2 max-h-[320px] w-56 overflow-y-auto rounded-2xl bg-white p-2 shadow-[0_2px_12px_rgba(0,0,0,0.05),0_12px_40px_rgba(0,0,0,0.08)]">
-                {LANGUAGE_OPTIONS.map((option) => {
-                  const selected = option.locale === locale;
-                  // 실제로 전환되는 언어만 활성. 나머지는 사전이 없어 선택할 수 없음을 알린다.
-                  const supported = Boolean(option.locale);
-                  return (
-                    <li key={option.label}>
-                      <button
-                        type="button"
-                        aria-current={selected ? "true" : undefined}
-                        title={supported ? undefined : "이 클론에서는 아직 제공하지 않는 언어입니다"}
-                        className={cn(
-                          "flex w-full items-center justify-between rounded-[10px] px-3 py-2 text-left font-lazzer text-[14px] hover:bg-[rgba(0,0,0,0.06)]",
-                          supported
-                            ? "text-mp-off-black"
-                            : "cursor-not-allowed text-mp-medium-grey hover:bg-transparent"
-                        )}
-                        onClick={() => {
-                          if (!supported) return;
-                          void switchLocale(option.locale!);
-                        }}
-                      >
-                        {option.label}
-                        {selected ? (
-                          <img src={langCheckDataUri} alt="" width={18} height={18} />
-                        ) : null}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : null}
-          </div>
+          <LanguageSwitcher />
         </div>
       </nav>
 
@@ -238,10 +171,10 @@ export default function PublicFooter({
         <div className="mp-container flex flex-wrap items-center gap-x-6 gap-y-3 py-6">
           <img src={adobeLogoDataUri} alt="Adobe" width={62} height={15} />
           <p className="font-lazzer text-[14px] text-mp-dark-grey">
-            {footerLegal.copyright} {footerLegal.rights}
+            {legal.copyright} {legal.rights}
           </p>
           <ul className="flex flex-wrap items-center gap-x-6 gap-y-2 md:ml-auto">
-            {footerLegal.links.map((link) => (
+            {legal.links.map((link) => (
               <li key={link.label}>
                 <FooterLink
                   link={link}

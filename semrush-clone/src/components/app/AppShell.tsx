@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { appGlobalNav, appToolkits } from "@/data/app-nav";
@@ -6,6 +8,7 @@ import { AppHeader } from "@/components/app/AppHeader";
 import { AppGlobalNav } from "@/components/app/AppGlobalNav";
 import { ToolkitSideNav } from "@/components/app/ToolkitSideNav";
 import { cn } from "@/lib/utils";
+import { useLocalizedValue, useSiteText } from "@/i18n/useLocalizedValue";
 
 interface AppShellProps {
   /** appGlobalNav 의 key (home, seo, ai ...) */
@@ -21,6 +24,8 @@ interface AppShellProps {
  * <1024px 에서는 좌측 레일/사이드냅 대신 상단 툴킷 탭 스크롤 바를 노출.
  */
 export function AppShell({ activeToolkit, activeHref, children, hideSideNav }: AppShellProps) {
+  const globalNav = useLocalizedValue(appGlobalNav);
+  const tx = useSiteText();
   const showSideNav = !hideSideNav && Boolean(appToolkits[activeToolkit]);
 
   return (
@@ -29,10 +34,10 @@ export function AppShell({ activeToolkit, activeHref, children, hideSideNav }: A
 
       {/* 모바일: 툴킷 가로 스크롤 탭 */}
       <nav
-        aria-label="Toolkits"
+        aria-label={tx("Toolkits")}
         className="sticky top-[56px] z-40 flex gap-1 overflow-x-auto border-b border-app-border bg-white px-2 py-[6px] lg:hidden"
       >
-        {appGlobalNav.map((item) => {
+        {globalNav.map((item) => {
           const Icon = appIcons[item.icon];
           const active = item.key === activeToolkit;
           return (

@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useRef } from "react";
 import { appIcons } from "@/components/app/app-icons";
+import { translateAppText } from "@/i18n/app";
+import { useLocale } from "@/i18n/LocaleProvider";
 
 /**
  * 툴킷 프로모 캐러셀.
@@ -52,6 +54,8 @@ const CARDS = [
 ];
 
 export function ToolkitPromoCarousel() {
+  const { locale } = useLocale();
+  const tx = (text: string) => translateAppText(locale, text) ?? text;
   const trackRef = useRef<HTMLDivElement>(null);
 
   const scrollByCards = (direction: 1 | -1) => {
@@ -60,7 +64,7 @@ export function ToolkitPromoCarousel() {
   };
 
   return (
-    <section aria-label="툴킷 추천" className="relative">
+    <section aria-label={tx("툴킷 추천")} className="relative">
       <div
         ref={trackRef}
         className="flex gap-[24px] overflow-x-auto scroll-smooth pb-[2px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
@@ -71,15 +75,15 @@ export function ToolkitPromoCarousel() {
             <Link
               key={card.title}
               href={card.href}
-              aria-label={`제품 카드 - ${card.title};`}
+              aria-label={`${tx("제품 카드")} - ${tx(card.title)}`}
               className="flex h-[128px] w-[248px] shrink-0 flex-col gap-[8px] rounded-[8px] bg-a2-card p-[16px] shadow-[var(--a2-card-shadow)] transition-shadow hover:shadow-md"
             >
               {Icon && <Icon width={32} height={32} className="text-a2-text-muted" />}
               <span className="text-[14px] font-medium leading-[19.88px] text-a2-text">
-                {card.title}
+                {tx(card.title)}
               </span>
               <span className="line-clamp-3 text-[14px] leading-[19.88px] text-a2-value-muted">
-                {card.body}
+                {tx(card.body)}
               </span>
             </Link>
           );
@@ -88,7 +92,7 @@ export function ToolkitPromoCarousel() {
 
       <button
         type="button"
-        aria-label="오른쪽으로 스크롤"
+        aria-label={tx("오른쪽으로 스크롤")}
         onClick={() => scrollByCards(1)}
         className="absolute -right-[6px] top-1/2 hidden h-[28px] w-[28px] -translate-y-1/2 items-center justify-center rounded-full bg-white shadow-[var(--a2-card-shadow)] lg:flex"
       >

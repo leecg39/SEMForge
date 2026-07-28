@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useLocalizedValue, useSiteText } from "@/i18n/useLocalizedValue";
 import Link from "next/link";
 import { Container } from "@/components/ui/Container";
 import { Button } from "@/components/ui/Button";
@@ -8,7 +9,9 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { FaqAccordion } from "@/components/ui/FaqAccordion";
 import type { ToolPageData } from "@/types/templates";
 
-export function ToolTemplate({ data }: { data: ToolPageData }) {
+export function ToolTemplate({ data: sourceData }: { data: ToolPageData }) {
+  const data = useLocalizedValue(sourceData);
+  const tx = useSiteText();
   const [query, setQuery] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
@@ -95,7 +98,7 @@ export function ToolTemplate({ data }: { data: ToolPageData }) {
       {data.howItWorks && data.howItWorks.length > 0 && (
         <section className="py-[64px] md:py-[120px]">
           <Container>
-            <SectionHeader heading="How it works" />
+            <SectionHeader heading={tx("How it works")} />
             <div className="mt-10 grid grid-cols-1 gap-6 md:mt-12 md:grid-cols-3">
               {data.howItWorks.map((step, i) => (
                 <div
@@ -122,7 +125,7 @@ export function ToolTemplate({ data }: { data: ToolPageData }) {
       {data.faqs && data.faqs.length > 0 && (
         <section className="pb-[64px] md:pb-[120px]">
           <Container className="max-w-[904px]">
-            <SectionHeader heading="FAQ" />
+            <SectionHeader heading={tx("FAQ")} />
             <div className="mt-8">
               <FaqAccordion items={data.faqs} />
             </div>
@@ -134,7 +137,7 @@ export function ToolTemplate({ data }: { data: ToolPageData }) {
       {data.relatedTools && data.relatedTools.length > 0 && (
         <section className="pb-[64px] md:pb-[120px]">
           <Container>
-            <SectionHeader heading="Related tools" />
+            <SectionHeader heading={tx("Related tools")} />
             <div className="mt-8 flex flex-wrap gap-3">
               {data.relatedTools.map((tool) => (
                 <Link
@@ -154,7 +157,7 @@ export function ToolTemplate({ data }: { data: ToolPageData }) {
       <section className="bg-[#181e15] py-[64px] md:py-[120px]">
         <Container className="flex flex-col items-center gap-8 text-center">
           <SectionHeader
-            heading="Get more with a free account"
+            heading={tx("Get more with a free account")}
             align="center"
             invert
           />
