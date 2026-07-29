@@ -646,14 +646,18 @@ function BarRows({
 export function SiteAuditDashboard({
   campaigns: initialCampaigns,
   canManage,
+  initialCampaignId,
 }: {
   campaigns: SiteAuditCampaignRow[];
   canManage: boolean;
+  initialCampaignId?: string;
 }) {
   const { locale } = useLocale();
   const copy = COPY[locale];
   const [campaigns, setCampaigns] = useState(initialCampaigns);
-  const [selectedId, setSelectedId] = useState(initialCampaigns[0]?.id ?? "");
+  const [selectedId, setSelectedId] = useState(
+    initialCampaignId ?? initialCampaigns[0]?.id ?? ""
+  );
   const [issues, setIssues] = useState<IssueRow[]>([]);
   const [loadedIssuesFor, setLoadedIssuesFor] = useState<string | null>(null);
   const [issueTotals, setIssueTotals] = useState({ errors: 0, warnings: 0, notices: 0 });

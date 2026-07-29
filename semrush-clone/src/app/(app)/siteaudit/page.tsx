@@ -10,7 +10,12 @@ import { pageSession } from "@/server/page-auth";
 
 export const dynamic = "force-dynamic";
 
-export default async function SiteAuditPage() {
+export default async function SiteAuditPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ campaign?: string }>;
+}) {
+  const { campaign: requestedCampaignId } = await searchParams;
   const { auth, capabilities } = await pageSession();
 
   const rows = await db
@@ -39,10 +44,17 @@ export default async function SiteAuditPage() {
     ...row,
     lastRunAt: row.lastRunAt ? row.lastRunAt.toISOString() : null,
   }));
+  const initialCampaignId = campaigns.some((campaign) => campaign.id === requestedCampaignId)
+    ? requestedCampaignId
+    : undefined;
 
   return (
     <AppShell activeToolkit="seo" activeHref="/siteaudit/">
-      <SiteAuditDashboard campaigns={campaigns} canManage={Boolean(capabilities.create)} />
+      <SiteAuditDashboard
+        campaigns={campaigns}
+        canManage={Boolean(capabilities.create)}
+        initialCampaignId={initialCampaignId}
+      />
     </AppShell>
   );
 }

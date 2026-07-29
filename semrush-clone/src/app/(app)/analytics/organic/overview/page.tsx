@@ -5,7 +5,7 @@ import { getDomainAnalytics } from "@/server/analytics";
 
 export const dynamic = "force-dynamic";
 
-const FALLBACK_DOMAIN = "northwind.example.com";
+const FALLBACK_DOMAIN = "www.uinus.co.kr";
 
 /**
  * Organic Research — 축적된 serp_snapshots 를 도메인 관점으로 조회하는 라이브 화면.

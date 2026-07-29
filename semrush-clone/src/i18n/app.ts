@@ -64,6 +64,7 @@ const KO_TO_EN: Record<string, string> = {
   "© 2026 Semrush Holdings. All rights reserved.":
     "© 2026 Semrush Holdings. All rights reserved.",
   "툴킷 추천": "Toolkit recommendations",
+  "툴킷 바로가기": "Jump to a toolkit",
   "오른쪽으로 스크롤": "Scroll right",
   "제품 카드": "Product card",
   "콘텐츠 아이디어": "Content ideas",

@@ -37,9 +37,19 @@ const VISITED_FACTOR = 4;
 const ISSUE_DETAIL_CAP = 100;
 /**
  * 수 MB 짜리 HTML 도 파싱 비용이 페이지당 수 초가 되므로, 본문은 앞부분만 읽는다.
- * <title>/meta description 은 <head> 에 있어 잘려도 안전하고, 푸터 링크 일부만 손실된다.
+ *
+ * 단순 절단이 안전하다고 볼 수 없다: <head> 자체가 이 상한보다 큰 사이트가 실재한다
+ * (uinus.co.kr 은 인라인 스크립트로 head 가 1.19MB). 그런 페이지를 800KB 에서 자르면
+ * <body> 를 통째로 못 읽어 이미지/링크가 0 이 되고, <title>·meta description 까지
+ * 놓쳐 "제목 태그가 없는 페이지" 같은 오탐이 만들어진다.
+ * 그래서 </head> 를 확인할 때까지는 상한을 넘겨 읽고, HARD 상한에서만 강제로 끊는다.
  */
 const MAX_HTML_BYTES = 800_000;
+/** </head> 를 못 찾는 비정상 문서에서도 무한정 읽지 않도록 두는 절대 상한. */
+const MAX_HTML_HARD_BYTES = 3_000_000;
+/** </head> 직후에서 끊으면 <body> 가 통째로 비어 이미지/링크가 0 이 되므로 본문 몫을 남긴다. */
+const MIN_BODY_BYTES = 400_000;
+const HEAD_CLOSE_BYTES = new TextEncoder().encode("</head>");
 
 type Severity = "error" | "warning" | "notice";
 
@@ -188,7 +198,32 @@ function collapseWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
-/** 응답 본문을 MAX_HTML_BYTES 까지만 읽는다. 초과분은 스트림을 취소해 버린다. */
+/**
+ * 파싱 상한. <head> 가 기본 상한보다 크면 </head> 까지는 포함시켜
+ * <title>/meta description 을 놓치지 않게 한다 (readCappedText 와 같은 규칙).
+ */
+function headAwareParseLimit(html: string): number {
+  const scanned = html.slice(0, MAX_HTML_HARD_BYTES).toLowerCase();
+  const headEnd = scanned.indexOf("</head>");
+  if (headEnd < 0 || headEnd < MAX_HTML_BYTES) return MAX_HTML_BYTES;
+  return Math.min(headEnd + "</head>".length + MIN_BODY_BYTES, MAX_HTML_HARD_BYTES);
+}
+
+/** 바이트 배열에서 패턴 위치를 찾는다. 없으면 -1. */
+function indexOfBytes(haystack: Uint8Array, needle: Uint8Array): number {
+  outer: for (let i = 0; i + needle.length <= haystack.length; i += 1) {
+    for (let j = 0; j < needle.length; j += 1) {
+      if (haystack[i + j] !== needle[j]) continue outer;
+    }
+    return i;
+  }
+  return -1;
+}
+
+/**
+ * 응답 본문을 MAX_HTML_BYTES 까지 읽되, 그 지점까지 </head> 를 못 봤으면
+ * </head> 가 나올 때까지(최대 MAX_HTML_HARD_BYTES) 더 읽는다. 초과분은 스트림을 취소한다.
+ */
 async function readCappedText(response: Response): Promise<{ text: string; bytes: number }> {
   if (!response.body) {
     const text = await response.text();
@@ -197,6 +232,10 @@ async function readCappedText(response: Response): Promise<{ text: string; bytes
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let received = 0;
+  let headClosed = false;
+  let headClosedAt = 0;
+  // 청크 경계에 걸쳐 있는 </head> 도 놓치지 않도록 직전 꼬리를 이어 붙여 검사한다.
+  let tail = new Uint8Array(0);
   try {
     for (;;) {
       const { done, value } = await reader.read();
@@ -204,8 +243,17 @@ async function readCappedText(response: Response): Promise<{ text: string; bytes
       if (value) {
         chunks.push(value);
         received += value.byteLength;
+        if (!headClosed) {
+          const probe = new Uint8Array(tail.length + value.length);
+          probe.set(tail, 0);
+          probe.set(value, tail.length);
+          headClosed = indexOfBytes(probe, HEAD_CLOSE_BYTES) >= 0;
+          if (headClosed) headClosedAt = received;
+          tail = probe.subarray(Math.max(0, probe.length - (HEAD_CLOSE_BYTES.length - 1)));
+        }
       }
-      if (received >= MAX_HTML_BYTES) {
+      const enough = Math.max(MAX_HTML_BYTES, headClosedAt + MIN_BODY_BYTES);
+      if ((received >= enough && headClosed) || received >= MAX_HTML_HARD_BYTES) {
         await reader.cancel().catch(() => undefined);
         break;
       }
@@ -232,7 +280,7 @@ async function readCappedText(response: Response): Promise<{ text: string; bytes
  * missing title 같은 오탐을 만들지 않도록 한다.
  */
 export function applyHtmlToPage(page: CrawledPage, html: string, ctx: CrawlContext): void {
-  const capped = html.length > MAX_HTML_BYTES ? html.slice(0, MAX_HTML_BYTES) : html;
+  const capped = html.length > MAX_HTML_BYTES ? html.slice(0, headAwareParseLimit(html)) : html;
   const doc = parse(capped, { lowerCaseTagName: true, comment: false });
   page.isHtml = true;
 

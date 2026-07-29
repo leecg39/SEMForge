@@ -10,6 +10,10 @@ import {
   type ReactNode,
 } from "react";
 import Link from "next/link";
+import {
+  OrganicResearchSetupDialog,
+  type OrganicResearchSetupSummary,
+} from "@/components/analytics/OrganicResearchSetupDialog";
 import { useLocale } from "@/i18n/LocaleProvider";
 import type {
   AnalyticsDevice,
@@ -227,6 +231,8 @@ export function OrganicResearchDashboard({
   const [notFound, setNotFound] = useState(!initialReport);
   const [filter, setFilter] = useState("");
   const [intentFilter, setIntentFilter] = useState<AnalyticsIntent | "all">("all");
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [setupSummary, setSetupSummary] = useState<OrganicResearchSetupSummary | null>(null);
   const requestRef = useRef<AbortController | null>(null);
 
   const runQuery = useCallback(
@@ -260,6 +266,23 @@ export function OrganicResearchDashboard({
   useEffect(() => {
     return () => requestRef.current?.abort();
   }, []);
+
+  useEffect(() => {
+    const key = `organic-research-page-seo-setup:${initialDomain ?? DEFAULT_DOMAIN}`;
+    const timer = window.setTimeout(() => {
+      try {
+        const stored = window.localStorage.getItem(key);
+        if (stored) {
+          setSetupSummary(JSON.parse(stored) as OrganicResearchSetupSummary);
+          return;
+        }
+      } catch {
+        // 읽을 수 없는 로컬 설정은 새 설정으로 대체한다.
+      }
+      setSetupOpen(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [initialDomain]);
 
   const numberFormatter = useMemo(
     () =>
@@ -326,41 +349,75 @@ export function OrganicResearchDashboard({
   );
 
   const availableDomains = report?.availableDomains.slice(0, 6) ?? [];
+  const setupSuggestions = useMemo(
+    () =>
+      report?.topKeywords.slice(0, 7).map((row) => ({ keyword: row.keyword, url: row.url })) ?? [],
+    [report],
+  );
+
+  const completeSetup = (summary: OrganicResearchSetupSummary) => {
+    setSetupSummary(summary);
+    try {
+      window.localStorage.setItem(
+        `organic-research-page-seo-setup:${summary.domain}`,
+        JSON.stringify(summary),
+      );
+    } catch {
+      // 스토리지 사용이 제한된 환경에서도 현재 세션의 완료 상태는 유지한다.
+    }
+  };
 
   return (
     <div className="mx-auto w-full max-w-[1560px] p-4 sm:p-6">
-      <header className="min-w-0">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.65px] text-app-blue">
-          {copy.eyebrow}
-        </p>
-        <h1 className="mt-1 text-[24px] font-semibold leading-[32px] tracking-[-0.3px] text-a2-text">
-          {copy.title}
-        </h1>
-        <p className="mt-1 max-w-3xl text-[13px] leading-[20px] text-a2-text-muted">
-          {copy.description}
-        </p>
-        {report && (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {report.provenance === "live" ? (
-              <span className="rounded-full bg-[#e6f5f0] px-2.5 py-1 text-[11px] font-medium text-[#0a6b57]">
-                {copy.liveData}
-              </span>
-            ) : report.provenance === "mixed" ? (
-              <span className="rounded-full bg-[#eaf3ff] px-2.5 py-1 text-[11px] font-medium text-[#0872bf]">
-                {copy.mixedData}
-              </span>
-            ) : (
-              <span className="rounded-full bg-[#fff1eb] px-2.5 py-1 text-[11px] font-medium text-[#b63c0b]">
-                {copy.demo}
-              </span>
-            )}
-            {report.freshness.serpCapturedAt && (
-              <span className="text-[11px] text-a2-text-muted">
-                {copy.dataUpdated}: {relativeDate(report.freshness.serpCapturedAt)}
-              </span>
-            )}
-          </div>
-        )}
+      <header className="flex min-w-0 flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.65px] text-app-blue">
+            {copy.eyebrow}
+          </p>
+          <h1 className="mt-1 text-[24px] font-semibold leading-[32px] tracking-[-0.3px] text-a2-text">
+            {copy.title}
+          </h1>
+          <p className="mt-1 max-w-3xl text-[13px] leading-[20px] text-a2-text-muted">
+            {copy.description}
+          </p>
+          {report && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {report.provenance === "live" ? (
+                <span className="rounded-full bg-[#e6f5f0] px-2.5 py-1 text-[11px] font-medium text-[#0a6b57]">
+                  {copy.liveData}
+                </span>
+              ) : report.provenance === "mixed" ? (
+                <span className="rounded-full bg-[#eaf3ff] px-2.5 py-1 text-[11px] font-medium text-[#0872bf]">
+                  {copy.mixedData}
+                </span>
+              ) : (
+                <span className="rounded-full bg-[#fff1eb] px-2.5 py-1 text-[11px] font-medium text-[#b63c0b]">
+                  {copy.demo}
+                </span>
+              )}
+              {report.freshness.serpCapturedAt && (
+                <span className="text-[11px] text-a2-text-muted">
+                  {copy.dataUpdated}: {relativeDate(report.freshness.serpCapturedAt)}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex max-w-[360px] flex-col items-end gap-2">
+          <button
+            type="button"
+            onClick={() => setSetupOpen(true)}
+            className="h-10 rounded-[7px] bg-[#4d1da8] px-4 text-[13px] font-semibold text-white shadow-sm transition-colors hover:bg-[#3f178d]"
+          >
+            {setupSummary ? "페이지 SEO 설정 수정" : "페이지 SEO 분석 설정"}
+          </button>
+          {setupSummary && (
+            <p className="text-right text-[11px] leading-[17px] text-[#23775f]">
+              설정 완료 · 키워드 {setupSummary.keywordCount}개 · {setupSummary.cadence === "weekly" ? "매주 재수집" : "수동 재수집"}
+            </p>
+          )}
+        </div>
       </header>
 
       <form
@@ -647,6 +704,15 @@ export function OrganicResearchDashboard({
           </Card>
         </div>
       )}
+
+      <OrganicResearchSetupDialog
+        open={setupOpen}
+        onOpenChange={setSetupOpen}
+        domain={domain}
+        country={country}
+        suggestions={setupSuggestions}
+        onComplete={completeSetup}
+      />
     </div>
   );
 }

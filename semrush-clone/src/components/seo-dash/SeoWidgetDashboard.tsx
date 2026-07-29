@@ -14,6 +14,14 @@ import {
 import { WidgetTrafficAnalytics } from "@/components/seo-dash/WidgetTrafficAnalytics";
 import { WidgetOrganicRank } from "@/components/seo-dash/WidgetOrganicRank";
 import { WidgetBacklinks, type RefDomainMonth } from "@/components/seo-dash/WidgetBacklinks";
+import {
+  WidgetSiteAudit,
+  type SiteAuditWidgetSummary,
+} from "@/components/seo-dash/WidgetSiteAudit";
+import {
+  WidgetPositionTracking,
+  type PositionTrackingWidgetSummary,
+} from "@/components/seo-dash/WidgetPositionTracking";
 import { WidgetGoogleConnect, WidgetHiddenWidgets } from "@/components/seo-dash/WidgetStubs";
 
 /**
@@ -27,12 +35,16 @@ export function SeoWidgetDashboard({
   currentDomain,
   monthlyRefDomains,
   dateLabel,
+  siteAuditSummary,
+  positionTrackingSummary,
 }: {
   report: DomainAnalyticsReport | null;
   projects: SeoDashProject[];
   currentDomain: string;
   monthlyRefDomains: RefDomainMonth[];
   dateLabel: string;
+  siteAuditSummary: SiteAuditWidgetSummary | null;
+  positionTrackingSummary: PositionTrackingWidgetSummary | null;
 }) {
   const router = useRouter();
   const { locale } = useLocale();
@@ -63,9 +75,22 @@ export function SeoWidgetDashboard({
       >
         <WidgetAiSearch />
         <WidgetSeoMetrics report={report} dateLabel={dateLabel} />
-        {secondaryWidgets.slice(0, 4).map((widget) => (
-          <WidgetSecondary key={widget.key} title={widget.title} description={widget.description} href={widget.href} />
-        ))}
+        {secondaryWidgets.slice(0, 4).map((widget) => {
+          if (widget.key === "positionTracking") {
+            return <WidgetPositionTracking key={widget.key} summary={positionTrackingSummary} />;
+          }
+          if (widget.key === "siteAudit" && siteAuditSummary) {
+            return <WidgetSiteAudit key={widget.key} summary={siteAuditSummary} />;
+          }
+          return (
+            <WidgetSecondary
+              key={widget.key}
+              title={widget.title}
+              description={widget.description}
+              href={widget.href}
+            />
+          );
+        })}
         {secondaryWidgets[4] && (
           <WidgetSecondary
             title={secondaryWidgets[4].title}
