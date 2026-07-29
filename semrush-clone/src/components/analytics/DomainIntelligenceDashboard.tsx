@@ -654,7 +654,7 @@ export function DomainIntelligenceDashboard({
   const [country] = useState(initialCountry ?? "US");
   const [report, setReport] = useState<DomainAnalyticsReport | null>(initialReport);
   const [status, setStatus] = useState<LoadStatus>(initialReport ? "ready" : "error");
-  const [error, setError] = useState<string | null>(initialReport ? null : copy.loadError);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
   const [collectInput, setCollectInput] = useState("");
   const [collecting, setCollecting] = useState(false);
@@ -808,6 +808,22 @@ export function DomainIntelligenceDashboard({
       setCollecting(false);
     }
   };
+
+  /**
+   * 서버에서 초기 리포트를 만들지 못한 경우(미보유 도메인):
+   * 실제 오류 사유를 API에서 가져오고, NOT_FOUND 면 실시간 수집까지 자동 실행해
+   * 수집 데이터로 리포트를 만든다.
+   */
+  const autoCollectRef = useRef(false);
+  useEffect(() => {
+    if (initialReport || autoCollectRef.current) return;
+    autoCollectRef.current = true;
+    void (async () => {
+      const outcome = await runQuery(domain, device, country);
+      if (outcome === "not_found") await runCollect(true);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const exportReport = () => {
     if (!report) return;

@@ -37,7 +37,10 @@ export const GET = route(async (request: Request) => {
     device: parsed.data.device,
   });
   if (!report) {
-    throw new ApiError("NOT_FOUND", "이 조건에 사용할 수 있는 데모 데이터가 없습니다.");
+    throw new ApiError(
+      "NOT_FOUND",
+      "이 도메인은 아직 원천 스토어에 데이터가 없습니다. 실시간 수집으로 리포트를 만들 수 있습니다."
+    );
   }
 
   return jsonOk(report, {
