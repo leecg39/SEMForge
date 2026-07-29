@@ -242,21 +242,29 @@ export function CrudShell({
       {/* 헤더 — 실측 53px */}
       <header className="flex h-[53px] shrink-0 items-center bg-a2-surface px-[16px] lg:px-[32px]">
         {/* 원본 실측: 검색 폭 515px, 높이 30px */}
-        <div className="flex h-[30px] w-full shrink-0 items-center rounded-[6px] bg-white lg:w-[515px]">
+        <form
+          className="flex h-[30px] w-full shrink-0 items-center rounded-[6px] bg-white lg:w-[515px]"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const q = String(new FormData(e.currentTarget).get("q") ?? "").trim();
+            if (q) router.push(`/analytics/overview/?domain=${encodeURIComponent(q)}`);
+          }}
+        >
           <input
             type="text"
+            name="q"
             placeholder={tx("작업, 웹사이트 또는 키워드를 입력하세요")}
             aria-label={tx("전역 검색")}
             className="h-full min-w-0 flex-1 bg-transparent pl-[12px] pr-[8px] text-[14px] text-a2-text outline-none placeholder:text-a2-text-muted"
           />
           <button
-            type="button"
+            type="submit"
             aria-label={tx("검색")}
             className="flex h-[30px] w-[32px] shrink-0 items-center justify-center rounded-r-[6px] bg-[#1a1e1a] text-white"
           >
             <appIcons.search width={16} height={16} />
           </button>
-        </div>
+        </form>
 
         <div className="ml-auto flex shrink-0 items-center">
           <Link

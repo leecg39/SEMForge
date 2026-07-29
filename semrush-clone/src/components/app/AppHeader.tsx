@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ChevronDownIcon, SearchIcon } from "@/components/app/app-icons";
 import { LanguageSwitcher } from "@/components/shell/LanguageSwitcher";
 import { useLocale } from "@/i18n/LocaleProvider";
@@ -11,6 +12,7 @@ const headerLinkClass =
 /** 로그인 앱 상단 헤더 (56px, 흰 배경, 하단 보더) */
 export function AppHeader() {
   const { locale } = useLocale();
+  const router = useRouter();
 
   return (
     <header className="sticky top-0 z-50 flex h-[56px] shrink-0 items-center gap-3 border-b border-app-border bg-white px-4">
@@ -25,10 +27,18 @@ export function AppHeader() {
       </Link>
 
       {/* 중앙: 전역 검색 (모바일에서는 아이콘 버튼으로 축소) */}
-      <div className="mx-auto hidden h-[36px] w-full max-w-[480px] flex-1 items-center gap-2 rounded-[8px] bg-app-bg px-3 sm:flex">
+      <form
+        className="mx-auto hidden h-[36px] w-full max-w-[480px] flex-1 items-center gap-2 rounded-[8px] bg-app-bg px-3 sm:flex"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const q = String(new FormData(e.currentTarget).get("q") ?? "").trim();
+          if (q) router.push(`/analytics/overview/?domain=${encodeURIComponent(q)}`);
+        }}
+      >
         <SearchIcon width={16} height={16} className="shrink-0 text-app-text-secondary" />
         <input
           type="text"
+          name="q"
           placeholder={
             locale === "ko"
               ? "도구, 도메인 또는 키워드 검색"
@@ -36,7 +46,7 @@ export function AppHeader() {
           }
           className="h-full w-full min-w-0 bg-transparent text-[13px] text-app-text outline-none placeholder:text-app-text-secondary"
         />
-      </div>
+      </form>
       <button
         type="button"
         aria-label={locale === "ko" ? "검색" : "Search"}
