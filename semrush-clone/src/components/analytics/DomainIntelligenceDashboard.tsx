@@ -7,7 +7,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type FormEvent,
   type ReactNode,
 } from "react";
 import Link from "next/link";
@@ -31,11 +30,6 @@ import type {
 import { cn } from "@/lib/utils";
 
 const DEFAULT_DOMAIN = "northwind.example.com";
-const EXAMPLE_DOMAINS = [
-  "northwind.example.com",
-  "acme.example.com",
-  "globex.example.com",
-];
 
 const ORGANIC_RESEARCH_HREF = "/analytics/organic/overview/";
 const BACKLINKS_HREF = "/analytics/backlinks/overview/";
@@ -656,8 +650,8 @@ export function DomainIntelligenceDashboard({
   const { locale } = useLocale();
   const copy = COPY[locale];
   const [domain, setDomain] = useState(initialDomain ?? DEFAULT_DOMAIN);
-  const [device, setDevice] = useState<AnalyticsDevice>("desktop");
-  const [country, setCountry] = useState(initialCountry ?? "US");
+  const [device] = useState<AnalyticsDevice>("desktop");
+  const [country] = useState(initialCountry ?? "US");
   const [report, setReport] = useState<DomainAnalyticsReport | null>(initialReport);
   const [status, setStatus] = useState<LoadStatus>(initialReport ? "ready" : "error");
   const [error, setError] = useState<string | null>(initialReport ? null : copy.loadError);
@@ -776,20 +770,6 @@ export function DomainIntelligenceDashboard({
     [locale],
   );
 
-  /**
-   * 분석 버튼: 로컬 원천에 데이터가 없는 실제 도메인이면
-   * TalorData 실시간 수집을 자동으로 이어서 실행하고 수집 데이터로 리포트를 만든다.
-   */
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setCollectSummary(null);
-    setCollectError(null);
-    const outcome = await runQuery(domain, device, country);
-    if (outcome === "not_found") {
-      await runCollect(true);
-    }
-  };
-
   /** 실시간 수집: 로컬 데이터가 없는 실제 도메인의 브랜드/지정 키워드 SERP 를 수집한 뒤 리포트를 다시 계산한다. */
   const runCollect = async (auto = false) => {
     setCollecting(true);
@@ -840,10 +820,6 @@ export function DomainIntelligenceDashboard({
     URL.revokeObjectURL(href);
   };
 
-  const availableDomains = report?.availableDomains.length
-    ? report.availableDomains
-    : EXAMPLE_DOMAINS;
-
   return (
     <div className="mx-auto w-full max-w-[1560px] p-4 sm:p-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
@@ -880,71 +856,6 @@ export function DomainIntelligenceDashboard({
           {copy.export}
         </button>
       </header>
-
-      <form onSubmit={submit} className="mt-5 rounded-[10px] border border-app-border bg-a2-card p-3 shadow-[var(--a2-card-shadow)]">
-        <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_150px_150px_auto] lg:items-end">
-          <label className="min-w-0">
-            <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.4px] text-a2-text-muted">{copy.domain}</span>
-            <input
-              name="domain"
-              value={domain}
-              onChange={(event) => setDomain(event.target.value)}
-              placeholder={copy.domainPlaceholder}
-              autoComplete="url"
-              required
-              className="h-11 w-full rounded-[7px] border border-app-border bg-white px-3 text-[14px] text-a2-text outline-none transition focus:border-app-blue focus:ring-2 focus:ring-[#d8ecff]"
-            />
-          </label>
-          <label>
-            <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.4px] text-a2-text-muted">{copy.country}</span>
-            <select
-              aria-label={copy.country}
-              value={country}
-              onChange={(event) => setCountry(event.target.value)}
-              className="h-11 w-full rounded-[7px] border border-app-border bg-white px-3 text-[13px] text-a2-text outline-none focus:border-app-blue focus:ring-2 focus:ring-[#d8ecff]"
-            >
-              <option value="US">United States</option>
-              <option value="KR">South Korea</option>
-            </select>
-          </label>
-          <label>
-            <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.4px] text-a2-text-muted">{copy.device}</span>
-            <select
-              value={device}
-              onChange={(event) => setDevice(event.target.value as AnalyticsDevice)}
-              className="h-11 w-full rounded-[7px] border border-app-border bg-white px-3 text-[13px] text-a2-text outline-none focus:border-app-blue focus:ring-2 focus:ring-[#d8ecff]"
-            >
-              <option value="desktop">{copy.desktop}</option>
-              <option value="mobile">{copy.mobile}</option>
-            </select>
-          </label>
-          <button
-            type="submit"
-            disabled={status === "loading" || collecting}
-            className="h-11 rounded-[7px] bg-app-blue px-6 text-[13px] font-semibold text-white transition-colors hover:bg-app-blue-dark disabled:cursor-wait disabled:opacity-70"
-          >
-            {collecting ? copy.liveCollecting : status === "loading" ? copy.analyzing : copy.analyze}
-          </button>
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="text-[11px] text-a2-text-muted">{copy.tryExample}</span>
-          {availableDomains.map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => {
-                setDomain(item);
-                setCollectSummary(null);
-                setCollectError(null);
-                void runQuery(item, device, country);
-              }}
-              className="min-h-8 rounded-full border border-app-border bg-white px-3 text-[11px] text-a2-text transition hover:border-[#b9d8f2] hover:bg-[#f5faff]"
-            >
-              {item}
-            </button>
-          ))}
-        </div>
-      </form>
 
       <div className="min-h-[24px]" aria-live="polite">
         {error && (

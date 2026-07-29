@@ -4,6 +4,8 @@ import {
 } from "@/server/firecrawl/client";
 import {
   applyHtmlToPage,
+  approximatePathDepth,
+  emptyCrawledPage,
   inScope,
   normalizeUrl,
   type CrawledPage,
@@ -25,27 +27,25 @@ const SCRAPE_CONCURRENCY = 3;
 
 /** /v1/scrape 결과를 CrawledPage 형태로 변환한다. */
 async function scrapePage(url: string, apiKey: string, ctx: CrawlContext): Promise<CrawledPage> {
-  const page: CrawledPage = {
-    url,
-    status: 0,
-    isHtml: false,
-    title: null,
-    metaDescription: null,
-    imagesMissingAlt: 0,
-    internalLinks: [],
-    externalLinks: [],
-  };
+  const page = emptyCrawledPage(url);
+  const startedAt = Date.now();
   try {
     const scraped = await firecrawlScrapeHtml(url, apiKey);
     page.status = scraped.status;
+    page.responseMs = Date.now() - startedAt;
     // Firecrawl 이 따라간 최종 URL 로 표시/중복 판정을 통일한다.
     if (scraped.finalUrl) {
       const normalized = normalizeUrl(scraped.finalUrl, url);
       if (normalized) page.url = normalized;
     }
+    if (scraped.html) {
+      page.bytes = new TextEncoder().encode(scraped.html).byteLength;
+    }
     if (scraped.html && page.status > 0 && page.status < 400) {
       applyHtmlToPage(page, scraped.html, ctx);
     }
+    // Firecrawl /map 수집은 BFS 가 아니므로 경로 깊이로 근사한다.
+    page.depth = approximatePathDepth(page.url);
     return page;
   } catch (error) {
     page.isHtml = false;

@@ -1,7 +1,7 @@
 import { and, eq, isNull, ne } from "drizzle-orm";
 import { parse } from "node-html-parser";
 import { db } from "@/db/client";
-import { siteAuditCampaigns, siteAuditIssues } from "@/db/schema";
+import { siteAuditCampaigns, siteAuditIssues, siteAuditPages } from "@/db/schema";
 import { ApiError } from "@/lib/api";
 import { newId } from "@/lib/ids";
 import { assertSameWorkspace } from "@/lib/rbac";
@@ -130,12 +130,49 @@ export interface CrawledPage {
   isHtml: boolean;
   title: string | null;
   metaDescription: string | null;
+  imagesTotal: number;
   imagesMissingAlt: number;
+  /** <script type="application/ld+json"> 존재 여부 (간이 판별) */
+  hasJsonLd: boolean;
+  /** 수신한 응답 본문 바이트 (컷오프 포함) */
+  bytes: number;
+  /** fetch 시작~본문 수신 완료까지의 시간(ms) */
+  responseMs: number;
+  /** website BFS 깊이. sitemap/Firecrawl 수집은 경로 깊이 근사값 */
+  depth: number;
   /** 범위 내 고유 내부 링크(자기 자신 제외) */
   internalLinks: string[];
   /** 다른 등록 도메인으로 나가는 외부 링크 — 링크 그래프(link_graph_edges) 적재용 */
   externalLinks: ExternalLink[];
   fetchError?: string;
+}
+
+/** 크롤 방문 전 초기값. fetchPage/scrapePage 가 같은 기본형을 공유한다. */
+export function emptyCrawledPage(url: string): CrawledPage {
+  return {
+    url,
+    status: 0,
+    isHtml: false,
+    title: null,
+    metaDescription: null,
+    imagesTotal: 0,
+    imagesMissingAlt: 0,
+    hasJsonLd: false,
+    bytes: 0,
+    responseMs: 0,
+    depth: 0,
+    internalLinks: [],
+    externalLinks: [],
+  };
+}
+
+/** BFS 를 타지 못하는 수집 경로(사이트맵/Firecrawl)의 depth 근사: 경로 세그먼트 수. */
+export function approximatePathDepth(url: string): number {
+  try {
+    return new URL(url).pathname.split("/").filter(Boolean).length;
+  } catch {
+    return 0;
+  }
 }
 
 export interface ExternalLink {
@@ -152,8 +189,11 @@ function collapseWhitespace(value: string): string {
 }
 
 /** 응답 본문을 MAX_HTML_BYTES 까지만 읽는다. 초과분은 스트림을 취소해 버린다. */
-async function readCappedText(response: Response): Promise<string> {
-  if (!response.body) return response.text();
+async function readCappedText(response: Response): Promise<{ text: string; bytes: number }> {
+  if (!response.body) {
+    const text = await response.text();
+    return { text, bytes: new TextEncoder().encode(text).byteLength };
+  }
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let received = 0;
@@ -179,7 +219,10 @@ async function readCappedText(response: Response): Promise<string> {
     merged.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return new TextDecoder("utf-8", { fatal: false }).decode(merged);
+  return {
+    text: new TextDecoder("utf-8", { fatal: false }).decode(merged),
+    bytes: received,
+  };
 }
 
 /**
@@ -204,11 +247,15 @@ export function applyHtmlToPage(page: CrawledPage, html: string, ctx: CrawlConte
     break;
   }
 
+  const images = doc.querySelectorAll("img");
   let missingAlt = 0;
-  for (const img of doc.querySelectorAll("img")) {
+  for (const img of images) {
     if (img.getAttribute("alt") === undefined) missingAlt += 1;
   }
+  page.imagesTotal = images.length;
   page.imagesMissingAlt = missingAlt;
+
+  page.hasJsonLd = doc.querySelector('script[type="application/ld+json"]') !== null;
 
   const links = new Set<string>();
   const external = new Map<string, boolean>();
@@ -243,16 +290,8 @@ export function applyHtmlToPage(page: CrawledPage, html: string, ctx: CrawlConte
 async function fetchPage(url: string, ctx: CrawlContext): Promise<CrawledPage> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  const page: CrawledPage = {
-    url,
-    status: 0,
-    isHtml: false,
-    title: null,
-    metaDescription: null,
-    imagesMissingAlt: 0,
-    internalLinks: [],
-    externalLinks: [],
-  };
+  const page = emptyCrawledPage(url);
+  const startedAt = Date.now();
   try {
     const response = await fetch(url, {
       signal: controller.signal,
@@ -272,10 +311,13 @@ async function fetchPage(url: string, ctx: CrawlContext): Promise<CrawledPage> {
     const contentType = response.headers.get("content-type") ?? "";
     if (!/text\/html|application\/xhtml/i.test(contentType)) {
       await response.body?.cancel().catch(() => undefined);
+      page.responseMs = Date.now() - startedAt;
       return page;
     }
-    const html = await readCappedText(response);
-    applyHtmlToPage(page, html, ctx);
+    const { text, bytes } = await readCappedText(response);
+    page.bytes = bytes;
+    page.responseMs = Date.now() - startedAt;
+    applyHtmlToPage(page, text, ctx);
     return page;
   } catch (error) {
     page.isHtml = false;
@@ -383,6 +425,8 @@ async function crawlSite(input: CrawlInput): Promise<CrawlOutcome> {
             const page = await fetchPage(url, ctx);
             if (seenFinal.has(page.url)) continue;
             seenFinal.add(page.url);
+            // 사이트맵 수집은 BFS 가 아니므로 경로 깊이로 근사한다.
+            page.depth = approximatePathDepth(page.url);
             pages.push(page);
           }
         })
@@ -395,10 +439,11 @@ async function crawlSite(input: CrawlInput): Promise<CrawlOutcome> {
   }
 
   const visited = new Set<string>();
-  const queue: string[] = [];
+  /** BFS 큐: 각 항목에 시드로부터의 클릭 깊이를 함께 저장한다. */
+  const queue: { url: string; depth: number }[] = [];
   const seed = normalizeUrl(input.startUrl, input.startUrl) ?? input.startUrl;
   visited.add(seed);
-  queue.push(seed);
+  queue.push({ url: seed, depth: 0 });
 
   const pages: CrawledPage[] = [];
   /** 리다이렉트 후 최종 URL 기준 중복 크롤 방지 */
@@ -407,18 +452,19 @@ async function crawlSite(input: CrawlInput): Promise<CrawlOutcome> {
   const workers = Array.from({ length: CONCURRENCY }, async () => {
     for (;;) {
       if (pages.length >= input.pageLimit) return;
-      const url = queue[cursor++];
-      if (!url) return;
-      const page = await fetchPage(url, ctx);
+      const item = queue[cursor++];
+      if (!item) return;
+      const page = await fetchPage(item.url, ctx);
       if (seenFinal.has(page.url)) continue;
       seenFinal.add(page.url);
+      page.depth = item.depth;
       pages.push(page);
       if (!page.isHtml || page.status >= 400) continue;
       for (const link of page.internalLinks) {
         if (visited.size >= input.pageLimit * VISITED_FACTOR) break;
         if (visited.has(link) || seenFinal.has(link)) continue;
         visited.add(link);
-        queue.push(link);
+        queue.push({ url: link, depth: item.depth + 1 });
       }
     }
   });
@@ -527,6 +573,58 @@ export interface RunSiteAuditOptions {
   crawler?: CrawlExecutor;
 }
 
+/** 메타 설명 중복 그룹 키는 길이가 길 수 있어 앞부분만 저장한다. */
+const META_DUP_KEY_LEN = 300;
+
+/**
+ * 크롤 페이지를 site_audit_pages 행으로 변환한다.
+ * 제목/메타 설명 중복 여부는 같은 크롤 안에서의 그룹 카운트로 판정한다.
+ */
+export function buildAuditPageRows(pages: CrawledPage[]) {
+  const byTitle = new Map<string, number>();
+  const byMeta = new Map<string, number>();
+  for (const page of pages) {
+    if (page.title) byTitle.set(page.title, (byTitle.get(page.title) ?? 0) + 1);
+    if (page.metaDescription) {
+      byMeta.set(page.metaDescription, (byMeta.get(page.metaDescription) ?? 0) + 1);
+    }
+  }
+  return pages.map((page) => ({
+    url: page.url,
+    statusCode: page.status,
+    title: page.title,
+    hasTitle: Boolean(page.title),
+    titleDup: page.title !== null && (byTitle.get(page.title) ?? 0) > 1,
+    metaDescriptionPresent: Boolean(page.metaDescription),
+    metaDupKey:
+      page.metaDescription !== null && (byMeta.get(page.metaDescription) ?? 0) > 1
+        ? page.metaDescription.slice(0, META_DUP_KEY_LEN)
+        : null,
+    imagesTotal: page.imagesTotal,
+    imagesMissingAlt: page.imagesMissingAlt,
+    internalLinks: page.internalLinks.length,
+    isHttps: page.url.startsWith("https://"),
+    hasJsonLd: page.hasJsonLd,
+    bytes: page.bytes,
+    responseMs: page.responseMs,
+    depth: page.depth,
+  }));
+}
+
+/** 캠페인의 이전 페이지 스냅샷을 지우고 최근 크롤 결과로 교체한다. */
+async function persistAuditPages(campaignId: string, pages: CrawledPage[], now: Date) {
+  await db.delete(siteAuditPages).where(eq(siteAuditPages.campaignId, campaignId));
+  if (pages.length === 0) return;
+  await db.insert(siteAuditPages).values(
+    buildAuditPageRows(pages).map((row) => ({
+      id: newId("sap"),
+      campaignId,
+      ...row,
+      createdAt: now,
+    }))
+  );
+}
+
 /** 캠페인 크롤을 실행하고 결과를 site_audit_issues / site_audit_campaigns 에 저장한다. */
 export async function runSiteAuditCampaign(
   auth: AuthContext,
@@ -622,6 +720,14 @@ export async function runSiteAuditCampaign(
       });
     } catch (linkError) {
       console.error("[siteaudit] link graph persist failed", linkError);
+    }
+
+    // 페이지 단위 스냅샷도 같은 시점 기준으로 교체한다.
+    // 적재 실패가 이슈 결과까지 무효화하지 않도록 분리해 둔다.
+    try {
+      await persistAuditPages(campaign.id, crawl.pages, now);
+    } catch (pageError) {
+      console.error("[siteaudit] page rows persist failed", pageError);
     }
 
     await db.delete(siteAuditIssues).where(eq(siteAuditIssues.campaignId, campaign.id));

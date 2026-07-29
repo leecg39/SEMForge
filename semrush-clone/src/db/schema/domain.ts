@@ -332,6 +332,50 @@ export const siteAuditIssues = sqliteTable(
   (t) => [index("site_audit_issues_campaign_idx").on(t.campaignId, t.severity)]
 );
 
+/**
+ * 크롤 1회 실행 시 페이지 단위 수집 결과 스냅샷 (P).
+ * 재실행하면 캠페인의 기존 행을 지우고 새로 적재한다 (항상 최근 실행 기준).
+ */
+export const siteAuditPages = sqliteTable(
+  "site_audit_pages",
+  {
+    id: text("id").primaryKey(),
+    campaignId: text("campaign_id")
+      .notNull()
+      .references(() => siteAuditCampaigns.id, { onDelete: "cascade" }),
+    url: text("url").notNull(),
+    statusCode: integer("status_code").notNull().default(0),
+    title: text("title"),
+    hasTitle: integer("has_title", { mode: "boolean" }).notNull().default(false),
+    /** 같은 크롤 안에서 동일 <title> 을 쓰는 페이지가 2개 이상이면 true */
+    titleDup: integer("title_dup", { mode: "boolean" }).notNull().default(false),
+    metaDescriptionPresent: integer("meta_description_present", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    /** 메타 설명이 중복일 때만 그룹핑 키(앞 300자)를 남긴다. 아니면 null */
+    metaDupKey: text("meta_dup_key"),
+    imagesTotal: integer("images_total").notNull().default(0),
+    imagesMissingAlt: integer("images_missing_alt").notNull().default(0),
+    /** 범위 내 고유 내부 링크 수(자기 자신 제외) */
+    internalLinks: integer("internal_links").notNull().default(0),
+    isHttps: integer("is_https", { mode: "boolean" }).notNull().default(false),
+    /** <script type="application/ld+json"> 존재 여부 (간이 판별) */
+    hasJsonLd: integer("has_json_ld", { mode: "boolean" }).notNull().default(false),
+    /** 응답 본문 수신 바이트 (MAX_HTML_BYTES 컷오프 포함) */
+    bytes: integer("bytes").notNull().default(0),
+    responseMs: integer("response_ms").notNull().default(0),
+    /** website BFS 크롤 깊이. sitemap/Firecrawl 수집은 경로 깊이로 근사 */
+    depth: integer("depth").notNull().default(0),
+    createdAt: timestampMs("created_at")
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [
+    index("site_audit_pages_campaign_idx").on(t.campaignId, t.createdAt),
+    index("site_audit_pages_status_idx").on(t.campaignId, t.statusCode),
+  ]
+);
+
 /** 랜딩 문구 "위치, 기기 유형 또는 검색 엔진을 추적할 수 있습니다" (O) */
 export const positionTrackingCampaigns = sqliteTable(
   "position_tracking_campaigns",
