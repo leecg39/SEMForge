@@ -1,11 +1,44 @@
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { AppShell } from "@/components/app/AppShell";
-import { AppWorkspaceTemplate } from "@/components/app/AppWorkspaceTemplate";
-import { workspaces } from "@/data/app-pages";
+import {
+  PositionTrackingDashboard,
+  type CampaignSummary,
+} from "@/components/position-tracking/PositionTrackingDashboard";
+import { db } from "@/db/client";
+import { positionTrackingCampaigns } from "@/db/schema";
+import { pageSession } from "@/server/page-auth";
 
-export default function PositionTrackingPage() {
+export const dynamic = "force-dynamic";
+
+export default async function PositionTrackingPage() {
+  const { auth, capabilities } = await pageSession();
+
+  const campaigns: CampaignSummary[] = await db
+    .select({
+      id: positionTrackingCampaigns.id,
+      name: positionTrackingCampaigns.name,
+      domain: positionTrackingCampaigns.domain,
+      location: positionTrackingCampaigns.location,
+      device: positionTrackingCampaigns.device,
+      searchEngine: positionTrackingCampaigns.searchEngine,
+      status: positionTrackingCampaigns.status,
+      visibility: positionTrackingCampaigns.visibility,
+    })
+    .from(positionTrackingCampaigns)
+    .where(
+      and(
+        eq(positionTrackingCampaigns.workspaceId, auth.workspaceId),
+        isNull(positionTrackingCampaigns.deletedAt)
+      )
+    )
+    .orderBy(desc(positionTrackingCampaigns.updatedAt));
+
   return (
     <AppShell activeToolkit="seo" activeHref="/position-tracking/">
-      <AppWorkspaceTemplate data={workspaces["/position-tracking/"]} />
+      <PositionTrackingDashboard
+        campaigns={campaigns}
+        canCollect={Boolean(capabilities.create)}
+      />
     </AppShell>
   );
 }

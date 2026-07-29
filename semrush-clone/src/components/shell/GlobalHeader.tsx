@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { headerMenus, type MegaMenu, type NavLink } from "@/data/nav";
 import { burgerDataUri, logoDataUri } from "@/components/shell/icon-data";
 import type { Dictionary } from "@/i18n/dictionaries";
@@ -107,14 +107,20 @@ function CloseIcon() {
 }
 
 /** 데스크톱 메가메뉴 패널 — 항상 마운트해 두고 opacity/translate 전환 */
-function MegaPanel({ menu, open }: { menu: MegaMenu; open: boolean }) {
+function MegaPanel({
+  menu,
+  open,
+  onNavigate,
+}: {
+  menu: MegaMenu;
+  open: boolean;
+  onNavigate: () => void;
+}) {
   return (
     <div
       className={cn(
-        "absolute inset-x-0 top-full hidden transition-all duration-200 ease-in-out lg:block",
-        open
-          ? "visible translate-y-0 opacity-100"
-          : "pointer-events-none invisible -translate-y-2 opacity-0",
+        "absolute inset-x-0 top-full hidden transition-opacity duration-300 ease-in-out lg:block",
+        open ? "visible opacity-100" : "pointer-events-none invisible opacity-0",
       )}
     >
       <div className="mx-8">
@@ -138,8 +144,15 @@ function MegaPanel({ menu, open }: { menu: MegaMenu; open: boolean }) {
                       <NavAnchor
                         link={link}
                         className="block py-1.5 font-lazzer text-[16px] font-medium text-mp-off-black transition-colors duration-200 ease-in-out hover:text-mp-dark-grey"
+                        onClick={onNavigate}
                       >
                         {link.label}
+                        {isExternal(link) ? (
+                          <span aria-hidden="true" className="text-[13px]">
+                            {" "}
+                            ↗
+                          </span>
+                        ) : null}
                       </NavAnchor>
                     </li>
                   ))}
@@ -149,14 +162,41 @@ function MegaPanel({ menu, open }: { menu: MegaMenu; open: boolean }) {
             {menu.promo ? (
               <NavAnchor
                 link={{ label: menu.promo.title, href: menu.promo.href }}
-                className="block w-[280px] rounded-2xl bg-[linear-gradient(180deg,#dceeeb_0%,#eee9ff_100%)] p-6"
+                className="block w-[280px] rounded-2xl bg-[linear-gradient(180deg,#eef7ee_0%,#dceeeb_100%)] p-6"
+                onClick={onNavigate}
               >
-                <p className="font-lazzer text-[18px] font-semibold text-mp-off-black">
+                {menu.promo.eyebrow ? (
+                  <p className="font-lazzer text-[12px] font-semibold uppercase tracking-[0.12em] text-[#5a6b62]">
+                    {menu.promo.eyebrow}
+                  </p>
+                ) : null}
+                <p
+                  className={cn(
+                    "font-serif text-[24px] leading-[1.2] text-mp-off-black",
+                    menu.promo.eyebrow ? "mt-2" : "",
+                  )}
+                >
                   {menu.promo.title}
                 </p>
-                <p className="mt-2 font-lazzer text-[14px] text-mp-dark-grey">
-                  {menu.promo.description}
-                </p>
+                {menu.promo.description ? (
+                  <p className="mt-2 font-lazzer text-[14px] text-mp-dark-grey">
+                    {menu.promo.description}
+                  </p>
+                ) : null}
+                {menu.promo.buttonLabel ? (
+                  <span className="mt-5 inline-flex items-center gap-2 rounded-pill bg-mp-off-black px-5 py-2.5 font-lazzer text-[14px] font-semibold text-app-orange">
+                    {menu.promo.buttonLabel}
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <path
+                        d="m6 3 5 5-5 5"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </span>
+                ) : null}
               </NavAnchor>
             ) : null}
           </div>
@@ -174,6 +214,7 @@ export default function GlobalHeader({ dict }: { dict: Dictionary }) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerSubmenu, setDrawerSubmenu] = useState<MegaMenu | null>(null);
+  const headerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 50);
@@ -181,6 +222,26 @@ export default function GlobalHeader({ dict }: { dict: Dictionary }) {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  /* 메가메뉴는 클릭으로만 연다(영상 실측: 호버로는 열리지 않음).
+     Esc 또는 헤더 바깥 클릭 시 닫는다. */
+  useEffect(() => {
+    if (!openMenu) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpenMenu(null);
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      if (headerRef.current && !headerRef.current.contains(event.target as Node)) {
+        setOpenMenu(null);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, [openMenu]);
 
   useEffect(() => {
     document.body.style.overflow = drawerOpen ? "hidden" : "";
@@ -196,12 +257,22 @@ export default function GlobalHeader({ dict }: { dict: Dictionary }) {
 
   return (
     <header
+      ref={headerRef}
       className={cn(
         "sticky top-0 z-[500] transition-all duration-200 ease-in-out",
         scrolled ? "bg-[#eaf4f2]" : "bg-mp-mint",
       )}
       onMouseLeave={() => setOpenMenu(null)}
     >
+      {/* 열린 메가메뉴 뒤 페이지 디밍 (영상 실측) — 클릭 시 닫힘 */}
+      <div
+        aria-hidden="true"
+        onClick={() => setOpenMenu(null)}
+        className={cn(
+          "fixed inset-x-0 bottom-0 top-[84px] -z-10 hidden bg-black/30 transition-opacity duration-300 ease-in-out lg:block",
+          openMenu ? "opacity-100" : "pointer-events-none opacity-0",
+        )}
+      />
       <div className="mx-auto flex h-[84px] max-w-[1440px] items-center px-8">
         <Link href="/" className="shrink-0" aria-label={tx("Semrush homepage")}>
           <img src={logoDataUri} alt="Semrush" width={150} height={36} />
@@ -214,9 +285,14 @@ export default function GlobalHeader({ dict }: { dict: Dictionary }) {
               <button
                 key={item.menu.label}
                 type="button"
-                className={navItemClass}
+                className={cn(
+                  navItemClass,
+                  openMenu === item.menu.label && "bg-[rgba(0,0,0,0.06)]",
+                )}
                 aria-expanded={openMenu === item.menu.label}
-                onMouseEnter={() => setOpenMenu(item.menu.label)}
+                onMouseEnter={() => {
+                  if (openMenu && openMenu !== item.menu.label) setOpenMenu(null);
+                }}
                 onClick={() =>
                   setOpenMenu((cur) => (cur === item.menu.label ? null : item.menu.label))
                 }
@@ -266,7 +342,12 @@ export default function GlobalHeader({ dict }: { dict: Dictionary }) {
 
       {/* 데스크톱 메가메뉴 패널 */}
       {localizedHeaderMenus.map((menu) => (
-        <MegaPanel key={menu.label} menu={menu} open={openMenu === menu.label} />
+        <MegaPanel
+          key={menu.label}
+          menu={menu}
+          open={openMenu === menu.label}
+          onNavigate={() => setOpenMenu(null)}
+        />
       ))}
 
       {/* 모바일 전면 드로어 */}

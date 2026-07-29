@@ -1,0 +1,4 @@
+# metric_direction: higher_is_better
+iteration	checkpoint	metric	delta	guard	status	description
+0	15dede1	45.00	0.00	pass	baseline	frozen analytics contract baseline (9/20)
+1	50cf9c8	50.00	+5.00	pass	keep	ignore invalid keyword metric dates instead of treating them as 1970-01

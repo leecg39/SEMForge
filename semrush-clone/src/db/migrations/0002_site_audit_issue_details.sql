@@ -1,0 +1,1 @@
+ALTER TABLE `site_audit_issues` ADD `details` text;

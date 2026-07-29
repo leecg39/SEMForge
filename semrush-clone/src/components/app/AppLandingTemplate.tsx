@@ -1,16 +1,48 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useState, type FormEvent } from "react";
 import type { AppLandingData } from "@/types/app";
 import { useLocalizedValue } from "@/i18n/useLocalizedValue";
+import { useLocale } from "@/i18n/LocaleProvider";
 
 /**
  * APP-LANDING 템플릿: 툴킷 대시보드/온보딩 본문 (서버 컴포넌트).
  * AppShell <main> 내부 콘텐츠만 렌더 — 라우트에서 AppShell로 감쌀 것.
+ *
+ * analyzePath 가 설정된 랜딩은 입력 폼이 실제 분석 결과 페이지로 이동한다.
  */
 export function AppLandingTemplate({ data: sourceData }: { data: AppLandingData }) {
+  const router = useRouter();
+  const { locale } = useLocale();
   const data = useLocalizedValue(sourceData);
   const showInput = Boolean(data.inputLabel || data.inputPlaceholder);
+  const [value, setValue] = useState("");
+  const [inputError, setInputError] = useState<string | null>(null);
+
+  // 홈 폴더 링크 등으로 ?domain= 이 넘어오면 입력란에 미리 채운다.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const domainParam = params.get("domain");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (domainParam) setValue(domainParam);
+  }, []);
+
+  const emptyMessage =
+    locale === "ko" ? "도메인을 입력해 주세요. 예: example.com" : "Enter a domain, e.g. example.com";
+
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!data.analyzePath) return;
+    const domain = value.trim();
+    if (!domain) {
+      setInputError(emptyMessage);
+      return;
+    }
+    setInputError(null);
+    router.push(`${data.analyzePath}?domain=${encodeURIComponent(domain)}`);
+  };
 
   return (
     <div className="p-6">
@@ -22,7 +54,7 @@ export function AppLandingTemplate({ data: sourceData }: { data: AppLandingData 
         </p>
 
         {showInput && (
-          <form className="mt-6 max-w-[640px]">
+          <form className="mt-6 max-w-[640px]" onSubmit={submit} noValidate>
             {data.inputLabel && (
               <label
                 htmlFor="app-landing-input"
@@ -35,16 +67,28 @@ export function AppLandingTemplate({ data: sourceData }: { data: AppLandingData 
               <input
                 id="app-landing-input"
                 type="text"
+                value={value}
+                onChange={(event) => {
+                  setValue(event.target.value);
+                  if (inputError) setInputError(null);
+                }}
                 placeholder={data.inputPlaceholder}
+                aria-invalid={Boolean(inputError)}
+                aria-describedby={inputError ? "app-landing-input-error" : undefined}
                 className="h-[40px] min-w-[200px] flex-1 rounded-[8px] border border-app-border bg-white px-3 text-[14px] text-app-text placeholder:text-app-text-secondary focus:border-app-blue focus:outline-none"
               />
               <button
-                type="button"
+                type="submit"
                 className="h-[40px] shrink-0 rounded-[8px] bg-app-blue px-5 text-[14px] font-medium text-white transition-colors hover:bg-app-blue-dark"
               >
                 {data.submitLabel ?? "Start"}
               </button>
             </div>
+            {inputError && (
+              <p id="app-landing-input-error" role="alert" className="mt-1.5 text-[13px] text-app-red">
+                {inputError}
+              </p>
+            )}
           </form>
         )}
       </section>

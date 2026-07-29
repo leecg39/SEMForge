@@ -6,9 +6,21 @@ import { ClientApiError, api, buildListQuery, type ListMetaShape } from "@/lib/c
 import { cn } from "@/lib/utils";
 import { localizeResourceSpec, translateAppText } from "@/i18n/app";
 import { useLocale } from "@/i18n/LocaleProvider";
+import { WebsiteDomainPicker } from "@/components/crud/WebsiteDomainPicker";
 import type { BadgeTone, ColumnSpec, FieldSpec, ResourceSpec } from "@/types/crud";
 
 type Row = Record<string, unknown>;
+
+/** 리소스 섹션 제목의 컬러 이모지. */
+const RESOURCE_EMOJI: Record<string, string> = {
+  folders: "📁",
+  "site-audits": "🩺",
+  "position-tracking": "🎯",
+  "keyword-lists": "🔑",
+  "media-lists": "📇",
+  reports: "📊",
+  content: "📝",
+};
 
 const TONE_CLASS: Record<BadgeTone, string> = {
   green: "bg-[#e6f5f0] text-[#0a6b57]",
@@ -68,25 +80,52 @@ function FolderGlyph({ pinned }: { pinned: boolean }) {
   );
 }
 
-/**
- * 폴더 행의 지표 스트립.
- * 라벨과 문구는 ko.semrush.com/home/ 실측값 그대로다. 값이 외부 SEO 데이터에 의존하는 항목은
- * 원본이 이 계정에서 보여주는 것과 동일하게 `n/a` 로 둔다 (숫자를 지어내지 않는다).
- */
-const FOLDER_METRICS: {
+/** `/api/home/folder-metrics` 응답 행. */
+interface FolderMetricStrip {
+  folderId: string;
+  domain: string;
+  aiVisibility: number | null;
+  mentions: number;
+  siteHealth: number | null;
+  visibility: number | null;
+  organicTraffic: number | null;
+  organicKeywords: number | null;
+  backlinks: number | null;
+  authorityScore: number | null;
+}
+
+interface FolderMetricCell {
   label: string;
   value?: string;
   hint?: string;
   accent?: boolean;
-}[] = [
-  { label: "AI 가시성", value: "n/a" },
-  { label: "언급", value: "0", accent: true },
-  { label: "Site Health", hint: "웹사이트 문제를 확인하세요" },
-  { label: "가시성", hint: "키워드 포지션을 추적하세요" },
-  { label: "자연검색 트래픽", value: "n/a" },
-  { label: "자연 키워드", value: "n/a" },
-  { label: "백링크", value: "n/a" },
-];
+}
+
+/**
+ * 폴더 행의 지표 스트립.
+ * 라벨과 힌트 문구는 ko.semrush.com/home/ 실측값 그대로다.
+ * 캠페인 미설정(Site Health/가시성)은 원본처럼 CTA 힌트를, 분석 데이터가 없는
+ * 도메인은 원본 무료 계정과 동일하게 `n/a` 를 표시한다.
+ */
+function buildFolderMetricCells(
+  strip: FolderMetricStrip | undefined,
+  format: (value: number) => string
+): FolderMetricCell[] {
+  const metric = (value: number | null) => (value === null ? "n/a" : format(value));
+  return [
+    { label: "AI 가시성", value: metric(strip?.aiVisibility ?? null) },
+    { label: "언급", value: format(strip?.mentions ?? 0), accent: true },
+    strip?.siteHealth == null
+      ? { label: "Site Health", hint: "웹사이트 문제를 확인하세요" }
+      : { label: "Site Health", value: format(strip.siteHealth) },
+    strip?.visibility == null
+      ? { label: "가시성", hint: "키워드 포지션을 추적하세요" }
+      : { label: "가시성", value: `${format(strip.visibility)}%` },
+    { label: "자연검색 트래픽", value: metric(strip?.organicTraffic ?? null) },
+    { label: "자연 키워드", value: metric(strip?.organicKeywords ?? null) },
+    { label: "백링크", value: metric(strip?.backlinks ?? null) },
+  ];
+}
 
 function formatCell(row: Row, column: ColumnSpec, locale: "en" | "ko"): React.ReactNode {
   const value = row[column.key];
@@ -277,6 +316,14 @@ function FieldInput({
             </option>
           ))}
         </select>
+      ) : field.type === "website" ? (
+        <WebsiteDomainPicker
+          id={id}
+          value={String(value ?? "")}
+          invalid={invalid}
+          placeholder={field.placeholder}
+          onChange={onChange}
+        />
       ) : (
         <input
           id={id}
@@ -346,6 +393,17 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
   const [menuRowId, setMenuRowId] = useState<string | null>(null);
   // 원본 폴더 목록은 카드 보기가 기본이고 "테이블 보기(SEO 전용)" 스위치로 전환한다 (증거 O)
   const [tableView, setTableView] = useState(spec.view !== "folder");
+  // 폴더 지표 스트립 (/api/home/folder-metrics). 폴더 화면에서만 채운다.
+  const [folderMetrics, setFolderMetrics] = useState<Record<string, FolderMetricStrip>>({});
+
+  // 원본은 4.5K 처럼 축약 표기한다.
+  const formatMetric = useMemo(() => {
+    const formatter = new Intl.NumberFormat(locale === "ko" ? "ko-KR" : "en-US", {
+      notation: "compact",
+      maximumFractionDigits: 1,
+    });
+    return (value: number) => formatter.format(value);
+  }, [locale]);
 
   // 검색 입력은 400ms 디바운스 후 질의에 반영한다.
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -375,6 +433,23 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
       setMeta(response.meta as ListMetaShape);
       setSelected(new Set());
       setLoadError(null);
+
+      if (spec.key === "folders" && response.data.length > 0) {
+        const ids = response.data.map((row) => String(row.id)).join(",");
+        try {
+          const metricsResponse = await api.get<FolderMetricStrip[]>(
+            `/api/home/folder-metrics/?folderIds=${encodeURIComponent(ids)}`
+          );
+          setFolderMetrics(
+            Object.fromEntries(metricsResponse.data.map((strip) => [strip.folderId, strip]))
+          );
+        } catch {
+          // 지표 스트립은 보조 정보이므로 실패해도 목록은 유지하고 n/a 로 표시한다.
+          setFolderMetrics({});
+        }
+      } else {
+        setFolderMetrics({});
+      }
     } catch (caught) {
       if (caught instanceof ClientApiError) {
         setLoadError({ code: caught.code, message: caught.message });
@@ -586,6 +661,11 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                 : "text-[20px] font-semibold"
             )}
           >
+            {RESOURCE_EMOJI[spec.key] && (
+              <span aria-hidden="true" className="mr-2">
+                {RESOURCE_EMOJI[spec.key]}
+              </span>
+            )}
             {spec.title}
           </h1>
           <p className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-app-text-secondary">
@@ -871,9 +951,18 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                       />
                     )}
                     <FolderGlyph pinned={Boolean(row.pinned)} />
-                    <span className="whitespace-nowrap text-[16px] font-bold text-app-link">
-                      {String(row.name)}
-                    </span>
+                    {spec.view === "folder" ? (
+                      <Link
+                        href={`/seo/?domain=${encodeURIComponent(String(row.domain))}`}
+                        className="whitespace-nowrap text-[16px] font-bold text-app-link hover:underline"
+                      >
+                        {String(row.name)}
+                      </Link>
+                    ) : (
+                      <span className="whitespace-nowrap text-[16px] font-bold text-app-link">
+                        {String(row.name)}
+                      </span>
+                    )}
                     <span className="text-[13px] text-app-text-secondary">
                       {String(row.domain)}
                     </span>
@@ -944,7 +1033,7 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                     </div>
                   </div>
                   {/* 지표 스트립 — 원본 8열 구성을 그대로 재현.
-                      실제 SEO 데이터는 외부 의존이라 원본과 동일하게 n/a 로 표기한다. */}
+                      값은 /api/home/folder-metrics 의 워크스페이스 실측 데이터다. */}
                   <div className="grid grid-cols-[repeat(8,minmax(0,1fr))] gap-x-[8px] px-[20px] pb-[20px] pt-[8px] max-lg:flex max-lg:overflow-x-auto">
                     <div className="min-w-[110px]">
                       <Link
@@ -954,7 +1043,7 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                         SEO
                       </Link>
                     </div>
-                    {FOLDER_METRICS.map((metric) => (
+                    {buildFolderMetricCells(folderMetrics[id], formatMetric).map((metric) => (
                       <div key={metric.label} className="min-w-[110px]">
                         <p className="text-[14px] leading-[20px] text-a2-text">{tx(metric.label)}</p>
                         {metric.hint ? (

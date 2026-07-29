@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { appIcons } from "@/components/app/app-icons";
 import { AppFooter } from "@/components/crud/AppFooter";
-import { crudTools, railGroups } from "@/data/crud/nav";
+import { crudTools, railFlyouts, railGroups } from "@/data/crud/nav";
+import type { RailFlyoutGroup } from "@/data/crud/nav";
 import { api } from "@/lib/client-api";
 import { cn } from "@/lib/utils";
 import { translateAppText } from "@/i18n/app";
@@ -41,8 +42,63 @@ export function CrudShell({
   const tx = (text: string) => translateAppText(locale, text) ?? text;
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // 카테고리 호버/포커스 플라이아웃. 열림 100ms, 닫힘 150ms 지연으로 깜빡임을 막는다.
+  const [flyout, setFlyout] = useState<{ key: string; top: number } | null>(null);
+  const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function clearFlyoutTimers() {
+    if (openTimer.current) clearTimeout(openTimer.current);
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+  }
+
+  /** 트리거 상단에 맞추되, 패널이 뷰포트 아래로 밀리지 않게 위로 클램프한다. */
+  function flyoutTop(el: HTMLElement, groups: RailFlyoutGroup[]) {
+    const estimated =
+      16 + groups.reduce((h, g) => h + g.links.length * 32 + (g.heading ? 34 : 0), 0);
+    const usable = Math.min(estimated, window.innerHeight - 16);
+    return Math.min(el.getBoundingClientRect().top, Math.max(8, window.innerHeight - usable - 8));
+  }
+
+  function scheduleFlyoutOpen(key: string, el: HTMLElement) {
+    const groups = railFlyouts[key];
+    if (!groups) return;
+    clearFlyoutTimers();
+    const top = flyoutTop(el, groups);
+    openTimer.current = setTimeout(() => setFlyout({ key, top }), 100);
+  }
+
+  function scheduleFlyoutClose() {
+    clearFlyoutTimers();
+    closeTimer.current = setTimeout(() => setFlyout(null), 150);
+  }
+
+  /** 플라이아웃이 없는 카테고리 위로 올라가면 예약된 열림을 취소하고 닫는다. */
+  function cancelFlyout() {
+    if (flyout) scheduleFlyoutClose();
+    else clearFlyoutTimers();
+  }
+
+  function openFlyoutNow(key: string, el: HTMLElement) {
+    const groups = railFlyouts[key];
+    if (!groups) return;
+    clearFlyoutTimers();
+    setFlyout({ key, top: flyoutTop(el, groups) });
+  }
+
+  function closeFlyoutNow() {
+    clearFlyoutTimers();
+    setFlyout(null);
+  }
+
   const isActive = (href: string) =>
     pathname === href || (href !== "/home/" && pathname.startsWith(href));
+
+  const isSubActive = (href: string) => {
+    if (href.includes("?")) return false;
+    const strip = (v: string) => v.replace(/\/$/, "");
+    return strip(pathname) === strip(href);
+  };
 
   async function logout() {
     await api.post("/api/auth/logout/");
@@ -57,9 +113,13 @@ export function CrudShell({
     // 그래서 헤더 검색이 x=110 (레일 77 + 패딩 32) 에서 시작한다.
     <div className="flex min-h-screen flex-row bg-a2-surface text-a2-text">
       {/* 좌측 레일 — 실측 77px, 항목 64×64, y=0 부터 */}
+      {/* sticky가 스태킹 컨텍스트를 만들어 플라이아웃이 본문 positioned 요소 아래로
+          깔리는 것을 막기 위해 aside 자체에 z-index를 준다 */}
       <aside
         aria-label={tx("툴킷")}
-        className="sticky top-0 hidden h-dvh w-[var(--a2-rail-width)] shrink-0 flex-col overflow-y-auto pt-[6px] lg:flex"
+        onScroll={closeFlyoutNow}
+        onMouseLeave={scheduleFlyoutClose}
+        className="sticky top-0 z-40 hidden h-dvh w-[var(--a2-rail-width)] shrink-0 flex-col overflow-y-auto pt-[6px] lg:flex"
       >
         {railGroups.map((group, groupIndex) => (
           <div
@@ -69,28 +129,109 @@ export function CrudShell({
             {group.map((item) => {
               const Icon = appIcons[item.icon];
               const active = isActive(item.href);
+              const groups = railFlyouts[item.key];
+              const open = flyout?.key === item.key && Boolean(groups);
               return (
-                <Link
+                <div
                   key={item.key}
-                  href={item.href}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "mx-[6px] flex min-h-[64px] flex-col items-center justify-center gap-[4px] rounded-[6px] px-[4px] py-[10px] text-center",
-                    active
-                      ? "bg-a2-rail-active text-a2-text"
-                      : "text-a2-text-muted hover:bg-black/[0.04]"
-                  )}
+                  onMouseEnter={groups ? (e) => scheduleFlyoutOpen(item.key, e.currentTarget) : cancelFlyout}
+                  onMouseLeave={groups ? scheduleFlyoutClose : undefined}
+                  onFocus={groups ? (e) => openFlyoutNow(item.key, e.currentTarget) : undefined}
+                  onBlur={
+                    groups
+                      ? (e) => {
+                          const next = e.relatedTarget as Node | null;
+                          if (!next || !e.currentTarget.contains(next)) scheduleFlyoutClose();
+                        }
+                      : undefined
+                  }
+                  onKeyDown={
+                    groups
+                      ? (e) => {
+                          if (e.key === "Escape" && open) {
+                            e.stopPropagation();
+                            closeFlyoutNow();
+                            e.currentTarget.querySelector<HTMLElement>(":scope > a")?.focus();
+                          }
+                        }
+                      : undefined
+                  }
                 >
-                  {Icon && <Icon width={24} height={24} />}
-                  <span
+                  <Link
+                    href={item.href}
+                    aria-current={active ? "page" : undefined}
+                    aria-haspopup={groups ? "menu" : undefined}
+                    aria-expanded={groups ? open : undefined}
                     className={cn(
-                      "text-[12px] font-medium leading-[16px]",
-                      active ? "text-a2-text-muted" : "text-a2-text-faint"
+                      "mx-[6px] flex min-h-[64px] flex-col items-center justify-center gap-[4px] rounded-[6px] px-[4px] py-[10px] text-center",
+                      active
+                        ? "bg-a2-rail-active text-a2-text"
+                        : "text-a2-text-muted hover:bg-black/[0.04]",
+                      open && !active && "bg-black/[0.04]"
                     )}
                   >
-                    {tx(item.label)}
-                  </span>
-                </Link>
+                    {Icon && <Icon width={24} height={24} />}
+                    <span
+                      className={cn(
+                        "text-[12px] font-medium leading-[16px]",
+                        active ? "text-a2-text-muted" : "text-a2-text-faint"
+                      )}
+                    >
+                      {tx(item.label)}
+                    </span>
+                  </Link>
+
+                  {/* 플라이아웃 — aside의 overflow 클리핑을 피하려고 fixed로 띄운다 */}
+                  {open && groups && flyout && (
+                    <div
+                      className="fixed z-50 pl-[6px]"
+                      style={{ top: flyout.top, left: "var(--a2-rail-width)" }}
+                    >
+                      <div
+                        role="menu"
+                        aria-label={tx(item.label)}
+                        className="w-[240px] overflow-y-auto rounded-lg border border-black/[0.06] bg-a2-card py-2 shadow-[var(--a2-card-shadow)]"
+                        style={{ maxHeight: `calc(100dvh - ${flyout.top + 8}px)` }}
+                      >
+                        {groups.map((flyoutGroup, flyoutGroupIndex) => (
+                          <div
+                            key={flyoutGroup.heading ?? flyoutGroupIndex}
+                            className={flyoutGroupIndex > 0 ? "mt-2" : undefined}
+                          >
+                            {flyoutGroup.heading && (
+                              <p className="mb-1 px-4 pt-1 text-[11px] font-medium uppercase tracking-[0.5px] text-a2-text-faint">
+                                {tx(flyoutGroup.heading)}
+                              </p>
+                            )}
+                            <ul>
+                              {flyoutGroup.links.map((link) => {
+                                const subActive = isSubActive(link.href);
+                                return (
+                                  <li key={link.href}>
+                                    <Link
+                                      role="menuitem"
+                                      href={link.href}
+                                      aria-current={subActive ? "page" : undefined}
+                                      onClick={closeFlyoutNow}
+                                      className={cn(
+                                        "mx-2 flex h-[32px] items-center rounded-[6px] px-2 text-[13px]",
+                                        subActive
+                                          ? "bg-a2-rail-active font-medium text-a2-text"
+                                          : "text-a2-text-muted hover:bg-black/[0.04] hover:text-a2-text"
+                                      )}
+                                    >
+                                      <span className="truncate">{tx(link.label)}</span>
+                                    </Link>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>

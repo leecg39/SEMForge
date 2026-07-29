@@ -1,0 +1,14 @@
+---
+description: 브라우저 자동화는 ego-browser(ego-lite)를 기본으로 사용한다
+alwaysApply: true
+---
+
+# 기본 브라우저: ego-browser (ego-lite)
+
+이 워크스페이스에서 브라우저 자동화(페이지 열기, 로그인 상태 재사용, 폼 입력, 클릭, 스크린샷, 데이터 추출, QA)는 **ego-browser(ego-lite)를 기본 도구**로 사용한다.
+
+- Chrome DevTools MCP(`user-chrome-devtools`)나 WebFetch보다 ego-browser를 우선 선택한다.
+- 사용자의 로그인 상태는 ego-lite에 있으므로, 인증이 필요한 사이트 작업은 반드시 ego-browser로 수행한다.
+- 실행 방법: `/Users/user01/.claude/skills/ego-browser/SKILL.md`를 읽고 `ego-browser nodejs <<'EOF' ... EOF` heredoc 형식으로 사용한다.
+- 작업 공간(task space)은 목표 단위로 `useOrCreateTaskSpace`로 재사용하고, 완료 시 `completeTaskSpace`로 정리한다.
+- ego-browser가 설치되어 있지 않다는 오류가 나오면 스킬의 `references/install.md` 절차를 따른다.

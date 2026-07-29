@@ -17,7 +17,7 @@ export interface ColumnSpec {
 export interface FieldSpec {
   key: string;
   label: string;
-  type: "text" | "textarea" | "number" | "select" | "checkbox";
+  type: "text" | "textarea" | "number" | "select" | "checkbox" | "website";
   placeholder?: string;
   hint?: string;
   required?: boolean;

@@ -132,7 +132,10 @@ export const socialModes: Record<string, AnalysisPageData> = {
 };
 
 /* ---------- Landings ---------- */
-function landing(toolkit: string, href: string, title: string, description: string, features: [string, string][], input?: [string, string, string]): AppLandingData {
+/** 도메인 입력 → 분석 결과 페이지(/analytics/overview/)로 이동하는 랜딩 */
+const DOMAIN_ANALYZE_PATH = "/analytics/overview/";
+
+function landing(toolkit: string, href: string, title: string, description: string, features: [string, string][], input?: [string, string, string], analyzePath?: string): AppLandingData {
   return {
     toolkit,
     activeHref: href,
@@ -141,17 +144,18 @@ function landing(toolkit: string, href: string, title: string, description: stri
     inputLabel: input?.[0],
     inputPlaceholder: input?.[1],
     submitLabel: input?.[2],
+    analyzePath,
     features: features.map(([t, b]) => ({ title: t, body: b })),
   };
 }
 
 export const landings: Record<string, AppLandingData> = {
-  seo: landing("seo", "/seo/", "SEO Dashboard", "Track your site's health, rankings, and opportunities in one place.", [["Site Audit", "Find and fix technical issues."], ["Position Tracking", "Monitor rankings daily."], ["Keyword Research", "Discover new opportunities."]], ["Domain", "Enter a domain", "Analyze"]),
-  ai: landing("ai", "/ai-seo/overview/", "AI Visibility Overview", "Measure and grow how AI engines cite your brand.", [["Prompt Research", "See what your audience asks AI."], ["Brand Performance", "Track mentions and sentiment."], ["Growth Actions", "Prioritized steps to improve."]], ["Domain", "Enter a domain", "Analyze"]),
-  traffic: landing("traffic", "/analytics/traffic/", "Traffic & Market Dashboard", "Analyze traffic and market share for any website.", [["Traffic Analytics", "Visits, channels, and engagement."], ["Market Overview", "Size and share of your market."], ["Competitor Monitoring", "Track changes over time."]], ["Domain", "Enter a domain", "Analyze"]),
+  seo: landing("seo", "/seo/", "SEO Dashboard", "Track your site's health, rankings, and opportunities in one place.", [["Site Audit", "Find and fix technical issues."], ["Position Tracking", "Monitor rankings daily."], ["Keyword Research", "Discover new opportunities."]], ["Domain", "Enter a domain", "Analyze"], DOMAIN_ANALYZE_PATH),
+  ai: landing("ai", "/ai-seo/overview/", "AI Visibility Overview", "Measure and grow how AI engines cite your brand.", [["Prompt Research", "See what your audience asks AI."], ["Brand Performance", "Track mentions and sentiment."], ["Growth Actions", "Prioritized steps to improve."]], ["Domain", "Enter a domain", "Analyze"], DOMAIN_ANALYZE_PATH),
+  traffic: landing("traffic", "/analytics/traffic/", "Traffic & Market Dashboard", "Analyze traffic and market share for any website.", [["Traffic Analytics", "Visits, channels, and engagement."], ["Market Overview", "Size and share of your market."], ["Competitor Monitoring", "Track changes over time."]], ["Domain", "Enter a domain", "Analyze"], DOMAIN_ANALYZE_PATH),
   local: landing("local", "/local-business/", "Local Dashboard", "Manage listings, reviews, and local rankings.", [["Listing Management", "Sync your business info."], ["Review Management", "Collect and respond to reviews."], ["Map Rank Tracker", "Track local rankings."]], ["Business", "Enter a business name", "Continue"]),
   content: landing("content", "/content/", "Content Dashboard", "Plan, create, and optimize content that performs.", [["AI Article Generator", "Draft long-form content fast."], ["Content Optimizer", "Improve SEO and readability."], ["Topic Finder", "Find ideas worth writing."]]),
-  advertising: landing("advertising", "/advertising/", "Advertising Dashboard", "Research, create, and optimize your ad campaigns.", [["Ads Launch Assistant", "Build campaigns quickly."], ["Advertising Research", "Study competitor ads."], ["Ads AI Agent", "Get campaign recommendations."]], ["Domain", "Enter a domain", "Analyze"]),
+  advertising: landing("advertising", "/advertising/", "Advertising Dashboard", "Research, create, and optimize your ad campaigns.", [["Ads Launch Assistant", "Build campaigns quickly."], ["Advertising Research", "Study competitor ads."], ["Ads AI Agent", "Get campaign recommendations."]], ["Domain", "Enter a domain", "Analyze"], DOMAIN_ANALYZE_PATH),
   pr: landing("pr", "/pr-toolkit/", "AI PR Dashboard", "Find media, pitch stories, and monitor coverage.", [["Media Database", "Find the right journalists."], ["My Emails", "Send and track pitches."], ["Media Monitoring", "Track your coverage."]]),
   social: landing("social", "/social-media/", "Social Dashboard", "Publish, track, and analyze across social platforms.", [["Social Poster", "Schedule and publish posts."], ["Social Tracker", "Benchmark competitors."], ["Social Analytics", "Report on performance."]]),
   reportsSuite: landing("reports", "/my_reports/suite", "Reports", "Build branded, automated reports across every channel.", [["200+ widgets", "Mix data from every toolkit."], ["Templates", "Start from proven layouts."], ["White-label", "Add your own branding."]]),

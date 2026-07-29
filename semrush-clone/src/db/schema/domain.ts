@@ -322,6 +322,8 @@ export const siteAuditIssues = sqliteTable(
     severity: text("severity", { enum: ["error", "warning", "notice"] }).notNull(),
     title: text("title").notNull(),
     count: integer("count").notNull().default(0),
+    /** 실제 크롤에서 이슈가 발견된 페이지 URL 목록(JSON 배열, 최대 100개) */
+    details: text("details"),
     status: text("status", { enum: ["open", "ignored", "fixed"] })
       .notNull()
       .default("open"),
@@ -379,6 +381,51 @@ export const trackedKeywords = sqliteTable(
     uniqueIndex("tracked_keywords_unique")
       .on(t.campaignId, t.keyword)
       .where(sql`deleted_at IS NULL`),
+  ]
+);
+
+/** 랜딩 문구 "최대 5개 경쟁사의 순위를 같은 키워드로 비교" (O) */
+export const positionTrackingCompetitors = sqliteTable(
+  "position_tracking_competitors",
+  {
+    id: text("id").primaryKey(),
+    campaignId: text("campaign_id")
+      .notNull()
+      .references(() => positionTrackingCampaigns.id, { onDelete: "cascade" }),
+    /** 정규화된 경쟁사 도메인 (예: semrush.com) */
+    domain: text("domain").notNull(),
+    ...auditColumns,
+  },
+  (t) => [
+    uniqueIndex("position_tracking_competitors_unique")
+      .on(t.campaignId, t.domain)
+      .where(sql`deleted_at IS NULL`),
+    index("position_tracking_competitors_campaign_idx").on(t.campaignId, t.deletedAt),
+  ]
+);
+
+/**
+ * 수집 실행마다 기록하는 가시성 이력.
+ * 캠페인의 최신 값은 position_tracking_campaigns.visibility 에, 추이는 이 테이블에 보관한다.
+ */
+export const positionTrackingVisibilityHistory = sqliteTable(
+  "position_tracking_visibility_history",
+  {
+    id: text("id").primaryKey(),
+    campaignId: text("campaign_id")
+      .notNull()
+      .references(() => positionTrackingCampaigns.id, { onDelete: "cascade" }),
+    /** 수집 시점의 간이 가시성 지수 (0~100) */
+    visibility: integer("visibility").notNull(),
+    /** 해당 시점에 순위가 확인된 키워드 수 */
+    rankedCount: integer("ranked_count").notNull().default(0),
+    /** 수집 대상 키워드 수 */
+    keywordCount: integer("keyword_count").notNull().default(0),
+    source: text("source").notNull().default("talordata"),
+    capturedAt: timestampMs("captured_at").notNull(),
+  },
+  (t) => [
+    index("pt_visibility_history_campaign_idx").on(t.campaignId, t.capturedAt),
   ]
 );
 
@@ -549,3 +596,6 @@ export type Site = typeof sites.$inferSelect;
 export type Tag = typeof tags.$inferSelect;
 export type AuthEvent = typeof authEvents.$inferSelect;
 export type ApiKey = typeof apiKeys.$inferSelect;
+export type PositionTrackingCompetitor = typeof positionTrackingCompetitors.$inferSelect;
+export type PositionTrackingVisibilityPoint =
+  typeof positionTrackingVisibilityHistory.$inferSelect;

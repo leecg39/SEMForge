@@ -1,12 +1,35 @@
 import type {
+  AnalyticsIntent,
   AnalyticsRawDataset,
   DateValue,
   DomainAnalyticsReport,
+  PositionBucketKey,
   RawClickstreamEvent,
   RawKeywordMetric,
   RawLinkGraphEdge,
   RawSerpSnapshot,
 } from "@/lib/analytics/types";
+
+const POSITION_BUCKET_ORDER: readonly PositionBucketKey[] = [
+  "1-3",
+  "4-10",
+  "11-20",
+  "21-50",
+  "51-100",
+];
+
+const AUTHORITY_BUCKET_LABELS = [
+  "0-10",
+  "11-20",
+  "21-30",
+  "31-40",
+  "41-50",
+  "51-60",
+  "61-70",
+  "71-80",
+  "81-90",
+  "91-100",
+] as const;
 
 export const CTR_CURVE_V1: Readonly<Record<number, number>> = {
   1: 0.279,
@@ -313,14 +336,39 @@ export function buildDomainAnalytics(
   const scopedClicks = dataset.clickstream.filter(
     (row) => row.countryCode === countryCode && row.device === query.device,
   );
-  const availableDomains = [...new Set(scopedClicks.map((row) => normalizeDomain(row.domain)))]
-    .filter(Boolean)
-    .toSorted();
+
+  // 같은 키워드에 여러 시점의 스냅샷이 있으면 최신 capturedAt 행만 현재 지표에 사용한다.
+  // 과거 행은 trend 계산의 이력으로만 남긴다.
+  const latestCapturedAt = new Map<string, number>();
+  for (const row of scopedSerp) {
+    const key = `${row.keywordMetricId}|${row.searchEngine}`;
+    const timestamp = toTimestamp(row.capturedAt);
+    if (timestamp > (latestCapturedAt.get(key) ?? 0)) {
+      latestCapturedAt.set(key, timestamp);
+    }
+  }
+  const currentSerp = scopedSerp.filter(
+    (row) =>
+      toTimestamp(row.capturedAt) ===
+      latestCapturedAt.get(`${row.keywordMetricId}|${row.searchEngine}`),
+  );
+
+  // 조회 가능 도메인은 클릭스트림·SERP·링크 그래프 어느 원천에라도 잡힌 도메인의 합집합이다.
+  // 클릭스트림이 없는 도메인은 visits 계열 지표가 0 으로 표시된다.
+  const availableDomains = [
+    ...new Set(
+      [
+        ...scopedClicks.map((row) => normalizeDomain(row.domain)),
+        ...currentSerp.map((row) => normalizeDomain(row.domain)),
+        ...dataset.links.map((row) => normalizeDomain(row.targetDomain)),
+      ].filter(Boolean),
+    ),
+  ].toSorted();
   if (!domain || !availableDomains.includes(domain)) return null;
 
   const latestKeywords = latestKeywordRows(scopedKeywords);
   const latestKeywordIds = new Set(latestKeywords.map((row) => row.id));
-  const latestSerp = scopedSerp.filter((row) => latestKeywordIds.has(row.keywordMetricId));
+  const latestSerp = currentSerp.filter((row) => latestKeywordIds.has(row.keywordMetricId));
   const keywordById = new Map(scopedKeywords.map((row) => [row.id, row]));
   const averageVolumeByKeyword = new Map(
     latestKeywords.map((row) => [
@@ -402,6 +450,7 @@ export function buildDomainAnalytics(
           { position: target.position, volume: averageVolume },
         ]),
         url: target.url,
+        cpcCents: keyword.cpcCents,
       },
     ];
   }).toSorted((a, b) => b.trafficContribution - a.trafficContribution);
@@ -420,6 +469,7 @@ export function buildDomainAnalytics(
   const clickSummary = summarizeWeightedClickstream(currentClicks);
 
   const organicByPeriod = new Map<string, number>();
+  const keywordsByPeriod = new Map<string, number>();
   for (const keyword of scopedKeywords) {
     const target = scopedSerp.find(
       (row) =>
@@ -430,6 +480,7 @@ export function buildDomainAnalytics(
       ? estimateOrganicTraffic([{ position: target.position, volume: keyword.volume }])
       : 0;
     organicByPeriod.set(period, (organicByPeriod.get(period) ?? 0) + contribution);
+    if (target) keywordsByPeriod.set(period, (keywordsByPeriod.get(period) ?? 0) + 1);
   }
   const clicksByPeriod = new Map<string, RawClickstreamEvent[]>();
   for (const event of targetClicks) {
@@ -445,6 +496,7 @@ export function buildDomainAnalytics(
     period,
     organicTrafficEstimate: organicByPeriod.get(period) ?? 0,
     visitsEstimate: summarizeWeightedClickstream(clicksByPeriod.get(period) ?? []).visitsEstimate,
+    keywords: keywordsByPeriod.get(period) ?? 0,
   }));
 
   const channelVisits = new Map<RawClickstreamEvent["channel"], number>();
@@ -468,6 +520,147 @@ export function buildDomainAnalytics(
           : 0,
     }))
     .toSorted((a, b) => b.visitsEstimate - a.visitsEstimate);
+
+  /* ---- 도메인 개요 분포 레이어 (개요 화면의 도넛/분포 차트 입력) ---- */
+
+  // 의도 분포: 상위 키워드 기준.
+  const intentCounts = new Map<AnalyticsIntent, number>();
+  for (const row of topKeywords) {
+    intentCounts.set(row.intent, (intentCounts.get(row.intent) ?? 0) + 1);
+  }
+  const intentDistribution = [...intentCounts.entries()]
+    .map(([intent, keywords]) => ({
+      intent,
+      keywords,
+      share: topKeywords.length
+        ? Math.round((keywords / topKeywords.length) * 1000) / 10
+        : 0,
+    }))
+    .toSorted((a, b) => b.keywords - a.keywords);
+
+  // SERP 피처: 도메인이 랭킹된 최신 키워드들의 SERP 에서 피처가 관찰된 비율.
+  const rankedKeywordIds = new Set(
+    latestSerp
+      .filter((row) => normalizeDomain(row.domain) === domain)
+      .map((row) => row.keywordMetricId),
+  );
+  const featureKeywords = new Map<string, Set<string>>();
+  for (const row of latestSerp) {
+    if (!rankedKeywordIds.has(row.keywordMetricId)) continue;
+    for (const feature of parseFeatures(row)) {
+      const keywordSet = featureKeywords.get(feature) ?? new Set<string>();
+      keywordSet.add(row.keywordMetricId);
+      featureKeywords.set(feature, keywordSet);
+    }
+  }
+  const serpFeatures = [...featureKeywords.entries()]
+    .map(([feature, keywordSet]) => ({
+      feature,
+      keywords: keywordSet.size,
+      share: rankedKeywordIds.size
+        ? Math.round((keywordSet.size / rankedKeywordIds.size) * 10000) / 100
+        : 0,
+    }))
+    .toSorted((a, b) => b.share - a.share || a.feature.localeCompare(b.feature));
+
+  // 포지션 분포: 최신 스냅샷에서 도메인의 순위 버킷.
+  const positionBucketOf = (position: number): PositionBucketKey =>
+    position <= 3
+      ? "1-3"
+      : position <= 10
+        ? "4-10"
+        : position <= 20
+          ? "11-20"
+          : position <= 50
+            ? "21-50"
+            : "51-100";
+  const positionCounts = new Map<PositionBucketKey, number>();
+  for (const row of latestSerp) {
+    if (normalizeDomain(row.domain) !== domain) continue;
+    const bucket = positionBucketOf(row.position);
+    positionCounts.set(bucket, (positionCounts.get(bucket) ?? 0) + 1);
+  }
+  const positionDistribution = POSITION_BUCKET_ORDER.map((bucket) => {
+    const keywords = positionCounts.get(bucket) ?? 0;
+    return {
+      bucket,
+      keywords,
+      share: rankedKeywordIds.size
+        ? Math.round((keywords / rankedKeywordIds.size) * 1000) / 10
+        : 0,
+    };
+  });
+
+  // 브랜드/논브랜드 분할: 도메인 SLD 토큰 포함 여부의 휴리스틱.
+  const brandTokens = (domain.split(".")[0] ?? "").split(/[-_]/).filter(Boolean);
+  const isBrandedKeyword = (keyword: string) => {
+    const normalized = keyword.toLocaleLowerCase("en-US");
+    return brandTokens.some((token) => token.length >= 2 && normalized.includes(token));
+  };
+  const brandedRows = topKeywords.filter((row) => isBrandedKeyword(row.keyword));
+  const nonBrandedRows = topKeywords.filter((row) => !isBrandedKeyword(row.keyword));
+  const brandedTraffic = brandedRows.reduce((sum, row) => sum + row.trafficContribution, 0);
+  const toBrandedRow = (row: (typeof topKeywords)[number]) => ({
+    keyword: row.keyword,
+    volume: row.volume,
+    trafficContribution: row.trafficContribution,
+  });
+  const brandedSplit = {
+    totalTraffic: organicTrafficEstimate,
+    brandedTraffic,
+    brandedShare:
+      organicTrafficEstimate > 0
+        ? Math.round((brandedTraffic / organicTrafficEstimate) * 1000) / 10
+        : 0,
+    brandedKeywords: brandedRows.slice(0, 5).map(toBrandedRow),
+    nonBrandedKeywords: nonBrandedRows.slice(0, 5).map(toBrandedRow),
+  };
+
+  // 참조 도메인 권위 분포: 소스 도메인별 평균 sourceAuthority 를 10점 버킷으로.
+  const authoritySumByRefDomain = new Map<string, { sum: number; count: number }>();
+  for (const edge of targetLinks) {
+    const entry = authoritySumByRefDomain.get(edge.sourceDomain) ?? { sum: 0, count: 0 };
+    entry.sum += clampScore(edge.sourceAuthority);
+    entry.count += 1;
+    authoritySumByRefDomain.set(edge.sourceDomain, entry);
+  }
+  const authorityCounts = new Map<string, number>(
+    AUTHORITY_BUCKET_LABELS.map((label) => [label, 0]),
+  );
+  for (const { sum, count } of authoritySumByRefDomain.values()) {
+    const average = sum / count;
+    const index = Math.min(9, Math.max(0, Math.floor(Math.max(0, average - 1) / 10)));
+    const label = AUTHORITY_BUCKET_LABELS[index];
+    authorityCounts.set(label, (authorityCounts.get(label) ?? 0) + 1);
+  }
+  const refDomainsByAuthority = AUTHORITY_BUCKET_LABELS.map((bucket) => ({
+    bucket,
+    referringDomains: authorityCounts.get(bucket) ?? 0,
+  }));
+
+  // 상위 링크 페이지: targetUrl 호스트별 백링크 수와 참조 도메인 수.
+  const linkedPageMap = new Map<string, { backlinks: number; sources: Set<string> }>();
+  for (const edge of targetLinks) {
+    let host = "";
+    try {
+      host = new URL(edge.targetUrl).hostname.replace(/^www\./, "");
+    } catch {
+      continue;
+    }
+    if (!host) continue;
+    const entry = linkedPageMap.get(host) ?? { backlinks: 0, sources: new Set<string>() };
+    entry.backlinks += 1;
+    entry.sources.add(edge.sourceDomain);
+    linkedPageMap.set(host, entry);
+  }
+  const topLinkedPages = [...linkedPageMap.entries()]
+    .map(([host, entry]) => ({
+      host,
+      backlinks: entry.backlinks,
+      referringDomains: entry.sources.size,
+    }))
+    .toSorted((a, b) => b.backlinks - a.backlinks || a.host.localeCompare(b.host))
+    .slice(0, 5);
 
   const freshness = {
     keywordMetricsThrough: isoOrNull(scopedKeywords.map((row) => row.updatedAt)),
@@ -517,6 +710,12 @@ export function buildDomainAnalytics(
     },
     trend,
     topKeywords,
+    intentDistribution,
+    serpFeatures,
+    positionDistribution,
+    brandedSplit,
+    refDomainsByAuthority,
+    topLinkedPages,
     channels,
     sources: [
       {

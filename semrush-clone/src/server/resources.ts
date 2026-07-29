@@ -161,7 +161,7 @@ const tagResource: ResourceConfig = {
 
 const siteAuditResource: ResourceConfig = {
   key: "site-audits",
-  label: "사이트 감사 캠페인",
+  label: "사이트 진단 캠페인",
   table: siteAuditCampaigns,
   labelField: "name",
   searchFields: ["name", "domain"],
@@ -205,7 +205,7 @@ const siteAuditResource: ResourceConfig = {
 
 const positionTrackingResource: ResourceConfig = {
   key: "position-tracking",
-  label: "순위 추적 캠페인",
+  label: "포지션 추적 캠페인",
   table: positionTrackingCampaigns,
   labelField: "name",
   searchFields: ["name", "domain"],

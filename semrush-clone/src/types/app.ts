@@ -57,6 +57,8 @@ export interface AppLandingData {
   inputLabel?: string;
   inputPlaceholder?: string;
   submitLabel?: string;
+  /** 입력 제출 시 이동할 분석 결과 경로. 없으면 폼이 동작하지 않는다. */
+  analyzePath?: string;
   features: { title: string; body: string }[];
   quickLinks?: { label: string; href: string }[];
 }

@@ -77,12 +77,73 @@ export interface MetricEstimate {
   confidence: "high" | "medium" | "low";
 }
 
+/** 도메인 개요 — 의도별 키워드 분포 한 조각. */
+export interface IntentShare {
+  intent: AnalyticsIntent;
+  keywords: number;
+  /** 상위 키워드 중 해당 의도의 비중(%) */
+  share: number;
+}
+
+/** 도메인이 랭킹된 키워드의 SERP 에서 피처가 관찰된 비율. */
+export interface SerpFeatureShare {
+  feature: string;
+  keywords: number;
+  /** 랭킹 키워드 중 피처가 나타난 키워드 비율(%) */
+  share: number;
+}
+
+export type PositionBucketKey = "1-3" | "4-10" | "11-20" | "21-50" | "51-100";
+
+export interface PositionBucket {
+  bucket: PositionBucketKey;
+  keywords: number;
+  share: number;
+}
+
+export interface BrandedKeywordRow {
+  keyword: string;
+  volume: number;
+  trafficContribution: number;
+}
+
+/**
+ * 브랜드/논브랜드 분할.
+ * 도메인 SLD 토큰 포함 여부의 휴리스틱이므로 정확한 브랜드 사전은 아니다.
+ */
+export interface BrandedSplit {
+  totalTraffic: number;
+  brandedTraffic: number;
+  brandedShare: number;
+  brandedKeywords: BrandedKeywordRow[];
+  nonBrandedKeywords: BrandedKeywordRow[];
+}
+
+/** 참조 도메인을 소스 권위 점수 구간별로 묶은 분포. */
+export interface AuthorityBucket {
+  bucket: string;
+  referringDomains: number;
+}
+
+/** 링크 그래프에서 백링크가 가장 많이 향한 호스트(페이지 그룹). */
+export interface LinkedPageRow {
+  host: string;
+  backlinks: number;
+  referringDomains: number;
+}
+
 export interface DomainAnalyticsReport {
   query: {
     domain: string;
     countryCode: string;
     device: AnalyticsDevice;
   };
+  /**
+   * 리포트 입력 데이터의 출처.
+   * live = TalorData 실시간 수집만, demo = 시드/데모만, mixed = 둘 다.
+   * 서버 저장소 경계(getDomainAnalytics)에서 채우며 순수 계산 레이어는 건드리지 않는다.
+   */
+  provenance?: "demo" | "live" | "mixed";
   availableDomains: string[];
   metrics: {
     authorityScore: MetricEstimate;
@@ -100,6 +161,8 @@ export interface DomainAnalyticsReport {
     period: string;
     organicTrafficEstimate: number;
     visitsEstimate: number;
+    /** 해당 월에 상위 10위 안에 든 키워드 수 */
+    keywords: number;
   }>;
   topKeywords: Array<{
     keyword: string;
@@ -109,7 +172,14 @@ export interface DomainAnalyticsReport {
     difficulty: number;
     trafficContribution: number;
     url: string;
+    cpcCents: number;
   }>;
+  intentDistribution: IntentShare[];
+  serpFeatures: SerpFeatureShare[];
+  positionDistribution: PositionBucket[];
+  brandedSplit: BrandedSplit;
+  refDomainsByAuthority: AuthorityBucket[];
+  topLinkedPages: LinkedPageRow[];
   channels: Array<{
     channel: RawClickstreamEvent["channel"];
     visitsEstimate: number;

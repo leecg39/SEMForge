@@ -1,68 +1,123 @@
 @import "tailwindcss";
 
 /* ============================================================
-   Semrush 마케팅 디자인 토큰 (www.semrush.com :root 추출값)
+   아우레아 디자인 토큰 (DESIGN.md 명세)
+   content-first 토큰 기반 디자인 시스템 — WCAG 2.2 AA
    ============================================================ */
 :root {
-  --mp-white: #fff;
-  --mp-off-black: #181e15;
+  /* 아우레아 시맨틱 팔레트 */
+  --aurea-text-primary: #09090b;
+  --aurea-text-secondary: #52525b;
+  --aurea-text-tertiary: #71717a;
+  --aurea-surface-muted: #ffffff;
+  --aurea-surface-base: #000000;
+  --aurea-surface-strong: #f4f4f5;
+  --aurea-border-default: #ececee;
+  --aurea-border-muted: #2c2e34;
+  --aurea-focus-ring: oklab(0.140764 0.00120224 -0.00421676 / 0.5);
+
+  /* 아우레아 타이포 (base 16px/400/24px) */
+  --aurea-font-stack: pretendard, "pretendard Fallback", Cosmica, "DM Sans",
+    "Pretendard Variable", Pretendard, ui-sans-serif, system-ui, sans-serif;
+  --aurea-text-xs: 13px;
+  --aurea-text-sm: 14px;
+  --aurea-text-md: 15px;
+  --aurea-text-lg: 16px;
+  --aurea-text-xl: 18px;
+  --aurea-text-2xl: 20px;
+  --aurea-text-3xl: 32px;
+  --aurea-text-4xl: 40px;
+
+  /* 아우레아 간격 스케일 */
+  --aurea-space-1: 4px;
+  --aurea-space-2: 8px;
+  --aurea-space-3: 12px;
+  --aurea-space-4: 16px;
+  --aurea-space-5: 20px;
+  --aurea-space-6: 28px;
+
+  /* 아우레아 반경 스케일 (xl = pill, 명세 추출값 37282700px) */
+  --aurea-radius-xs: 12px;
+  --aurea-radius-sm: 14px;
+  --aurea-radius-md: 24px;
+  --aurea-radius-lg: 36px;
+  --aurea-radius-xl: 9999px;
+
+  /* 아우레아 그림자 (shadow.1 = 없음, shadow.2 = 어두운 테두리 카드, shadow.3 = 소프트 드롭) */
+  --aurea-shadow-1: 0 0 0 0 rgba(0, 0, 0, 0);
+  --aurea-shadow-2:
+    rgba(255, 255, 255, 0.5) 0px 0.5px 0px 0px inset,
+    rgba(117, 123, 133, 0.4) 0px 9px 14px -5px inset,
+    rgb(44, 46, 52) 0px 0px 0px 1.5px,
+    rgba(0, 0, 0, 0.14) 0px 4px 6px 0px;
+  --aurea-shadow-3: rgba(0, 0, 0, 0.12) 0px 4px 12px 0px;
+
+  /* 아우레아 모션 */
+  --aurea-motion-instant: 150ms;
+  --aurea-motion-fast: 200ms;
+
+  /* ============================================================
+     기존 Semrush 토큰 → 아우레아 재매핑
+     (컴포넌트 클래스 변경 없이 값만 아우레아 스케일로 치환.
+      아우레아 팔레트에 대응이 없는 브랜드/기능 accent 색은 유지)
+     ============================================================ */
+  --mp-white: var(--aurea-surface-muted);
+  --mp-off-black: var(--aurea-text-primary);
   --mp-lavendar: #c190ff;
   --mp-lavendar-hover: #b072ff;
   --mp-mint: #dceeeb;
   --mp-light-mint: #f7fbfa;
-  --mp-dark-grey: #6c6e79;
-  --mp-medium-grey: #d1d2d5;
-  --mp-light-grey: #f0f1f2;
-  --mp-off-white: #f3f6f6;
+  --mp-dark-grey: var(--aurea-text-secondary);
+  --mp-medium-grey: var(--aurea-border-default);
+  --mp-light-grey: var(--aurea-surface-strong);
+  --mp-off-white: var(--aurea-surface-strong);
   --mp-aqua: #18f0bf;
   --mp-lime: #89ff75;
   --mp-product-gradient: linear-gradient(180deg, #dceeeb 0%, #eee9ff 100%);
   --mp-hero-gradient: linear-gradient(180deg, #dceeeb 0%, #e8e1ff 75%, #fff 100%);
-  --mp-focus-color: #008ff87f;
+  --mp-focus-color: var(--aurea-focus-ring);
   --mp-focus-color-invert: rgba(255, 255, 255, 0.7);
-  --mp-focus-border: #006dca;
+  --mp-focus-border: var(--aurea-border-muted);
   --mp-vertical-padding: 120px;
   --mp-grid-margin: 32px;
-  --mp-transition-duration: 200ms;
+  --mp-transition-duration: var(--aurea-motion-fast);
   --mp-transition-easing: ease-in-out;
-  --mp-border-radius: 100px;
-  --mp-shadow-glass: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
+  --mp-border-radius: var(--aurea-radius-xl);
+  --mp-shadow-glass: var(--aurea-shadow-3);
   --mp-section-margin-top: 60px;
   --mp-button-height: 60px;
   --mp-max-container-width: 1440px;
 
-  /* 로그인 앱(Intergalactic 계열) 기본 토큰 — 앱 셸 추출 후 보정 */
+  /* 로그인 앱(Intergalactic 계열) 기본 토큰 — 아우레아 뉴트럴로 재매핑 */
   --app-blue: #008ff8;
   --app-blue-dark: #006dca;
-  --app-text: #191b23;
-  --app-text-secondary: #6c6e79;
-  --app-border: #e0e1e9;
-  --app-bg: #f4f5f9;
+  --app-text: var(--aurea-text-primary);
+  --app-text-secondary: var(--aurea-text-secondary);
+  --app-border: var(--aurea-border-default);
+  --app-bg: var(--aurea-surface-strong);
   --app-green: #009f81;
   --app-red: #d1002f;
   --app-orange: #ff642d;
   --app-purple: #8649e1;
   --app-yellow: #fdc23c;
-  /* 2026-07-28 실측: 로그인 앱의 링크/강조 색은 #235FE2 (기존 --app-blue 와 다름) */
   --app-link: #235fe2;
   --app-link-soft: #eaf0fd;
 
-  /* ko.semrush.com/home/ 실측 토큰 (getComputedStyle 기준, 1440px)
-     docs/research/ko.semrush.com/PAGE_TOPOLOGY.md 참조 */
-  --a2-surface: rgb(244, 245, 245); /* 헤더·본문·푸터 배경 */
-  --a2-card: rgb(255, 255, 255);
-  --a2-text: rgba(1, 5, 0, 0.898); /* 기본 텍스트 */
-  --a2-text-muted: rgba(0, 3, 0, 0.584); /* 보조 텍스트·비활성 레일 */
-  --a2-text-faint: rgba(0, 4, 1, 0.525); /* 레일 라벨 */
-  --a2-value-muted: oklch(0.088 0.026 147.7 / 0.583); /* 지표 n/a */
-  --a2-accent-purple: oklch(0.53 0.157 279.2); /* 언급 값 */
-  --a2-rail-active: rgb(227, 227, 227);
+  /* ko.semrush.com/home/ 계열 토큰 — 아우레아 뉴트럴로 재매핑 */
+  --a2-surface: var(--aurea-surface-strong);
+  --a2-card: var(--aurea-surface-muted);
+  --a2-text: var(--aurea-text-primary);
+  --a2-text-muted: var(--aurea-text-secondary);
+  --a2-text-faint: var(--aurea-text-tertiary);
+  --a2-value-muted: var(--aurea-text-tertiary);
+  --a2-accent-purple: oklch(0.53 0.157 279.2);
+  --a2-rail-active: var(--aurea-border-default);
   --a2-btn-bg: rgba(0, 22, 16, 0.027);
   --a2-btn-border: rgba(0, 12, 8, 0.16);
-  --a2-card-shadow: 0 0 1px 0 rgba(0, 21, 16, 0.07), 0 1px 3px 0 rgba(0, 21, 16, 0.07);
-  --a2-tooltip-bg: rgb(26, 30, 26);
+  --a2-card-shadow: var(--aurea-shadow-2);
+  --a2-tooltip-bg: var(--aurea-border-muted);
   --a2-tooltip-fg: rgba(254, 255, 255, 0.95);
-  --a2-footer-text: rgb(108, 110, 121);
+  --a2-footer-text: var(--aurea-text-tertiary);
   --a2-cta-green: rgb(0, 170, 125);
   --a2-cta-outline-bg: rgba(138, 142, 155, 0.1);
   --a2-cta-outline-border: rgb(196, 199, 207);
@@ -71,7 +126,7 @@
 }
 
 @theme inline {
-  /* 컬러 유틸리티 매핑 (bg-mp-mint, text-mp-off-black 등) */
+  /* 컬러 유틸리티 매핑 (bg-mp-mint, text-app-text 등) */
   --color-mp-white: var(--mp-white);
   --color-mp-off-black: var(--mp-off-black);
   --color-mp-lavendar: var(--mp-lavendar);
@@ -114,20 +169,65 @@
   --color-a2-cta-outline-bg: var(--a2-cta-outline-bg);
   --color-a2-cta-outline-border: var(--a2-cta-outline-border);
 
-  /* 폰트 패밀리 (layout.tsx next/font 변수와 연결) */
-  --font-lazzer: var(--font-lazzer), Inter, sans-serif;
-  --font-factor-a: var(--font-factor-a), var(--font-lazzer), sans-serif;
-  --font-inter: var(--font-inter), system-ui, sans-serif;
+  /* 아우레아 시맨틱 컬러 유틸리티 (text-aurea-primary, bg-aurea-strong 등) */
+  --color-aurea-primary: var(--aurea-text-primary);
+  --color-aurea-secondary: var(--aurea-text-secondary);
+  --color-aurea-tertiary: var(--aurea-text-tertiary);
+  --color-aurea-muted: var(--aurea-surface-muted);
+  --color-aurea-base: var(--aurea-surface-base);
+  --color-aurea-strong: var(--aurea-surface-strong);
+  --color-aurea-border: var(--aurea-border-default);
+  --color-aurea-border-muted: var(--aurea-border-muted);
 
-  --shadow-glass: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
-  --radius-pill: 100px;
+  /* 아우레아 타이포 스케일 — text-* 유틸 재정의 (xs 13 ~ 4xl 40) */
+  --text-xs: var(--aurea-text-xs);
+  --text-sm: var(--aurea-text-sm);
+  --text-base: var(--aurea-text-md);
+  --text-lg: var(--aurea-text-lg);
+  --text-xl: var(--aurea-text-xl);
+  --text-2xl: var(--aurea-text-2xl);
+  --text-3xl: var(--aurea-text-3xl);
+  --text-4xl: var(--aurea-text-4xl);
+
+  /* 아우레아 반경 스케일 — rounded-* 유틸 재정의 */
+  --radius-xs: var(--aurea-radius-xs);
+  --radius-sm: var(--aurea-radius-sm);
+  --radius-md: var(--aurea-radius-md);
+  --radius-lg: var(--aurea-radius-lg);
+  --radius-xl: var(--aurea-radius-xl);
+  --radius-2xl: var(--aurea-radius-xl);
+  --radius-3xl: var(--aurea-radius-xl);
+
+  /* 아우레아 그림자 — shadow-* 유틸 재정의 */
+  --shadow-sm: var(--aurea-shadow-2);
+  --shadow-md: var(--aurea-shadow-2);
+  --shadow-lg: var(--aurea-shadow-3);
+  --shadow-xl: var(--aurea-shadow-3);
+
+  /* 폰트 패밀리: 아우레아 스택이 기본, layout.tsx next/font 변수는 유지 */
+  --font-sans: var(--aurea-font-stack);
+  --font-lazzer: var(--font-lazzer), var(--aurea-font-stack);
+  --font-factor-a: var(--font-factor-a), var(--font-lazzer), var(--aurea-font-stack);
+  --font-inter: var(--font-inter), var(--aurea-font-stack);
+
+  --shadow-glass: var(--aurea-shadow-3);
+  --radius-pill: var(--aurea-radius-xl);
 }
 
 body {
-  background: var(--mp-white);
-  color: var(--mp-off-black);
-  font-family: var(--font-inter), Inter, sans-serif;
+  background: var(--aurea-surface-muted);
+  color: var(--aurea-text-primary);
+  font-family: var(--aurea-font-stack);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 24px;
   -webkit-font-smoothing: antialiased;
+}
+
+/* 아우레아 포커스 링 — WCAG 2.2 AA focus-visible 필수 */
+:focus-visible {
+  outline: 2px solid var(--aurea-focus-ring);
+  outline-offset: 2px;
 }
 
 /* 마케팅 페이지 공통 패턴 */

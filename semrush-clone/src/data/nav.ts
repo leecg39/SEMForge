@@ -15,8 +15,10 @@ export interface MegaMenuGroup {
 }
 
 export interface MegaMenuPromo {
+  eyebrow?: string;
   title: string;
-  description: string;
+  description?: string;
+  buttonLabel?: string;
   href: string;
 }
 
@@ -77,9 +79,9 @@ export const productMenu: MegaMenu = {
     },
   ],
   promo: {
-    title: "Connect Semrush MCP to AI",
-    description:
-      "The world's most powerful traffic, visibility, and market dataset. Inside your AI assistants.",
+    eyebrow: "Data-driven strategies",
+    title: "Turn data into direction",
+    buttonLabel: "Start free now",
     href: "/signup/",
   },
 };

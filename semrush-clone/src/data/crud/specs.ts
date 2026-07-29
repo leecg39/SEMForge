@@ -40,7 +40,8 @@ export const folderSpec: ResourceSpec = {
     {
       key: "domain",
       label: "웹사이트",
-      type: "text",
+      // 원본 생성 다이얼로그의 "웹사이트 추가" 드롭다운 (기존 선택 또는 신규 입력)
+      type: "website",
       placeholder: "도메인 또는 서브도메인 입력",
       hint: "웹사이트가 없다면 경쟁자를 추가하세요",
       required: true,
@@ -78,7 +79,7 @@ export const folderSpec: ResourceSpec = {
 
 export const siteAuditSpec: ResourceSpec = {
   key: "site-audits",
-  title: "사이트 감사",
+  title: "사이트 진단",
   label: "캠페인",
   evidence: "P",
   evidenceNote:
@@ -190,7 +191,7 @@ export const siteAuditSpec: ResourceSpec = {
 
 export const positionTrackingSpec: ResourceSpec = {
   key: "position-tracking",
-  title: "순위 추적",
+  title: "포지션 추적",
   label: "캠페인",
   evidence: "P",
   evidenceNote:
