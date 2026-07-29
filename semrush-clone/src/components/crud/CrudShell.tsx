@@ -243,7 +243,7 @@ export function CrudShell({
       <header className="flex h-[53px] shrink-0 items-center bg-a2-surface px-[16px] lg:px-[32px]">
         {/* 원본 실측: 검색 폭 515px, 높이 30px */}
         <form
-          className="flex h-[30px] w-full shrink-0 items-center rounded-[6px] bg-white lg:w-[515px]"
+          className="flex h-[30px] w-full min-w-0 items-center rounded-[6px] bg-white lg:w-[515px] lg:shrink-0"
           onSubmit={(e) => {
             e.preventDefault();
             const q = String(new FormData(e.currentTarget).get("q") ?? "").trim();
@@ -269,13 +269,13 @@ export function CrudShell({
         <div className="ml-auto flex shrink-0 items-center">
           <Link
             href="/pricing/"
-            className="rounded-[6px] px-[12px] py-[9px] text-[14px] text-a2-text hover:bg-black/5"
+            className="hidden rounded-[6px] px-[12px] py-[9px] text-[14px] text-a2-text hover:bg-black/5 lg:block"
           >
             {tx("가격 책정")}
           </Link>
           <Link
             href="/enterprise/"
-            className="rounded-[6px] px-[12px] py-[9px] text-[14px] text-a2-text hover:bg-black/5"
+            className="hidden rounded-[6px] px-[12px] py-[9px] text-[14px] text-a2-text hover:bg-black/5 lg:block"
           >
             {tx("엔터프라이즈")}
           </Link>
