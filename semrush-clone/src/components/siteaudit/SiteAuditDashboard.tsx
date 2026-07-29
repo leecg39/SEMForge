@@ -352,6 +352,25 @@ const COPY = {
 
 type Copy = (typeof COPY)[keyof typeof COPY];
 
+/**
+ * 크롤러(crawl.ts)가 DB에 저장하는 이슈 제목은 한국어 원문이다.
+ * 데이터 자체는 유지하고, en 로케일 렌더 시에만 영어로 매핑한다.
+ */
+const ISSUE_TITLE_EN: Record<string, string> = {
+  "4xx 상태 코드를 반환하는 페이지": "Pages returning a 4xx status code",
+  "5xx 상태 코드를 반환하는 페이지": "Pages returning a 5xx status code",
+  "제목 태그가 없는 페이지": "Pages with missing title tags",
+  "제목 태그가 중복된 페이지": "Pages with duplicate title tags",
+  "메타 설명이 없는 페이지": "Pages with missing meta descriptions",
+  "메타 설명이 중복된 페이지": "Pages with duplicate meta descriptions",
+  "이미지에 대체 텍스트 없음": "Images with missing alt text",
+  "내부 링크가 1개뿐인 페이지": "Pages with only one internal link",
+};
+
+function localizeIssueTitle(title: string, locale: "ko" | "en"): string {
+  return locale === "en" ? (ISSUE_TITLE_EN[title] ?? title) : title;
+}
+
 const SEVERITY_STYLE = {
   error: { dot: "#e01b4b", chip: "bg-[#fdecef] text-[#a4002a]" },
   warning: { dot: "#f5a623", chip: "bg-[#fff6e5] text-[#8a5a00]" },
@@ -1160,7 +1179,7 @@ export function SiteAuditDashboard({
                                               }}
                                             />
                                             <span className="min-w-0 flex-1 truncate">
-                                              {issue.title}
+                                              {localizeIssueTitle(issue.title, locale)}
                                             </span>
                                             <span className="shrink-0 font-medium">
                                               {issue.count}
@@ -1275,6 +1294,7 @@ export function SiteAuditDashboard({
                                 )
                               }
                               copy={copy}
+                              locale={locale}
                             />
                           ))}
                       </tbody>
@@ -1646,11 +1666,13 @@ function FragmentIssueRow({
   expanded,
   onToggle,
   copy,
+  locale,
 }: {
   issue: IssueRow;
   expanded: boolean;
   onToggle: () => void;
   copy: Copy;
+  locale: "ko" | "en";
 }) {
   const style = SEVERITY_STYLE[issue.severity];
   return (
@@ -1668,7 +1690,9 @@ function FragmentIssueRow({
               )}
               style={{ backgroundColor: style.dot }}
             />
-            <span className="font-medium text-app-text">{issue.title}</span>
+            <span className="font-medium text-app-text">
+              {localizeIssueTitle(issue.title, locale)}
+            </span>
             {issue.pages.length > 0 && (
               <span className="text-[11px] text-app-text-secondary">
                 {expanded ? "▾" : "▸"}

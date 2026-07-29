@@ -91,6 +91,12 @@ const KO_TO_EN: Record<string, string> = {
   "비즈니스명": "Business name",
   "비즈니스 이름 입력": "Enter a business name",
   웹사이트: "Website",
+  "웹사이트 추가": "Add website",
+  "모든 웹사이트": "All websites",
+  "트래픽 및 시장": "Traffic & Market",
+  "모든 웹사이트의 트래픽과 시장 점유율을 분석하세요.":
+    "Analyze traffic and market share for any website.",
+  "왼쪽으로 스크롤": "Scroll left",
   "도메인 또는 서브도메인 입력": "Enter a domain or subdomain",
   "웹사이트가 없다면 경쟁자를 추가하세요": "If you do not have a website, add a competitor.",
   생성: "Created",

@@ -111,7 +111,9 @@ export function WebsiteDomainPicker({
           <span className="truncate text-app-text-secondary">{tx("웹사이트 추가")}</span>
         )}
         <span className="ml-auto shrink-0 text-[12px] text-app-text-secondary">
-          {tx(`(${remaining}개의 무료 웹사이트 남음)`)}
+          {locale === "en"
+            ? `(${remaining} free websites left)`
+            : `(${remaining}개의 무료 웹사이트 남음)`}
         </span>
         <span aria-hidden="true" className="shrink-0 text-[12px] text-app-text-secondary">
           {open ? "⌃" : "⌄"}
