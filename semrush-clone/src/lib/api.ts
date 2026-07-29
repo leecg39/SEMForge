@@ -1,4 +1,9 @@
-import { ZodError, type ZodType } from "zod";
+import { z, ZodError, type ZodType } from "zod";
+
+// 서버 메시지는 한국어 우선 정책이므로 zod 필드 오류도 한국어로 통일한다.
+// (기본값은 영어 원문 그대로라 "Invalid input: expected string…" 같은
+// 개발자용 문구가 폼 인라인 오류로 노출됐다)
+z.config(z.locales.ko());
 
 /**
  * API 응답 봉투와 오류 코드 체계.
