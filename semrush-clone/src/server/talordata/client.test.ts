@@ -38,6 +38,46 @@ function successfulResponse(): Response {
   });
 }
 
+test("공식 POST/form 요청 계약과 Bearer 인증을 사용한다", async () => {
+  let capturedUrl = "";
+  let capturedInit: RequestInit | undefined;
+  const fetchImpl: typeof fetch = async (input, init) => {
+    capturedUrl = String(input);
+    capturedInit = init;
+    return successfulResponse();
+  };
+
+  await fetchSerp(
+    {
+      q: "피자 맛집",
+      engine: "google",
+      num: 20,
+      gl: "KR",
+      hl: "KO",
+      device: "mobile",
+    },
+    { fetchImpl }
+  );
+
+  assert.equal(capturedUrl, "https://serpapi.talordata.net/serp/v1/request");
+  assert.equal(capturedInit?.method, "POST");
+  assert.deepEqual(capturedInit?.headers, {
+    Accept: "application/json",
+    Authorization: "Bearer test-token",
+    "Content-Type": "application/x-www-form-urlencoded",
+  });
+  assert.ok(capturedInit?.body instanceof URLSearchParams);
+  assert.deepEqual(Object.fromEntries(capturedInit.body), {
+    engine: "google",
+    q: "피자 맛집",
+    num: "20",
+    gl: "kr",
+    hl: "ko",
+    device: "mobile",
+    json: "1",
+  });
+});
+
 test("일시적인 Collection failed 응답 뒤 성공하면 재시도 결과를 반환한다", async () => {
   let calls = 0;
   const delays: number[] = [];

@@ -43,6 +43,7 @@ interface RunReport {
   sourceNote?: string;
   crawlEngine?: "firecrawl" | "self";
   firecrawl?: { mappedUrls: number; scrapeFailures: number };
+  linkGraph?: { edges: number; targetDomains: number };
   totals: { errors: number; warnings: number; notices: number };
 }
 
@@ -66,6 +67,8 @@ const COPY = {
     engineSelf: "자체 크롤러",
     mappedUrls: (count: number) => `매핑 URL ${count}개`,
     scrapeFailed: (count: number) => `수집 실패 ${count}개`,
+    linkEdges: (edges: number, domains: number) =>
+      `외부 링크 엣지 ${edges}개 적재 (대상 도메인 ${domains}개)`,
     lastRun: "마지막 크롤",
     issues: "이슈",
     errors: "Errors",
@@ -127,6 +130,8 @@ const COPY = {
     engineSelf: "Built-in crawler",
     mappedUrls: (count: number) => `${count} mapped URLs`,
     scrapeFailed: (count: number) => `${count} scrapes failed`,
+    linkEdges: (edges: number, domains: number) =>
+      `${edges} outbound link edges stored (${domains} target domains)`,
     lastRun: "Last crawl",
     issues: "Issues",
     errors: "Errors",
@@ -548,6 +553,9 @@ export function SiteAuditDashboard({
                   report!.firecrawl &&
                   report!.firecrawl.scrapeFailures > 0
                     ? ` · ${copy.scrapeFailed(report!.firecrawl.scrapeFailures)}`
+                    : ""}
+                  {report!.linkGraph && report!.linkGraph.edges > 0
+                    ? ` · ${copy.linkEdges(report!.linkGraph.edges, report!.linkGraph.targetDomains)}`
                     : ""}
                   {report!.sourceNote ? ` · ${report!.sourceNote}` : ""}
                 </>

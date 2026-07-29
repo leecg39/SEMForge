@@ -294,6 +294,154 @@ export function normalizeDomain(input: string): string {
   }
 }
 
+/** collect.ts 의 normalizeKeyword 와 같은 규칙 (공백 정리 + 소문자). */
+function normalizeKeywordText(keyword: string): string {
+  return keyword.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+export interface KeywordOverviewMetrics {
+  /** 최근 12개월 평균 검색량. 관측이 없으면 0. */
+  volume: number;
+  volumeMonthsUsed: number;
+  intent: AnalyticsIntent | null;
+  cpcCents: number | null;
+  /** clone-kd-v1 키워드 난이도 (0~100). */
+  difficulty: number;
+  /** 현재 SERP 도메인별 링크/권위 프로필. */
+  domainStats: Map<
+    string,
+    { authorityScore: number; backlinks: number; referringDomains: number }
+  >;
+}
+
+/**
+ * 단일 키워드 관점의 파생 지표.
+ * buildDomainAnalytics 와 같은 원천(키워드 메타 + SERP 스냅샷 + 링크 그래프)과
+ * 같은 모델(clone-authority-v1, clone-kd-v1)을 사용하되, 방금 수집한 현재
+ * SERP(results)를 입력으로 받아 그 상위 도메인들의 난이도를 계산한다.
+ */
+export function buildKeywordOverviewMetrics(
+  dataset: AnalyticsRawDataset,
+  query: {
+    keyword: string;
+    countryCode: string;
+    device: "desktop" | "mobile";
+    serpFeatureCount: number;
+    /** 현재 SERP 의 (position, domain) 목록. 순서/순위 기준으로 상위 10개만 사용. */
+    results: readonly { position: number; domain: string }[];
+  },
+): KeywordOverviewMetrics {
+  const countryCode = query.countryCode.toUpperCase();
+  const normalizedKeyword = normalizeKeywordText(query.keyword);
+  const scopedKeywords = dataset.keywords.filter(
+    (row) => row.countryCode === countryCode && row.device === query.device,
+  );
+
+  /* 검색량·의도: 같은 키워드의 월별 메타에서 12개월 평균을 만든다. */
+  const keywordRows = scopedKeywords.filter(
+    (row) => row.normalizedKeyword === normalizedKeyword,
+  );
+  const rolling = rollingAverageVolume(keywordRows);
+  const latestRow = keywordRows.toSorted(
+    (a, b) => toTimestamp(b.periodStart) - toTimestamp(a.periodStart),
+  )[0];
+
+  /* 도메인 권위 컨텍스트: buildDomainAnalytics 와 동일한 최신 스냅샷 스코프. */
+  const scopedKeywordIds = new Set(scopedKeywords.map((row) => row.id));
+  const scopedSerp = dataset.serp.filter(
+    (row) =>
+      scopedKeywordIds.has(row.keywordMetricId) &&
+      row.searchEngine === "google" &&
+      !row.isAd,
+  );
+  const latestCapturedAt = new Map<string, number>();
+  for (const row of scopedSerp) {
+    const timestamp = toTimestamp(row.capturedAt);
+    if (timestamp > (latestCapturedAt.get(row.keywordMetricId) ?? 0)) {
+      latestCapturedAt.set(row.keywordMetricId, timestamp);
+    }
+  }
+  const currentSerp = scopedSerp.filter(
+    (row) => toTimestamp(row.capturedAt) === latestCapturedAt.get(row.keywordMetricId),
+  );
+
+  const keywordById = new Map(scopedKeywords.map((row) => [row.id, row]));
+  const linksByTarget = new Map<string, RawLinkGraphEdge[]>();
+  for (const edge of dataset.links) {
+    const target = normalizeDomain(edge.targetDomain);
+    const list = linksByTarget.get(target) ?? [];
+    list.push(edge);
+    linksByTarget.set(target, list);
+  }
+  const linkProfileByDomain = new Map<string, LinkProfile>();
+  const linkProfile = (target: string) => {
+    if (!linkProfileByDomain.has(target)) {
+      linkProfileByDomain.set(target, calculateLinkProfile(linksByTarget.get(target) ?? []));
+    }
+    return linkProfileByDomain.get(target)!;
+  };
+
+  const organicByDomain = new Map<string, number>();
+  for (const row of currentSerp) {
+    const keyword = keywordById.get(row.keywordMetricId);
+    if (!keyword) continue;
+    const normalized = normalizeDomain(row.domain);
+    organicByDomain.set(
+      normalized,
+      (organicByDomain.get(normalized) ?? 0) + keyword.volume * ctrForPosition(row.position),
+    );
+  }
+  const domainAuthority = (target: string) => {
+    const profile = linkProfile(target);
+    return calculateAuthorityScore({
+      linkPower: profile.linkPower,
+      organicTrafficEstimate: organicByDomain.get(target) ?? 0,
+      spamScore: profile.spamScore,
+    });
+  };
+
+  /* 현재 SERP 상위 10개 도메인의 프로필로 KD 를 계산한다. */
+  const top10 = query.results
+    .toSorted((a, b) => a.position - b.position)
+    .slice(0, 10)
+    .map((row) => normalizeDomain(row.domain) || row.domain);
+  const profiles = top10.map((domain) => linkProfile(domain));
+  const volume = rolling.value ?? latestRow?.volume ?? 0;
+  const intent = latestRow?.intent ?? null;
+  const difficulty = calculateKeywordDifficulty({
+    top10AuthorityScores: top10.map((domain) => domainAuthority(domain)),
+    volume,
+    medianReferringDomains: median(profiles.map((profile) => profile.referringDomains)),
+    followShare: median(profiles.map((profile) => profile.followShare)),
+    serpFeatureCount: query.serpFeatureCount,
+    isBranded: intent === "navigational",
+  });
+
+  const domainStats = new Map<
+    string,
+    { authorityScore: number; backlinks: number; referringDomains: number }
+  >();
+  for (const domain of new Set(
+    query.results.map((row) => normalizeDomain(row.domain) || row.domain),
+  )) {
+    const profile = linkProfile(domain);
+    domainStats.set(domain, {
+      authorityScore: domainAuthority(domain),
+      backlinks: profile.backlinks,
+      referringDomains: profile.referringDomains,
+    });
+  }
+
+  return {
+    volume,
+    volumeMonthsUsed: rolling.monthsUsed,
+    intent,
+    cpcCents: latestRow?.cpcCents ?? null,
+    difficulty,
+    domainStats,
+  };
+}
+
 function latestKeywordRows(rows: readonly RawKeywordMetric[]): RawKeywordMetric[] {
   const byKeyword = new Map<string, RawKeywordMetric>();
   for (const row of rows) {

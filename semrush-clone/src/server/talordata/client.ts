@@ -151,6 +151,10 @@ function defaultSleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 async function requestOnce(input: {
   token: string;
   body: URLSearchParams;
@@ -205,9 +209,9 @@ async function requestOnce(input: {
     throw new ApiError("INTERNAL", `SERP 제공사가 HTTP ${response.status} 를 반환했습니다.`);
   }
 
-  let payload: Record<string, unknown>;
+  let rawPayload: unknown;
   try {
-    payload = (await response.json()) as Record<string, unknown>;
+    rawPayload = await response.json();
   } catch (error) {
     throw new RetryableTalordataError(
       "SERP 제공사가 올바른 JSON 응답을 반환하지 않았습니다.",
@@ -215,15 +219,31 @@ async function requestOnce(input: {
       error instanceof Error ? error.message : String(error)
     );
   }
+  if (!isRecord(rawPayload)) {
+    throw new RetryableTalordataError(
+      "SERP 제공사가 객체 형태의 JSON 응답을 반환하지 않았습니다.",
+      "invalid-response"
+    );
+  }
+  const payload = rawPayload;
 
   // 실제 응답 봉투: { code, data: {...}, task_id } — SERP 데이터는 data 아래에 있다.
-  const data = (payload.data ?? payload) as Record<string, unknown>;
-  const metadata = data.search_metadata as TalordataMetadata | undefined;
+  const data = isRecord(payload.data) ? payload.data : payload;
+  const metadata = isRecord(data.search_metadata)
+    ? (data.search_metadata as TalordataMetadata)
+    : undefined;
   const message = providerMessage(payload, data, metadata);
-  const responseCode =
-    payload.code === undefined || payload.code === null ? 0 : Number(payload.code);
+  const hasResponseCode = payload.code !== undefined && payload.code !== null;
+  const responseCode = hasResponseCode ? Number(payload.code) : 0;
 
-  if (!Number.isNaN(responseCode) && responseCode !== 0) {
+  if (hasResponseCode && Number.isNaN(responseCode)) {
+    throw new RetryableTalordataError(
+      "SERP 제공사가 인식할 수 없는 상태 코드를 반환했습니다.",
+      "invalid-response"
+    );
+  }
+
+  if (responseCode !== 0) {
     if (isAuthenticationFailure(message)) {
       throw new ApiError("INTERNAL", "SERP API 토큰이 유효하지 않습니다.");
     }
@@ -335,7 +355,7 @@ export async function fetchSerp(
     }
   }
 
-  const attemptsText = `${maxAttempts}회 재시도 후에도`;
+  const attemptsText = `${maxAttempts}회 시도 후에도`;
   const message =
     lastFailure?.kind === "timeout"
       ? `SERP 제공사가 ${attemptsText} 응답하지 않았습니다. 잠시 후 다시 시도해 주세요.`

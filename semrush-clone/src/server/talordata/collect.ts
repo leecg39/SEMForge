@@ -12,7 +12,7 @@ import { ApiError } from "@/lib/api";
 import { ctrForPosition, normalizeDomain } from "@/lib/analytics/metrics";
 import { newId } from "@/lib/ids";
 import type { AuthContext } from "@/lib/session";
-import { fetchSerp, type SerpOrganicItem } from "@/server/talordata/client";
+import { fetchSerp, type SerpEngine, type SerpOrganicItem } from "@/server/talordata/client";
 
 /**
  * TalorData 실시간 SERP 수집기.
@@ -26,6 +26,12 @@ import { fetchSerp, type SerpOrganicItem } from "@/server/talordata/client";
 const MAX_KEYWORDS_PER_RUN = 20;
 /** 도메인 분석 실시간 수집은 크레딧 보호를 위해 소수 키워드만 사용한다. */
 const MAX_DOMAIN_SEED_KEYWORDS = 5;
+/**
+ * SERP 스냅샷 신선도(TTL). 같은 키워드+국가+기기+엔진의 라이브 스냅샷이
+ * 이 시간 안에 있으면 외부 API 를 호출하지 않고 스냅샷을 재사용한다.
+ * Semrush 도 순위 데이터는 일 단위로 갱신하므로 24시간이 기본값이다.
+ */
+export const SERP_SNAPSHOT_TTL_MS = 24 * 60 * 60 * 1000;
 
 function currentMonthStart(): Date {
   const now = new Date();
@@ -88,9 +94,91 @@ export interface KeywordSerpCollection {
   capturedAt: Date;
   results: SerpOrganicItem[];
   features: string[];
+  /** true 면 TTL 이내의 기존 스냅샷을 재사용했다 (외부 API 미호출). */
+  fromCache: boolean;
 }
 
-/** 단일 키워드의 실시간 SERP 를 수집해 원천 스토어에 적재한다. */
+/** TTL 이내의 최신 라이브(talordata) 스냅샷을 SERP 결과 형태로 복원한다. */
+async function findFreshSnapshot(input: {
+  keyword: string;
+  countryCode: string;
+  device: "desktop" | "mobile";
+  engine: SerpEngine;
+  maxAgeMs: number;
+}): Promise<Omit<KeywordSerpCollection, "fromCache"> | null> {
+  const normalized = normalizeKeyword(input.keyword);
+  const metricRows = await db
+    .select({ id: keywordMetrics.id })
+    .from(keywordMetrics)
+    .where(
+      and(
+        eq(keywordMetrics.normalizedKeyword, normalized),
+        eq(keywordMetrics.countryCode, input.countryCode),
+        eq(keywordMetrics.device, input.device)
+      )
+    );
+  if (metricRows.length === 0) return null;
+
+  const [latest] = await db
+    .select({
+      keywordMetricId: serpSnapshots.keywordMetricId,
+      capturedAt: serpSnapshots.capturedAt,
+    })
+    .from(serpSnapshots)
+    .where(
+      and(
+        inArray(
+          serpSnapshots.keywordMetricId,
+          metricRows.map((row) => row.id)
+        ),
+        eq(serpSnapshots.searchEngine, input.engine),
+        // 시드/데모 스냅샷에 캐시 히트가 되면 라이브 수집이 영영 일어나지 않으므로
+        // 라이브 소스만 신선도 판정에 사용한다.
+        eq(serpSnapshots.source, "talordata")
+      )
+    )
+    .orderBy(desc(serpSnapshots.capturedAt))
+    .limit(1);
+  if (!latest) return null;
+  if (Date.now() - latest.capturedAt.getTime() > input.maxAgeMs) return null;
+
+  const rows = await db
+    .select()
+    .from(serpSnapshots)
+    .where(
+      and(
+        eq(serpSnapshots.keywordMetricId, latest.keywordMetricId),
+        eq(serpSnapshots.searchEngine, input.engine),
+        eq(serpSnapshots.capturedAt, latest.capturedAt),
+        eq(serpSnapshots.source, "talordata")
+      )
+    )
+    .orderBy(asc(serpSnapshots.position));
+  if (rows.length === 0) return null;
+
+  return {
+    keywordMetricId: latest.keywordMetricId,
+    capturedAt: latest.capturedAt,
+    results: rows
+      .filter((row) => !row.isAd)
+      .map((row) => ({
+        position: row.position,
+        title: row.title ?? "",
+        link: row.url,
+        domain: row.domain,
+        displayLink: null,
+        description: row.description,
+      })),
+    features: parseSerpFeatures(rows[0].serpFeatures),
+  };
+}
+
+/**
+ * 단일 키워드의 실시간 SERP 를 수집해 원천 스토어에 적재한다.
+ *
+ * 크레딧 보호: 같은 조건의 라이브 스냅샷이 maxAgeMs(기본 24시간) 이내에 있으면
+ * API 를 호출하지 않고 스냅샷을 그대로 반환한다. forceRefresh 로 강제 재수집한다.
+ */
 export async function collectKeywordSerp(input: {
   keyword: string;
   countryCode: string;
@@ -98,10 +186,27 @@ export async function collectKeywordSerp(input: {
   engine?: "google" | "bing";
   num?: number;
   volume?: number | null;
+  forceRefresh?: boolean;
+  maxAgeMs?: number;
 }): Promise<KeywordSerpCollection> {
+  const engine = input.engine ?? "google";
+
+  if (!input.forceRefresh) {
+    const cached = await findFreshSnapshot({
+      keyword: input.keyword,
+      countryCode: input.countryCode,
+      device: input.device,
+      engine,
+      maxAgeMs: input.maxAgeMs ?? SERP_SNAPSHOT_TTL_MS,
+    });
+    if (cached) {
+      return { ...cached, fromCache: true };
+    }
+  }
+
   const serp = await fetchSerp({
     q: input.keyword,
-    engine: input.engine ?? "google",
+    engine,
     num: input.num ?? 10,
     gl: input.countryCode.toLowerCase(),
     hl: input.countryCode.toUpperCase() === "KR" ? "ko" : "en",
@@ -119,6 +224,8 @@ export async function collectKeywordSerp(input: {
         url: item.link,
         position: item.position,
         isAd: false,
+        title: item.title || null,
+        description: item.description,
         serpFeatures: JSON.stringify(serp.features),
         source: "talordata",
         capturedAt: serp.capturedAt,
@@ -131,6 +238,7 @@ export async function collectKeywordSerp(input: {
     capturedAt: serp.capturedAt,
     results: serp.organic,
     features: serp.features,
+    fromCache: false,
   };
 }
 

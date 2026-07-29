@@ -69,6 +69,9 @@ export const serpSnapshots = sqliteTable(
     url: text("url").notNull(),
     position: integer("position").notNull(),
     isAd: integer("is_ad", { mode: "boolean" }).notNull().default(false),
+    /** 수집 당시 결과 제목/스니펫. TTL 캐시 재사용 시 UI 표시용 (라이브 수집분만 채워진다). */
+    title: text("title"),
+    description: text("description"),
     /** featured_snippet, local_pack 같은 피처 이름의 JSON 배열. */
     serpFeatures: text("serp_features").notNull().default("[]"),
     source: text("source").notNull().default("demo-serp-collector"),

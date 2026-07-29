@@ -6,6 +6,10 @@ import { ApiError } from "@/lib/api";
 import { newId } from "@/lib/ids";
 import { assertSameWorkspace } from "@/lib/rbac";
 import type { AuthContext } from "@/lib/session";
+import {
+  persistCrawlLinkEdges,
+  type LinkGraphPersistStats,
+} from "@/server/siteaudit/linkgraph";
 
 /**
  * Site Audit 실제 크롤러.
@@ -129,8 +133,19 @@ export interface CrawledPage {
   imagesMissingAlt: number;
   /** 범위 내 고유 내부 링크(자기 자신 제외) */
   internalLinks: string[];
+  /** 다른 등록 도메인으로 나가는 외부 링크 — 링크 그래프(link_graph_edges) 적재용 */
+  externalLinks: ExternalLink[];
   fetchError?: string;
 }
+
+export interface ExternalLink {
+  url: string;
+  /** rel 에 nofollow/sponsored/ugc 가 없으면 follow 로 본다. */
+  isFollow: boolean;
+}
+
+/** 링크 팜 페이지가 엣지 수를 폭증시키지 않도록 페이지당 외부 링크를 제한한다. */
+const MAX_EXTERNAL_LINKS_PER_PAGE = 100;
 
 function collapseWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
@@ -196,15 +211,33 @@ export function applyHtmlToPage(page: CrawledPage, html: string, ctx: CrawlConte
   page.imagesMissingAlt = missingAlt;
 
   const links = new Set<string>();
+  const external = new Map<string, boolean>();
+  const startRoot = registrableDomain(ctx.start.hostname.toLowerCase());
   for (const anchor of doc.querySelectorAll("a")) {
     const href = anchor.getAttribute("href");
     if (!href) continue;
     const normalized = normalizeUrl(href, page.url);
     if (!normalized || normalized === page.url) continue;
-    if (!inScope(normalized, ctx)) continue;
-    links.add(normalized);
+    if (inScope(normalized, ctx)) {
+      links.add(normalized);
+      continue;
+    }
+    // 외부 링크: 같은 등록 도메인(서브도메인/경로 범위 밖)은 백링크 엣지로 치지 않는다.
+    let host = "";
+    try {
+      host = new URL(normalized).hostname.toLowerCase();
+    } catch {
+      continue;
+    }
+    if (!host || registrableDomain(host) === startRoot) continue;
+    if (!external.has(normalized) && external.size >= MAX_EXTERNAL_LINKS_PER_PAGE) continue;
+    const rel = anchor.getAttribute("rel")?.toLowerCase() ?? "";
+    const isFollow = !/\b(?:nofollow|sponsored|ugc)\b/.test(rel);
+    // 같은 URL 이 follow/nofollow 로 중복 등장하면 follow 를 우선한다.
+    external.set(normalized, (external.get(normalized) ?? false) || isFollow);
   }
   page.internalLinks = [...links];
+  page.externalLinks = [...external.entries()].map(([url, isFollow]) => ({ url, isFollow }));
 }
 
 async function fetchPage(url: string, ctx: CrawlContext): Promise<CrawledPage> {
@@ -218,6 +251,7 @@ async function fetchPage(url: string, ctx: CrawlContext): Promise<CrawledPage> {
     metaDescription: null,
     imagesMissingAlt: 0,
     internalLinks: [],
+    externalLinks: [],
   };
   try {
     const response = await fetch(url, {
@@ -480,6 +514,8 @@ export interface SiteAuditRunReport {
   sourceNote?: string;
   crawlEngine: "firecrawl" | "self";
   firecrawl?: { mappedUrls: number; scrapeFailures: number };
+  /** 크롤에서 추출해 link_graph_edges 에 적재한 외부 링크 엣지 통계 */
+  linkGraph?: { edges: number; targetDomains: number };
   totals: { errors: number; warnings: number; notices: number };
   issues: { severity: Severity; title: string; count: number; pages: string[] }[];
 }
@@ -575,6 +611,19 @@ export async function runSiteAuditCampaign(
     const siteHealth = computeSiteHealth(issues, crawl.pages.length);
     const now = new Date();
 
+    // 링크 그래프 적재: 크롤 페이지의 외부 링크를 실측 엣지로 축적한다.
+    // 적재 실패가 감사 결과 자체를 무효화하지는 않으므로 오류는 기록만 한다.
+    let linkGraph: LinkGraphPersistStats | undefined;
+    try {
+      linkGraph = await persistCrawlLinkEdges({
+        pages: crawl.pages,
+        sourceAuthority: siteHealth,
+        capturedAt: now,
+      });
+    } catch (linkError) {
+      console.error("[siteaudit] link graph persist failed", linkError);
+    }
+
     await db.delete(siteAuditIssues).where(eq(siteAuditIssues.campaignId, campaign.id));
     if (issues.length > 0) {
       await db.insert(siteAuditIssues).values(
@@ -614,6 +663,7 @@ export async function runSiteAuditCampaign(
       sourceNote: crawl.sourceNote,
       crawlEngine: crawl.engine ?? "self",
       firecrawl: crawl.firecrawl,
+      linkGraph,
       totals: {
         errors: sum("error"),
         warnings: sum("warning"),

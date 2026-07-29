@@ -6,13 +6,13 @@ import { seoAnalysis, otherAnalysis, workspaces } from "@/data/app-pages";
 
 const analysisAll = { ...seoAnalysis, ...otherAnalysis };
 
+// keywordoverview / organic/overview 는 전용 라이브 페이지로 이전됐다
+// (analytics/keywordoverview/page.tsx, analytics/organic/overview/page.tsx).
 const params: string[][] = [
-  ["organic", "overview"],
   ["toppages"],
   ["comparedomains"],
   ["keywordgap"],
   ["gap", "backlinks"],
-  ["keywordoverview"],
   ["keywordmagic"],
   ["backlinks", "overview"],
   ["refdomains", "report"],
