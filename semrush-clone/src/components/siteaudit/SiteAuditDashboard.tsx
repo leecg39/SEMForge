@@ -41,6 +41,8 @@ interface RunReport {
   durationMs: number;
   finishedAt: string;
   sourceNote?: string;
+  crawlEngine?: "firecrawl" | "self";
+  firecrawl?: { mappedUrls: number; scrapeFailures: number };
   totals: { errors: number; warnings: number; notices: number };
 }
 
@@ -49,7 +51,7 @@ const COPY = {
     eyebrow: "SEO · 사이트 크롤링",
     title: "사이트 진단",
     description:
-      "실제 크롤러(CloneSiteAuditBot)가 사이트 링크를 따라가며 페이지를 수집하고, 상태 코드·제목 태그·메타 설명·이미지 대체 텍스트·내부 링크를 항목별로 검사합니다.",
+      "크롤 엔진(Firecrawl 또는 자체 크롤러)이 사이트 페이지를 실제로 수집하고, 상태 코드·제목 태그·메타 설명·이미지 대체 텍스트·내부 링크를 항목별로 검사합니다.",
     newAudit: "새 사이트 진단",
     runNow: "지금 크롤 실행",
     running: "크롤링 중…",
@@ -59,6 +61,11 @@ const COPY = {
     siteHealth: "Site Health",
     crawledPages: "크롤링한 페이지",
     fetchFailed: "연결 실패",
+    engineLabel: "크롤 엔진",
+    engineFirecrawl: "Firecrawl",
+    engineSelf: "자체 크롤러",
+    mappedUrls: (count: number) => `매핑 URL ${count}개`,
+    scrapeFailed: (count: number) => `수집 실패 ${count}개`,
     lastRun: "마지막 크롤",
     issues: "이슈",
     errors: "Errors",
@@ -105,7 +112,7 @@ const COPY = {
     eyebrow: "SEO · Site Crawling",
     title: "Site Audit",
     description:
-      "A real crawler (CloneSiteAuditBot) follows your site's links and checks status codes, title tags, meta descriptions, image alt text, and internal links.",
+      "A crawl engine (Firecrawl or the built-in crawler) actually collects your site's pages and checks status codes, title tags, meta descriptions, image alt text, and internal links.",
     newAudit: "New Site Audit",
     runNow: "Run crawl now",
     running: "Crawling…",
@@ -115,6 +122,11 @@ const COPY = {
     siteHealth: "Site Health",
     crawledPages: "Crawled pages",
     fetchFailed: "Unreachable",
+    engineLabel: "Crawl engine",
+    engineFirecrawl: "Firecrawl",
+    engineSelf: "Built-in crawler",
+    mappedUrls: (count: number) => `${count} mapped URLs`,
+    scrapeFailed: (count: number) => `${count} scrapes failed`,
     lastRun: "Last crawl",
     issues: "Issues",
     errors: "Errors",
@@ -479,7 +491,7 @@ export function SiteAuditDashboard({
                     <span className="block text-[12px] text-app-text-secondary">
                       {copy.lastRun}
                     </span>
-                    <span className="text-app-text">
+                    <span className="text-app-text" suppressHydrationWarning>
                       {campaign.lastRunAt
                         ? dateFormatter.format(new Date(campaign.lastRunAt))
                         : copy.never}
@@ -495,12 +507,16 @@ export function SiteAuditDashboard({
               className="mt-4 flex items-center gap-4 rounded-[10px] border border-[#bfd4fb] bg-[#f4f7fe] px-5 py-4"
               role="status"
             >
-              <span className="h-6 w-6 animate-spin rounded-full border-2 border-[#235FE2] border-t-transparent" />
-              <div>
+              <span className="h-6 w-6 shrink-0 animate-spin rounded-full border-2 border-[#235FE2] border-t-transparent" />
+              <div className="min-w-0 flex-1">
                 <p className="text-[14px] font-medium text-app-text">{copy.crawlerWorking}</p>
                 <p className="mt-0.5 text-[12px] text-app-text-secondary">
                   {copy.crawlerHint} · {copy.elapsed(elapsed)}
                 </p>
+                <div className="relative mt-2.5 h-1.5 overflow-hidden rounded-full bg-[#dbe4f8]">
+                  <div className="absolute inset-y-0 w-1/3 animate-[sa-crawl-progress_1.4s_ease-in-out_infinite] rounded-full bg-[#235FE2]" />
+                </div>
+                <style>{`@keyframes sa-crawl-progress { 0% { left: -33%; } 100% { left: 100%; } }`}</style>
               </div>
             </section>
           )}
@@ -522,6 +538,17 @@ export function SiteAuditDashboard({
                   {copy.reportSummary(report!.crawledPages, report!.durationMs)}
                   {" · "}
                   {copy.siteHealth} {report!.siteHealth}%
+                  {" · "}
+                  {copy.engineLabel}:{" "}
+                  {report!.crawlEngine === "firecrawl" ? copy.engineFirecrawl : copy.engineSelf}
+                  {report!.crawlEngine === "firecrawl" && report!.firecrawl
+                    ? ` · ${copy.mappedUrls(report!.firecrawl.mappedUrls)}`
+                    : ""}
+                  {report!.crawlEngine === "firecrawl" &&
+                  report!.firecrawl &&
+                  report!.firecrawl.scrapeFailures > 0
+                    ? ` · ${copy.scrapeFailed(report!.firecrawl.scrapeFailures)}`
+                    : ""}
                   {report!.sourceNote ? ` · ${report!.sourceNote}` : ""}
                 </>
               )}
@@ -561,6 +588,12 @@ export function SiteAuditDashboard({
                 <span className="mt-1 block text-[24px] font-semibold text-app-text">
                   {report && !running ? report.crawledPages : "–"}
                 </span>
+                {report && !running && (
+                  <span className="mt-1 inline-flex items-center gap-1 rounded-[4px] bg-[#eceef2] px-1.5 py-0.5 text-[11px] font-medium text-app-text-secondary">
+                    {copy.engineLabel}:{" "}
+                    {report.crawlEngine === "firecrawl" ? copy.engineFirecrawl : copy.engineSelf}
+                  </span>
+                )}
               </div>
             </div>
           </section>
@@ -695,7 +728,7 @@ export function SiteAuditDashboard({
                       <td className="px-4 py-2.5 text-center text-app-text-secondary">
                         {scheduleLabel(item.schedule)}
                       </td>
-                      <td className="px-4 py-2.5 text-app-text-secondary">
+                      <td className="px-4 py-2.5 text-app-text-secondary" suppressHydrationWarning>
                         {item.lastRunAt
                           ? dateFormatter.format(new Date(item.lastRunAt))
                           : copy.never}

@@ -10,7 +10,9 @@ import { normalizeDomain } from "@/lib/analytics/metrics";
  */
 
 const ENDPOINT = "https://serpapi.talordata.net/serp/v1/request";
-const REQUEST_TIMEOUT_MS = 15_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+const DEFAULT_MAX_ATTEMPTS = 3;
+const DEFAULT_RETRY_BASE_DELAY_MS = 750;
 
 export type SerpEngine = "google" | "bing";
 
@@ -54,6 +56,34 @@ interface TalordataOrganicRaw {
   description?: string;
 }
 
+interface TalordataMetadata {
+  id?: string;
+  status?: string;
+  total_time_taken?: number;
+}
+
+/** 테스트와 운영 튜닝을 위한 선택적 의존성. 일반 호출부는 기본값을 사용한다. */
+export interface TalordataClientOptions {
+  fetchImpl?: typeof fetch;
+  sleep?: (milliseconds: number) => Promise<void>;
+  requestTimeoutMs?: number;
+  maxAttempts?: number;
+  retryBaseDelayMs?: number;
+}
+
+type RetryableFailureKind = "timeout" | "network" | "provider" | "invalid-response";
+
+class RetryableTalordataError extends Error {
+  constructor(
+    message: string,
+    readonly kind: RetryableFailureKind,
+    readonly details?: unknown
+  ) {
+    super(message);
+    this.name = "RetryableTalordataError";
+  }
+}
+
 const FEATURE_KEYS: Record<string, string> = {
   google_ai_overview: "ai_overview",
   ai_overview: "ai_overview",
@@ -83,40 +113,72 @@ function getToken(): string {
   return token;
 }
 
-export async function fetchSerp(query: SerpQuery): Promise<SerpResult> {
-  const token = getToken();
-  const engine = query.engine ?? "google";
-  const body = new URLSearchParams({
-    engine,
-    q: query.q,
-    num: String(Math.min(100, Math.max(1, query.num ?? 10))),
-    gl: (query.gl ?? "kr").toLowerCase(),
-    hl: (query.hl ?? "ko").toLowerCase(),
-    device: query.device ?? "desktop",
-    json: "1",
-  });
+function providerMessage(
+  payload: Record<string, unknown>,
+  data: Record<string, unknown>,
+  metadata?: TalordataMetadata
+): string {
+  const candidates = [payload.message, payload.error, data.message, data.error];
+  const message = candidates.find(
+    (candidate): candidate is string => typeof candidate === "string" && candidate.trim().length > 0
+  );
+  return message?.trim() ?? metadata?.status?.trim() ?? "알 수 없는 제공사 오류";
+}
 
+function isAuthenticationFailure(message: string): boolean {
+  return /unauthori[sz]ed|forbidden|invalid\s+(?:api\s+)?token|authentication|credential/i.test(
+    message
+  );
+}
+
+function isQuotaFailure(message: string): boolean {
+  return /quota|rate\s*limit|usage\s*limit|insufficient|payment|required|credit/i.test(message);
+}
+
+function isRetryableProviderFailure(message: string): boolean {
+  return /collection\s+failed|temporar|timeout|timed\s*out|try\s+again|unavailable|upstream|overload|internal\s+error/i.test(
+    message
+  );
+}
+
+function positiveInteger(value: number | undefined, fallback: number): number {
+  return Number.isFinite(value) && value !== undefined && value > 0
+    ? Math.floor(value)
+    : fallback;
+}
+
+function defaultSleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function requestOnce(input: {
+  token: string;
+  body: URLSearchParams;
+  fetchImpl: typeof fetch;
+  timeoutMs: number;
+}): Promise<{ data: Record<string, unknown>; metadata?: TalordataMetadata }> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), input.timeoutMs);
   let response: Response;
   try {
-    response = await fetch(ENDPOINT, {
+    response = await input.fetchImpl(ENDPOINT, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+        Authorization: `Bearer ${input.token}`,
         "Content-Type": "application/x-www-form-urlencoded",
       },
-      body,
+      body: input.body,
       signal: controller.signal,
       cache: "no-store",
     });
   } catch (error) {
-    throw new ApiError(
-      "INTERNAL",
+    throw new RetryableTalordataError(
       controller.signal.aborted
         ? "SERP 제공사 응답이 시간 초과되었습니다."
         : "SERP 제공사에 연결하지 못했습니다.",
-      { details: error instanceof Error ? error.message : String(error) }
+      controller.signal.aborted ? "timeout" : "network",
+      error instanceof Error ? error.message : String(error)
     );
   } finally {
     clearTimeout(timer);
@@ -133,68 +195,155 @@ export async function fetchSerp(query: SerpQuery): Promise<SerpResult> {
         "SERP API 사용량 한도에 도달했습니다. 대시보드에서 잔량을 확인하세요."
       );
     }
+    if (response.status === 408 || response.status === 425 || response.status >= 500) {
+      throw new RetryableTalordataError(
+        `SERP 제공사가 HTTP ${response.status} 를 반환했습니다.`,
+        "provider",
+        { status: response.status }
+      );
+    }
     throw new ApiError("INTERNAL", `SERP 제공사가 HTTP ${response.status} 를 반환했습니다.`);
   }
 
-  const payload = (await response.json()) as Record<string, unknown>;
+  let payload: Record<string, unknown>;
+  try {
+    payload = (await response.json()) as Record<string, unknown>;
+  } catch (error) {
+    throw new RetryableTalordataError(
+      "SERP 제공사가 올바른 JSON 응답을 반환하지 않았습니다.",
+      "invalid-response",
+      error instanceof Error ? error.message : String(error)
+    );
+  }
+
   // 실제 응답 봉투: { code, data: {...}, task_id } — SERP 데이터는 data 아래에 있다.
   const data = (payload.data ?? payload) as Record<string, unknown>;
-  const metadata = data.search_metadata as
-    | { id?: string; status?: string; total_time_taken?: number }
-    | undefined;
-  if (typeof payload.code === "number" && payload.code !== 0) {
-    throw new ApiError(
-      "INTERNAL",
-      `SERP 수집이 실패했습니다: ${String(payload.message ?? payload.code)}`
-    );
-  }
-  if (metadata?.status && metadata.status !== "Success") {
-    throw new ApiError("INTERNAL", `SERP 수집이 실패했습니다: ${metadata.status}`);
-  }
+  const metadata = data.search_metadata as TalordataMetadata | undefined;
+  const message = providerMessage(payload, data, metadata);
+  const responseCode =
+    payload.code === undefined || payload.code === null ? 0 : Number(payload.code);
 
-  const organicRaw = Array.isArray(data.organic)
-    ? (data.organic as (TalordataOrganicRaw & { position?: number })[])
-    : [];
-  const organic: SerpOrganicItem[] = organicRaw
-    .filter((item) => typeof item.link === "string" && item.link.length > 0)
-    .map((item, index) => ({
-      position:
-        Number.isInteger(item.position) && (item.position as number) > 0
-          ? (item.position as number)
-          : index + 1,
-      title: item.title ?? "",
-      link: item.link!,
-      domain: normalizeDomain(item.link!),
-      displayLink: item.display_link ?? null,
-      description: item.description ?? null,
-    }));
-
-  // 오가닉 0건은 "순위권 밖"이 아니라 제공사 차단/일시 오류 신호다.
-  // 그대로 진행하면 순위가 null 로 덮여 이력이 오염되므로 실패로 돌린다.
-  if (organic.length === 0) {
-    throw new ApiError(
-      "INTERNAL",
-      "SERP 제공사가 빈 결과를 반환했습니다. 일시적 차단일 수 있으니 잠시 후 다시 시도하세요."
-    );
+  if (!Number.isNaN(responseCode) && responseCode !== 0) {
+    if (isAuthenticationFailure(message)) {
+      throw new ApiError("INTERNAL", "SERP API 토큰이 유효하지 않습니다.");
+    }
+    if (isQuotaFailure(message)) {
+      throw new ApiError(
+        "RATE_LIMITED",
+        "SERP API 사용량 한도에 도달했습니다. 대시보드에서 잔량을 확인하세요."
+      );
+    }
+    if (isRetryableProviderFailure(message)) {
+      throw new RetryableTalordataError(message, "provider", { code: payload.code });
+    }
+    throw new ApiError("INTERNAL", `SERP 제공사가 요청을 거부했습니다: ${message}`);
   }
 
-  const features = Object.entries(FEATURE_KEYS)
-    .filter(([key]) => {
-      const value = data[key];
-      // google_ai_overview 같은 boolean 플래그와 배열/객체 피처를 모두 받는다.
-      return value !== undefined && value !== null && value !== false;
-    })
-    .map(([, name]) => name);
+  if (metadata?.status && metadata.status.toLowerCase() !== "success") {
+    throw new RetryableTalordataError(message, "provider", {
+      status: metadata.status,
+    });
+  }
 
-  return {
-    query: query.q,
+  return { data, metadata };
+}
+
+export async function fetchSerp(
+  query: SerpQuery,
+  options: TalordataClientOptions = {}
+): Promise<SerpResult> {
+  const token = getToken();
+  const engine = query.engine ?? "google";
+  const body = new URLSearchParams({
     engine,
-    organic,
-    features: [...new Set(features)],
-    provider: {
-      id: metadata?.id ?? null,
-      timeTakenSeconds: metadata?.total_time_taken ?? null,
+    q: query.q,
+    num: String(Math.min(100, Math.max(1, query.num ?? 10))),
+    gl: (query.gl ?? "kr").toLowerCase(),
+    hl: (query.hl ?? "ko").toLowerCase(),
+    device: query.device ?? "desktop",
+    json: "1",
+  });
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const sleep = options.sleep ?? defaultSleep;
+  const timeoutMs = positiveInteger(options.requestTimeoutMs, DEFAULT_REQUEST_TIMEOUT_MS);
+  const maxAttempts = positiveInteger(options.maxAttempts, DEFAULT_MAX_ATTEMPTS);
+  const retryBaseDelayMs = Math.max(0, options.retryBaseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS);
+  let lastFailure: RetryableTalordataError | undefined;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const { data, metadata } = await requestOnce({
+        token,
+        body,
+        fetchImpl,
+        timeoutMs,
+      });
+
+      const organicRaw = Array.isArray(data.organic)
+        ? (data.organic as (TalordataOrganicRaw & { position?: number })[])
+        : [];
+      const organic: SerpOrganicItem[] = organicRaw
+        .filter((item) => typeof item.link === "string" && item.link.length > 0)
+        .map((item, index) => ({
+          position:
+            Number.isInteger(item.position) && (item.position as number) > 0
+              ? (item.position as number)
+              : index + 1,
+          title: item.title ?? "",
+          link: item.link!,
+          domain: normalizeDomain(item.link!),
+          displayLink: item.display_link ?? null,
+          description: item.description ?? null,
+        }));
+
+      // 오가닉 0건은 "순위권 밖"이 아니라 제공사 차단/일시 오류 신호다.
+      // 그대로 진행하면 순위가 null 로 덮여 이력이 오염되므로 재시도한다.
+      if (organic.length === 0) {
+        throw new RetryableTalordataError(
+          "SERP 제공사가 빈 결과를 반환했습니다.",
+          "invalid-response"
+        );
+      }
+
+      const features = Object.entries(FEATURE_KEYS)
+        .filter(([key]) => {
+          const value = data[key];
+          // google_ai_overview 같은 boolean 플래그와 배열/객체 피처를 모두 받는다.
+          return value !== undefined && value !== null && value !== false;
+        })
+        .map(([, name]) => name);
+
+      return {
+        query: query.q,
+        engine,
+        organic,
+        features: [...new Set(features)],
+        provider: {
+          id: metadata?.id ?? null,
+          timeTakenSeconds: metadata?.total_time_taken ?? null,
+        },
+        capturedAt: new Date(),
+      };
+    } catch (error) {
+      if (!(error instanceof RetryableTalordataError)) {
+        throw error;
+      }
+      lastFailure = error;
+      if (attempt < maxAttempts) {
+        await sleep(retryBaseDelayMs * 2 ** (attempt - 1));
+      }
+    }
+  }
+
+  const attemptsText = `${maxAttempts}회 재시도 후에도`;
+  const message =
+    lastFailure?.kind === "timeout"
+      ? `SERP 제공사가 ${attemptsText} 응답하지 않았습니다. 잠시 후 다시 시도해 주세요.`
+      : `SERP 제공사의 수집 엔진이 ${attemptsText} 요청을 완료하지 못했습니다. 토큰 승인 문제는 아니며 잠시 후 다시 시도해 주세요.`;
+  throw new ApiError("INTERNAL", message, {
+    details: {
+      attempts: maxAttempts,
+      reason: lastFailure?.message ?? "unknown",
     },
-    capturedAt: new Date(),
-  };
+  });
 }

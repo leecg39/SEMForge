@@ -94,12 +94,12 @@ export function normalizeUrl(href: string, base: string): string | null {
   }
 }
 
-interface CrawlContext {
+export interface CrawlContext {
   scope: "domain" | "subdomain" | "path";
   start: URL;
 }
 
-function inScope(url: string, ctx: CrawlContext): boolean {
+export function inScope(url: string, ctx: CrawlContext): boolean {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -167,6 +167,46 @@ async function readCappedText(response: Response): Promise<string> {
   return new TextDecoder("utf-8", { fatal: false }).decode(merged);
 }
 
+/**
+ * HTML 문자열을 파싱해 CrawledPage 의 검사 필드를 채운다.
+ * 자체 크롤러(fetchPage)와 Firecrawl 스크레이프 경로가 동일한 검사 로직을 공유한다.
+ * 파싱 성공 후에만 내용 검사 대상(isHtml)으로 표시해, 본문 읽기/파싱 실패가
+ * missing title 같은 오탐을 만들지 않도록 한다.
+ */
+export function applyHtmlToPage(page: CrawledPage, html: string, ctx: CrawlContext): void {
+  const capped = html.length > MAX_HTML_BYTES ? html.slice(0, MAX_HTML_BYTES) : html;
+  const doc = parse(capped, { lowerCaseTagName: true, comment: false });
+  page.isHtml = true;
+
+  const titleElement = doc.querySelector("title");
+  const title = titleElement ? collapseWhitespace(titleElement.text) : "";
+  page.title = title || null;
+
+  for (const meta of doc.querySelectorAll("meta")) {
+    if (meta.getAttribute("name")?.toLowerCase() !== "description") continue;
+    const content = meta.getAttribute("content");
+    if (content) page.metaDescription = collapseWhitespace(content) || null;
+    break;
+  }
+
+  let missingAlt = 0;
+  for (const img of doc.querySelectorAll("img")) {
+    if (img.getAttribute("alt") === undefined) missingAlt += 1;
+  }
+  page.imagesMissingAlt = missingAlt;
+
+  const links = new Set<string>();
+  for (const anchor of doc.querySelectorAll("a")) {
+    const href = anchor.getAttribute("href");
+    if (!href) continue;
+    const normalized = normalizeUrl(href, page.url);
+    if (!normalized || normalized === page.url) continue;
+    if (!inScope(normalized, ctx)) continue;
+    links.add(normalized);
+  }
+  page.internalLinks = [...links];
+}
+
 async function fetchPage(url: string, ctx: CrawlContext): Promise<CrawledPage> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -201,38 +241,7 @@ async function fetchPage(url: string, ctx: CrawlContext): Promise<CrawledPage> {
       return page;
     }
     const html = await readCappedText(response);
-    const doc = parse(html, { lowerCaseTagName: true, comment: false });
-    // 파싱 성공 후에만 내용 검사 대상으로 표시한다.
-    // (본문 읽기/파싱 실패가 missing title 같은 오탐을 만들지 않도록)
-    page.isHtml = true;
-
-    const titleElement = doc.querySelector("title");
-    const title = titleElement ? collapseWhitespace(titleElement.text) : "";
-    page.title = title || null;
-
-    for (const meta of doc.querySelectorAll("meta")) {
-      if (meta.getAttribute("name")?.toLowerCase() !== "description") continue;
-      const content = meta.getAttribute("content");
-      if (content) page.metaDescription = collapseWhitespace(content) || null;
-      break;
-    }
-
-    let missingAlt = 0;
-    for (const img of doc.querySelectorAll("img")) {
-      if (img.getAttribute("alt") === undefined) missingAlt += 1;
-    }
-    page.imagesMissingAlt = missingAlt;
-
-    const links = new Set<string>();
-    for (const anchor of doc.querySelectorAll("a")) {
-      const href = anchor.getAttribute("href");
-      if (!href) continue;
-      const normalized = normalizeUrl(href, page.url);
-      if (!normalized || normalized === page.url) continue;
-      if (!inScope(normalized, ctx)) continue;
-      links.add(normalized);
-    }
-    page.internalLinks = [...links];
+    applyHtmlToPage(page, html, ctx);
     return page;
   } catch (error) {
     page.isHtml = false;
@@ -295,18 +304,24 @@ async function fetchSitemapLocs(sitemapUrl: string, depth = 0): Promise<string[]
   }
 }
 
-export interface CrawlOutcome {
-  pages: CrawledPage[];
-  /** sitemap 소스가 비어 website BFS 로 대체됐을 때 안내 메시지 */
-  sourceNote?: string;
-}
-
-async function crawlSite(input: {
+export interface CrawlInput {
   startUrl: string;
   scope: CrawlContext["scope"];
   pageLimit: number;
   source: "website" | "sitemap";
-}): Promise<CrawlOutcome> {
+}
+
+export interface CrawlOutcome {
+  pages: CrawledPage[];
+  /** sitemap 소스가 비어 website BFS 로 대체됐을 때 안내 메시지 */
+  sourceNote?: string;
+  /** 어떤 수집 엔진으로 크롤했는지 */
+  engine?: "firecrawl" | "self";
+  /** Firecrawl 경유일 때 수집 메타 정보 */
+  firecrawl?: { mappedUrls: number; scrapeFailures: number };
+}
+
+async function crawlSite(input: CrawlInput): Promise<CrawlOutcome> {
   const ctx: CrawlContext = { scope: input.scope, start: new URL(input.startUrl) };
 
   if (input.source === "sitemap") {
@@ -463,14 +478,24 @@ export interface SiteAuditRunReport {
   durationMs: number;
   finishedAt: string;
   sourceNote?: string;
+  crawlEngine: "firecrawl" | "self";
+  firecrawl?: { mappedUrls: number; scrapeFailures: number };
   totals: { errors: number; warnings: number; notices: number };
   issues: { severity: Severity; title: string; count: number; pages: string[] }[];
+}
+
+export type CrawlExecutor = (input: CrawlInput) => Promise<CrawlOutcome>;
+
+export interface RunSiteAuditOptions {
+  /** 지정하면 자체 BFS 대신 이 수집 엔진을 먼저 사용하고, 실패 시 자체 크롤러로 폴백한다. */
+  crawler?: CrawlExecutor;
 }
 
 /** 캠페인 크롤을 실행하고 결과를 site_audit_issues / site_audit_campaigns 에 저장한다. */
 export async function runSiteAuditCampaign(
   auth: AuthContext,
-  campaignId: string
+  campaignId: string,
+  options?: RunSiteAuditOptions
 ): Promise<SiteAuditRunReport> {
   const [campaign] = await db
     .select()
@@ -506,12 +531,37 @@ export async function runSiteAuditCampaign(
     }
     const pageLimit = Math.max(1, Math.min(MAX_PAGE_LIMIT, campaign.pageLimit));
     const startUrl = `https://${campaign.domain.replace(/^https?:\/\//, "")}`;
-    const crawl = await crawlSite({
+    const crawlInput: CrawlInput = {
       startUrl,
       scope: campaign.crawlScope,
       pageLimit,
       source: campaign.crawlSource,
-    });
+    };
+
+    // 수집 엔진 선택: 외부 엔진(Firecrawl)이 주입되면 우선 시도하고,
+    // 예외/수집 결과 없음이면 자체 BFS 크롤러로 폴백한다.
+    let crawl: CrawlOutcome;
+    if (options?.crawler) {
+      try {
+        crawl = await options.crawler(crawlInput);
+        if (crawl.pages.filter((page) => page.status > 0).length === 0) {
+          throw new Error("수집된 페이지가 없습니다");
+        }
+      } catch (engineError) {
+        const reason = engineError instanceof Error ? engineError.message : String(engineError);
+        crawl = await crawlSite(crawlInput);
+        crawl.engine = "self";
+        crawl.sourceNote = [
+          `Firecrawl 크롤에 실패해 자체 크롤러로 대체했습니다 (${reason}).`,
+          crawl.sourceNote,
+        ]
+          .filter(Boolean)
+          .join(" ");
+      }
+    } else {
+      crawl = await crawlSite(crawlInput);
+      crawl.engine = "self";
+    }
 
     const reachable = crawl.pages.filter((page) => page.status > 0);
     if (reachable.length === 0) {
@@ -562,6 +612,8 @@ export async function runSiteAuditCampaign(
       durationMs: Date.now() - startedAt,
       finishedAt: now.toISOString(),
       sourceNote: crawl.sourceNote,
+      crawlEngine: crawl.engine ?? "self",
+      firecrawl: crawl.firecrawl,
       totals: {
         errors: sum("error"),
         warnings: sum("warning"),
