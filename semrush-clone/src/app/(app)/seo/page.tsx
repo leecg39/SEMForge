@@ -60,10 +60,18 @@ export default async function SeoDashboardPage({
         .where(and(eq(folders.workspaceId, auth.workspaceId), isNull(folders.deletedAt)))
     : [];
 
+  const projects = [...folderRows]
+    .map((project) => ({ ...project, domain: normalizeDomain(project.domain) }))
+    .filter((project) => project.domain.includes("."))
+    .filter(
+      (project, index, rows) =>
+        rows.findIndex((candidate) => candidate.domain === project.domain) === index,
+    );
+
   const normalized = rawDomain ? normalizeDomain(rawDomain) : "";
   const domain = normalized.includes(".")
     ? normalized
-    : folderRows[0]?.domain ?? FALLBACK_DOMAIN;
+    : projects[0]?.domain ?? FALLBACK_DOMAIN;
   const countryCode = domain.endsWith(".kr") ? "KR" : "US";
 
   const [report, edges, auditCampaignRows, positionCampaignRows] = await Promise.all([
@@ -164,9 +172,11 @@ export default async function SeoDashboardPage({
   return (
     <AppShell activeToolkit="seo" activeHref="/seo/">
       <SeoWidgetDashboard
+        key={domain}
         report={report}
-        projects={folderRows}
+        projects={projects}
         currentDomain={domain}
+        countryCode={countryCode}
         monthlyRefDomains={buildMonthlyRefDomains(edges)}
         dateLabel={dateLabel}
         siteAuditSummary={siteAuditSummary}

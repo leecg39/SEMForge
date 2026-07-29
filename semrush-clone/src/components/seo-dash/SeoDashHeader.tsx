@@ -1,5 +1,6 @@
 "use client";
 
+import { ReloadIcon } from "@radix-ui/react-icons";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { SM } from "@/components/seo-dash/tokens";
 import { cn } from "@/lib/utils";
@@ -19,11 +20,13 @@ export function SeoDashHeader({
   projects,
   currentDomain,
   onSelectProject,
+  loading = false,
 }: {
   projectName: string;
   projects: SeoDashProject[];
   currentDomain: string;
   onSelectProject?: (domain: string) => void;
+  loading?: boolean;
 }) {
   const { locale } = useLocale();
   const ko = locale === "ko";
@@ -62,8 +65,9 @@ export function SeoDashHeader({
                 aria-label={ko ? `프로젝트: ${projectName}` : `Project: ${projectName}`}
                 value={currentDomain}
                 onChange={(event) => onSelectProject?.(event.target.value)}
+                disabled={loading}
                 className={cn(
-                  "h-[25px] cursor-pointer appearance-none rounded-[6px] bg-transparent pl-1 pr-4 text-[14px] leading-[20px] outline-none",
+                  "h-[25px] cursor-pointer appearance-none rounded-[6px] bg-transparent pl-1 pr-4 text-[14px] leading-[20px] outline-none disabled:cursor-wait disabled:opacity-70",
                   SM.link
                 )}
               >
@@ -74,7 +78,7 @@ export function SeoDashHeader({
                 ))}
               </select>
               <span aria-hidden="true" className={cn("pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 text-[10px]", SM.link)}>
-                ⌄
+                {loading ? <ReloadIcon className="h-3 w-3 animate-spin" /> : "⌄"}
               </span>
             </div>
           )}

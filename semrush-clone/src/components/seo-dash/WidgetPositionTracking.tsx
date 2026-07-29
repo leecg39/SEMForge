@@ -140,8 +140,10 @@ function searchEngineLabel(value: PositionTrackingWidgetSummary["searchEngine"])
 /** 첨부 레퍼런스의 전폭 포지션 추적 요약 위젯. */
 export function WidgetPositionTracking({
   summary,
+  domain,
 }: {
   summary: PositionTrackingWidgetSummary | null;
+  domain: string;
 }) {
   const { locale } = useLocale();
   const ko = locale === "ko";
@@ -169,8 +171,10 @@ export function WidgetPositionTracking({
   const fallbackKeywords = ko ? ["m&a", "경영컨설팅", "인증"] : ["m&a", "consulting", "certification"];
   const tableRows = topKeywords.length > 0
     ? topKeywords
-    : fallbackKeywords.map((keyword) => ({ keyword, position: null }));
-  const location = summary?.location.split(",")[0] || "Seoul";
+    : summary
+      ? fallbackKeywords.map((keyword) => ({ keyword, position: null }))
+      : [];
+  const location = summary?.location.split(",")[0] || domain;
   const engine = searchEngineLabel(summary?.searchEngine ?? "google");
   const language = location.toLowerCase().includes("seoul") ? "Korean" : "English";
   const visibility = Math.max(0, Math.min(100, summary?.visibility ?? 0));
@@ -280,13 +284,21 @@ export function WidgetPositionTracking({
               </tr>
             </thead>
             <tbody>
-              {tableRows.map((item) => (
-                <tr key={item.keyword} className="border-b border-[#e8e9eb]">
-                  <td className="truncate py-2.5 pr-2 font-medium text-[#235fe2]">{item.keyword}</td>
-                  <td className="py-2.5 text-center text-[#282b31]">{item.position ?? "–"}</td>
-                  <td className="py-2.5 text-right text-[#282b31]">{keywordVisibility(item.position)}%</td>
+              {tableRows.length > 0 ? (
+                tableRows.map((item) => (
+                  <tr key={item.keyword} className="border-b border-[#e8e9eb]">
+                    <td className="truncate py-2.5 pr-2 font-medium text-[#235fe2]">{item.keyword}</td>
+                    <td className="py-2.5 text-center text-[#282b31]">{item.position ?? "–"}</td>
+                    <td className="py-2.5 text-right text-[#282b31]">{keywordVisibility(item.position)}%</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={3} className="py-8 text-center text-[12px] leading-[18px] text-[#777b84]">
+                    {ko ? "이 사이트에는 포지션 추적 캠페인이 없습니다." : "No position tracking campaign for this site."}
+                  </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </section>
