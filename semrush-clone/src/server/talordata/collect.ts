@@ -107,6 +107,10 @@ async function findFreshSnapshot(input: {
   maxAgeMs: number;
 }): Promise<Omit<KeywordSerpCollection, "fromCache"> | null> {
   const normalized = normalizeKeyword(input.keyword);
+  // 신규 수집은 현재 월(periodStart) metric 에만 적재되므로, 캐시 판정도 같은
+  // 월 스코프로 제한한다. 월말 24시간 안쪽에서 이전 월 스냅샷을 캐시로 돌려주면
+  // 현재 월 metric 에는 라이브 데이터가 없는 상태가 되어 Keyword Overview 와
+  // Domain Analytics 가 서로 다른 SERP 를 보여주는 문제를 막는다.
   const metricRows = await db
     .select({ id: keywordMetrics.id })
     .from(keywordMetrics)
@@ -114,7 +118,8 @@ async function findFreshSnapshot(input: {
       and(
         eq(keywordMetrics.normalizedKeyword, normalized),
         eq(keywordMetrics.countryCode, input.countryCode),
-        eq(keywordMetrics.device, input.device)
+        eq(keywordMetrics.device, input.device),
+        eq(keywordMetrics.periodStart, currentMonthStart())
       )
     );
   if (metricRows.length === 0) return null;
@@ -215,22 +220,28 @@ export async function collectKeywordSerp(input: {
 
   const keywordMetricId = await upsertKeywordMetric(input);
   if (serp.organic.length > 0) {
-    await db.insert(serpSnapshots).values(
-      serp.organic.map((item) => ({
-        id: newId("srp"),
-        keywordMetricId,
-        searchEngine: serp.engine,
-        domain: item.domain || item.link,
-        url: item.link,
-        position: item.position,
-        isAd: false,
-        title: item.title || null,
-        description: item.description,
-        serpFeatures: JSON.stringify(serp.features),
-        source: "talordata",
-        capturedAt: serp.capturedAt,
-      }))
-    );
+    // 동시 수집이나 동일 밀리초의 재수집은 (metric, engine, capturedAt,
+    // position, isAd) 유니크 제약과 충돌할 수 있다 — 스냅샷은 append-only
+    // 관측치이므로 충돌 행은 조용히 건너뛰고 수집을 실패시키지 않는다.
+    await db
+      .insert(serpSnapshots)
+      .values(
+        serp.organic.map((item) => ({
+          id: newId("srp"),
+          keywordMetricId,
+          searchEngine: serp.engine,
+          domain: item.domain || item.link,
+          url: item.link,
+          position: item.position,
+          isAd: false,
+          title: item.title || null,
+          description: item.description,
+          serpFeatures: JSON.stringify(serp.features),
+          source: "talordata",
+          capturedAt: serp.capturedAt,
+        }))
+      )
+      .onConflictDoNothing();
   }
 
   return {

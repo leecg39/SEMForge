@@ -16,6 +16,43 @@ export const PAGE_FETCH_USER_AGENT =
 const DIRECT_FETCH_TIMEOUT_MS = 15_000;
 /** 파싱 비용을 제한하기 위해 본문은 앞부분만 읽는다 (crawl.ts 와 같은 정책). */
 const MAX_HTML_BYTES = 800_000;
+/**
+ * On-Page 분석은 사용자가 입력한 URL 을 서버가 직접 가져오므로 SSRF 가드가 필요하다.
+ * 사설/루프백/메타데이터 주소를 차단해 오픈 프록시 악용을 막는다.
+ */
+const PRIVATE_IP_PATTERNS: RegExp[] = [
+  /^127\./,
+  /^10\./,
+  /^169\.254\./,
+  /^172\.(1[6-9]|2\d|3[0-1])\./,
+  /^192\.168\./,
+  /^0\./,
+  /^::1$/,
+  /^f[cd][0-9a-f]{2}:/i, // IPv6 ULA fc00::/7
+  /^fe80:/i,            // link-local
+];
+
+function isPrivateHost(hostname: string): boolean {
+  const normalized = hostname.trim().toLowerCase();
+  if (normalized === "localhost" || normalized.endsWith(".localhost")) return true;
+  if (PRIVATE_IP_PATTERNS.some((pattern) => pattern.test(normalized))) return true;
+  return false;
+}
+
+function assertFetchableUrl(url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("올바른 URL 이 아닙니다.");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("http/https URL 만 가져올 수 있습니다.");
+  }
+  if (isPrivateHost(parsed.hostname)) {
+    throw new Error("내부 네트워크 주소는 가져올 수 없습니다.");
+  }
+}
 
 export interface ScrapedPage {
   requestedUrl: string;
@@ -60,6 +97,19 @@ async function readCappedText(response: Response): Promise<string> {
 
 /** 자체 fetch 폴백. HTML 이 아닌 콘텐츠는 html: null 로 반환한다. */
 async function directFetchHtml(url: string): Promise<ScrapedPage> {
+  try {
+    assertFetchableUrl(url);
+  } catch (error) {
+    return {
+      requestedUrl: url,
+      finalUrl: url,
+      status: 0,
+      html: null,
+      engine: "direct",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DIRECT_FETCH_TIMEOUT_MS);
   try {
@@ -83,6 +133,21 @@ async function directFetchHtml(url: string): Promise<ScrapedPage> {
         engine: "direct",
         error: "HTML 문서가 아닙니다.",
       };
+    }
+    // 리다이렉트를 따라간 최종 주소가 내부망이면 폐기한다 (리다이렉트 기반 SSRF 우회 방지).
+    if (response.url) {
+      try {
+        assertFetchableUrl(response.url);
+      } catch {
+        return {
+          requestedUrl: url,
+          finalUrl: response.url,
+          status: response.status,
+          html: null,
+          engine: "direct",
+          error: "리다이렉트 대상이 내부 네트워크 주소입니다.",
+        };
+      }
     }
     const html = await readCappedText(response);
     return {

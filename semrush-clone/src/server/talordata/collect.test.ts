@@ -115,3 +115,55 @@ test("다른 엔진/국가 조합은 캐시를 공유하지 않는다", async ()
   assert.equal(fetchCalls, 4);
   assert.equal(cached.fromCache, true);
 });
+
+test("동일 시점의 동시 재수집은 유니크 충돌 없이 완료된다", async () => {
+  // capturedAt 이 같은 두 수집이 동시에 달려도 onConflictDoNothing 덕에
+  // 둘 다 정상 종료해야 한다 (forceRefresh 로 캐시를 우회).
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const before = fetchCalls;
+  const [a, b] = await Promise.all([
+    collectKeywordSerp({ ...QUERY, forceRefresh: true }),
+    collectKeywordSerp({ ...QUERY, forceRefresh: true }),
+  ]);
+  assert.equal(fetchCalls, before + 2, "둘 다 외부 API 를 호출했다");
+  assert.equal(a.fromCache, false);
+  assert.equal(b.fromCache, false);
+  assert.equal(a.results.length, 2);
+  assert.equal(b.results.length, 2);
+});
+
+test("이전 월 metric 에만 스냅샷이 있으면 캐시하지 않고 신규 수집한다", async () => {
+  // 현재 월(periodStart)과 다른 metric 의 라이브 스냅샷은 신선도 판정에서
+  // 제외되어, 월이 바뀐 뒤에도 현재 월 metric 에 실측이 적재되어야 한다.
+  const { db } = await import("@/db/client");
+  const { keywordMetrics } = await import("@/db/schema");
+  const { eq } = await import("drizzle-orm");
+
+  // 이전 월 키워드를 수집해 metric + 스냅샷을 만든다.
+  const oldQuery = {
+    keyword: "previous month keyword",
+    countryCode: "KR",
+    device: "desktop" as const,
+  };
+  await collectKeywordSerp(oldQuery);
+
+  // 이 키워드 metric 의 periodStart 를 한 달 전으로 되돌린다.
+  const previous = await db
+    .select()
+    .from(keywordMetrics)
+    .where(eq(keywordMetrics.normalizedKeyword, "previous month keyword"))
+    .limit(1);
+  const target = previous[0]!;
+  const now = new Date();
+  const lastMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  await db
+    .update(keywordMetrics)
+    .set({ periodStart: lastMonthStart })
+    .where(eq(keywordMetrics.id, target.id));
+
+  // 다시 수집하면 현재 월 metric 이 없으므로 캐시가 아니라 신규 수집이어야 한다.
+  const before = fetchCalls;
+  const again = await collectKeywordSerp(oldQuery);
+  assert.equal(again.fromCache, false);
+  assert.ok(fetchCalls > before, "이전 월 스냅샷은 캐시로 쓰이지 않는다");
+});
