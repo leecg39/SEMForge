@@ -464,6 +464,7 @@ export function DomainIntelligenceDashboard({
   const [report, setReport] = useState<DomainAnalyticsReport | null>(initialReport);
   const [status, setStatus] = useState<LoadStatus>(initialReport ? "ready" : "error");
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
   const [collectInput, setCollectInput] = useState("");
   const [collecting, setCollecting] = useState(false);
@@ -484,6 +485,7 @@ export function DomainIntelligenceDashboard({
     requestIdRef.current = requestId;
     setStatus("loading");
     setError(null);
+    setNotFound(false);
     try {
       const nextReport = await fetchDomainReport(nextDomain, nextDevice, controller.signal, nextCountry);
       if (requestId !== requestIdRef.current) return "error";
@@ -494,6 +496,7 @@ export function DomainIntelligenceDashboard({
     } catch (caught) {
       if (controller.signal.aborted || requestId !== requestIdRef.current) return "error";
       setError(caught instanceof Error ? caught.message : copy.loadError);
+      setNotFound((caught as { code?: string })?.code === "NOT_FOUND");
       setStatus("error");
       return (caught as { code?: string })?.code === "NOT_FOUND" ? "not_found" : "error";
     }
@@ -666,48 +669,56 @@ export function DomainIntelligenceDashboard({
       </header>
 
       <div className="min-h-[24px]" aria-live="polite">
-        {error && (
+        {error && !notFound && (
           <div role="alert" className="mt-4 rounded-[8px] border border-[#ffc8d4] bg-[#fff4f6] px-4 py-3 text-[13px] text-[#a80028]">
             <div className="flex items-start justify-between gap-3">
               <span>{copy.loadError} {error}</span>
               <button type="button" onClick={() => void runQuery(domain, device, country)} className="shrink-0 font-semibold underline underline-offset-2">{copy.analyze}</button>
             </div>
+          </div>
+        )}
+        {notFound && (
+          <div role="status" className="mt-4 rounded-[8px] border border-app-border bg-a2-card px-4 py-3 text-[13px] text-a2-text shadow-[var(--a2-card-shadow)]">
+            <div className="flex items-start justify-between gap-3">
+              <span>{error}</span>
+              <button type="button" onClick={() => void runQuery(domain, device, country)} className="shrink-0 font-semibold text-app-blue underline underline-offset-2">{copy.analyze}</button>
+            </div>
 
             {/* 실시간 수집 패널 — 원천 스토어에 없는 실제 도메인은 TalorData 로 브랜드 SERP 를 수집해 리포트를 만든다 */}
-            <div className="mt-3 border-t border-[#ffc8d4] pt-3">
-              <p className="text-[12px] font-semibold text-[#7a001d]">{copy.liveCollectTitle}</p>
-              <p className="mt-1 text-[12px] leading-[18px] text-[#a80028]">{copy.liveCollectDescription}</p>
+            <div className="mt-3 border-t border-app-border pt-3">
+              <p className="text-[12px] font-semibold text-a2-text">{copy.liveCollectTitle}</p>
+              <p className="mt-1 text-[12px] leading-[18px] text-a2-text-muted">{copy.liveCollectDescription}</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 <input
                   value={collectInput}
                   onChange={(event) => setCollectInput(event.target.value)}
                   placeholder={suggestKeywordsClient(domain).join(", ") || copy.liveCollectPlaceholder}
                   aria-label={copy.liveCollectKeywordsLabel}
-                  className="h-9 min-w-[220px] flex-1 rounded-[7px] border border-[#ffc8d4] bg-white px-3 text-[13px] text-a2-text outline-none focus:border-app-blue"
+                  className="h-9 min-w-[220px] flex-1 rounded-[7px] border border-app-border bg-white px-3 text-[13px] text-a2-text outline-none focus:border-app-blue"
                 />
                 <button
                   type="button"
                   onClick={() => void runCollect()}
                   disabled={collecting}
-                  className="h-9 shrink-0 rounded-[7px] bg-[#a80028] px-4 text-[12px] font-semibold text-white transition-opacity disabled:cursor-wait disabled:opacity-60"
+                  className="h-9 shrink-0 rounded-[7px] bg-app-blue px-4 text-[12px] font-semibold text-white transition-opacity disabled:cursor-wait disabled:opacity-60"
                 >
                   {collecting ? copy.liveCollecting : copy.liveCollectAction}
                 </button>
               </div>
-              {collectError && <p className="mt-2 text-[12px] font-medium">{collectError}</p>}
+              {collectError && <p className="mt-2 text-[12px] font-medium text-[#a80028]">{collectError}</p>}
               {collectSummary && (
                 <ul className="mt-2 flex flex-col gap-1 text-[12px]">
                   {collectSummary.outcomes.map((outcome) => (
                     <li key={outcome.keyword} className="flex items-center gap-2">
                       <span className="font-medium text-a2-text">{outcome.keyword}</span>
                       {outcome.error ? (
-                        <span>— {outcome.error}</span>
+                        <span className="text-[#a80028]">— {outcome.error}</span>
                       ) : outcome.position !== null ? (
                         <span className="font-semibold text-[#0a6b57]">
                           {copy.liveCollectRanked} #{outcome.position}
                         </span>
                       ) : (
-                        <span className="text-[#7a001d]">{copy.liveCollectNotFound}</span>
+                        <span className="text-a2-text-muted">{copy.liveCollectNotFound}</span>
                       )}
                     </li>
                   ))}

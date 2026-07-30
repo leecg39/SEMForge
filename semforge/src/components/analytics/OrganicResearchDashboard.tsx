@@ -461,7 +461,7 @@ export function OrganicResearchDashboard({
       </form>
 
       <div className="min-h-[24px]" aria-live="polite">
-        {error && (
+        {error && !notFound && (
           <div
             role="alert"
             className="mt-4 rounded-[8px] border border-[#ffc8d4] bg-[#fff4f6] px-4 py-3 text-[13px] text-[#a80028]"
@@ -469,17 +469,23 @@ export function OrganicResearchDashboard({
             <p>
               {copy.loadError} {error}
             </p>
-            {notFound && (
-              <p className="mt-2">
-                {copy.notFoundHint}{" "}
-                <Link
-                  href={`/analytics/overview/?domain=${encodeURIComponent(domain)}`}
-                  className="font-semibold underline underline-offset-2"
-                >
-                  {copy.goCollect}
-                </Link>
-              </p>
-            )}
+          </div>
+        )}
+        {error && notFound && (
+          <div
+            role="status"
+            className="mt-4 rounded-[8px] border border-app-border bg-a2-card px-4 py-3 text-[13px] text-a2-text shadow-[var(--a2-card-shadow)]"
+          >
+            <p>{error}</p>
+            <p className="mt-2 text-a2-text-muted">
+              {copy.notFoundHint}{" "}
+              <Link
+                href={`/analytics/overview/?domain=${encodeURIComponent(domain)}`}
+                className="font-semibold text-app-blue underline underline-offset-2"
+              >
+                {copy.goCollect}
+              </Link>
+            </p>
           </div>
         )}
       </div>
