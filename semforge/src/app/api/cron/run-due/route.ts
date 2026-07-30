@@ -1,6 +1,7 @@
 import { jsonError, jsonOk, route } from "@/lib/api";
 import { ApiError } from "@/lib/api";
 import { listDueJobs, runDueJobs } from "@/server/providers/scheduler";
+import { ensureDbRetentionJob } from "@/server/providers/retention";
 import { ensureSiteAuditDueJob } from "@/server/siteaudit/due";
 import { registerPositionTrackingDueJob } from "@/server/position-tracking/schedule";
 
@@ -29,6 +30,7 @@ export const GET = route(async (request: Request) => {
   // 도메인 due job 은 각 모듈의 ensure/register 함수로 등록한다 (멱등).
   // 라우트가 다른 도메인 라우트보다 먼저 호출돼도 잡 누락이 없도록 여기서 보장한다.
   ensureSiteAuditDueJob();
+  ensureDbRetentionJob();
   await registerPositionTrackingDueJob();
 
   const { searchParams } = new URL(request.url);

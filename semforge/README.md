@@ -60,6 +60,8 @@ GOOGLE_CLIENT_SECRET=
 GSC_REDIRECT_URI=        # 기본값 http://localhost:3000/api/gsc/callback
 GBP_REDIRECT_URI=        # 기본값 http://localhost:3000/api/gbp/callback
 CRON_SECRET=             # 주기 수집 엔드포인트 보호용 비밀값
+APP_SECRET=              # OAuth 토큰 at-rest 암호화 키 재료 (미설정 시 평문 저장 + 경고)
+SNAPSHOT_RETENTION_DAYS= # 스냅샷 보존 일수 (기본 90, db_retention job)
 ```
 
 ## 주요 기능
@@ -134,6 +136,7 @@ Drizzle ORM + SQLite(better-sqlite3) · Zod · 자체 세션 인증(scrypt + htt
 
 | 문서 | 내용 |
 |---|---|
+| `docs/DB_SCHEMA.md` | 데이터베이스 설계 (ERD, 테이블 사전, 보존 정책, 마이그레이션 규약) |
 | `.Codex/progress.txt` | 작업 상태 체크포인트 (커밋 제외) |
 | `docs/research/APP_CRUD_EVIDENCE.md` | 로그인 앱 CRUD 실측 증거 |
 | `docs/research/APP_REBUILD_SPEC.md` | 재구축 명세(ERD·필드·API·정책) |

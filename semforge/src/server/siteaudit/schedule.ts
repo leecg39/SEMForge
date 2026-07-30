@@ -1,12 +1,11 @@
-import { sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
+import { siteAuditCampaigns } from "@/db/schema";
 import { computeNextRunAt } from "@/server/providers/scheduler";
 
 /**
  * 사이트 진단 캠페인의 반복 스케줄 저장/다음 실행 시각 계산.
- *
- * schedule 컬럼은 drizzle 스키마에 있지만 next_run_at(0007)은 스키마 밖
- * 컬럼이라(스키마 파일은 이 워커의 소유가 아님) 갱신은 raw SQL 로 처리한다.
+ * schedule / next_run_at(0007) 모두 drizzle 스키마에 등재되어 타입 접근한다.
  * 실행 자체는 src/server/siteaudit/due.ts 가 /api/cron/run-due 레지스트리에
  * 등록한 잡이 담당한다.
  */
@@ -47,8 +46,9 @@ export async function setCampaignSchedule(
 ): Promise<{ schedule: SiteAuditSchedule; nextRunAt: string | null }> {
   const next = computeSiteAuditNextRunAt(schedule, now);
   const nextMs = next === null ? null : next.getTime();
-  await db.run(
-    sql`UPDATE site_audit_campaigns SET schedule = ${schedule}, next_run_at = ${nextMs}, updated_at = ${now.getTime()} WHERE id = ${campaignId}`
-  );
+  await db
+    .update(siteAuditCampaigns)
+    .set({ schedule, nextRunAt: nextMs, updatedAt: now })
+    .where(eq(siteAuditCampaigns.id, campaignId));
   return { schedule, nextRunAt: next === null ? null : next.toISOString() };
 }

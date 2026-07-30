@@ -1,11 +1,9 @@
-import fs from "node:fs";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, lte, ne } from "drizzle-orm";
 import { db } from "@/db/client";
 import { positionTrackingCampaigns } from "@/db/schema";
 import { ApiError } from "@/lib/api";
 import type { AuthContext } from "@/lib/session";
+import { registerDueJob } from "@/server/providers/scheduler";
 import {
   collectCampaignRankings,
   type CampaignCollectReport,
@@ -14,10 +12,9 @@ import {
 /**
  * 포지션 추적 캠페인의 주기 수집 스케줄.
  *
- * collect_schedule / next_run_at 컬럼은 0008 마이그레이션으로 추가된다.
- * drizzle 스키마(src/db/schema)는 다른 워커 소유이므로 이 모듈은 두 컬럼을
- * raw SQL 로만 접근하고, 마이그레이션 미적용 상태(no such column)에서는
- * 가짜 값 대신 "미적용" 상태를 정직하게 돌려준다.
+ * collect_schedule / next_run_at 컬럼은 0008 마이그레이션으로 추가됐고
+ * drizzle 스키마(domain.ts)에 등재되어 타입 접근한다. 마이그레이션 미적용
+ * 상태(no such column)에서는 가짜 값 대신 "미적용" 상태를 정직하게 돌려준다.
  *
  * next_run_at 은 다른 감사 컬럼(created_at 등)과 같은 밀리초 epoch 정수다.
  */
@@ -83,16 +80,18 @@ export async function getCampaignSchedule(
 ): Promise<CampaignScheduleState> {
   await requireOwnedCampaign(auth, campaignId);
   try {
-    const row = await db.get<{ collect_schedule: unknown; next_run_at: unknown }>(sql`
-      SELECT collect_schedule, next_run_at
-      FROM position_tracking_campaigns
-      WHERE id = ${campaignId}
-      LIMIT 1
-    `);
+    const [row] = await db
+      .select({
+        collectSchedule: positionTrackingCampaigns.collectSchedule,
+        nextRunAt: positionTrackingCampaigns.nextRunAt,
+      })
+      .from(positionTrackingCampaigns)
+      .where(eq(positionTrackingCampaigns.id, campaignId))
+      .limit(1);
     return {
       campaignId,
-      schedule: toCollectSchedule(row?.collect_schedule),
-      nextRunAt: typeof row?.next_run_at === "number" ? row.next_run_at : null,
+      schedule: toCollectSchedule(row?.collectSchedule),
+      nextRunAt: typeof row?.nextRunAt === "number" ? row.nextRunAt : null,
       migrated: true,
     };
   } catch (error) {
@@ -113,13 +112,10 @@ export async function setCampaignSchedule(
   const nextRunAt =
     schedule === "off" ? null : Date.now() + INTERVAL_MS[schedule];
   try {
-    await db.run(sql`
-      UPDATE position_tracking_campaigns
-      SET collect_schedule = ${schedule},
-          next_run_at = ${nextRunAt},
-          updated_at = ${Date.now()}
-      WHERE id = ${campaignId}
-    `);
+    await db
+      .update(positionTrackingCampaigns)
+      .set({ collectSchedule: schedule, nextRunAt, updatedAt: new Date() })
+      .where(eq(positionTrackingCampaigns.id, campaignId));
   } catch (error) {
     if (isMissingColumnError(error)) {
       throw new ApiError(
@@ -134,26 +130,36 @@ export async function setCampaignSchedule(
 
 interface DueCampaignRow {
   id: string;
-  workspace_id: string;
-  created_by: string | null;
+  workspaceId: string;
+  createdBy: string | null;
   domain: string;
-  collect_schedule: unknown;
-  next_run_at: unknown;
+  collectSchedule: string;
+  nextRunAt: number | null;
 }
 
 /** 실행 시각이 지난 캠페인을 전체 워크스페이스에서 찾는다 (크론 컨텍스트). */
 async function listDueCampaigns(nowMs: number, limit: number): Promise<DueCampaignRow[] | null> {
   try {
-    const rows = await db.all<DueCampaignRow>(sql`
-      SELECT id, workspace_id, created_by, domain, collect_schedule, next_run_at
-      FROM position_tracking_campaigns
-      WHERE deleted_at IS NULL
-        AND collect_schedule != 'off'
-        AND next_run_at IS NOT NULL
-        AND next_run_at <= ${nowMs}
-      ORDER BY next_run_at ASC
-      LIMIT ${limit}
-    `);
+    const rows = await db
+      .select({
+        id: positionTrackingCampaigns.id,
+        workspaceId: positionTrackingCampaigns.workspaceId,
+        createdBy: positionTrackingCampaigns.createdBy,
+        domain: positionTrackingCampaigns.domain,
+        collectSchedule: positionTrackingCampaigns.collectSchedule,
+        nextRunAt: positionTrackingCampaigns.nextRunAt,
+      })
+      .from(positionTrackingCampaigns)
+      .where(
+        and(
+          isNull(positionTrackingCampaigns.deletedAt),
+          ne(positionTrackingCampaigns.collectSchedule, "off"),
+          isNotNull(positionTrackingCampaigns.nextRunAt),
+          lte(positionTrackingCampaigns.nextRunAt, nowMs)
+        )
+      )
+      .orderBy(asc(positionTrackingCampaigns.nextRunAt))
+      .limit(limit);
     return rows;
   } catch (error) {
     if (isMissingColumnError(error)) return null;
@@ -162,12 +168,12 @@ async function listDueCampaigns(nowMs: number, limit: number): Promise<DueCampai
 }
 
 /** 크론 실행용 합성 인증 컨텍스트. collectCampaignRankings 는 workspaceId/userId 만 사용한다. */
-function buildCronAuth(campaign: { workspace_id: string; created_by: string | null }): AuthContext {
+function buildCronAuth(campaign: { workspaceId: string; createdBy: string | null }): AuthContext {
   return {
-    userId: campaign.created_by ?? "system-cron",
+    userId: campaign.createdBy ?? "system-cron",
     email: "cron@localhost",
     name: "주기 수집 스케줄러",
-    workspaceId: campaign.workspace_id,
+    workspaceId: campaign.workspaceId,
     workspaceName: "",
     workspacePlan: "pro",
     role: "editor",
@@ -184,11 +190,10 @@ function buildCronAuth(campaign: { workspace_id: string; created_by: string | nu
 async function advanceNextRun(campaignId: string, schedule: CollectSchedule, fromMs: number) {
   if (schedule === "off") return;
   try {
-    await db.run(sql`
-      UPDATE position_tracking_campaigns
-      SET next_run_at = ${fromMs + INTERVAL_MS[schedule]}
-      WHERE id = ${campaignId}
-    `);
+    await db
+      .update(positionTrackingCampaigns)
+      .set({ nextRunAt: fromMs + INTERVAL_MS[schedule] })
+      .where(eq(positionTrackingCampaigns.id, campaignId));
   } catch (error) {
     console.error("[position-tracking] failed to advance next_run_at", error);
   }
@@ -233,7 +238,7 @@ export async function collectDueCampaigns(options?: {
 
   const results: DueCollectResult[] = [];
   for (const row of dueRows) {
-    const schedule = toCollectSchedule(row.collect_schedule);
+    const schedule = toCollectSchedule(row.collectSchedule);
     try {
       const report = await collectCampaignRankings(buildCronAuth(row), row.id);
       await advanceNextRun(row.id, schedule, now.getTime());
@@ -301,97 +306,44 @@ export async function collectCampaignIfDue(
 }
 
 /* ------------------------------------------------------------------ */
-/* registerDueJob 연동 (런타임 가드)                                   */
+/* registerDueJob 연동                                                 */
 /* ------------------------------------------------------------------ */
-
-/**
- * src/server/providers/scheduler.ts 는 다른 워커 소유이며 아직 없을 수 있다.
- * 아래 등록 절차는 어떤 단계든 실패해도 예외를 삼키고 registered=false 를
- * 돌려준다. 스케줄러 모듈이 없어도 collect-due 라우트와 collectDueCampaigns()
- * 정적 import 만으로 주기 수집은 동작한다.
- */
 
 export interface DueJobRegistration {
   registered: boolean;
-  via?: "global-registry" | "module-import";
+  via?: "module-import";
   reason?: string;
-}
-
-interface DueJobDescriptor {
-  name: string;
-  description: string;
-  handler: typeof collectDueCampaigns;
-}
-
-const DUE_JOB: DueJobDescriptor = {
-  name: POSITION_TRACKING_DUE_JOB_NAME,
-  description: "포지션 추적 캠페인 주기 수집 (collect_schedule 이 due 인 캠페인)",
-  handler: collectDueCampaigns,
-};
-
-type RegisterDueJobFn = (...args: unknown[]) => unknown;
-
-function tryCallRegister(registerDueJob: RegisterDueJobFn): boolean {
-  // 시그니처가 확정되지 않았으므로 두 가지 호출 형태를 모두 시도한다.
-  try {
-    registerDueJob(DUE_JOB);
-    return true;
-  } catch {
-    // 객체 형태가 아니면 (name, handler) 형태로 재시도
-  }
-  try {
-    registerDueJob(DUE_JOB.name, DUE_JOB.handler);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 let registrationSucceeded = false;
 
+/**
+ * /api/cron/run-due 레지스트리에 due 잡을 등록한다 (멱등).
+ * 스케줄러(providers/scheduler.ts)를 정적 import 하므로 항상 등록 가능하며,
+ * 핸들러는 DueJobOutcome 형태(scanned/processed/failed/errors)로 요약을 환산한다.
+ */
 export async function registerPositionTrackingDueJob(): Promise<DueJobRegistration> {
   if (registrationSucceeded) {
     return { registered: true, via: "module-import" };
   }
-
-  // 1) 전역 레지스트리: 스케줄러가 import 없이 호출 가능한 등록점을 열어둔 경우.
-  const globalRegistry = (
-    globalThis as { __semforgeDueJobRegistry?: { registerDueJob?: RegisterDueJobFn } }
-  ).__semforgeDueJobRegistry;
-  if (globalRegistry && typeof globalRegistry.registerDueJob === "function") {
-    if (tryCallRegister(globalRegistry.registerDueJob)) {
-      registrationSucceeded = true;
-      return { registered: true, via: "global-registry" };
-    }
-  }
-
-  // 2) 모듈 import: 파일이 실제로 있을 때만 시도한다.
-  //    webpackIgnore 로 번들 대상에서 제외해, 파일이 없어도 빌드가 깨지지 않게 한다.
-  //    Node 런타임이 TS 를 직접 로드하지 못하거나 모듈의 내부 alias 해석이
-  //    실패하면 catch 로 흡수한다 — 이 경우 주기 실행기(/api/cron/run-due)가
-  //    collectDueCampaigns 를 정적 import 하거나 collect-due 라우트를 호출하는
-  //    방식으로 연결하면 된다.
-  const schedulerPath = path.join(process.cwd(), "src", "server", "providers", "scheduler.ts");
-  if (!fs.existsSync(schedulerPath)) {
-    return { registered: false, reason: "scheduler module not present" };
-  }
   try {
-    const moduleUrl = pathToFileURL(schedulerPath).href;
-    const mod = (await import(/* webpackIgnore: true */ moduleUrl)) as {
-      registerDueJob?: RegisterDueJobFn;
-    };
-    if (typeof mod.registerDueJob !== "function") {
-      return { registered: false, reason: "registerDueJob export not found" };
-    }
-    if (!tryCallRegister(mod.registerDueJob)) {
-      return { registered: false, reason: "registerDueJob signature mismatch" };
-    }
+    registerDueJob(POSITION_TRACKING_DUE_JOB_NAME, async ({ now, limit }) => {
+      const summary = await collectDueCampaigns({ now, limit });
+      return {
+        scanned: summary.checked,
+        processed: summary.collected,
+        failed: summary.failed,
+        errors: summary.results
+          .filter((result) => !result.ok && result.error)
+          .map((result) => `${result.domain}: ${result.error}`),
+      };
+    });
     registrationSucceeded = true;
     return { registered: true, via: "module-import" };
   } catch (error) {
     return {
       registered: false,
-      reason: error instanceof Error ? error.message : "scheduler import failed",
+      reason: error instanceof Error ? error.message : "registerDueJob failed",
     };
   }
 }

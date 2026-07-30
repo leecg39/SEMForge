@@ -85,6 +85,20 @@
       "when": 1785385200000,
       "tag": "0011_folder_color",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1785395022435,
+      "tag": "0012_schema_sync",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1785395227633,
+      "tag": "0013_drop_demo_source_defaults",
+      "breakpoints": true
     }
   ]
 }

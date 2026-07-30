@@ -1,13 +1,12 @@
-import { sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
+import { siteAuditCampaigns } from "@/db/schema";
 import type { AiBotRule } from "@/server/siteaudit/robots";
 
 /**
  * site_audit_campaigns.crawl_meta JSON 컬럼 접근기.
- *
- * crawl_meta / next_run_at 은 0007 마이그레이션으로 추가됐지만 drizzle 스키마
- * (src/db/schema/domain.ts)는 이 워커의 소유 파일이 아니라 갱신하지 못하므로,
- * 이 두 컬럼은 여기서 raw SQL 로만 읽고 쓴다.
+ * crawl_meta / next_run_at 은 0007 마이그레이션으로 추가됐고
+ * drizzle 스키마(domain.ts)에 등재되어 타입 접근한다.
  */
 
 export interface RobotsMeta {
@@ -39,10 +38,12 @@ function parseCrawlMeta(raw: string | null): CrawlMeta | null {
 
 /** 캠페인의 crawl_meta JSON 을 읽는다. 없거나 깨졌으면 null. */
 export async function readCrawlMeta(campaignId: string): Promise<CrawlMeta | null> {
-  const rows = await db.all<{ crawl_meta: string | null }>(
-    sql`SELECT crawl_meta FROM site_audit_campaigns WHERE id = ${campaignId} LIMIT 1`
-  );
-  return parseCrawlMeta(rows[0]?.crawl_meta ?? null);
+  const [row] = await db
+    .select({ crawlMeta: siteAuditCampaigns.crawlMeta })
+    .from(siteAuditCampaigns)
+    .where(eq(siteAuditCampaigns.id, campaignId))
+    .limit(1);
+  return parseCrawlMeta(row?.crawlMeta ?? null);
 }
 
 /**
@@ -52,7 +53,8 @@ export async function readCrawlMeta(campaignId: string): Promise<CrawlMeta | nul
 export async function mergeCrawlMeta(campaignId: string, patch: CrawlMeta): Promise<void> {
   const current = (await readCrawlMeta(campaignId)) ?? {};
   const next = JSON.stringify({ ...current, ...patch });
-  await db.run(
-    sql`UPDATE site_audit_campaigns SET crawl_meta = ${next} WHERE id = ${campaignId}`
-  );
+  await db
+    .update(siteAuditCampaigns)
+    .set({ crawlMeta: next })
+    .where(eq(siteAuditCampaigns.id, campaignId));
 }

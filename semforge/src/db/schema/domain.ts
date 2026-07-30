@@ -294,7 +294,8 @@ export const siteAuditCampaigns = sqliteTable(
     })
       .notNull()
       .default("website"),
-    schedule: text("schedule", { enum: ["off", "weekly", "monthly"] })
+    /** daily 는 UI 신규 옵션, monthly 는 과거 데이터 호환용 */
+    schedule: text("schedule", { enum: ["off", "daily", "weekly", "monthly"] })
       .notNull()
       .default("off"),
     status: text("status", {
@@ -304,6 +305,10 @@ export const siteAuditCampaigns = sqliteTable(
       .default("idle"),
     siteHealth: integer("site_health"),
     lastRunAt: timestampMs("last_run_at"),
+    /** 다음 예약 크롤 시각 (ms epoch). off 면 null. due 러너가 스캔한다 (0007) */
+    nextRunAt: integer("next_run_at"),
+    /** 크롤 시점 메타 JSON (robots.txt AI 봇 판정 등) (0007) */
+    crawlMeta: text("crawl_meta"),
     ...auditColumns,
   },
   (t) => [
@@ -311,6 +316,7 @@ export const siteAuditCampaigns = sqliteTable(
       .on(t.workspaceId, t.name)
       .where(sql`deleted_at IS NULL`),
     index("site_audit_workspace_idx").on(t.workspaceId, t.deletedAt),
+    index("site_audit_campaigns_due_idx").on(t.nextRunAt),
   ]
 );
 
@@ -399,6 +405,12 @@ export const positionTrackingCampaigns = sqliteTable(
       .notNull()
       .default("active"),
     visibility: integer("visibility"),
+    /** 주기 순위 수집 스케줄 (0008) */
+    collectSchedule: text("collect_schedule", { enum: ["off", "daily", "weekly"] })
+      .notNull()
+      .default("off"),
+    /** 다음 예약 수집 시각 (ms epoch). off 면 null (0008) */
+    nextRunAt: integer("next_run_at"),
     ...auditColumns,
   },
   (t) => [
@@ -406,6 +418,7 @@ export const positionTrackingCampaigns = sqliteTable(
       .on(t.workspaceId, t.name)
       .where(sql`deleted_at IS NULL`),
     index("position_tracking_workspace_idx").on(t.workspaceId, t.deletedAt),
+    index("position_tracking_due_idx").on(t.collectSchedule, t.nextRunAt),
   ]
 );
 

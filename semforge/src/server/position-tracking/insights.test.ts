@@ -56,8 +56,9 @@ before(async () => {
   exec(
     "INSERT INTO position_tracking_competitors (id, campaign_id, domain) VALUES ('p1','c1','rival.com')"
   );
+  // 0013 부터 source 는 기본값 없이 명시 필수다 — 라이브 소스 값으로 삽입한다.
   const metric = sqlite.prepare(
-    "INSERT INTO keyword_metrics (id, keyword, normalized_keyword, country_code, device, period_start, volume, intent) VALUES (?,?,?,?,?,?,?,?)"
+    "INSERT INTO keyword_metrics (id, keyword, normalized_keyword, country_code, device, period_start, volume, intent, source) VALUES (?,?,?,?,?,?,?,?,'talordata-serp')"
   );
   metric.run("m1", "Alpha Keyword", "alpha keyword", "KR", "desktop", monthStart, 0, "informational");
   metric.run("m2", "beta keyword", "beta keyword", "KR", "desktop", monthStart, 0, "informational");
@@ -78,7 +79,7 @@ before(async () => {
     ["m3", "other-a.com", "https://other-a.com/c", 2],
   ];
   const insert = sqlite.prepare(
-    "INSERT INTO serp_snapshots (id, keyword_metric_id, domain, url, position, captured_at) VALUES (?,?,?,?,?,?)"
+    "INSERT INTO serp_snapshots (id, keyword_metric_id, domain, url, position, captured_at, source) VALUES (?,?,?,?,?,?,'talordata')"
   );
   rows.forEach(([metricId, domain, url, position], index) =>
     insert.run(`s${index}`, metricId, domain, url, position, now)

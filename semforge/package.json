@@ -12,6 +12,8 @@
     "test:siteaudit": "tsx --test src/server/siteaudit/linkgraph.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
+    "db:cleanup:demo": "tsx scripts/db-cleanup-demo.ts",
+    "db:backup": "tsx scripts/db-backup.ts",
     "db:seed": "tsx src/db/seed.ts",
     "db:seed:analytics": "SEED_DEMO_DATA=1 tsx src/db/seed-analytics-cli.ts",
     "db:reset": "rm -rf data && npm run db:migrate && npm run db:seed"

@@ -33,7 +33,8 @@ export const keywordMetrics = sqliteTable(
     intent: text("intent", {
       enum: ["informational", "navigational", "commercial", "transactional"],
     }).notNull(),
-    source: text("source").notNull().default("demo-keyword-model"),
+    /** 데이터 출처. 삽입 시 명시 필수 (talordata-serp 등). demo 기본값은 제거됨 */
+    source: text("source").notNull(),
     updatedAt: timestampMs("updated_at")
       .notNull()
       .default(sql`(unixepoch() * 1000)`),
@@ -74,7 +75,8 @@ export const serpSnapshots = sqliteTable(
     description: text("description"),
     /** featured_snippet, local_pack 같은 피처 이름의 JSON 배열. */
     serpFeatures: text("serp_features").notNull().default("[]"),
-    source: text("source").notNull().default("demo-serp-collector"),
+    /** 데이터 출처. 삽입 시 명시 필수 (talordata 등). demo 기본값은 제거됨 */
+    source: text("source").notNull(),
     capturedAt: timestampMs("captured_at").notNull(),
   },
   (t) => [
@@ -106,7 +108,8 @@ export const clickstreamEvents = sqliteTable(
     }).notNull(),
     /** 이 표본 세션 한 건이 대표하는 모집단 세션 수. */
     populationWeight: integer("population_weight").notNull().default(1),
-    source: text("source").notNull().default("demo-panel"),
+    /** 데이터 출처. 삽입 시 명시 필수. demo 기본값은 제거됨 */
+    source: text("source").notNull(),
     occurredAt: timestampMs("occurred_at").notNull(),
   },
   (t) => [
@@ -134,7 +137,8 @@ export const linkGraphEdges = sqliteTable(
     isFollow: integer("is_follow", { mode: "boolean" }).notNull().default(true),
     /** 크롤 당시 source domain의 0~100 품질 피처. */
     sourceAuthority: integer("source_authority").notNull(),
-    source: text("source").notNull().default("demo-link-crawler"),
+    /** 데이터 출처. 삽입 시 명시 필수 (site-audit-crawler 등). demo 기본값은 제거됨 */
+    source: text("source").notNull(),
     firstSeenAt: timestampMs("first_seen_at").notNull(),
     lastSeenAt: timestampMs("last_seen_at").notNull(),
   },

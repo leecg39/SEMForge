@@ -1,6 +1,13 @@
-import { sql } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
+import { gscConnections, type GscConnectionRow } from "@/db/schema";
 import { ApiError } from "@/lib/api";
+import {
+  decryptSecret,
+  encryptSecret,
+  isEncrypted,
+  isEncryptionConfigured,
+} from "@/lib/crypto";
 import { newId } from "@/lib/ids";
 import {
   getGscOAuthConfig,
@@ -36,31 +43,28 @@ export interface GscConnection {
   updatedAtMs: number;
 }
 
-interface GscConnectionRow {
-  id: string;
-  user_email: string | null;
-  site_url: string | null;
-  access_token: string;
-  refresh_token: string | null;
-  expiry: number | null;
-  created_at: number;
-  updated_at: number;
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function toConnection(row: GscConnectionRow): GscConnection {
+/**
+ * 저장 행 → 연결 객체. 토큰은 복호화해 돌려준다.
+ * 복호화 실패(APP_SECRET 변경 등)는 null — 호출부는 "미연결"로 다뤄 재연결을 유도한다.
+ */
+function toConnection(row: GscConnectionRow): GscConnection | null {
+  const accessToken = decryptSecret(row.accessToken);
+  if (accessToken === null) return null;
+  const refreshToken = row.refreshToken === null ? null : decryptSecret(row.refreshToken);
+  if (row.refreshToken !== null && refreshToken === null) return null;
   return {
     id: row.id,
-    userEmail: row.user_email,
-    siteUrl: row.site_url,
-    accessToken: row.access_token,
-    refreshToken: row.refresh_token,
+    userEmail: row.userEmail,
+    siteUrl: row.siteUrl,
+    accessToken,
+    refreshToken,
     expiryMs: row.expiry,
-    createdAtMs: row.created_at,
-    updatedAtMs: row.updated_at,
+    createdAtMs: row.createdAt,
+    updatedAtMs: row.updatedAt,
   };
 }
 
@@ -71,12 +75,42 @@ export function isGscStorageMissing(error: unknown): boolean {
   );
 }
 
-/** 저장된 Search Console 연결 1건. 연결된 적이 없으면 null. */
+/** 평문 시절 행을 발견하면 암호화해 다시 저장한다 (lazy 재암호화, 베스트 에포트). */
+function reencryptIfPlaintext(row: GscConnectionRow): void {
+  if (!isEncryptionConfigured()) return;
+  if (isEncrypted(row.accessToken) && (row.refreshToken === null || isEncrypted(row.refreshToken))) {
+    return;
+  }
+  try {
+    db.update(gscConnections)
+      .set({
+        accessToken: isEncrypted(row.accessToken)
+          ? row.accessToken
+          : encryptSecret(row.accessToken),
+        refreshToken:
+          row.refreshToken === null || isEncrypted(row.refreshToken)
+            ? row.refreshToken
+            : encryptSecret(row.refreshToken),
+        updatedAt: Date.now(),
+      })
+      .where(eq(gscConnections.id, row.id))
+      .run();
+  } catch (error) {
+    console.warn("[gsc] 토큰 재암호화 실패 (다음 조회에서 재시도)", error);
+  }
+}
+
+/** 저장된 Search Console 연결 1건. 연결된 적이 없거나 복호화 불가면 null. */
 export function getGscConnection(): GscConnection | null {
-  const row = db.get<GscConnectionRow>(
-    sql`SELECT id, user_email, site_url, access_token, refresh_token, expiry, created_at, updated_at FROM gsc_connections ORDER BY created_at ASC LIMIT 1`
-  );
-  return row ? toConnection(row) : null;
+  const [row] = db
+    .select()
+    .from(gscConnections)
+    .orderBy(asc(gscConnections.createdAt))
+    .limit(1)
+    .all();
+  if (!row) return null;
+  reencryptIfPlaintext(row);
+  return toConnection(row);
 }
 
 /**
@@ -91,10 +125,17 @@ export function saveGscConnection(input: {
   expiryMs?: number | null;
 }): GscConnection {
   const id = newId("gsc");
-  db.run(sql`DELETE FROM gsc_connections`);
-  db.run(
-    sql`INSERT INTO gsc_connections (id, user_email, site_url, access_token, refresh_token, expiry) VALUES (${id}, ${input.userEmail ?? null}, ${input.siteUrl ?? null}, ${input.accessToken}, ${input.refreshToken ?? null}, ${input.expiryMs ?? null})`
-  );
+  db.delete(gscConnections).run();
+  db.insert(gscConnections)
+    .values({
+      id,
+      userEmail: input.userEmail ?? null,
+      siteUrl: input.siteUrl ?? null,
+      accessToken: encryptSecret(input.accessToken),
+      refreshToken: input.refreshToken ? encryptSecret(input.refreshToken) : null,
+      expiry: input.expiryMs ?? null,
+    })
+    .run();
   const saved = getGscConnection();
   if (!saved) {
     throw new ApiError("INTERNAL", "Search Console 연결 정보를 저장하지 못했습니다.");
@@ -103,16 +144,21 @@ export function saveGscConnection(input: {
 }
 
 export function deleteGscConnection(): void {
-  db.run(sql`DELETE FROM gsc_connections`);
+  db.delete(gscConnections).run();
 }
 
 function updateConnectionTokens(
   id: string,
   tokens: { accessToken: string; expiryMs?: number }
 ): void {
-  db.run(
-    sql`UPDATE gsc_connections SET access_token = ${tokens.accessToken}, expiry = ${tokens.expiryMs ?? null}, updated_at = ${Date.now()} WHERE id = ${id}`
-  );
+  db.update(gscConnections)
+    .set({
+      accessToken: encryptSecret(tokens.accessToken),
+      expiry: tokens.expiryMs ?? null,
+      updatedAt: Date.now(),
+    })
+    .where(eq(gscConnections.id, id))
+    .run();
 }
 
 async function fetchGoogleApi(
