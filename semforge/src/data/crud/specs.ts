@@ -34,7 +34,7 @@ export const folderSpec: ResourceSpec = {
       key: "name",
       label: "비즈니스명",
       type: "text",
-      placeholder: "비즈니스 이름 입력",
+      placeholder: "폴더의 이름을 입력하세요",
       required: true,
     },
     {
@@ -52,11 +52,15 @@ export const folderSpec: ResourceSpec = {
       key: "shareOnReportCreate",
       label: "보고서가 생성되면 공유하기",
       type: "checkbox",
+      description: "폴더 생성 후 템플릿을 선택하면 보고서 공유 링크가 자동 생성됩니다",
     },
-    { key: "pinned", label: "핀 고정", type: "checkbox" },
+    // 원본 생성 다이얼로그의 "폴더 색상" 팔레트 (O). 수정 화면에서도 변경 가능하다.
+    { key: "color", label: "폴더 색상", type: "color" },
+    // 원본 생성 다이얼로그에는 핀 고정이 없어 수정 화면에서만 노출한다.
+    { key: "pinned", label: "핀 고정", type: "checkbox", editOnly: true },
   ],
-  // 원본 생성 다이얼로그는 웹사이트가 첫 필드다 (증거 O)
-  createFieldOrder: ["domain", "name", "shareOnReportCreate", "pinned"],
+  // 원본 생성 다이얼로그의 필드 순서: 비즈니스명 → 웹사이트 → 공유 → 색상 (증거 O)
+  createFieldOrder: ["name", "domain", "shareOnReportCreate", "color"],
   filters: [
     {
       key: "owning",

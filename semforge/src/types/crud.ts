@@ -17,7 +17,7 @@ export interface ColumnSpec {
 export interface FieldSpec {
   key: string;
   label: string;
-  type: "text" | "textarea" | "number" | "select" | "checkbox" | "website";
+  type: "text" | "textarea" | "number" | "select" | "checkbox" | "website" | "color";
   placeholder?: string;
   hint?: string;
   required?: boolean;
@@ -26,6 +26,8 @@ export interface FieldSpec {
   createOnly?: boolean;
   /** 수정 화면에만 노출 (예: 상태 전환) */
   editOnly?: boolean;
+  /** checkbox 타입 전용: 라벨 아래에 표시할 설명 문구 */
+  description?: string;
 }
 
 export interface FilterSpec {

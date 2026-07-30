@@ -45,11 +45,18 @@ const optionalText = (max = 500) =>
 
 /* ---------------------------- folders (O) ---------------------------- */
 
+const folderColorSchema = z
+  .string()
+  .regex(/^#[0-9a-fA-F]{6}$/, "색상은 #RRGGBB 형식이어야 합니다.")
+  .optional()
+  .default("#3b82f6");
+
 const folderCreate = z.object({
   name: nameSchema,
   domain: domainSchema,
   shareOnReportCreate: z.boolean().optional().default(false),
   pinned: z.boolean().optional().default(false),
+  color: folderColorSchema,
 });
 
 // 원본 규칙 R1: 도메인은 1회 설정 후 수정 불가 → update 스키마에 domain 이 없다.
@@ -57,6 +64,7 @@ const folderUpdate = z.object({
   name: nameSchema.optional(),
   shareOnReportCreate: z.boolean().optional(),
   pinned: z.boolean().optional(),
+  color: folderColorSchema.optional(),
   version: versionField,
 });
 

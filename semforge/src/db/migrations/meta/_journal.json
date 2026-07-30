@@ -78,6 +78,13 @@
       "when": 1785382200000,
       "tag": "0010_local_gbp",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1785385200000,
+      "tag": "0011_folder_color",
+      "breakpoints": true
     }
   ]
 }

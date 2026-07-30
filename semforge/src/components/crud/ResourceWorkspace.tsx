@@ -50,6 +50,52 @@ function SearchGlyph() {
   );
 }
 
+/** 폴더 생성 다이얼로그 마스코트 — 거미와 거미줄 (원본 로봇 캐릭터 대체, 사용자 요청). */
+function FolderCreateMascot() {
+  return (
+    <svg
+      width="112"
+      height="104"
+      viewBox="0 0 112 104"
+      fill="none"
+      aria-hidden="true"
+      className="pointer-events-none absolute right-4 top-0 select-none"
+    >
+      {/* 거미줄: 우상단 코너의 방사 스포크 + 동심원 호 */}
+      <g stroke="#c9ccd4" strokeWidth="1.4" strokeLinecap="round">
+        <path d="M112 0v44" />
+        <path d="M112 0 84 42" />
+        <path d="M112 0 60 26" />
+        <path d="M112 0 70 8" />
+        <path d="M112 0 40 0" />
+        <path d="M96 14q8 10 6 22" />
+        <path d="M82 9q16 14 14 34" />
+        <path d="M66 4q24 20 22 48" />
+      </g>
+      {/* 거미가 매달린 줄 */}
+      <path d="M56 26v22" stroke="#c9ccd4" strokeWidth="1.4" strokeLinecap="round" />
+      {/* 거미: 다리 8개 */}
+      <g stroke="#3f3f46" strokeWidth="2" strokeLinecap="round">
+        <path d="M52 52 40 44" />
+        <path d="M52 58 38 56" />
+        <path d="M52 64 40 70" />
+        <path d="M54 68 46 78" />
+        <path d="M60 52 72 44" />
+        <path d="M60 58 74 56" />
+        <path d="M60 64 72 70" />
+        <path d="M58 68 66 78" />
+      </g>
+      {/* 거미: 몸통 (브랜드 오렌지 배꼽 무늬) */}
+      <ellipse cx="56" cy="60" rx="8.5" ry="9.5" fill="#3f3f46" />
+      <circle cx="56" cy="49" r="4.5" fill="#3f3f46" />
+      <path d="M53 57q3 4 6 0" stroke="#ff5a1f" strokeWidth="2" strokeLinecap="round" fill="none" />
+      {/* 눈 */}
+      <circle cx="54" cy="48" r="1" fill="#fff" />
+      <circle cx="58" cy="48" r="1" fill="#fff" />
+    </svg>
+  );
+}
+
 /** 폴더 행 아이콘. 원본은 도메인 파비콘/핀 아이콘을 쓰므로 이모지 대신 SVG 를 사용한다. */
 function FolderGlyph({ pinned }: { pinned: boolean }) {
   return (
@@ -79,6 +125,9 @@ function FolderGlyph({ pinned }: { pinned: boolean }) {
     </svg>
   );
 }
+
+/** 원본 폴더 생성 다이얼로그의 색상 팔레트 6색 (O). */
+const FOLDER_COLOR_PALETTE = ["#3b82f6", "#22c55e", "#14b8a6", "#eab308", "#ec4899", "#6b7280"];
 
 /** `/api/home/folder-metrics` 응답 행. */
 interface FolderMetricStrip {
@@ -171,6 +220,9 @@ function initialFormValues(spec: ResourceSpec, row?: Row): Record<string, unknow
   for (const field of spec.fields) {
     const current = row?.[field.key];
     if (field.type === "checkbox") values[field.key] = Boolean(current);
+    else if (field.type === "color")
+      values[field.key] =
+        typeof current === "string" && current ? current : FOLDER_COLOR_PALETTE[0];
     else if (field.type === "number")
       values[field.key] = current === null || current === undefined ? "" : String(current);
     else values[field.key] = current === null || current === undefined ? "" : String(current);
@@ -261,15 +313,50 @@ function FieldInput({
 
   if (field.type === "checkbox") {
     return (
-      <label className="flex items-center gap-2 text-[13px]">
-        <input
-          type="checkbox"
-          checked={Boolean(value)}
-          onChange={(e) => onChange(e.target.checked)}
-          className="h-[16px] w-[16px]"
-        />
-        {field.label}
-      </label>
+      <div>
+        <label className="flex items-center gap-2 text-[13px]">
+          <input
+            type="checkbox"
+            checked={Boolean(value)}
+            onChange={(e) => onChange(e.target.checked)}
+            className="h-[16px] w-[16px]"
+          />
+          {field.label}
+        </label>
+        {field.description && (
+          <p className="mt-1 pl-6 text-[12px] leading-[16px] text-app-text-secondary">
+            {field.description}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  if (field.type === "color") {
+    const selected = String(value ?? "") || FOLDER_COLOR_PALETTE[0];
+    return (
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[13px] font-medium">{field.label}</span>
+        <div role="radiogroup" aria-label={field.label} className="flex items-center gap-2">
+          {FOLDER_COLOR_PALETTE.map((color) => (
+            <button
+              key={color}
+              type="button"
+              role="radio"
+              aria-checked={selected === color}
+              aria-label={color}
+              onClick={() => onChange(color)}
+              className={cn(
+                "h-[22px] w-[22px] rounded-full transition-transform",
+                selected === color
+                  ? "ring-2 ring-app-text ring-offset-2"
+                  : "hover:scale-110"
+              )}
+              style={{ backgroundColor: color }}
+            />
+          ))}
+        </div>
+      </div>
     );
   }
 
@@ -384,6 +471,14 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // 폴더 생성 다이얼로그 전용 상태 (원본 폼의 "저장 후 공유하기" 토글 / "AI 검색 추적" 체크)
+  const [shareAfterSave, setShareAfterSave] = useState(false);
+  const [aiTrack, setAiTrack] = useState(false);
+  const [createdFolder, setCreatedFolder] = useState<{
+    id: string;
+    name: string;
+    domain: string;
+  } | null>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<Row | null>(null);
   const [purgeTarget, setPurgeTarget] = useState<{ row: Row; code: string } | null>(null);
@@ -474,6 +569,9 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
     setForm(initialFormValues(spec));
     setFormErrors({});
     setFormError(null);
+    setShareAfterSave(false);
+    setAiTrack(false);
+    setCreatedFolder(null);
   }
 
   function openEdit(row: Row) {
@@ -488,6 +586,7 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
   function closeEditor() {
     setCreating(false);
     setEditorRow(null);
+    setCreatedFolder(null);
   }
 
   function buildPayload(isCreate: boolean) {
@@ -520,8 +619,25 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
     const isCreate = creating;
     try {
       if (isCreate) {
-        await api.post(`/api/${spec.key}/`, buildPayload(true));
+        const response = await api.post<{ id?: string }>(`/api/${spec.key}/`, buildPayload(true));
         setStatus(`${spec.label}을(를) 만들었습니다.`);
+        // 폴더 생성 + 후속 옵션(공유/AI 추적)이 켜져 있으면 완료 패널을 띄운다.
+        if (spec.key === "folders" && (shareAfterSave || aiTrack)) {
+          const created = response.data;
+          const folder = {
+            id: String(created?.id ?? ""),
+            name: String(form.name ?? ""),
+            domain: String(form.domain ?? ""),
+          };
+          if (shareAfterSave && typeof window !== "undefined") {
+            const shareUrl = `${window.location.origin}/home/?folder=${encodeURIComponent(folder.id)}`;
+            void navigator.clipboard?.writeText(shareUrl).catch(() => undefined);
+          }
+          setCreatedFolder(folder);
+          setCreating(false);
+          await load();
+          return;
+        }
       } else if (editorRow) {
         await api.patch(`/api/${spec.key}/${String(editorRow.id)}/`, {
           ...buildPayload(false),
@@ -950,7 +1066,16 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                         }}
                       />
                     )}
-                    <FolderGlyph pinned={Boolean(row.pinned)} />
+                    <span className="relative inline-flex shrink-0 items-center">
+                      <FolderGlyph pinned={Boolean(row.pinned)} />
+                      {spec.key === "folders" && typeof row.color === "string" && (
+                        <span
+                          aria-hidden="true"
+                          className="absolute -bottom-0.5 -right-0.5 h-[7px] w-[7px] rounded-full ring-1 ring-white"
+                          style={{ backgroundColor: String(row.color) }}
+                        />
+                      )}
+                    </span>
                     {spec.view === "folder" ? (
                       <Link
                         href={`/seo/?domain=${encodeURIComponent(String(row.domain))}`}
@@ -1296,13 +1421,14 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                 {saving
                   ? tx("저장 중…")
                   : creating
-                    ? locale === "ko" ? "생성" : "Create"
+                    ? tx("저장")
                     : tx("저장")}
               </button>
             </>
           }
         >
-          <div className="flex flex-col gap-4">
+          <div className="relative flex flex-col gap-4">
+            {creating && spec.key === "folders" && <FolderCreateMascot />}
             {formError && (
               <p role="alert" className="rounded-[6px] bg-[#fdecef] px-3 py-2 text-[13px] text-app-red">
                 {tx(formError)}
@@ -1320,6 +1446,93 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                   onChange={(value) => setForm((prev) => ({ ...prev, [field.key]: value }))}
                 />
               ))}
+
+            {/* 폴더 생성 전용 옵션: 저장 후 공유하기 토글 + AI 검색 추적 (원본 폼 O) */}
+            {creating && spec.key === "folders" && (
+              <>
+                <div className="flex items-center justify-between border-t border-app-border pt-3">
+                  <span className="text-[13px] font-medium">{tx("저장 후 공유하기")}</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={shareAfterSave}
+                    onClick={() => setShareAfterSave((v) => !v)}
+                    className={cn(
+                      "relative h-[20px] w-[36px] rounded-full transition-colors",
+                      shareAfterSave ? "bg-app-link" : "bg-app-border"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "absolute top-[2px] h-[16px] w-[16px] rounded-full bg-white transition-all",
+                        shareAfterSave ? "left-[18px]" : "left-[2px]"
+                      )}
+                    />
+                  </button>
+                </div>
+
+                <div className="rounded-[6px] bg-app-bg px-3 py-2.5">
+                  <label className="flex items-center gap-2 text-[13px] font-medium">
+                    <input
+                      type="checkbox"
+                      checked={aiTrack}
+                      onChange={(event) => setAiTrack(event.target.checked)}
+                      className="h-[16px] w-[16px]"
+                    />
+                    {tx("AI 검색 추적")}
+                  </label>
+                  <p className="mt-1 pl-6 text-[12px] leading-[16px] text-app-text-secondary">
+                    {tx(
+                      "Google AI 개요에서 내 도메인의 노출·인용 여부를 추적합니다. 저장 후 AI 가시성 화면에서 쿼리를 추가할 수 있습니다."
+                    )}{" "}
+                    <a
+                      href="/ai-seo/overview/"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-app-link hover:underline"
+                    >
+                      {tx("자세히 알아보기")}
+                    </a>
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+        </Dialog>
+      )}
+
+      {/* 폴더 생성 완료 패널: 공유 링크 복사 안내 / AI 가시성 쿼리 추가 링크 */}
+      {createdFolder && (
+        <Dialog
+          title={tx("폴더를 만들었습니다")}
+          onClose={closeEditor}
+          footer={
+            <button
+              type="button"
+              onClick={closeEditor}
+              className="rounded-[6px] bg-[#1b1f23] px-3 py-1.5 text-[13px] font-medium text-white"
+            >
+              {tx("확인")}
+            </button>
+          }
+        >
+          <div className="flex flex-col gap-3">
+            <p className="text-[14px]">
+              <strong>{createdFolder.name}</strong> ({createdFolder.domain})
+            </p>
+            {shareAfterSave && (
+              <p className="rounded-[6px] bg-app-bg px-3 py-2 text-[13px] text-app-text-secondary">
+                {tx("폴더 링크가 클립보드에 복사되었습니다. 같은 워크스페이스 멤버에게 전달해 공유할 수 있습니다.")}
+              </p>
+            )}
+            {aiTrack && (
+              <a
+                href={`/ai-seo/overview/?domain=${encodeURIComponent(createdFolder.domain)}`}
+                className="inline-flex h-[34px] w-fit items-center rounded-[6px] bg-app-orange px-3 text-[13px] font-medium text-white hover:opacity-90"
+              >
+                {tx("AI 가시성 쿼리 추가하기 →")}
+              </a>
+            )}
           </div>
         </Dialog>
       )}

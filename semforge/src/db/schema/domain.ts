@@ -47,6 +47,8 @@ export const folders = sqliteTable(
       .default(false),
     /** 원본 kebab 메뉴의 "핀 고정" (O) */
     pinned: integer("pinned", { mode: "boolean" }).notNull().default(false),
+    /** 원본 생성 다이얼로그의 "폴더 색상" 팔레트 (O) */
+    color: text("color").notNull().default("#3b82f6"),
     ...auditColumns,
   },
   (t) => [
