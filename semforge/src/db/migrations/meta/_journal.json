@@ -1,0 +1,83 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1785184124816,
+      "tag": "0000_volatile_tattoo",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1785206946805,
+      "tag": "0001_sad_spacker_dave",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1785268209772,
+      "tag": "0002_site_audit_issue_details",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1785268977254,
+      "tag": "0003_outgoing_sister_grimm",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1785307911993,
+      "tag": "0004_serp_snapshot_titles",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1785317957194,
+      "tag": "0005_huge_thor_girl",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1785365400000,
+      "tag": "0007_site_audit_schedule_meta",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1785371400000,
+      "tag": "0006_gsc_connections",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1785375000000,
+      "tag": "0008_position_tracking_collect_schedule",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1785378600000,
+      "tag": "0009_ai_visibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1785382200000,
+      "tag": "0010_local_gbp",
+      "breakpoints": true
+    }
+  ]
+}
