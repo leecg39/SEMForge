@@ -1,5 +1,6 @@
 import { jsonError, jsonOk, route } from "@/lib/api";
 import { ApiError } from "@/lib/api";
+import { verifyCronSecret } from "@/lib/cron-auth";
 import { listDueJobs, runDueJobs } from "@/server/providers/scheduler";
 import { ensureDbRetentionJob } from "@/server/providers/retention";
 import { ensureSiteAuditDueJob } from "@/server/siteaudit/due";
@@ -9,22 +10,25 @@ import { registerPositionTrackingDueJob } from "@/server/position-tracking/sched
  * 주기 수집 트리거. 외부 cron/launchd 가 이 엔드포인트를 주기 호출한다.
  * 등록된 due job 이 하나도 없으면 빈 jobs 배열을 정직하게 반환한다.
  *
- * CRON_SECRET 이 설정되어 있으면 x-cron-secret 헤더가 일치해야 한다.
- * (수집 잡은 외부 API 크레딧을 소비하므로 무인증 개방하지 않는다.)
+ * 이 잡들은 외부 API 크레딧(TalorData/Firecrawl)을 소비하므로 항상
+ * x-cron-secret 헤더를 요구한다. CRON_SECRET 미설정은 인증 생략이 아니라
+ * 경로 비활성으로 다룬다 (fail-closed).
  *
  * 예 (launchd/crontab):
- *   curl -s -H "x-cron-secret: $CRON_SECRET" http://localhost:3000/api/cron/run-due
- *   curl -s -H "x-cron-secret: $CRON_SECRET" "http://localhost:3000/api/cron/run-due?only=site_audit&limit=10"
+ *   curl -s -H "x-cron-secret: $CRON_SECRET" http://localhost:3000/api/cron/run-due/
+ *   curl -s -H "x-cron-secret: $CRON_SECRET" "http://localhost:3000/api/cron/run-due/?only=site_audit&limit=10"
  */
 export const dynamic = "force-dynamic";
 
 export const GET = route(async (request: Request) => {
-  const cronSecret = process.env.CRON_SECRET?.trim();
-  if (cronSecret) {
-    const provided = request.headers.get("x-cron-secret")?.trim();
-    if (provided !== cronSecret) {
-      return jsonError(new ApiError("UNAUTHENTICATED", "유효한 cron 시크릿이 필요합니다."));
-    }
+  const cronAuth = verifyCronSecret(request);
+  if (!cronAuth.ok) {
+    return jsonError(
+      new ApiError(
+        cronAuth.code === "not-configured" ? "FORBIDDEN" : "UNAUTHENTICATED",
+        cronAuth.message
+      )
+    );
   }
 
   // 도메인 due job 은 각 모듈의 ensure/register 함수로 등록한다 (멱등).

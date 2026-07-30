@@ -2,6 +2,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db/client";
 import { positionTrackingCampaigns } from "@/db/schema";
 import { ApiError, jsonOk, route } from "@/lib/api";
+import { hasValidCronSecret } from "@/lib/cron-auth";
 import { assertCan } from "@/lib/rbac";
 import { requireAuth, type AuthContext } from "@/lib/session";
 import {
@@ -15,16 +16,14 @@ import {
  * - 실행 시각(next_run_at)이 지난 캠페인만 수집한다. 수동 수집은
  *   /api/serp/collect-campaign 을 사용한다.
  * - 로그인 세션(editor 이상) 또는 CRON_SECRET 헤더로 호출할 수 있다.
- *   CRON_SECRET 이 설정되지 않은 환경에서는 세션 인증만 허용한다.
+ *   CRON_SECRET 이 없거나 헤더가 틀리면 세션 인증으로 넘어간다 (열리지 않는다).
  */
 export const POST = route(
   async (request: Request, context: { params: Promise<{ campaignId: string }> }) => {
     const { campaignId } = await context.params;
 
-    const cronSecret = process.env.CRON_SECRET;
-    const headerSecret = request.headers.get("x-cron-secret");
     let auth: AuthContext;
-    if (cronSecret && headerSecret && headerSecret === cronSecret) {
+    if (hasValidCronSecret(request)) {
       // 크론 호출은 세션이 없으므로 캠페인의 워크스페이스로 시스템 컨텍스트를 만든다.
       auth = await buildCronAuthForCampaign(campaignId);
     } else {
