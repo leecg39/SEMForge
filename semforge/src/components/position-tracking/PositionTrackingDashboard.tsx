@@ -103,9 +103,15 @@ const COPY = {
     updated: "갱신",
     notFound: "순위권 밖",
     noCampaigns: "포지션 추적 캠페인이 없습니다. 캠페인을 만들고 키워드를 추가하면 여기서 실시간 순위를 수집할 수 있습니다.",
-    noKeywords: "이 캠페인에 추적 키워드가 없습니다.",
+    noKeywords: "이 캠페인에 추적 키워드가 없습니다. 아래에서 키워드를 추가하면 순위를 수집할 수 있습니다.",
     loadError: "추적 키워드를 불러오지 못했습니다.",
     collectError: "순위 수집에 실패했습니다.",
+    collectNeedsKeyword: "먼저 추적 키워드를 추가하세요.",
+    keywordPlaceholder: "추적할 키워드 입력 (예: 경영컨설팅)",
+    addKeyword: "키워드 추가",
+    addingKeyword: "추가 중…",
+    keywordError: "키워드를 추가하지 못했습니다.",
+    keywordsHint: "이 캠페인의 도메인 순위를 확인할 검색어입니다. 수집은 한 번에 최대 20개까지 처리합니다.",
     resultSummary: (collected: number, failed: number, total: number) =>
       `${total}개 키워드 중 ${collected}개 수집 완료${failed > 0 ? `, ${failed}개 실패` : ""}`,
     newEntry: "신규 진입",
@@ -155,9 +161,15 @@ const COPY = {
     updated: "Updated",
     notFound: "Not ranked",
     noCampaigns: "No position tracking campaigns yet. Create a campaign and add keywords to collect live positions here.",
-    noKeywords: "This campaign has no tracked keywords.",
+    noKeywords: "This campaign has no tracked keywords. Add one below to start collecting positions.",
     loadError: "Tracked keywords could not be loaded.",
     collectError: "Position collection failed.",
+    collectNeedsKeyword: "Add a tracked keyword first.",
+    keywordPlaceholder: "Keyword to track (e.g. management consulting)",
+    addKeyword: "Add keyword",
+    addingKeyword: "Adding…",
+    keywordError: "Keyword could not be added.",
+    keywordsHint: "Search terms used to check this campaign domain. Up to 20 keywords are collected per run.",
     resultSummary: (collected: number, failed: number, total: number) =>
       `${collected}/${total} keywords collected${failed > 0 ? `, ${failed} failed` : ""}`,
     newEntry: "New entry",
@@ -301,6 +313,9 @@ export function PositionTrackingDashboard({
   const [competitorInput, setCompetitorInput] = useState("");
   const [competitorError, setCompetitorError] = useState<string | null>(null);
   const [addingCompetitor, setAddingCompetitor] = useState(false);
+  const [keywordInput, setKeywordInput] = useState("");
+  const [keywordError, setKeywordError] = useState<string | null>(null);
+  const [addingKeyword, setAddingKeyword] = useState(false);
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
   // 수집 완료/경쟁사 추가 후 탭 패널들이 다시 집계되도록 증가시키는 키.
   const [refreshKey, setRefreshKey] = useState(0);
@@ -387,6 +402,28 @@ export function PositionTrackingDashboard({
       );
     } finally {
       setCollecting(false);
+    }
+  };
+
+  const addKeyword = async () => {
+    const keyword = keywordInput.trim();
+    if (!selectedId || !keyword || addingKeyword) return;
+    setAddingKeyword(true);
+    setKeywordError(null);
+    try {
+      await api.post(
+        `/api/position-tracking/${encodeURIComponent(selectedId)}/keywords/`,
+        { keyword }
+      );
+      setKeywordInput("");
+      await loadKeywords(selectedId);
+      setRefreshKey((key) => key + 1);
+    } catch (caught) {
+      setKeywordError(
+        caught instanceof ClientApiError ? caught.message : COPY.ko.keywordError
+      );
+    } finally {
+      setAddingKeyword(false);
     }
   };
 
@@ -490,14 +527,23 @@ export function PositionTrackingDashboard({
           </p>
         </div>
         {canCollect && campaign?.status === "active" && (
-          <button
-            type="button"
-            onClick={collect}
-            disabled={collecting}
-            className="h-[40px] rounded-[8px] bg-app-blue px-5 text-[14px] font-medium text-white transition-colors hover:bg-app-blue-dark disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {collecting ? copy.collecting : copy.collect}
-          </button>
+          <div className="flex flex-col items-end gap-1">
+            <button
+              type="button"
+              onClick={collect}
+              // 키워드가 없으면 서버가 VALIDATION_ERROR 를 던지므로 버튼 단계에서 막는다.
+              disabled={collecting || loading || keywords.length === 0}
+              title={keywords.length === 0 ? copy.collectNeedsKeyword : undefined}
+              className="h-[40px] rounded-[8px] bg-app-blue px-5 text-[14px] font-medium text-white transition-colors hover:bg-app-blue-dark disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {collecting ? copy.collecting : copy.collect}
+            </button>
+            {!loading && keywords.length === 0 && (
+              <span className="text-[12px] text-app-text-secondary">
+                {copy.collectNeedsKeyword}
+              </span>
+            )}
+          </div>
         )}
       </header>
 
@@ -633,6 +679,46 @@ export function PositionTrackingDashboard({
             </p>
           </div>
         )}
+
+        <section className="rounded-[8px] border border-app-border bg-white p-4">
+          <div className="flex items-baseline justify-between gap-2">
+            <h3 className="text-[14px] font-semibold leading-[20px] text-app-text">
+              {copy.keywords}
+            </h3>
+            <span className="text-[12px] text-app-text-secondary">{keywords.length}</span>
+          </div>
+          <p className="mt-1 text-[12px] leading-[18px] text-app-text-secondary">
+            {copy.keywordsHint}
+          </p>
+          {canCollect && (
+            <form
+              className="mt-3 flex gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void addKeyword();
+              }}
+            >
+              <input
+                value={keywordInput}
+                onChange={(event) => setKeywordInput(event.target.value)}
+                placeholder={copy.keywordPlaceholder}
+                className="h-[36px] min-w-0 flex-1 rounded-[8px] border border-app-border bg-white px-3 text-[13px] text-app-text"
+              />
+              <button
+                type="submit"
+                disabled={addingKeyword || keywordInput.trim().length === 0}
+                className="h-[36px] shrink-0 rounded-[8px] bg-app-blue px-4 text-[13px] font-medium text-white transition-colors hover:bg-app-blue-dark disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {addingKeyword ? copy.addingKeyword : copy.addKeyword}
+              </button>
+            </form>
+          )}
+          {keywordError && (
+            <p className="mt-2 text-[12px] text-app-red" role="alert">
+              {keywordError}
+            </p>
+          )}
+        </section>
 
         <section className="rounded-[8px] border border-app-border bg-white p-4">
           <div className="flex items-baseline justify-between gap-2">
