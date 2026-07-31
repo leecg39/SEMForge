@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { api, ClientApiError } from "@/lib/client-api";
 import { cn } from "@/lib/utils";
@@ -179,6 +180,16 @@ const COPY = {
     scheduleMonthly: "매월",
     scheduleSaveError:
       "예약 저장에 실패했습니다. 크롤은 계속 실행되며, 예약은 나중에 다시 설정할 수 있습니다.",
+    moreActions: "더 보기",
+    deleteAction: "삭제",
+    deleteDialogTitle: "프로젝트를 휴지통으로 이동",
+    deleteDialogBody: (name: string) => `"${name}" 프로젝트를 휴지통으로 옮깁니다.`,
+    deleteDialogHint:
+      "크롤 결과와 이슈 등 관련 데이터도 함께 이동하며, 휴지통에서 복구할 수 있습니다.",
+    deleteConfirm: "휴지통으로 이동",
+    deleting: "삭제 중…",
+    deleteError: "프로젝트를 삭제하지 못했습니다.",
+    cancel: "취소",
     never: "실행 기록 없음",
     runError: "크롤링 실행에 실패했습니다.",
     loadError: "이슈를 불러오지 못했습니다.",
@@ -304,6 +315,16 @@ const COPY = {
     scheduleMonthly: "Monthly",
     scheduleSaveError:
       "The schedule could not be saved. The crawl will still run; you can set the schedule again later.",
+    moreActions: "More actions",
+    deleteAction: "Delete",
+    deleteDialogTitle: "Move project to trash",
+    deleteDialogBody: (name: string) => `Move "${name}" to trash.`,
+    deleteDialogHint:
+      "Related data such as crawl results and issues moves with it. You can restore the project from trash.",
+    deleteConfirm: "Move to trash",
+    deleting: "Deleting…",
+    deleteError: "The project could not be deleted.",
+    cancel: "Cancel",
     never: "Never run",
     runError: "The crawl failed to run.",
     loadError: "Issues could not be loaded.",
@@ -708,6 +729,9 @@ export function SiteAuditDashboard({
   const [pagesData, setPagesData] = useState<{ campaignId: string; rows: PageRow[] } | null>(null);
   const [loadedPagesFor, setLoadedPagesFor] = useState<string | null>(null);
   const [expandedTheme, setExpandedTheme] = useState<ThemeKey | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SiteAuditCampaignRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const campaign = useMemo(
     () => campaigns.find((item) => item.id === selectedId) ?? null,
@@ -874,6 +898,36 @@ export function SiteAuditDashboard({
       setSubmitting(false);
     }
   };
+
+  const deleteCampaign = async () => {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      // 범용 리소스 라우트의 소프트 삭제(휴지통 이동) — 이슈 등 하위 데이터도 함께 이동한다.
+      await api.delete(`/api/site-audits/${encodeURIComponent(deleteTarget.id)}/`);
+      const deletedId = deleteTarget.id;
+      setDeleteTarget(null);
+      if (deletedId === selectedId) {
+        setReport(null);
+        setRunError(null);
+      }
+      await loadCampaigns();
+    } catch (caught) {
+      setDeleteError(caught instanceof ClientApiError ? caught.message : copy.deleteError);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!deleteTarget) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !deleting) setDeleteTarget(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [deleteTarget, deleting]);
 
   const dateFormatter = useMemo(
     () =>
@@ -1755,19 +1809,56 @@ export function SiteAuditDashboard({
                           : copy.never}
                       </td>
                       {canManage && (
-                        <td className="px-4 py-2.5 text-right">
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setSelectedId(item.id);
-                              void runCrawl(item.id);
-                            }}
-                            disabled={running || item.status === "running"}
-                            className="h-[30px] rounded-[6px] border border-app-border bg-white px-3 text-[12px] font-medium text-app-text transition-colors hover:bg-app-bg disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {item.status === "running" ? copy.running : copy.runNow}
-                          </button>
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setSelectedId(item.id);
+                                void runCrawl(item.id);
+                              }}
+                              disabled={running || item.status === "running"}
+                              className="h-[30px] rounded-[6px] border border-app-border bg-white px-3 text-[12px] font-medium text-app-text transition-colors hover:bg-app-bg disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {item.status === "running" ? copy.running : copy.runNow}
+                            </button>
+                            <DropdownMenu.Root>
+                              <DropdownMenu.Trigger asChild>
+                                <button
+                                  type="button"
+                                  aria-label={copy.moreActions}
+                                  title={copy.moreActions}
+                                  onClick={(event) => event.stopPropagation()}
+                                  className="flex h-[30px] w-[30px] items-center justify-center rounded-[6px] border border-app-border bg-white text-[15px] leading-none text-app-text-secondary transition-colors hover:bg-app-bg hover:text-app-text data-[state=open]:bg-app-bg data-[state=open]:text-app-text"
+                                >
+                                  ⋯
+                                </button>
+                              </DropdownMenu.Trigger>
+                              <DropdownMenu.Portal>
+                                <DropdownMenu.Content
+                                  align="end"
+                                  sideOffset={4}
+                                  className="z-[300] w-[160px] overflow-hidden rounded-[8px] border border-app-border bg-white py-1 shadow-lg"
+                                  onClick={(event) => event.stopPropagation()}
+                                >
+                                  <DropdownMenu.Item
+                                    disabled={
+                                      item.status === "running" ||
+                                      (running && item.id === selectedId)
+                                    }
+                                    onSelect={() => {
+                                      setDeleteError(null);
+                                      setDeleteTarget(item);
+                                    }}
+                                    className="block w-full cursor-pointer px-3 py-2 text-left text-[13px] text-app-red outline-none data-[highlighted]:bg-app-bg data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50"
+                                  >
+                                    {copy.deleteAction}
+                                  </DropdownMenu.Item>
+                                </DropdownMenu.Content>
+                              </DropdownMenu.Portal>
+                            </DropdownMenu.Root>
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -1787,6 +1878,69 @@ export function SiteAuditDashboard({
         onClose={() => setSetupOpen(false)}
         onSubmit={(values) => void createAndRun(values)}
       />
+
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-[600] flex items-center justify-center bg-black/40 p-4"
+          role="presentation"
+          onClick={(event) => {
+            if (event.target === event.currentTarget && !deleting) setDeleteTarget(null);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={copy.deleteDialogTitle}
+            className="w-full max-w-[440px] rounded-[8px] bg-white shadow-xl"
+          >
+            <div className="flex items-center justify-between border-b border-app-border px-5 py-4">
+              <h2 className="text-[16px] font-semibold text-app-text">
+                {copy.deleteDialogTitle}
+              </h2>
+              <button
+                type="button"
+                aria-label={copy.cancel}
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                className="flex h-[28px] w-[28px] items-center justify-center rounded-[6px] text-app-text-secondary hover:bg-app-bg disabled:opacity-60"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="px-5 py-4">
+              <p className="text-[14px] text-app-text">
+                {copy.deleteDialogBody(deleteTarget.name)}
+              </p>
+              <p className="mt-2 text-[13px] leading-[19px] text-app-text-secondary">
+                {copy.deleteDialogHint}
+              </p>
+              {deleteError && (
+                <p className="mt-3 rounded-[8px] border border-[#f5c2cd] bg-[#fdecef] px-3 py-2 text-[13px] text-[#a4002a]">
+                  {deleteError}
+                </p>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-app-border px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                className="h-[38px] rounded-[8px] border border-app-border bg-white px-4 text-[13px] font-medium text-app-text transition-colors hover:bg-app-bg disabled:opacity-60"
+              >
+                {copy.cancel}
+              </button>
+              <button
+                type="button"
+                onClick={() => void deleteCampaign()}
+                disabled={deleting}
+                className="h-[38px] rounded-[8px] bg-app-red px-4 text-[13px] font-medium text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {deleting ? copy.deleting : copy.deleteConfirm}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
