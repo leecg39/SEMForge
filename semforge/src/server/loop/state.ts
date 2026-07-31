@@ -91,13 +91,29 @@ const OWNERSHIP_HOLDING_STATES: readonly TaskState[] = [
 /** 작업자 슬롯을 실제로 소비하는 상태. */
 const SLOT_OCCUPYING_STATES: readonly TaskState[] = ["RUNNING"];
 
+/**
+ * 소유 경로는 저장소 기준 상대경로만 허용한다.
+ * 절대경로나 상위 참조를 허용하면 겹침 판정이 조용히 빗나가 소유권 격리가 무너진다.
+ */
+const repoRelativePath = z
+  .string()
+  .min(1)
+  .refine(
+    (value) => !/^([/~]|[A-Za-z]:[\\/])/.test(value.trim()),
+    "절대경로는 소유 경로로 사용할 수 없습니다"
+  )
+  .refine(
+    (value) => !normalizePath(value).split("/").includes(".."),
+    "상위 디렉터리 참조(..)는 소유 경로로 사용할 수 없습니다"
+  );
+
 export const loopTaskSchema = z.object({
   id: z.string().min(1),
   goal: z.string().min(1),
   state: z.enum(TASK_STATES).default("QUEUED"),
   /** 이 작업만 수정할 수 있는 경로. 디렉터리는 끝에 / 를 붙인다. */
-  allowedPaths: z.array(z.string().min(1)).min(1),
-  forbiddenPaths: z.array(z.string().min(1)).default([]),
+  allowedPaths: z.array(repoRelativePath).min(1),
+  forbiddenPaths: z.array(repoRelativePath).default([]),
   dependsOn: z.array(z.string().min(1)).default([]),
   branch: z.string().min(1).nullable().default(null),
   worktreePath: z.string().min(1).nullable().default(null),
@@ -168,7 +184,13 @@ export function createLoopState(input: CreateLoopStateInput): LoopState {
   const { tasks, now, ...rest } = input;
   const list = Array.isArray(tasks) ? tasks : Object.values(tasks);
   const record: Record<string, LoopTaskInput> = {};
+  const seenIds = new Set<string>();
   for (const task of list) {
+    // 같은 id 가 두 번 오면 뒤엣것이 앞엣것을 지워 작업이 조용히 유실된다.
+    if (seenIds.has(task.id)) {
+      throw new Error(`[loop] 작업 id 가 중복됩니다: ${task.id}`);
+    }
+    seenIds.add(task.id);
     record[task.id] = task;
   }
   return parseOrThrow({ ...rest, tasks: record, lastHeartbeat: now ?? new Date().toISOString() });

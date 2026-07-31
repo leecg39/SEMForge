@@ -298,6 +298,38 @@ test("상태 불일치(키 불일치·미지 의존성·순환 의존성)를 찾
   assert.ok(findStateInconsistencies(mismatched).some((issue) => /WRONG_KEY/.test(issue)));
 });
 
+test("절대경로는 소유 경로로 쓸 수 없다", () => {
+  // 절대경로를 허용하면 저장소 밖을 소유한다고 주장할 수 있고,
+  // 상대경로 기준인 겹침 판정이 조용히 빗나간다.
+  assert.throws(() => makeState([task("T1", { allowedPaths: ["/etc/passwd"] })]), /절대경로/);
+  assert.throws(
+    () => makeState([task("T1", { allowedPaths: ["src/a/"], forbiddenPaths: ["/var/log"] })]),
+    /절대경로/
+  );
+  assert.throws(() => makeState([task("T1", { allowedPaths: ["~/secrets"] })]), /절대경로/);
+});
+
+test("상위 디렉터리 참조(..)가 든 경로는 거부한다", () => {
+  // "src/../../other" 같은 경로는 정규화 전에는 겹치지 않아 보이지만 실제로는 밖을 가리킨다.
+  assert.throws(() => makeState([task("T1", { allowedPaths: ["../other-repo/"] })]), /상위 디렉터리/);
+  assert.throws(() => makeState([task("T1", { allowedPaths: ["src/../../etc"] })]), /상위 디렉터리/);
+});
+
+test("정상적인 상대경로는 그대로 통과한다", () => {
+  const state = makeState([
+    task("T1", { allowedPaths: ["src/server/gsc/", "src/lib/api.ts", "./scripts/x.ts"] }),
+  ]);
+  assert.equal(state.tasks.T1.allowedPaths.length, 3);
+});
+
+test("중복된 작업 id 는 조용히 덮어쓰지 않고 오류를 낸다", () => {
+  // 배열 입력에서 같은 id 가 두 번 오면 뒤엣것이 앞엣것을 지워 작업이 유실된다.
+  assert.throws(
+    () => makeState([task("T1", { goal: "먼저" }), task("T1", { goal: "나중" })]),
+    /중복/
+  );
+});
+
 test("parseLoopState 는 저장된 상태를 검증하고 잘못된 값을 거부한다", () => {
   const original = makeState([task("T1", { state: "READY" })]);
   const restored = parseLoopState(JSON.parse(JSON.stringify(original)));
