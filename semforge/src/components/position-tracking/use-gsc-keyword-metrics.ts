@@ -99,6 +99,52 @@ interface GscQueryBody {
   reason?: string;
 }
 
+interface GscSitesBody {
+  status?: string;
+  data?: { sites?: { siteUrl?: string; permissionLevel?: string }[] };
+  reason?: string;
+}
+
+/**
+ * 계정 속성 목록에서 캠페인 도메인을 커버하는 속성을 고른다.
+ * 도메인 속성(sc-domain:)과 정확히 일치하는 도메인을 우선한다.
+ * 미검증(siteUnverifiedUser) 속성은 조회 권한이 없어 제외한다.
+ */
+export function pickGscSiteForDomain(
+  sites: { siteUrl?: string; permissionLevel?: string }[],
+  campaignDomain: string
+): string | null {
+  const target = normalizeCampaignDomain(campaignDomain);
+  if (!target) return null;
+  let best: { siteUrl: string; score: number } | null = null;
+  for (const site of sites) {
+    const siteUrl = site.siteUrl?.trim();
+    if (!siteUrl) continue;
+    if (site.permissionLevel === "siteUnverifiedUser") continue;
+    if (!gscCoversDomain(siteUrl, campaignDomain)) continue;
+    const isDomainProperty = siteUrl.toLowerCase().startsWith("sc-domain:");
+    const isExactDomain = domainFromGscSiteUrl(siteUrl) === target;
+    const score = (isDomainProperty ? 2 : 0) + (isExactDomain ? 1 : 0);
+    if (!best || score > best.score) best = { siteUrl, score };
+  }
+  return best?.siteUrl ?? null;
+}
+
+/** 연결 계정의 속성 목록에서 캠페인 도메인용 속성을 찾는다. 목록 조회 실패는 사유와 함께 구분한다. */
+async function findAccountSiteForDomain(
+  campaignDomain: string
+): Promise<{ ok: true; siteUrl: string | null } | { ok: false; reason: string }> {
+  const response = await fetch("/api/gsc/sites/", { cache: "no-store" });
+  if (!response.ok) {
+    return { ok: false, reason: `GSC 속성 목록 API 오류 (HTTP ${response.status})` };
+  }
+  const body = (await response.json()) as GscSitesBody;
+  if (body.status !== "live" || !Array.isArray(body.data?.sites)) {
+    return { ok: false, reason: body.reason ?? "GSC 속성 목록을 확인할 수 없습니다." };
+  }
+  return { ok: true, siteUrl: pickGscSiteForDomain(body.data.sites, campaignDomain) };
+}
+
 async function loadGscState(campaignDomain: string): Promise<GscKeywordMetricsState> {
   const statusResponse = await fetch("/api/gsc/status/", { cache: "no-store" });
   if (!statusResponse.ok) {
@@ -112,10 +158,23 @@ async function loadGscState(campaignDomain: string): Promise<GscKeywordMetricsSt
     return { kind: "disconnected" };
   }
 
-  const siteUrl = statusBody.data.siteUrl ?? "";
+  let siteUrl = statusBody.data.siteUrl ?? "";
   const email = statusBody.data.email;
   if (!siteUrl || !gscCoversDomain(siteUrl, campaignDomain)) {
-    return { kind: "domain-mismatch", siteUrl: siteUrl || "(알 수 없음)", ...(email ? { email } : {}) };
+    // 대표 속성이 캠페인 도메인을 커버하지 않아도 같은 계정에 해당 도메인
+    // 속성이 있을 수 있다. 전체 속성 목록에서 찾고, 정말 없을 때만 불일치로 안내한다.
+    const lookup = await findAccountSiteForDomain(campaignDomain);
+    if (!lookup.ok) {
+      return { kind: "unavailable", reason: lookup.reason };
+    }
+    if (!lookup.siteUrl) {
+      return {
+        kind: "domain-mismatch",
+        siteUrl: siteUrl || "(알 수 없음)",
+        ...(email ? { email } : {}),
+      };
+    }
+    siteUrl = lookup.siteUrl;
   }
 
   // 최근 28일 (GSC 수치는 며칠 지연되어 확정되지만 범위는 오늘까지로 둔다)

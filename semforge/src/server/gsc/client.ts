@@ -251,6 +251,18 @@ export interface GscSiteEntry {
   permissionLevel: string;
 }
 
+function parseSiteEntries(payload: Record<string, unknown>): GscSiteEntry[] {
+  const entries = Array.isArray(payload.siteEntry) ? payload.siteEntry : [];
+  return entries
+    .filter(isRecord)
+    .map((entry) => ({
+      siteUrl: typeof entry.siteUrl === "string" ? entry.siteUrl : "",
+      permissionLevel:
+        typeof entry.permissionLevel === "string" ? entry.permissionLevel : "",
+    }))
+    .filter((entry) => entry.siteUrl.length > 0);
+}
+
 /** 계정에 등록된 Search Console 속성 목록. 연결 직후 대표 속성을 고를 때 사용한다. */
 export async function listGscSites(
   accessToken: string,
@@ -271,15 +283,89 @@ export async function listGscSites(
       `Search Console 속성 목록 조회에 실패했습니다: ${googleApiErrorMessage(payload)}`
     );
   }
-  const entries = Array.isArray(payload.siteEntry) ? payload.siteEntry : [];
-  return entries
-    .filter(isRecord)
-    .map((entry) => ({
-      siteUrl: typeof entry.siteUrl === "string" ? entry.siteUrl : "",
-      permissionLevel:
-        typeof entry.permissionLevel === "string" ? entry.permissionLevel : "",
-    }))
-    .filter((entry) => entry.siteUrl.length > 0);
+  return parseSiteEntries(payload);
+}
+
+/**
+ * 저장된 연결로 계정의 Search Console 속성 목록을 조회한다.
+ * querySearchAnalytics 와 같은 토큰 수명 규칙을 따른다:
+ * 만료 임박 시 선제 갱신, 그래도 401 이면 한 번만 강제 갱신 후 재시도.
+ */
+export async function listGscSitesForConnection(
+  options?: GscClientOptions & { connection?: GscConnection }
+): Promise<GscSiteEntry[]> {
+  const config = getGscOAuthConfig();
+  if (!config) {
+    throw new ApiError(
+      "INTERNAL",
+      "GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET 이 설정되지 않았습니다. .env.local 에 OAuth 클라이언트 정보를 추가하세요."
+    );
+  }
+  const connection = options?.connection ?? getGscConnection();
+  if (!connection) {
+    throw new ApiError(
+      "UNAUTHENTICATED",
+      "Google Search Console 이 연결되지 않았습니다. 먼저 계정을 연결해 주세요."
+    );
+  }
+
+  const fresh = await ensureFreshAccessToken(connection, config, options);
+  const fetchImpl = options?.fetchImpl ?? fetch;
+  const timeoutMs = options?.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+  const endpoint = `${API_BASE}/sites`;
+
+  let retriedAfter401 = false;
+  let current = fresh;
+  for (;;) {
+    const response = await fetchGoogleApi(
+      endpoint,
+      {
+        method: "GET",
+        headers: { Accept: "application/json", Authorization: `Bearer ${current.accessToken}` },
+      },
+      fetchImpl,
+      timeoutMs
+    );
+    const payload = await readJson(response, endpoint);
+
+    if (response.ok) {
+      return parseSiteEntries(payload);
+    }
+
+    const message = googleApiErrorMessage(payload);
+    if (response.status === 401 && !retriedAfter401 && current.refreshToken) {
+      retriedAfter401 = true;
+      const refreshed = await refreshGscAccessToken(current.refreshToken, config, {
+        fetchImpl,
+      });
+      updateConnectionTokens(current.id, {
+        accessToken: refreshed.accessToken,
+        expiryMs: refreshed.expiryMs,
+      });
+      current = {
+        ...current,
+        accessToken: refreshed.accessToken,
+        expiryMs: refreshed.expiryMs ?? null,
+      };
+      continue;
+    }
+    if (response.status === 401 || response.status === 403) {
+      throw new ApiError(
+        "UNAUTHENTICATED",
+        `Search Console 접근 권한이 없습니다. 계정을 다시 연결해 주세요. (${message})`
+      );
+    }
+    if (response.status === 429) {
+      throw new ApiError(
+        "RATE_LIMITED",
+        "Search Console API 사용량 한도에 도달했습니다. 잠시 후 다시 시도해 주세요."
+      );
+    }
+    throw new ApiError(
+      "INTERNAL",
+      `Search Console 속성 목록 조회에 실패했습니다: ${message}`
+    );
+  }
 }
 
 export type GscDimension = "query" | "page" | "date" | "country" | "device";

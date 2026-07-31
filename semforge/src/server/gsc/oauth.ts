@@ -42,8 +42,10 @@ export function buildGscAuthorizationUrl(
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", GSC_SCOPE);
   // refresh_token 을 받으려면 offline access 와 consent 강제가 필요하다.
+  // select_account: 다른 계정으로 재연결할 수 있게 항상 계정 선택기를 띄운다
+  // (세션이 하나뿐이면 Google 이 계정 선택을 건너뛰어 같은 계정으로만 이어지는 문제 방지).
   url.searchParams.set("access_type", "offline");
-  url.searchParams.set("prompt", "consent");
+  url.searchParams.set("prompt", "consent select_account");
   if (state) url.searchParams.set("state", state);
   return url.toString();
 }
