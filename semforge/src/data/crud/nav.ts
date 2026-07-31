@@ -330,6 +330,7 @@ export const crudTools = [
 
 export const accountNav = [
   { label: "프로필 설정", href: "/app/account/profile/" },
+  { label: "구독 정보", href: "/app/account/billing/" },
   { label: "사용자 관리", href: "/app/account/members/" },
   { label: "알림", href: "/app/account/notifications/" },
   { label: "활동 로그", href: "/app/account/activities/" },

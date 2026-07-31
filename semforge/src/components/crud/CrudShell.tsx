@@ -311,6 +311,14 @@ export function CrudShell({
                 </Link>
                 <Link
                   role="menuitem"
+                  href="/app/account/billing/"
+                  onClick={() => setMenuOpen(false)}
+                  className="block px-[9px] py-[7px] text-[14px] hover:bg-black/5"
+                >
+                  {tx("구독 정보")}
+                </Link>
+                <Link
+                  role="menuitem"
                   href="/app/account/members/"
                   onClick={() => setMenuOpen(false)}
                   className="block px-[9px] py-[7px] text-[14px] hover:bg-black/5"
