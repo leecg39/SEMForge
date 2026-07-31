@@ -141,16 +141,15 @@ function searchEngineLabel(value: PositionTrackingWidgetSummary["searchEngine"])
 export function WidgetPositionTracking({
   summary,
   domain,
+  onHide,
 }: {
   summary: PositionTrackingWidgetSummary | null;
   domain: string;
+  onHide?: () => void;
 }) {
   const { locale } = useLocale();
   const ko = locale === "ko";
   const [range, setRange] = useState<(typeof RANGE_OPTIONS)[number]>(7);
-  const [hidden, setHidden] = useState(false);
-
-  if (hidden) return null;
 
   const keywords = summary?.keywords ?? [];
   const total = Math.max(1, keywords.length);
@@ -228,7 +227,7 @@ export function WidgetPositionTracking({
           <button
             type="button"
             aria-label={ko ? "포지션 추적 위젯 숨기기" : "Hide Position Tracking widget"}
-            onClick={() => setHidden(true)}
+            onClick={onHide}
             className="flex h-7 w-7 items-center justify-center rounded-full text-[#a4a7ad] transition-colors hover:bg-[#f2f3f4] hover:text-[#666971]"
           >
             <Cross2Icon />

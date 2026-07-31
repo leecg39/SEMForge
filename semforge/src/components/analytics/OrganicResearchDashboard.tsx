@@ -205,16 +205,18 @@ export function OrganicResearchDashboard({
   initialReport,
   initialDomain,
   initialCountry,
+  initialDevice,
 }: {
   initialReport: DomainAnalyticsReport | null;
   initialDomain?: string;
   initialCountry?: string;
+  initialDevice?: AnalyticsDevice;
 }) {
   const { locale } = useLocale();
   const copy = COPY[locale];
   const [domain, setDomain] = useState(initialDomain ?? DEFAULT_DOMAIN);
   const [country, setCountry] = useState(initialCountry ?? "US");
-  const [device, setDevice] = useState<AnalyticsDevice>("desktop");
+  const [device, setDevice] = useState<AnalyticsDevice>(initialDevice ?? "desktop");
   const [report, setReport] = useState<DomainAnalyticsReport | null>(initialReport);
   const [status, setStatus] = useState<LoadStatus>(initialReport ? "ready" : "error");
   const [error, setError] = useState<string | null>(initialReport ? null : copy.loadError);

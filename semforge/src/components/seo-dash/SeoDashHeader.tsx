@@ -18,14 +18,22 @@ export interface SeoDashProject {
 export function SeoDashHeader({
   projectName,
   projects,
-  currentDomain,
+  currentProjectId,
   onSelectProject,
+  onCreateProject,
+  onShare,
+  onOpenSettings,
+  shareStatus,
   loading = false,
 }: {
   projectName: string;
   projects: SeoDashProject[];
-  currentDomain: string;
-  onSelectProject?: (domain: string) => void;
+  currentProjectId: string;
+  onSelectProject?: (projectId: string) => void;
+  onCreateProject?: () => void;
+  onShare?: () => void;
+  onOpenSettings?: () => void;
+  shareStatus?: string | null;
   loading?: boolean;
 }) {
   const { locale } = useLocale();
@@ -45,7 +53,13 @@ export function SeoDashHeader({
             <li>SEO</li>
           </ol>
         </nav>
-        <button type="button" className={cn("flex items-center gap-1 text-[14px] leading-[19.88px]", SM.link)}>
+        <button
+          type="button"
+          onClick={() => {
+            window.location.href = `mailto:?subject=${encodeURIComponent(`SEMForge SEO: ${projectName}`)}`;
+          }}
+          className={cn("flex items-center gap-1 text-[14px] leading-[19.88px]", SM.link)}
+        >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
             <path d="M21 12a8 8 0 0 1-8 8H5l-2 2V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
           </svg>
@@ -63,7 +77,7 @@ export function SeoDashHeader({
             <div className="relative">
               <select
                 aria-label={ko ? `프로젝트: ${projectName}` : `Project: ${projectName}`}
-                value={currentDomain}
+                value={currentProjectId}
                 onChange={(event) => onSelectProject?.(event.target.value)}
                 disabled={loading}
                 className={cn(
@@ -72,7 +86,7 @@ export function SeoDashHeader({
                 )}
               >
                 {projects.map((project) => (
-                  <option key={project.id} value={project.domain}>
+                  <option key={project.id} value={project.id}>
                     {project.name}
                   </option>
                 ))}
@@ -84,17 +98,19 @@ export function SeoDashHeader({
           )}
         </div>
         <div className="flex items-center gap-2 max-md:hidden">
-          <button type="button" className={cn(SM.darkCta, "h-[28px]")}>
+          <button type="button" onClick={onCreateProject} className={cn(SM.darkCta, "h-[28px]")}>
             {ko ? "SEO 프로젝트 만들기" : "Create SEO project"}
           </button>
           <button
             type="button"
+            onClick={onShare}
             className="inline-flex h-[28px] items-center justify-center rounded-[6px] border border-app-border bg-white px-3 text-[14px] font-medium text-a2-text transition-colors hover:bg-app-bg"
           >
-            {ko ? "공유" : "Share"}
+            {shareStatus ?? (ko ? "공유" : "Share")}
           </button>
           <button
             type="button"
+            onClick={onOpenSettings}
             aria-label={ko ? "설정 열기" : "Open settings"}
             className="inline-flex h-[28px] w-[28px] items-center justify-center rounded-[6px] text-a2-text-muted transition-colors hover:bg-app-bg"
           >

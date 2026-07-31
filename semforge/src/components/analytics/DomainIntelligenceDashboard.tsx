@@ -23,11 +23,12 @@ import { useLocale } from "@/i18n/LocaleProvider";
 import type {
   AnalyticsDevice,
   DomainAnalyticsReport,
+  DomainProviderState,
   PositionBucketKey,
 } from "@/lib/analytics/types";
 import { cn } from "@/lib/utils";
 
-const DEFAULT_DOMAIN = "northwind.example.com";
+const DEFAULT_DOMAIN = "";
 
 const ORGANIC_RESEARCH_HREF = "/analytics/organic/overview/";
 const BACKLINKS_HREF = "/analytics/backlinks/overview/";
@@ -135,6 +136,24 @@ const COPY = {
     liveCollecting: "Collecting live…",
     liveCollectRanked: "Found at",
     liveCollectNotFound: "Not in top results",
+    analyzeLive: "Analyze with live APIs",
+    optionalKeywords: "Optional target keywords",
+    optionalKeywordsHint: "Leave blank to discover candidates from the site's actual content.",
+    providerStatus: "External API status",
+    siteProfile: "Crawled site profile",
+    performanceProfile: "PageSpeed & Core Web Vitals",
+    pagesAnalyzed: "Pages analyzed",
+    discoveredKeywords: "Discovered keywords",
+    structuredData: "Structured data",
+    present: "Present",
+    absent: "Not observed",
+    performance: "Performance",
+    accessibility: "Accessibility",
+    bestPractices: "Best practices",
+    seoScore: "SEO",
+    fieldData: "Field data",
+    labData: "Lab data",
+    noExternalSnapshot: "Run a live analysis to collect Firecrawl, TalorData, and PageSpeed results.",
   },
   ko: {
     eyebrow: "도메인 인텔리전스",
@@ -216,6 +235,24 @@ const COPY = {
     liveCollecting: "실시간 수집 중…",
     liveCollectRanked: "순위 확인됨",
     liveCollectNotFound: "상위 결과에 없음",
+    analyzeLive: "실제 API로 분석",
+    optionalKeywords: "타깃 키워드(선택)",
+    optionalKeywordsHint: "비우면 사이트의 실제 콘텐츠에서 후보를 발견합니다.",
+    providerStatus: "외부 API 상태",
+    siteProfile: "실제 크롤 사이트 프로필",
+    performanceProfile: "PageSpeed · Core Web Vitals",
+    pagesAnalyzed: "분석 페이지",
+    discoveredKeywords: "발견 키워드",
+    structuredData: "구조화 데이터",
+    present: "확인됨",
+    absent: "관찰되지 않음",
+    performance: "성능",
+    accessibility: "접근성",
+    bestPractices: "권장사항",
+    seoScore: "SEO",
+    fieldData: "실사용자 데이터",
+    labData: "랩 데이터",
+    noExternalSnapshot: "실제 분석을 실행하면 Firecrawl·TalorData·PageSpeed 결과가 표시됩니다.",
   },
 } as const;
 
@@ -268,6 +305,11 @@ interface DomainSeedCollectResponse {
   ranked: number;
   outcomes: DomainSeedOutcome[];
   capturedAt: string;
+}
+
+interface DomainAnalysisCollectResponse {
+  report: DomainAnalyticsReport;
+  collection: DomainSeedCollectResponse;
 }
 
 /** 서버 suggestDomainKeywords 와 동일한 규칙의 클라이언트 미리보기 후보. */
@@ -331,6 +373,30 @@ function Card({
 function LivePill({ label }: { label: string }) {
   return (
     <span className="rounded-full bg-[#e6f5f0] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.35px] text-[#0a6b57]">
+      {label}
+    </span>
+  );
+}
+
+function ProviderStatusPill({ provider }: { provider: DomainProviderState }) {
+  const label =
+    provider.status === "live"
+      ? "LIVE"
+      : provider.status === "unavailable"
+        ? "UNAVAILABLE"
+        : "ERROR";
+  return (
+    <span
+      title={provider.reason}
+      className={cn(
+        "rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-[0.35px]",
+        provider.status === "live"
+          ? "bg-[#e6f5f0] text-[#0a6b57]"
+          : provider.status === "unavailable"
+            ? "bg-[#f1f2f4] text-a2-text-muted"
+            : "bg-[#fff0f3] text-[#a80028]",
+      )}
+    >
       {label}
     </span>
   );
@@ -459,8 +525,8 @@ export function DomainIntelligenceDashboard({
   const { locale } = useLocale();
   const copy = COPY[locale];
   const [domain, setDomain] = useState(initialDomain ?? DEFAULT_DOMAIN);
-  const [device] = useState<AnalyticsDevice>("desktop");
-  const [country] = useState(initialCountry ?? "US");
+  const [device, setDevice] = useState<AnalyticsDevice>("desktop");
+  const [country, setCountry] = useState(initialCountry ?? "US");
   const [report, setReport] = useState<DomainAnalyticsReport | null>(initialReport);
   const [status, setStatus] = useState<LoadStatus>(initialReport ? "ready" : "error");
   const [error, setError] = useState<string | null>(null);
@@ -570,7 +636,14 @@ export function DomainIntelligenceDashboard({
 
   /** 실시간 수집: 로컬 데이터가 없는 실제 도메인의 브랜드/지정 키워드 SERP 를 수집한 뒤 리포트를 다시 계산한다. */
   const runCollect = async (auto = false) => {
+    if (!domain.trim()) {
+      setCollectError(locale === "ko" ? "분석할 도메인을 입력해 주세요." : "Enter a domain to analyze.");
+      return;
+    }
     setCollecting(true);
+    setStatus("loading");
+    setError(null);
+    setNotFound(false);
     setCollectError(null);
     if (!auto) setCollectSummary(null);
     try {
@@ -588,7 +661,7 @@ export function DomainIntelligenceDashboard({
           device,
         }),
       });
-      const body = (await response.json()) as ApiSuccess<DomainSeedCollectResponse> & ApiFailure;
+      const body = (await response.json()) as ApiSuccess<DomainAnalysisCollectResponse> & ApiFailure;
       if (!response.ok || !body.data) {
         const failure = new Error(body.error?.message || `HTTP ${response.status}`) as Error & {
           code?: string;
@@ -596,12 +669,13 @@ export function DomainIntelligenceDashboard({
         failure.code = body.error?.code;
         throw failure;
       }
-      setCollectSummary(body.data);
-      if (body.data.collected > 0) {
-        await runQuery(domain, device, country);
-      }
+      setCollectSummary(body.data.collection);
+      setReport(body.data.report);
+      setDomain(body.data.report.query.domain);
+      setStatus("ready");
     } catch (caught) {
       setCollectError(caught instanceof Error ? caught.message : copy.loadError);
+      setStatus(report ? "ready" : "error");
     } finally {
       setCollecting(false);
     }
@@ -614,7 +688,7 @@ export function DomainIntelligenceDashboard({
    */
   const autoCollectRef = useRef(false);
   useEffect(() => {
-    if (initialReport || autoCollectRef.current) return;
+    if (initialReport || !initialDomain || autoCollectRef.current) return;
     autoCollectRef.current = true;
     void (async () => {
       const outcome = await runQuery(domain, device, country);
@@ -667,6 +741,68 @@ export function DomainIntelligenceDashboard({
           {copy.export}
         </button>
       </header>
+
+      <form
+        className="mt-5 rounded-[10px] border border-app-border bg-a2-card p-4 shadow-[var(--a2-card-shadow)]"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void runCollect();
+        }}
+      >
+        <div className="grid gap-3 lg:grid-cols-[minmax(220px,1.4fr)_130px_130px_minmax(220px,1fr)_auto] lg:items-end">
+          <label className="min-w-0 text-[11px] font-semibold uppercase tracking-[0.35px] text-a2-text-muted">
+            {copy.domain}
+            <input
+              value={domain}
+              onChange={(event) => setDomain(event.target.value)}
+              placeholder={copy.domainPlaceholder}
+              autoComplete="url"
+              className="mt-1 block h-10 w-full rounded-[7px] border border-app-border bg-white px-3 text-[13px] font-normal normal-case tracking-normal text-a2-text outline-none focus:border-app-blue"
+            />
+          </label>
+          <label className="text-[11px] font-semibold uppercase tracking-[0.35px] text-a2-text-muted">
+            {copy.country}
+            <select
+              value={country}
+              onChange={(event) => setCountry(event.target.value)}
+              className="mt-1 block h-10 w-full rounded-[7px] border border-app-border bg-white px-3 text-[13px] font-normal normal-case tracking-normal text-a2-text outline-none focus:border-app-blue"
+            >
+              <option value="KR">KR</option>
+              <option value="US">US</option>
+              <option value="JP">JP</option>
+              <option value="GB">GB</option>
+            </select>
+          </label>
+          <label className="text-[11px] font-semibold uppercase tracking-[0.35px] text-a2-text-muted">
+            {copy.device}
+            <select
+              value={device}
+              onChange={(event) => setDevice(event.target.value as AnalyticsDevice)}
+              className="mt-1 block h-10 w-full rounded-[7px] border border-app-border bg-white px-3 text-[13px] font-normal normal-case tracking-normal text-a2-text outline-none focus:border-app-blue"
+            >
+              <option value="desktop">{copy.desktop}</option>
+              <option value="mobile">{copy.mobile}</option>
+            </select>
+          </label>
+          <label className="min-w-0 text-[11px] font-semibold uppercase tracking-[0.35px] text-a2-text-muted">
+            {copy.optionalKeywords}
+            <input
+              value={collectInput}
+              onChange={(event) => setCollectInput(event.target.value)}
+              placeholder={copy.optionalKeywordsHint}
+              className="mt-1 block h-10 w-full rounded-[7px] border border-app-border bg-white px-3 text-[13px] font-normal normal-case tracking-normal text-a2-text outline-none focus:border-app-blue"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={collecting}
+            className="h-10 rounded-[7px] bg-app-blue px-5 text-[13px] font-semibold text-white transition-opacity disabled:cursor-wait disabled:opacity-60"
+          >
+            {collecting ? copy.liveCollecting : copy.analyzeLive}
+          </button>
+        </div>
+        {collectError && <p role="alert" className="mt-3 text-[12px] font-medium text-[#a80028]">{collectError}</p>}
+      </form>
 
       <div className="min-h-[24px]" aria-live="polite">
         {error && !notFound && (
@@ -766,8 +902,75 @@ export function DomainIntelligenceDashboard({
 
           {activeTab === "overview" && (
             <section id="domain-panel-overview" role="tabpanel" aria-labelledby="domain-tab-overview" className="pt-4">
+              {report.external ? (
+                <>
+                  <Card title={copy.providerStatus}>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      {([
+                        ["TalorData", report.external.providers.talordata],
+                        ["Firecrawl", report.external.providers.firecrawl],
+                        ["PageSpeed", report.external.providers.pagespeed],
+                      ] as const).map(([label, provider]) => (
+                        <div key={label} className="rounded-[8px] border border-app-border bg-[#fafbfc] p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[12px] font-semibold text-a2-text">{label}</span>
+                            <ProviderStatusPill provider={provider} />
+                          </div>
+                          <p className="mt-2 text-[11px] leading-[16px] text-a2-text-muted">
+                            {provider.reason ?? `${provider.records ?? 0} ${copy.records}`}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+
+                  <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                    <Card title={copy.siteProfile} action={<ProviderStatusPill provider={report.external.providers.firecrawl} />}>
+                      {report.external.site ? (
+                        <div className="space-y-3">
+                          <div>
+                            <p className="text-[15px] font-semibold text-a2-text">{report.external.site.title ?? report.query.domain}</p>
+                            {report.external.site.metaDescription && <p className="mt-1 line-clamp-2 text-[11px] leading-[17px] text-a2-text-muted">{report.external.site.metaDescription}</p>}
+                          </div>
+                          <dl className="grid grid-cols-2 gap-2 text-[12px]">
+                            <div className="rounded-[7px] bg-[#f7f8fa] p-2"><dt className="text-a2-text-muted">{copy.pagesAnalyzed}</dt><dd className="mt-0.5 font-semibold text-a2-text">{report.external.site.successfulPages} / {report.external.site.pagesDiscovered}</dd></div>
+                            <div className="rounded-[7px] bg-[#f7f8fa] p-2"><dt className="text-a2-text-muted">{copy.structuredData}</dt><dd className="mt-0.5 font-semibold text-a2-text">{report.external.site.hasStructuredData ? copy.present : copy.absent}</dd></div>
+                          </dl>
+                          <div><p className="text-[11px] font-semibold text-a2-text-muted">{copy.discoveredKeywords}</p><div className="mt-1.5 flex flex-wrap gap-1.5">{report.external.keywordCandidates.map((keyword) => <span key={keyword} className="rounded-full bg-[#eaf3ff] px-2 py-1 text-[11px] font-medium text-app-blue">{keyword}</span>)}</div></div>
+                        </div>
+                      ) : <NoDataBody message={report.external.providers.firecrawl.reason ?? copy.noExternalSnapshot} label={copy.noData} />}
+                    </Card>
+
+                    <Card title={copy.performanceProfile} action={<ProviderStatusPill provider={report.external.providers.pagespeed} />}>
+                      {report.external.performance ? (
+                        <div>
+                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                            {([
+                              [copy.performance, report.external.performance.scores.performance],
+                              [copy.accessibility, report.external.performance.scores.accessibility],
+                              [copy.bestPractices, report.external.performance.scores.bestPractices],
+                              [copy.seoScore, report.external.performance.scores.seo],
+                            ] as const).map(([label, score]) => <div key={label} className="rounded-[8px] bg-[#f7f8fa] p-3 text-center"><p className="text-[10px] text-a2-text-muted">{label}</p><p className="mt-1 text-[22px] font-semibold text-a2-text">{score}</p></div>)}
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-a2-text-muted">
+                            <span>{report.external.performance.cwv.source === "field" ? copy.fieldData : copy.labData}</span>
+                            {report.external.performance.cwv.lcpMs !== undefined && <span>LCP {Math.round(report.external.performance.cwv.lcpMs)}ms</span>}
+                            {report.external.performance.cwv.inpMs !== undefined && <span>INP {Math.round(report.external.performance.cwv.inpMs)}ms</span>}
+                            {report.external.performance.cwv.cls !== undefined && <span>CLS {report.external.performance.cwv.cls.toFixed(3)}</span>}
+                          </div>
+                        </div>
+                      ) : <NoDataBody message={report.external.providers.pagespeed.reason ?? copy.noExternalSnapshot} label={copy.noData} />}
+                    </Card>
+                  </div>
+                </>
+              ) : (
+                <Card title={copy.providerStatus} className="mb-4">
+                  <NoDataBody message={copy.noExternalSnapshot} label={copy.noData} />
+                </Card>
+              )}
+
               {/* 1행: Authority Score(미제공) + 오가닉 검색 */}
-              <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+              <div className="mt-4 grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
                 <MetricUnavailable
                   label={copy.authority}
                   note={copy.unavailableAuthority}

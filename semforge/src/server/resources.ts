@@ -350,6 +350,8 @@ const contentResource: ResourceConfig = {
     mode: z.enum(["create", "optimize", "repurpose", "brief"]).optional().default("create"),
     keyword: optionalText(120),
     body: optionalText(20000),
+    wordCount: z.number().int().min(0).max(100000).optional().default(0),
+    seoScore: z.number().int().min(0).max(100).optional().nullable(),
   }),
   updateSchema: z.object({
     title: titleSchema("제목", 150).optional(),
@@ -357,6 +359,8 @@ const contentResource: ResourceConfig = {
     status: z.enum(["draft", "in_review", "published"]).optional(),
     keyword: optionalText(120),
     body: optionalText(20000),
+    wordCount: z.number().int().min(0).max(100000).optional(),
+    seoScore: z.number().int().min(0).max(100).optional().nullable(),
     version: versionField,
   }),
   uniqueRules: [{ fields: ["title"], message: "같은 제목의 문서가 이미 있습니다." }],
@@ -390,4 +394,3 @@ export const TRASHABLE_KEYS = [
   reportResource.key,
   contentResource.key,
 ];
-

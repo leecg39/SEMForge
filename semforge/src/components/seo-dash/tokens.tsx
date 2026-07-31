@@ -1,5 +1,29 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { createContext, useContext, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
+
+const WidgetHideContext = createContext<{
+  label: string;
+  onHide: () => void;
+} | null>(null);
+
+/** DOM 래퍼 없이 그리드 자식에 위젯 숨김 동작을 주입한다. */
+export function WidgetHideScope({
+  label,
+  onHide,
+  children,
+}: {
+  label: string;
+  onHide: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <WidgetHideContext.Provider value={{ label, onHide }}>
+      {children}
+    </WidgetHideContext.Provider>
+  );
+}
 
 /**
  * ko.semforge.com/seo/30605634/ 위젯 대시보드 실측 토큰.
@@ -42,15 +66,27 @@ export function WidgetCard({
   big?: boolean;
   ariaLabel?: string;
 }) {
+  const hide = useContext(WidgetHideContext);
   return (
     <section
       aria-label={ariaLabel}
       className={cn(
-        "min-w-0 rounded-[8px] bg-a2-card shadow-[var(--a2-card-shadow)]",
+        "relative min-w-0 rounded-[8px] bg-a2-card shadow-[var(--a2-card-shadow)]",
         big ? "p-[20px]" : "px-[20px] pb-[20px] pt-[8px]",
         className
       )}
     >
+      {hide && (
+        <button
+          type="button"
+          onClick={hide.onHide}
+          aria-label={`Hide ${hide.label} widget`}
+          title={`Hide ${hide.label} widget`}
+          className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full text-[18px] leading-none text-[#a4a7ad] transition-colors hover:bg-[#f2f3f4] hover:text-[#666971]"
+        >
+          <span aria-hidden="true">×</span>
+        </button>
+      )}
       {children}
     </section>
   );

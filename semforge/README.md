@@ -21,7 +21,7 @@ SEMForge — SEO & AI 가시성 플랫폼. Semrush의 UI/UX를 관찰 기반으�
 | 소스 | 용도 | 환경 변수 | 비고 |
 |---|---|---|---|
 | **TalorData SERP** | 키워드 순위, SERP 피처(AI 개요·로컬팩 등), 도메인 실시간 수집 | `TALORDATA_API_TOKEN` | google/bing, gl/hl 지원 |
-| **Firecrawl** | 사이트 진단 크롤 (없으면 자체 BFS 크롤러로 폴백) | `FIRECRAWL_API_KEY` | 선택 |
+| **Firecrawl v2** | 도메인 페이지 발견·콘텐츠/키워드 후보 수집, 사이트 진단 크롤 | `FIRECRAWL_API_KEY` | 도메인 분석에 필요 |
 | **PageSpeed Insights** | 사이트 성능, Core Web Vitals (사이트 진단 테마 카드) | `PAGESPEED_API_KEY` | 선택, 없어도 저쿼터 동작 |
 | **Google Search Console** | 소유 사이트의 클릭·노출·CTR·평균 포지션 (포지션 추적, 트래픽 개요) | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GSC_REDIRECT_URI` | OAuth 연결 필요 |
 | **Google Business Profile** | 리스팅 위치, 리뷰 조회·답글 (지역 툴킷) | 위와 동일 + `GBP_REDIRECT_URI` | 별도 scope(`business.manage`) |
@@ -70,7 +70,7 @@ SNAPSHOT_RETENTION_DAYS= # 스냅샷 보존 일수 (기본 90, db_retention job)
 |---|---|---|
 | 홈 | `/home/` | 폴더 CRUD, 폴더별 실측 지표 |
 | SEO 대시보드 | `/seo/` | 위젯 대시보드 (GSC 연결, AI 가시성 요약, 실측 배지만) |
-| 도메인 개요 | `/analytics/overview/` | TalorData 실시간 수집 리포트 (무소스 지표는 미제공) |
+| 도메인 개요 | `/analytics/overview/` | Firecrawl 콘텐츠 발견 + TalorData 최대 100위 SERP + PageSpeed/CWV 실측 리포트 (무소스 지표는 미제공) |
 | 포지션 추적 | `/position-tracking/` | 실시간 순위 수집, 순위 분포, 경쟁자 발견, GSC 컬럼, 주기 수집 |
 | 사이트 진단 | `/siteaudit/` | 탭 5종(개요/문제/페이지/통계/테마), 테마 카드 9종(robots.txt AI 봇 판정 포함), PSI CWV, 스케줄 크롤 |
 | AI 가시성 | `/ai-seo/overview/` | Google AI 개요 출현·자사 도메인 인용 여부 추적 (TalorData 실측) |

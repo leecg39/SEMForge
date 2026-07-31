@@ -9,10 +9,21 @@ import { useLocalizedValue, useSiteText } from "@/i18n/useLocalizedValue";
 interface ToolkitSideNavProps {
   toolkitKey: string;
   activeHref?: string;
+  projectContext?: { label: string; href: string; projectId?: string };
+}
+
+function projectScopedHref(
+  href: string,
+  toolkitKey: string,
+  projectId: string | undefined,
+): string {
+  if (toolkitKey !== "seo" || !projectId || !href.startsWith("/")) return href;
+  const separator = href.includes("?") ? "&" : "?";
+  return `${href}${separator}project=${encodeURIComponent(projectId)}`;
 }
 
 /** 2번째 좌측 컬럼: 툴킷별 도구 목록 (240px, 데스크톱 전용) */
-export function ToolkitSideNav({ toolkitKey, activeHref }: ToolkitSideNavProps) {
+export function ToolkitSideNav({ toolkitKey, activeHref, projectContext }: ToolkitSideNavProps) {
   const sourceToolkit = appToolkits[toolkitKey];
   const toolkit = useLocalizedValue(sourceToolkit);
   const tx = useSiteText();
@@ -37,15 +48,15 @@ export function ToolkitSideNav({ toolkitKey, activeHref }: ToolkitSideNavProps) 
         </button>
       </div>
 
-      {/* 폴더/프로젝트 컨텍스트 셀렉터 (자리) */}
+      {/* 현재 프로젝트 컨텍스트. 프로젝트가 없는 툴킷은 홈으로 안내한다. */}
       <div className="px-3 pt-3">
-        <button
-          type="button"
+        <Link
+          href={projectContext?.href ?? "/home/"}
           className="flex h-[36px] w-full items-center justify-between gap-2 rounded-[6px] bg-app-bg px-3 text-[13px] text-app-text transition-colors hover:bg-[#eceef4]"
         >
-          <span className="truncate">example.com</span>
+          <span className="truncate">{projectContext?.label ?? tx("Select a project")}</span>
           <ChevronDownIcon width={14} height={14} className="shrink-0 text-app-text-secondary" />
-        </button>
+        </Link>
       </div>
 
       {/* 그룹별 도구 목록 */}
@@ -60,10 +71,11 @@ export function ToolkitSideNav({ toolkitKey, activeHref }: ToolkitSideNavProps) 
             <ul>
               {group.tools.map((tool) => {
                 const active = tool.href === activeHref;
+                const href = projectScopedHref(tool.href, toolkitKey, projectContext?.projectId);
                 return (
                   <li key={tool.href}>
                     <Link
-                      href={tool.href}
+                      href={href}
                       aria-current={active ? "page" : undefined}
                       className={cn(
                         "flex h-[32px] items-center rounded-[6px] px-3 text-[13px] transition-colors",

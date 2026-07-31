@@ -294,6 +294,18 @@ export function normalizeDomain(input: string): string {
   }
 }
 
+/** 루트 도메인 조회에는 해당 도메인과 그 하위 서브도메인을 함께 포함한다. */
+export function domainMatchesTarget(candidate: string, target: string): boolean {
+  const normalizedCandidate = normalizeDomain(candidate);
+  const normalizedTarget = normalizeDomain(target);
+  return Boolean(
+    normalizedCandidate &&
+      normalizedTarget &&
+      (normalizedCandidate === normalizedTarget ||
+        normalizedCandidate.endsWith(`.${normalizedTarget}`)),
+  );
+}
+
 /** collect.ts 의 normalizeKeyword 와 같은 규칙 (공백 정리 + 소문자). */
 function normalizeKeywordText(keyword: string): string {
   return keyword.trim().replace(/\s+/g, " ").toLowerCase();
@@ -470,7 +482,13 @@ function latestMonthEvents(events: readonly RawClickstreamEvent[]): RawClickstre
 
 export function buildDomainAnalytics(
   dataset: AnalyticsRawDataset,
-  query: { domain: string; countryCode: string; device: "desktop" | "mobile" },
+  query: {
+    domain: string;
+    countryCode: string;
+    device: "desktop" | "mobile";
+    /** 외부 분석 스냅샷이 있으면 SERP 순위가 없어도 정직한 빈 리포트를 만든다. */
+    allowEmptyDomain?: boolean;
+  },
 ): DomainAnalyticsReport | null {
   const domain = normalizeDomain(query.domain);
   const countryCode = query.countryCode.toUpperCase();
@@ -502,17 +520,20 @@ export function buildDomainAnalytics(
   );
 
   // 조회 가능 도메인은 클릭스트림·SERP·링크 그래프 어느 원천에라도 잡힌 도메인의 합집합이다.
-  // 클릭스트림이 없는 도메인은 visits 계열 지표가 0 으로 표시된다.
+  // 루트 도메인을 조회하면 관측된 하위 서브도메인도 같은 사이트 범위로 집계한다.
+  const observedDomains = [
+    ...scopedClicks.map((row) => normalizeDomain(row.domain)),
+    ...currentSerp.map((row) => normalizeDomain(row.domain)),
+    ...dataset.links.map((row) => normalizeDomain(row.targetDomain)),
+  ].filter(Boolean);
+  const domainAvailable = Boolean(
+    domain &&
+      (query.allowEmptyDomain || observedDomains.some((candidate) => domainMatchesTarget(candidate, domain))),
+  );
+  if (!domainAvailable) return null;
   const availableDomains = [
-    ...new Set(
-      [
-        ...scopedClicks.map((row) => normalizeDomain(row.domain)),
-        ...currentSerp.map((row) => normalizeDomain(row.domain)),
-        ...dataset.links.map((row) => normalizeDomain(row.targetDomain)),
-      ].filter(Boolean),
-    ),
+    ...new Set([...observedDomains, domain]),
   ].toSorted();
-  if (!domain || !availableDomains.includes(domain)) return null;
 
   const latestKeywords = latestKeywordRows(scopedKeywords);
   const latestKeywordIds = new Set(latestKeywords.map((row) => row.id));
@@ -528,6 +549,9 @@ export function buildDomainAnalytics(
       ).value ?? row.volume,
     ]),
   );
+  const hasVolumeSource = (row: RawKeywordMetric) =>
+    row.source !== "talordata-serp" && Number.isFinite(row.volume) && row.volume >= 0;
+  const hasAnyVolumeSource = latestKeywords.some(hasVolumeSource);
 
   const linksByTarget = new Map<string, RawLinkGraphEdge[]>();
   for (const edge of dataset.links) {
@@ -575,44 +599,58 @@ export function buildDomainAnalytics(
     const ranking = latestSerp
       .filter((row) => row.keywordMetricId === keyword.id)
       .toSorted((a, b) => a.position - b.position);
-    const target = ranking.find((row) => normalizeDomain(row.domain) === domain);
+    const target = ranking.find((row) => domainMatchesTarget(row.domain, domain));
     if (!target) return [];
     const profiles = ranking.map((row) => linkProfile(normalizeDomain(row.domain)));
     const averageVolume = averageVolumeByKeyword.get(keyword.normalizedKeyword) ?? keyword.volume;
-    const difficulty = calculateKeywordDifficulty({
-      top10AuthorityScores: ranking.map((row) => domainAuthority(normalizeDomain(row.domain))),
-      volume: averageVolume,
-      medianReferringDomains: median(profiles.map((profile) => profile.referringDomains)),
-      followShare: median(profiles.map((profile) => profile.followShare)),
-      serpFeatureCount: new Set(ranking.flatMap(parseFeatures)).size,
-      isBranded: keyword.intent === "navigational",
-    });
+    const volumeAvailable = hasVolumeSource(keyword);
+    const authorityContextAvailable = profiles.some((profile) => profile.backlinks > 0);
+    const difficulty = volumeAvailable && authorityContextAvailable
+      ? calculateKeywordDifficulty({
+          top10AuthorityScores: ranking.map((row) => domainAuthority(normalizeDomain(row.domain))),
+          volume: averageVolume,
+          medianReferringDomains: median(profiles.map((profile) => profile.referringDomains)),
+          followShare: median(profiles.map((profile) => profile.followShare)),
+          serpFeatureCount: new Set(ranking.flatMap(parseFeatures)).size,
+          isBranded: keyword.intent === "navigational",
+        })
+      : null;
     return [
       {
         keyword: keyword.keyword,
-        intent: keyword.intent,
+        intent: keyword.source === "talordata-serp" ? null : keyword.intent,
         position: target.position,
-        volume: averageVolume,
+        volume: volumeAvailable ? averageVolume : null,
         difficulty,
-        trafficContribution: estimateOrganicTraffic([
-          { position: target.position, volume: averageVolume },
-        ]),
+        trafficContribution: volumeAvailable
+          ? estimateOrganicTraffic([{ position: target.position, volume: averageVolume }])
+          : null,
         url: target.url,
-        cpcCents: keyword.cpcCents,
+        cpcCents:
+          keyword.source !== "talordata-serp" && keyword.cpcCents > 0
+            ? keyword.cpcCents
+            : null,
       },
     ];
-  }).toSorted((a, b) => b.trafficContribution - a.trafficContribution);
+  }).toSorted((a, b) =>
+    (b.trafficContribution ?? 0) - (a.trafficContribution ?? 0) ||
+    a.position - b.position,
+  );
 
   const organicTrafficEstimate = topKeywords.reduce(
-    (sum, row) => sum + row.trafficContribution,
+    (sum, row) => sum + (row.trafficContribution ?? 0),
     0,
   );
   const targetLinks = dataset.links.filter(
-    (edge) => normalizeDomain(edge.targetDomain) === domain,
+    (edge) => domainMatchesTarget(edge.targetDomain, domain),
   );
-  const targetLinkProfile = linkProfile(domain);
-  const authorityScore = domainAuthority(domain);
-  const targetClicks = scopedClicks.filter((row) => normalizeDomain(row.domain) === domain);
+  const targetLinkProfile = calculateLinkProfile(targetLinks);
+  const authorityScore = calculateAuthorityScore({
+    linkPower: targetLinkProfile.linkPower,
+    organicTrafficEstimate,
+    spamScore: targetLinkProfile.spamScore,
+  });
+  const targetClicks = scopedClicks.filter((row) => domainMatchesTarget(row.domain, domain));
   const currentClicks = latestMonthEvents(targetClicks);
   const clickSummary = summarizeWeightedClickstream(currentClicks);
 
@@ -621,10 +659,10 @@ export function buildDomainAnalytics(
   for (const keyword of scopedKeywords) {
     const target = scopedSerp.find(
       (row) =>
-        row.keywordMetricId === keyword.id && normalizeDomain(row.domain) === domain,
+        row.keywordMetricId === keyword.id && domainMatchesTarget(row.domain, domain),
     );
     const period = monthKey(keyword.periodStart);
-    const contribution = target
+    const contribution = target && hasVolumeSource(keyword)
       ? estimateOrganicTraffic([{ position: target.position, volume: keyword.volume }])
       : 0;
     organicByPeriod.set(period, (organicByPeriod.get(period) ?? 0) + contribution);
@@ -642,8 +680,10 @@ export function buildDomainAnalytics(
     .slice(-12);
   const trend = periods.map((period) => ({
     period,
-    organicTrafficEstimate: organicByPeriod.get(period) ?? 0,
-    visitsEstimate: summarizeWeightedClickstream(clicksByPeriod.get(period) ?? []).visitsEstimate,
+    organicTrafficEstimate: hasAnyVolumeSource ? (organicByPeriod.get(period) ?? 0) : null,
+    visitsEstimate: clicksByPeriod.has(period)
+      ? summarizeWeightedClickstream(clicksByPeriod.get(period) ?? []).visitsEstimate
+      : null,
     keywords: keywordsByPeriod.get(period) ?? 0,
   }));
 
@@ -674,6 +714,7 @@ export function buildDomainAnalytics(
   // 의도 분포: 상위 키워드 기준.
   const intentCounts = new Map<AnalyticsIntent, number>();
   for (const row of topKeywords) {
+    if (!row.intent) continue;
     intentCounts.set(row.intent, (intentCounts.get(row.intent) ?? 0) + 1);
   }
   const intentDistribution = [...intentCounts.entries()]
@@ -689,7 +730,7 @@ export function buildDomainAnalytics(
   // SERP 피처: 도메인이 랭킹된 최신 키워드들의 SERP 에서 피처가 관찰된 비율.
   const rankedKeywordIds = new Set(
     latestSerp
-      .filter((row) => normalizeDomain(row.domain) === domain)
+      .filter((row) => domainMatchesTarget(row.domain, domain))
       .map((row) => row.keywordMetricId),
   );
   const featureKeywords = new Map<string, Set<string>>();
@@ -724,7 +765,7 @@ export function buildDomainAnalytics(
             : "51-100";
   const positionCounts = new Map<PositionBucketKey, number>();
   for (const row of latestSerp) {
-    if (normalizeDomain(row.domain) !== domain) continue;
+    if (!domainMatchesTarget(row.domain, domain)) continue;
     const bucket = positionBucketOf(row.position);
     positionCounts.set(bucket, (positionCounts.get(bucket) ?? 0) + 1);
   }
@@ -747,22 +788,27 @@ export function buildDomainAnalytics(
   };
   const brandedRows = topKeywords.filter((row) => isBrandedKeyword(row.keyword));
   const nonBrandedRows = topKeywords.filter((row) => !isBrandedKeyword(row.keyword));
-  const brandedTraffic = brandedRows.reduce((sum, row) => sum + row.trafficContribution, 0);
+  const brandedTraffic = brandedRows.reduce(
+    (sum, row) => sum + (row.trafficContribution ?? 0),
+    0,
+  );
   const toBrandedRow = (row: (typeof topKeywords)[number]) => ({
     keyword: row.keyword,
-    volume: row.volume,
-    trafficContribution: row.trafficContribution,
+    volume: row.volume ?? 0,
+    trafficContribution: row.trafficContribution ?? 0,
   });
-  const brandedSplit = {
-    totalTraffic: organicTrafficEstimate,
-    brandedTraffic,
-    brandedShare:
-      organicTrafficEstimate > 0
-        ? Math.round((brandedTraffic / organicTrafficEstimate) * 1000) / 10
-        : 0,
-    brandedKeywords: brandedRows.slice(0, 5).map(toBrandedRow),
-    nonBrandedKeywords: nonBrandedRows.slice(0, 5).map(toBrandedRow),
-  };
+  const brandedSplit = hasAnyVolumeSource
+    ? {
+        totalTraffic: organicTrafficEstimate,
+        brandedTraffic,
+        brandedShare:
+          organicTrafficEstimate > 0
+            ? Math.round((brandedTraffic / organicTrafficEstimate) * 1000) / 10
+            : 0,
+        brandedKeywords: brandedRows.slice(0, 5).map(toBrandedRow),
+        nonBrandedKeywords: nonBrandedRows.slice(0, 5).map(toBrandedRow),
+      }
+    : null;
 
   // 참조 도메인 권위 분포: 소스 도메인별 평균 sourceAuthority 를 10점 버킷으로.
   const authoritySumByRefDomain = new Map<string, { sum: number; count: number }>();
@@ -821,40 +867,48 @@ export function buildDomainAnalytics(
     query: { domain, countryCode, device: query.device },
     availableDomains,
     metrics: {
-      authorityScore: {
-        value: authorityScore,
-        kind: "modeled",
-        modelVersion: MODEL_VERSIONS.authority,
-        source: "link_graph + organic_traffic + spam signals",
-        confidence: "medium",
-      },
-      organicTrafficEstimate: {
-        value: organicTrafficEstimate,
-        kind: "estimated",
-        modelVersion: MODEL_VERSIONS.organicTraffic,
-        source: "SERP positions × 12-month average keyword volume × CTR",
-        confidence: "medium",
-      },
-      visitsEstimate: {
-        value: clickSummary.visitsEstimate,
-        kind: "estimated",
-        modelVersion: MODEL_VERSIONS.clickstream,
-        source: "weighted clickstream sessions",
-        confidence: "low",
-      },
-      uniqueVisitorsEstimate: {
-        value: clickSummary.uniqueVisitorsEstimate,
-        kind: "estimated",
-        modelVersion: MODEL_VERSIONS.clickstream,
-        source: "weighted anonymous panel users",
-        confidence: "low",
-      },
+      authorityScore: targetLinks.length > 0
+        ? {
+            value: authorityScore,
+            kind: "modeled",
+            modelVersion: MODEL_VERSIONS.authority,
+            source: "link_graph + organic_traffic + spam signals",
+            confidence: "medium",
+          }
+        : null,
+      organicTrafficEstimate: hasAnyVolumeSource
+        ? {
+            value: organicTrafficEstimate,
+            kind: "estimated",
+            modelVersion: MODEL_VERSIONS.organicTraffic,
+            source: "SERP positions × 12-month average keyword volume × CTR",
+            confidence: "medium",
+          }
+        : null,
+      visitsEstimate: currentClicks.length > 0
+        ? {
+            value: clickSummary.visitsEstimate,
+            kind: "estimated",
+            modelVersion: MODEL_VERSIONS.clickstream,
+            source: "weighted clickstream sessions",
+            confidence: "low",
+          }
+        : null,
+      uniqueVisitorsEstimate: currentClicks.length > 0
+        ? {
+            value: clickSummary.uniqueVisitorsEstimate,
+            kind: "estimated",
+            modelVersion: MODEL_VERSIONS.clickstream,
+            source: "weighted anonymous panel users",
+            confidence: "low",
+          }
+        : null,
       organicKeywords: topKeywords.length,
-      backlinks: targetLinkProfile.backlinks,
-      referringDomains: targetLinkProfile.referringDomains,
-      pagesPerVisit: clickSummary.pagesPerVisit,
-      bounceRate: clickSummary.bounceRate,
-      followShare: targetLinkProfile.followShare,
+      backlinks: targetLinks.length > 0 ? targetLinkProfile.backlinks : null,
+      referringDomains: targetLinks.length > 0 ? targetLinkProfile.referringDomains : null,
+      pagesPerVisit: currentClicks.length > 0 ? clickSummary.pagesPerVisit : null,
+      bounceRate: currentClicks.length > 0 ? clickSummary.bounceRate : null,
+      followShare: targetLinks.length > 0 ? targetLinkProfile.followShare : null,
     },
     trend,
     topKeywords,

@@ -149,7 +149,38 @@ export const linkGraphEdges = sqliteTable(
   ],
 );
 
+/**
+ * 도메인 개요 외부 API 수집 스냅샷.
+ *
+ * API 키나 원본 인증 헤더는 저장하지 않고, Firecrawl/PSI/TalorData가 반환한
+ * 공개 분석 결과와 공급자 상태만 JSON으로 보존한다. 동일 도메인·국가·기기
+ * 조합은 최신 스냅샷 한 건으로 갱신한다.
+ */
+export const domainAnalysisSnapshots = sqliteTable(
+  "domain_analysis_snapshots",
+  {
+    id: text("id").primaryKey(),
+    domain: text("domain").notNull(),
+    countryCode: text("country_code").notNull(),
+    device: text("device", { enum: ["desktop", "mobile"] }).notNull(),
+    externalJson: text("external_json").notNull(),
+    capturedAt: timestampMs("captured_at").notNull(),
+    updatedAt: timestampMs("updated_at")
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [
+    uniqueIndex("domain_analysis_snapshot_scope_unique").on(
+      t.domain,
+      t.countryCode,
+      t.device,
+    ),
+    index("domain_analysis_snapshot_captured_idx").on(t.capturedAt),
+  ],
+);
+
 export type KeywordMetric = typeof keywordMetrics.$inferSelect;
 export type SerpSnapshot = typeof serpSnapshots.$inferSelect;
 export type ClickstreamEvent = typeof clickstreamEvents.$inferSelect;
 export type LinkGraphEdge = typeof linkGraphEdges.$inferSelect;
+export type DomainAnalysisSnapshot = typeof domainAnalysisSnapshots.$inferSelect;

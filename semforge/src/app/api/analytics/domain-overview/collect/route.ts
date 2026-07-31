@@ -2,12 +2,12 @@ import { z } from "zod";
 import { jsonOk, parseBody, route } from "@/lib/api";
 import { assertCan } from "@/lib/rbac";
 import { requireAuth } from "@/lib/session";
-import { collectDomainSeedKeywords } from "@/server/talordata/collect";
+import { collectDomainAnalysis } from "@/server/domain-analysis/collect";
 
 /**
  * 도메인 개요 실시간 수집.
- * 원천 스토어에 데이터가 없는 도메인도 브랜드/지정 키워드의 실제 SERP 를 수집해
- * 도메인 개요 리포트가 만들어질 수 있게 한다. keywords 를 비우면 도메인 토큰에서 후보를 만든다.
+ * Firecrawl 페이지 분석 + TalorData SERP + PageSpeed Insights를 실제 API 키로
+ * 수집하고, 키를 제외한 결과만 스냅샷으로 보존한다.
  */
 const bodySchema = z.object({
   domain: z.string().trim().min(1, "도메인을 입력하세요.").max(253),
@@ -21,18 +21,18 @@ export const POST = route(async (request: Request) => {
   assertCan(auth, "create");
   const body = await parseBody(request, bodySchema);
 
-  const report = await collectDomainSeedKeywords({
+  const result = await collectDomainAnalysis({
     domain: body.domain,
     keywords: body.keywords,
     countryCode: body.countryCode.toUpperCase(),
     device: body.device,
   });
 
-  return jsonOk(report, {
+  return jsonOk(result, {
     meta: {
-      source: "talordata",
-      billed: "successful-request",
-      note: "수집된 SERP 는 serp_snapshots 원천 스토어에 보존되며 도메인 개요 계산에 사용됩니다.",
+      sources: ["firecrawl", "talordata", "pagespeed-insights"],
+      secretsExposed: false,
+      note: "외부 API 결과와 공급자 상태만 저장하며 API 키는 응답·DB에 포함하지 않습니다.",
     },
   });
 });

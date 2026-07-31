@@ -16,6 +16,7 @@ import { normalizeDomain } from "@/lib/analytics/metrics";
 import { getAuth } from "@/lib/session";
 import { getAiVisibilityOverview } from "@/server/ai-visibility/overview";
 import { getDomainAnalytics } from "@/server/analytics";
+import { getSeoProjectSettings } from "@/server/seo-projects/settings";
 import { getSiteAuditOverview } from "@/server/siteaudit/overview";
 
 export const dynamic = "force-dynamic";
@@ -47,9 +48,9 @@ function buildMonthlyRefDomains(
 export default async function SeoDashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ domain?: string }>;
+  searchParams: Promise<{ project?: string; domain?: string }>;
 }) {
-  const { domain: rawDomain } = await searchParams;
+  const { project: rawProjectId, domain: rawDomain } = await searchParams;
   const auth = await getAuth();
 
   const folderRows = auth
@@ -59,24 +60,30 @@ export default async function SeoDashboardPage({
         .where(and(eq(folders.workspaceId, auth.workspaceId), isNull(folders.deletedAt)))
     : [];
 
-  const projects = [...folderRows]
+  const projects = folderRows
     .map((project) => ({ ...project, domain: normalizeDomain(project.domain) }))
-    .filter((project) => project.domain.includes("."))
-    .filter(
-      (project, index, rows) =>
-        rows.findIndex((candidate) => candidate.domain === project.domain) === index,
-    );
+    .filter((project) => project.domain.includes("."));
 
   const normalized = rawDomain ? normalizeDomain(rawDomain) : "";
-  const domain = normalized.includes(".") ? normalized : (projects[0]?.domain ?? "");
-  const countryCode = domain.endsWith(".kr") ? "KR" : "US";
+  const currentProject =
+    projects.find((project) => project.id === rawProjectId) ??
+    projects.find((project) => project.domain === normalized) ??
+    projects[0] ??
+    null;
+  const domain = currentProject?.domain ?? "";
+  const projectSettings =
+    auth && currentProject
+      ? await getSeoProjectSettings(auth, currentProject.id)
+      : null;
+  const countryCode = projectSettings?.countryCode ?? "US";
+  const device = projectSettings?.device ?? "desktop";
 
   // 링크 그래프는 아직 라이브 수집 소스가 없어 참조 도메인 추이를 제공하지 않는다.
   const edges: { sourceDomain: string; firstSeenAt: Date }[] = [];
 
   const [report, auditCampaignRows, positionCampaignRows] = await Promise.all([
     domain
-      ? getDomainAnalytics({ domain, countryCode, device: "desktop" })
+      ? getDomainAnalytics({ domain, countryCode, device })
       : Promise.resolve(null),
     auth
       ? db
@@ -107,6 +114,11 @@ export default async function SeoDashboardPage({
             and(
               eq(positionTrackingCampaigns.workspaceId, auth.workspaceId),
               eq(positionTrackingCampaigns.domain, normalizeDomain(domain)),
+              eq(positionTrackingCampaigns.device, device),
+              eq(
+                positionTrackingCampaigns.searchEngine,
+                projectSettings?.searchEngine ?? "google",
+              ),
               isNull(positionTrackingCampaigns.deletedAt)
             )
           )
@@ -185,13 +197,28 @@ export default async function SeoDashboardPage({
     : new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", day: "numeric" }).format(new Date());
 
   return (
-    <AppShell activeToolkit="seo" activeHref="/seo/">
+    <AppShell
+      activeToolkit="seo"
+      activeHref="/seo/"
+      projectContext={
+        currentProject
+          ? {
+              label: currentProject.name,
+              href: `/seo/?project=${encodeURIComponent(currentProject.id)}`,
+              projectId: currentProject.id,
+            }
+          : undefined
+      }
+    >
       <SeoWidgetDashboard
-        key={domain}
+        key={`${currentProject?.id ?? "none"}:${countryCode}:${device}`}
         report={report}
         projects={projects}
+        currentProjectId={currentProject?.id ?? ""}
         currentDomain={domain}
         countryCode={countryCode}
+        device={device}
+        settings={projectSettings}
         monthlyRefDomains={buildMonthlyRefDomains(edges)}
         dateLabel={dateLabel}
         siteAuditSummary={siteAuditSummary}

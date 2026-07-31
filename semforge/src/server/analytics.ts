@@ -8,6 +8,7 @@ import {
 } from "@/db/schema";
 import { buildDomainAnalytics } from "@/lib/analytics/metrics";
 import type { AnalyticsDevice, AnalyticsRawDataset } from "@/lib/analytics/types";
+import { getDomainExternalAnalysis } from "@/server/domain-analysis/snapshots";
 
 /**
  * 라이브(실측) 소스만 인정한다.
@@ -55,11 +56,22 @@ export async function getDomainAnalytics(query: {
   countryCode: string;
   device: AnalyticsDevice;
 }) {
-  const dataset = await getAnalyticsDataset(query);
-  const report = buildDomainAnalytics(dataset, query);
+  const [dataset, external] = await Promise.all([
+    getAnalyticsDataset(query),
+    getDomainExternalAnalysis({
+      domain: query.domain,
+      countryCode: query.countryCode,
+      device: query.device,
+    }),
+  ]);
+  const report = buildDomainAnalytics(dataset, {
+    ...query,
+    allowEmptyDomain: external !== null,
+  });
   if (!report) return report;
 
-  // 데이터셋은 이미 라이브 소스만 포함하므로, 리포트가 만들어졌다면 실측이다.
+  if (external) report.external = external;
+  // 데이터셋과 외부 스냅샷은 모두 라이브 소스만 포함한다.
   report.provenance = "live";
   return report;
 }

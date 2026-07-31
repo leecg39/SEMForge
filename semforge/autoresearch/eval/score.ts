@@ -230,8 +230,9 @@ check("correctness", "KD는 상위 10개 결과만 사용하고 0~100 범위를 
 check("data_semantics", "SERP 데이터만 있는 도메인도 오가닉 리포트를 만든다", () => {
   const report = buildDomainAnalytics(dataset({ clickstream: [], links: [] }), query);
   assert.ok(report);
+  assert.ok(report.metrics.organicTrafficEstimate);
   assert.ok(report.metrics.organicTrafficEstimate.value > 0);
-  assert.equal(report.metrics.visitsEstimate.value, 0);
+  assert.equal(report.metrics.visitsEstimate, null);
 });
 
 check("data_semantics", "링크 데이터만 있는 도메인도 백링크 리포트를 만든다", () => {

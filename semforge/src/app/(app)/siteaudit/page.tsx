@@ -5,7 +5,8 @@ import {
   type SiteAuditCampaignRow,
 } from "@/components/siteaudit/SiteAuditDashboard";
 import { db } from "@/db/client";
-import { siteAuditCampaigns } from "@/db/schema";
+import { folders, siteAuditCampaigns } from "@/db/schema";
+import { normalizeDomain } from "@/lib/analytics/metrics";
 import { pageSession } from "@/server/page-auth";
 
 export const dynamic = "force-dynamic";
@@ -13,10 +14,21 @@ export const dynamic = "force-dynamic";
 export default async function SiteAuditPage({
   searchParams,
 }: {
-  searchParams: Promise<{ campaign?: string }>;
+  searchParams: Promise<{ campaign?: string; project?: string; domain?: string }>;
 }) {
-  const { campaign: requestedCampaignId } = await searchParams;
+  const query = await searchParams;
+  const { campaign: requestedCampaignId } = query;
   const { auth, capabilities } = await pageSession();
+
+  const projects = await db
+    .select({ id: folders.id, name: folders.name, domain: folders.domain })
+    .from(folders)
+    .where(and(eq(folders.workspaceId, auth.workspaceId), isNull(folders.deletedAt)));
+  const requestedDomain = query.domain ? normalizeDomain(query.domain) : "";
+  const project =
+    projects.find((row) => row.id === query.project) ??
+    projects.find((row) => normalizeDomain(row.domain) === requestedDomain) ??
+    projects[0];
 
   const rows = await db
     .select({
@@ -46,10 +58,26 @@ export default async function SiteAuditPage({
   }));
   const initialCampaignId = campaigns.some((campaign) => campaign.id === requestedCampaignId)
     ? requestedCampaignId
-    : undefined;
+    : project
+      ? campaigns.find(
+          (campaign) => normalizeDomain(campaign.domain) === normalizeDomain(project.domain),
+        )?.id
+      : undefined;
 
   return (
-    <AppShell activeToolkit="seo" activeHref="/siteaudit/">
+    <AppShell
+      activeToolkit="seo"
+      activeHref="/siteaudit/"
+      projectContext={
+        project
+          ? {
+              label: project.name,
+              href: `/seo/?project=${encodeURIComponent(project.id)}`,
+              projectId: project.id,
+            }
+          : undefined
+      }
+    >
       <SiteAuditDashboard
         campaigns={campaigns}
         canManage={Boolean(capabilities.create)}

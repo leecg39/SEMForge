@@ -318,13 +318,21 @@ function ScoreGauge({ passed, total }: { passed: number; total: number }) {
   );
 }
 
-export function OnPageCheckerDashboard() {
+export function OnPageCheckerDashboard({
+  initialUrl = "",
+  initialCountry = "US",
+  initialDevice = "desktop",
+}: {
+  initialUrl?: string;
+  initialCountry?: string;
+  initialDevice?: "desktop" | "mobile";
+}) {
   const { locale } = useLocale();
   const copy = COPY[locale];
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(initialUrl);
   const [keyword, setKeyword] = useState("");
-  const [country, setCountry] = useState("KR");
-  const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
+  const [country, setCountry] = useState(initialCountry);
+  const [device, setDevice] = useState<"desktop" | "mobile">(initialDevice);
   const [report, setReport] = useState<OnPageReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

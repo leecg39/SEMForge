@@ -183,7 +183,13 @@ export function WidgetGoogleConnect() {
 }
 
 /** 숨겨진 위젯 스텁 (spec: widget-organic-backlinks.spec.md C-2) */
-export function WidgetHiddenWidgets() {
+export function WidgetHiddenWidgets({
+  hidden,
+  onRestore,
+}: {
+  hidden: { key: string; label: string }[];
+  onRestore: (key: string) => void;
+}) {
   const { locale } = useLocale();
   const ko = locale === "ko";
   return (
@@ -193,8 +199,28 @@ export function WidgetHiddenWidgets() {
           {ko ? "숨겨진 위젯" : "Hidden widgets"}
         </h3>
         <p className={cn("text-[16px] font-bold leading-[22px]", SM.stub)}>
-          {ko ? "대시보드에 모든 위젯이 표시됩니다" : "All widgets are shown on the dashboard"}
+          {hidden.length === 0
+            ? ko
+              ? "대시보드에 모든 위젯이 표시됩니다"
+              : "All widgets are shown on the dashboard"
+            : ko
+              ? `${hidden.length}개 위젯이 숨겨져 있습니다`
+              : `${hidden.length} widgets are hidden`}
         </p>
+        {hidden.length > 0 && (
+          <div className="mt-3 flex flex-wrap justify-center gap-2">
+            {hidden.map((widget) => (
+              <button
+                key={widget.key}
+                type="button"
+                onClick={() => onRestore(widget.key)}
+                className="h-8 rounded-[6px] border border-app-border bg-white px-3 text-[13px] font-medium text-a2-text hover:bg-app-bg"
+              >
+                {ko ? `${widget.label} 표시` : `Show ${widget.label}`}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </WidgetCard>
   );

@@ -11,11 +11,11 @@ function compact(value: number): string {
   return String(value);
 }
 
-function monthDelta(trend: { organicTrafficEstimate: number }[]): number | null {
+function monthDelta(trend: { organicTrafficEstimate: number | null }[]): number | null {
   if (trend.length < 2) return null;
   const prev = trend[trend.length - 2].organicTrafficEstimate;
   const curr = trend[trend.length - 1].organicTrafficEstimate;
-  if (!prev) return null;
+  if (!prev || curr === null) return null;
   return ((curr - prev) / prev) * 100;
 }
 
@@ -53,7 +53,7 @@ export function WidgetSeoMetrics({
         <div className="flex items-baseline gap-2">
           <span className={cn("text-[14px] leading-[20px]", SM.body)}>Authority Score</span>
           <span className={cn("text-[20px] font-bold leading-[24px]", SM.title)}>
-            {report ? report.metrics.authorityScore.value : "—"}
+            {report?.metrics.authorityScore ? report.metrics.authorityScore.value : "—"}
           </span>
         </div>
         <div className="flex items-baseline gap-2">
@@ -99,11 +99,17 @@ export function WidgetSeoMetrics({
           </span>
           <div className="mb-1 flex h-6 items-center gap-2">
             <span className={cn("text-[20px] font-bold leading-[24px]", SM.title)}>
-              {report ? compact(report.metrics.organicTrafficEstimate.value) : "—"}
+              {report?.metrics.organicTrafficEstimate
+                ? compact(report.metrics.organicTrafficEstimate.value)
+                : "—"}
             </span>
             {trafficDelta !== null && <DeltaBadge value={trafficDelta} />}
           </div>
-          {trend.length > 1 && <Sparkline points={trend.map((p) => p.organicTrafficEstimate)} />}
+          {report?.metrics.organicTrafficEstimate && trend.length > 1 && (
+            <Sparkline points={trend.flatMap((point) =>
+              point.organicTrafficEstimate === null ? [] : [point.organicTrafficEstimate]
+            )} />
+          )}
         </div>
       </div>
     </WidgetCard>

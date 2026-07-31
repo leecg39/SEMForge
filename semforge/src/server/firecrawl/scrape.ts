@@ -3,7 +3,7 @@ import { firecrawlScrapeHtml } from "@/server/firecrawl/client";
 /**
  * 범용 단일 페이지 스크레이퍼.
  *
- * FIRECRAWL_API_KEY 가 있으면 Firecrawl /v1/scrape 를 우선 사용하고,
+ * FIRECRAWL_API_KEY 가 있으면 Firecrawl /v2/scrape 를 우선 사용하고,
  * 키가 없거나 Firecrawl 이 실패하면 자체 fetch 로 폴백한다 — Site Audit 의
  * 엔진 선택 규칙과 동일한 정책을 단일 페이지 단위로 제공한다.
  * On-Page SEO Checker 처럼 "SERP 상위 페이지 몇 개 + 내 페이지"만 필요한

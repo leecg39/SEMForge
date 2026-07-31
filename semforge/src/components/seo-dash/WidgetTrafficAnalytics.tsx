@@ -21,11 +21,11 @@ function compact(value: number): string {
   return String(value);
 }
 
-function delta(trend: { visitsEstimate: number }[]): number | null {
+function delta(trend: { visitsEstimate: number | null }[]): number | null {
   if (trend.length < 2) return null;
   const prev = trend[trend.length - 2].visitsEstimate;
   const curr = trend[trend.length - 1].visitsEstimate;
-  if (!prev) return null;
+  if (!prev || curr === null) return null;
   return ((curr - prev) / prev) * 100;
 }
 
@@ -54,18 +54,24 @@ export function WidgetTrafficAnalytics({ report }: { report: DomainAnalyticsRepo
   const stats: { label: string; value: string; delta: number | null; invert?: boolean }[] = [
     {
       label: ko ? "방문수" : "Visits",
-      value: report ? compact(report.metrics.visitsEstimate.value) : "—",
+      value: report?.metrics.visitsEstimate
+        ? compact(report.metrics.visitsEstimate.value)
+        : "—",
       delta: visitDelta,
     },
     {
       label: ko ? "유니크 방문자 수" : "Unique visitors",
-      value: report ? compact(report.metrics.uniqueVisitorsEstimate.value) : "—",
+      value: report?.metrics.uniqueVisitorsEstimate
+        ? compact(report.metrics.uniqueVisitorsEstimate.value)
+        : "—",
       // 파생 델타를 임의 계수로 꾸미지 않는다.
       delta: null,
     },
     {
       label: ko ? "방문당 페이지수" : "Pages / visit",
-      value: report ? report.metrics.pagesPerVisit.toFixed(2) : "—",
+      value: report?.metrics.pagesPerVisit !== null && report?.metrics.pagesPerVisit !== undefined
+        ? report.metrics.pagesPerVisit.toFixed(2)
+        : "—",
       delta: null,
     },
     {
@@ -76,19 +82,21 @@ export function WidgetTrafficAnalytics({ report }: { report: DomainAnalyticsRepo
     },
     {
       label: ko ? "이탈률" : "Bounce rate",
-      value: report ? `${report.metrics.bounceRate.toFixed(2)}%` : "—",
+      value: report?.metrics.bounceRate !== null && report?.metrics.bounceRate !== undefined
+        ? `${report.metrics.bounceRate.toFixed(2)}%`
+        : "—",
       delta: null,
       invert: true,
     },
   ];
 
-  const chartData = trend.slice(-6).map((point) => ({
+  const chartData = trend.filter((point) => point.visitsEstimate !== null).slice(-6).map((point) => ({
     label: new Intl.DateTimeFormat(ko ? "ko-KR" : "en-US", {
       month: "short",
       year: "2-digit",
       timeZone: "UTC",
     }).format(new Date(`${point.period}-01T00:00:00Z`)),
-    visits: point.visitsEstimate,
+    visits: point.visitsEstimate ?? 0,
   }));
 
   return (

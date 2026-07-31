@@ -264,13 +264,23 @@ function DeltaCell({
   );
 }
 
-export function KeywordOverviewDashboard({ initialKeyword = "" }: { initialKeyword?: string }) {
+export function KeywordOverviewDashboard({
+  initialKeyword = "",
+  initialTargetDomain = "",
+  initialCountry = "US",
+  initialDevice = "desktop",
+}: {
+  initialKeyword?: string;
+  initialTargetDomain?: string;
+  initialCountry?: string;
+  initialDevice?: "desktop" | "mobile";
+}) {
   const { locale } = useLocale();
   const copy = COPY[locale];
   const [keyword, setKeyword] = useState(initialKeyword);
-  const [targetDomain, setTargetDomain] = useState("");
-  const [country, setCountry] = useState("KR");
-  const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
+  const [targetDomain, setTargetDomain] = useState(initialTargetDomain);
+  const [country, setCountry] = useState(initialCountry);
+  const [device, setDevice] = useState<"desktop" | "mobile">(initialDevice);
   const [report, setReport] = useState<KeywordOverviewReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

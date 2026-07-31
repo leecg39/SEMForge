@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildDomainAnalytics,
   calculateAuthorityScore,
   calculateKeywordDifficulty,
   ctrForPosition,
+  domainMatchesTarget,
   estimateOrganicTraffic,
   normalizeDomain,
   rollingAverageVolume,
@@ -79,4 +81,69 @@ test("도메인 입력을 안전한 hostname으로 정규화한다", () => {
   assert.equal(normalizeDomain("https://WWW.Northwind.Example.com/pricing?q=1"), "northwind.example.com");
   assert.equal(normalizeDomain("northwind.example.com/"), "northwind.example.com");
   assert.equal(normalizeDomain(""), "");
+});
+
+test("루트 도메인 분석은 해당 사이트의 서브도메인 순위를 포함한다", () => {
+  assert.equal(domainMatchesTarget("blog.example.com", "example.com"), true);
+  assert.equal(domainMatchesTarget("notexample.com", "example.com"), false);
+
+  const dataset = {
+    keywords: [
+      {
+        id: "kw_subdomain",
+        keyword: "example guide",
+        normalizedKeyword: "example guide",
+        countryCode: "US",
+        device: "desktop" as const,
+        periodStart: "2026-07-01T00:00:00Z",
+        volume: 0,
+        cpcCents: 0,
+        currencyCode: "USD",
+        intent: "informational" as const,
+        source: "talordata-serp",
+        updatedAt: "2026-07-30T00:00:00Z",
+      },
+    ],
+    serp: [
+      {
+        id: "serp_subdomain",
+        keywordMetricId: "kw_subdomain",
+        searchEngine: "google" as const,
+        domain: "blog.example.com",
+        url: "https://blog.example.com/guide",
+        position: 3,
+        isAd: false,
+        serpFeatures: "[]",
+        source: "talordata",
+        capturedAt: "2026-07-30T00:00:00Z",
+      },
+    ],
+    clickstream: [],
+    links: [],
+  };
+
+  const report = buildDomainAnalytics(dataset, {
+    domain: "example.com",
+    countryCode: "US",
+    device: "desktop",
+  });
+  assert.ok(report);
+  assert.equal(report.metrics.organicKeywords, 1);
+  assert.equal(report.topKeywords[0]?.url, "https://blog.example.com/guide");
+});
+
+test("외부 분석 스냅샷이 있으면 SERP 미노출 도메인도 빈 실측 리포트를 만든다", () => {
+  const dataset = { keywords: [], serp: [], clickstream: [], links: [] };
+  const query = { domain: "example.com", countryCode: "US", device: "desktop" as const };
+  assert.equal(buildDomainAnalytics(dataset, query), null);
+
+  const report = buildDomainAnalytics(dataset, { ...query, allowEmptyDomain: true });
+  assert.ok(report);
+  assert.equal(report.query.domain, "example.com");
+  assert.equal(report.metrics.organicKeywords, 0);
+  assert.equal(report.metrics.authorityScore, null);
+  assert.equal(report.metrics.organicTrafficEstimate, null);
+  assert.equal(report.metrics.visitsEstimate, null);
+  assert.equal(report.metrics.backlinks, null);
+  assert.deepEqual(report.topKeywords, []);
 });

@@ -436,14 +436,22 @@ function normalizeDomain(value: string) {
 export function PositionTrackingLanding({
   campaigns,
   canCreate,
+  initialDomain = "",
+  initialLocation = "US",
+  initialDevice = "desktop",
+  initialSearchEngine = "google",
 }: {
   campaigns: CampaignSummary[];
   canCreate: boolean;
+  initialDomain?: string;
+  initialLocation?: string;
+  initialDevice?: "desktop" | "mobile";
+  initialSearchEngine?: "google" | "bing";
 }) {
   const router = useRouter();
   const { locale } = useLocale();
   const ko = locale === "ko";
-  const [domain, setDomain] = useState("");
+  const [domain, setDomain] = useState(initialDomain);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -482,9 +490,9 @@ export function PositionTrackingLanding({
       const response = await api.post<CreatedCampaign>("/api/position-tracking/", {
         name: `${normalized} ${ko ? "포지션 추적" : "Position Tracking"}`,
         domain: normalized,
-        location: "Seoul, South Korea",
-        device: "desktop",
-        searchEngine: "google",
+        location: initialLocation,
+        device: initialDevice,
+        searchEngine: initialSearchEngine,
       });
       router.push(`/position-tracking/?campaign=${encodeURIComponent(response.data.id)}`);
       router.refresh();

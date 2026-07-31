@@ -17,13 +17,14 @@ interface AppShellProps {
   activeHref?: string;
   children: ReactNode;
   hideSideNav?: boolean;
+  projectContext?: { label: string; href: string; projectId?: string };
 }
 
 /**
  * 로그인 앱 공통 셸: 헤더 + 아이콘 레일 + 툴킷 사이드냅 + 콘텐츠.
  * <1024px 에서는 좌측 레일/사이드냅 대신 상단 툴킷 탭 스크롤 바를 노출.
  */
-export function AppShell({ activeToolkit, activeHref, children, hideSideNav }: AppShellProps) {
+export function AppShell({ activeToolkit, activeHref, children, hideSideNav, projectContext }: AppShellProps) {
   const globalNav = useLocalizedValue(appGlobalNav);
   const tx = useSiteText();
   const showSideNav = !hideSideNav && Boolean(appToolkits[activeToolkit]);
@@ -61,7 +62,13 @@ export function AppShell({ activeToolkit, activeHref, children, hideSideNav }: A
 
       <div className="flex flex-1 flex-row">
         <AppGlobalNav activeKey={activeToolkit} />
-        {showSideNav && <ToolkitSideNav toolkitKey={activeToolkit} activeHref={activeHref} />}
+        {showSideNav && (
+          <ToolkitSideNav
+            toolkitKey={activeToolkit}
+            activeHref={activeHref}
+            projectContext={projectContext}
+          />
+        )}
         <main className="min-w-0 flex-1 overflow-auto bg-app-bg">{children}</main>
       </div>
     </div>
