@@ -7,6 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "verify": "npm run lint && npm run typecheck && npm run test",
     "test:analytics": "tsx --test src/lib/analytics/metrics.test.ts",
     "test:talordata": "tsx --test src/server/talordata/client.test.ts src/server/talordata/collect.test.ts",
     "test:siteaudit": "tsx --test src/server/siteaudit/linkgraph.test.ts",
@@ -16,7 +19,10 @@
     "db:backup": "tsx scripts/db-backup.ts",
     "db:seed": "tsx src/db/seed.ts",
     "db:seed:analytics": "SEED_DEMO_DATA=1 tsx src/db/seed-analytics-cli.ts",
-    "db:reset": "rm -rf data && npm run db:migrate && npm run db:seed"
+    "db:reset": "rm -rf data && npm run db:migrate && npm run db:seed",
+    "loop:bootstrap": "bash scripts/loop-bootstrap.sh",
+    "loop:verify": "tsx scripts/loop-verify.ts",
+    "loop:smoke": "tsx scripts/loop-smoke.ts"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.20",
