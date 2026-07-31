@@ -2,7 +2,14 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { GATE_STATUSES } from "@/server/loop/state";
+import {
+  overallStatus,
+  skippedGate,
+  tailOf,
+  TAIL_LINES,
+  type GateResult,
+  type GateStatus,
+} from "@/server/loop/gates";
 
 /**
  * 자동통합 루프의 독립 검증 게이트 실행기. `npm run loop:verify -- --task T1` 로 실행한다.
@@ -14,20 +21,7 @@ import { GATE_STATUSES } from "@/server/loop/state";
  * 산출물: <repo>/.loop/validation/<task>.json
  */
 
-type GateStatus = (typeof GATE_STATUSES)[number];
-
-interface GateResult {
-  name: string;
-  command: string;
-  status: GateStatus;
-  exitCode: number | null;
-  durationMs: number;
-  reason: string | null;
-  tail: string[];
-}
-
 const DEFAULT_TIMEOUT_SEC = 600;
-const TAIL_LINES = 12;
 
 const argsSchema = z.object({
   // 파일명으로 쓰이므로 경로 탈출 문자를 차단한다.
@@ -69,16 +63,6 @@ function resolveRepoRoot(cwd: string): string {
   return top.length > 0 ? top : path.resolve(cwd, "..");
 }
 
-function tailOf(...streams: Array<string | null>): string[] {
-  return streams
-    .filter((stream): stream is string => typeof stream === "string")
-    .join("\n")
-    .split("\n")
-    .map((line) => line.trimEnd())
-    .filter((line) => line.length > 0)
-    .slice(-TAIL_LINES);
-}
-
 function runGate(name: string, npmArgs: string[], cwd: string, timeoutSec: number): GateResult {
   const command = `npm ${npmArgs.join(" ")}`;
   const startedAt = Date.now();
@@ -115,10 +99,6 @@ function runGate(name: string, npmArgs: string[], cwd: string, timeoutSec: numbe
   };
 }
 
-function skipped(name: string, command: string, reason: string): GateResult {
-  return { name, command, status: "NOT_RUN", exitCode: null, durationMs: 0, reason, tail: [] };
-}
-
 /**
  * 네이티브 모듈 ABI 확인. Node 버전이 맞지 않으면 모든 게이트가 무의미하게 실패하므로
  * 게이트를 돌리기 전에 ENVIRONMENT_ERROR 로 분류해 멈춘다.
@@ -130,11 +110,6 @@ async function probeNativeModule(): Promise<string | null> {
   } catch (error) {
     return error instanceof Error ? error.message.split("\n")[0] : String(error);
   }
-}
-
-function overallStatus(gates: GateResult[]): GateStatus {
-  if (gates.some((gate) => gate.status === "FAIL")) return "FAIL";
-  return gates.some((gate) => gate.status === "PASS") ? "PASS" : "NOT_RUN";
 }
 
 function printSummary(gates: GateResult[], overall: GateStatus, outputPath: string): void {
@@ -164,7 +139,7 @@ async function main(): Promise<number> {
   if (nativeError !== null) {
     const reason = `ENVIRONMENT_ERROR — 네이티브 모듈을 불러오지 못했습니다 (${process.version}): ${nativeError}. AGENTS.md 대로 Homebrew Node v25 로 실행하거나 npm rebuild better-sqlite3 를 실행하세요.`;
     for (const name of ["lint", "typecheck", "test"]) {
-      gates.push(skipped(name, `npm run ${name}`, reason));
+      gates.push(skippedGate(name, `npm run ${name}`, reason));
     }
   } else {
     gates.push(runGate("lint", ["run", "lint"], cwd, args.timeoutSec));
@@ -176,7 +151,7 @@ async function main(): Promise<number> {
   gates.push(
     args.withBuild && nativeError === null
       ? runGate("build", ["run", "build"], cwd, args.timeoutSec)
-      : skipped(
+      : skippedGate(
           "build",
           "npm run build",
           "dev 서버와 .next/ 를 공유하므로 기본 제외 — 전용 워크트리에서 --with-build 로 실행하세요"
@@ -185,8 +160,14 @@ async function main(): Promise<number> {
 
   gates.push(
     args.withSmoke && nativeError === null
-      ? runGate("smoke", ["run", "loop:smoke"], cwd, args.timeoutSec)
-      : skipped(
+      ? // 작업별 산출물이 smoke.json 하나로 덮어써지지 않도록 task 와 loop-dir 를 넘긴다.
+        runGate(
+          "smoke",
+          ["run", "loop:smoke", "--", "--task", `${args.task}-smoke`, "--loop-dir", loopDir],
+          cwd,
+          args.timeoutSec
+        )
+      : skippedGate(
           "smoke",
           "npm run loop:smoke",
           "실행 중인 dev 서버가 필요합니다 — --with-smoke 와 LOOP_SMOKE_BASE_URL 로 실행하세요"

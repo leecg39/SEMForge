@@ -2,6 +2,14 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
+import {
+  classifyStatus,
+  isHardDenied,
+  toRoutePath,
+  usesPaidClient,
+  type SmokeOutcome,
+  type SmokeResult,
+} from "@/server/loop/routes";
 
 /**
  * 라우트 스모크 검사. `npm run loop:smoke -- --base http://localhost:3010` 로 실행한다.
@@ -13,35 +21,11 @@ import { z } from "zod";
  * 종료 코드: 0=실패 없음, 1=실패 있음, 2=서버에 접속할 수 없음
  */
 
-type SmokeOutcome = "OK" | "OK_REDIRECT" | "OK_CLIENT" | "FAIL" | "SKIPPED";
-
-interface SmokeResult {
-  route: string;
-  outcome: SmokeOutcome;
-  status: number | null;
-  durationMs: number;
-  reason: string | null;
-}
-
 // dev 서버는 첫 요청에서 해당 라우트를 컴파일하므로 콜드 스타트가 수십 초까지 걸린다.
 // 짧은 타임아웃은 멀쩡한 라우트를 FAIL 로 만들어 FLAKY_FAILURE 를 양산한다.
 const REQUEST_TIMEOUT_MS = 30_000;
 const RETRY_ON_FAILURE = 1;
 const CONCURRENCY = 4;
-
-/** 실과금·외부 API 클라이언트를 import 하는 라우트를 자동 감지한다. */
-const PAID_IMPORT_PATTERN =
-  /talordata|firecrawl|server\/psi|gsc\/client|gbp\/client|onpage\/analyze|siteaudit\/(crawl|run)/;
-
-/** 호출만으로 상태가 파괴되거나 비용이 발생하는 경로. --include-external 로도 열지 않는다. */
-const HARD_DENYLIST: readonly string[] = [
-  "/api/cron/run-due/",
-  "/api/auth/logout/",
-  "/api/gsc/disconnect/",
-  "/api/gbp/disconnect/",
-  "/api/gsc/callback/",
-  "/api/gbp/callback/",
-];
 
 const argsSchema = z.object({
   base: z
@@ -102,18 +86,6 @@ function listFiles(dir: string, fileName: string): string[] {
   return found;
 }
 
-/** 파일 경로를 URL 경로로 바꾼다. 라우트 그룹 (marketing) 은 URL 에 나타나지 않는다. */
-function toRoutePath(appDir: string, filePath: string): string | null {
-  const segments = path
-    .relative(appDir, path.dirname(filePath))
-    .split(path.sep)
-    .filter((segment) => segment.length > 0 && segment !== ".")
-    .filter((segment) => !(segment.startsWith("(") && segment.endsWith(")")));
-  // 동적 세그먼트는 실제 id 없이 호출할 수 없으므로 대상에서 뺀다.
-  if (segments.some((segment) => segment.includes("["))) return null;
-  return segments.length === 0 ? "/" : `/${segments.join("/")}/`;
-}
-
 interface RouteCandidate {
   route: string;
   filePath: string;
@@ -130,22 +102,13 @@ function discoverRoutes(appDir: string): RouteCandidate[] {
 }
 
 function skipReason(candidate: RouteCandidate, includeExternal: boolean): string | null {
-  if (HARD_DENYLIST.includes(candidate.route)) {
+  if (isHardDenied(candidate.route)) {
     return "파괴적·예약 수집 라우트라 스모크에서 제외합니다";
   }
   if (includeExternal) return null;
-  const source = fs.readFileSync(candidate.filePath, "utf8");
-  return PAID_IMPORT_PATTERN.test(source)
+  return usesPaidClient(fs.readFileSync(candidate.filePath, "utf8"))
     ? "실과금·외부 API 클라이언트를 사용합니다 (--include-external 로 포함)"
     : null;
-}
-
-function classify(status: number): { outcome: SmokeOutcome; reason: string | null } {
-  if (status >= 200 && status < 300) return { outcome: "OK", reason: null };
-  if (status >= 300 && status < 400) return { outcome: "OK_REDIRECT", reason: null };
-  if (status === 404) return { outcome: "FAIL", reason: "라우트를 찾을 수 없습니다 (404)" };
-  if (status >= 500) return { outcome: "FAIL", reason: `서버 오류 (${status})` };
-  return { outcome: "OK_CLIENT", reason: `핸들러가 요청을 거절했습니다 (${status})` };
 }
 
 async function attempt(base: string, route: string): Promise<{ status: number } | { error: string }> {
@@ -169,7 +132,7 @@ async function probe(base: string, route: string): Promise<SmokeResult> {
   for (let tryIndex = 0; tryIndex <= RETRY_ON_FAILURE; tryIndex += 1) {
     const result = await attempt(base, route);
     if ("status" in result) {
-      const { outcome, reason } = classify(result.status);
+      const { outcome, reason } = classifyStatus(result.status);
       return { route, outcome, status: result.status, durationMs: Date.now() - startedAt, reason };
     }
     lastError = result.error;
