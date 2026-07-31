@@ -1,46 +1,35 @@
-# 목표 정의
+# 포지션 추적 화면 재구축 — 목표 정의
+
+> 원본: 사용자 제공 화면 녹화(ko.semrush.com 포지션 추적, 2026-08-01) 분석 결과.
+> 원칙: 모든 지표는 실측(serp_snapshots·tracked_keywords·visibility_history) 기반.
+> 계산식 값(예상 트래픽·가시성 기여)은 provenance 배지를 반드시 표기한다.
 
 ## 프로젝트 목표 (Project Goal)
+포지션 추적을 실제 Semrush 구성으로 재편: 랜딩은 프로젝트 목록 테이블,
+상세는 KPI → Summary → 순위 분포 → 키워드 하이라이트 → 태그 → 경쟁 →
+SERP 피처 → 페이지 순의 단일 스크롤 '현황' 화면.
 
-> `SEMRUSH_UI_UX_PAGE_INVENTORY.md` 에 나열된 Semrush UI/UX를 `semrush-clone` 이 **누락·오류 없이 완벽하게 구현**한 상태.
-
-"완벽"의 조작적 정의 — 아래 4개 완료 조건을 모두 만족.
-
-| # | 완료 조건 | 측정 방법 |
-|---|---|---|
-| C1 | 인벤토리 템플릿 계열 전부에 라우트와 데이터가 연결됨 | 템플릿 × 라우트 매핑표 |
-| C2 | 전 라우트 HTTP 200, 런타임 오류 0, 깨진 링크·자산 0 | `scripts/audit-site.mjs` + 대표 페이지 CDP 스윕 |
-| C3 | 모든 analytics/CRUD 엔드포인트가 실제 데이터를 반환 (500/빈응답 없음) | `verify-crud.mjs` + analytics API 직접 호출 |
-| C4 | 인벤토리의 핵심 사용자 흐름(공개→인증→앱 분석)이 끊기지 않음 | 브라우저 E2E 스윕 |
-
-## 마일스톤
-
-| ID | 마일스톤 | 완료 조건 |
-|---|---|---|
-| M1 | 건전성 확보 | C2 + C3 달성 (오류·500 0) |
-| M2 | 커버리지 완결 | C1 달성 (누락 라우트·데이터 0) |
-| M3 | 흐름 완결 | C4 달성 |
+## 마일스톤 (Milestones)
+- M1 = P1: 랜딩 목록 테이블 + KPI 3카드 + 키워드 버킷 카드 + 순위 분포 일별 차트
+- M2 = P2: 상위/효율/비효율 3열 + 페이지 섹션 + SERP 구성 요소 + Summary 카드
+- M3 = P3: 키워드 태그 + 도메인 관점 전환 + 경쟁 버블 차트
 
 ## Phase 목표
+### P1 (Goal: 목록→상세 첫인상 일치)
+- [ ] T1.1 `server/position-tracking/overview.ts`: getCampaignListSummary / getCampaignOverview / getRankDistributionHistory
+- [ ] T1.2 API: `GET /api/position-tracking/summary/`, `[campaignId]/overview/`, `[campaignId]/rank-history/`
+- [ ] T1.3 `PositionTrackingProjects.tsx` 목록 테이블 + page.tsx 분기
+- [ ] T1.4 KPI 3카드(`OverviewKpiCards`) + 키워드 버킷 카드 + RankDistributionPanel 일별 스택 차트
 
-- **Phase 0** — 진단: 코드 건전성과 누락 라우트·데이터를 실측으로 확정 (추측 배제)
-- **Phase 1** — 오류 해소: analytics 500 및 실행 오류를 모두 0으로
-- **Phase 2** — 커버리지: 누락 라우트·템플릿 연결·시드 데이터 보강
-- **Phase 3** — 흐름 검증: 핵심 사용자 흐름 E2E + 최종 게이트
+### P2 (Goal: 현황 탭 정보 밀도 완성)
+- [ ] T2.1 서버: getKeywordHighlights / getPagesBreakdown / getSerpFeatureBreakdown + API 3종
+- [ ] T2.2 UI: KeywordHighlightsRow / PagesPanel / SerpFeaturesPanel / CampaignSummaryCard
 
-## 범위 밖 (Non-goals)
+### P3 (Goal: 운영 도구 완성)
+- [ ] T3.1 tracked_keywords.tags 컬럼 + 마이그레이션 + bulk 태그 API + TagsPanel/TagManageModal
+- [ ] T3.2 도메인 관점 전환 칩(분포·테이블) + CompetitiveMapCard 버블 차트
 
-- Semrush의 실제 SEO/트래픽 데이터 재현 (외부 수집 인프라 의존)
-- 인벤토리에 없는 신규 기능
-- 상표·로고·원문 마케팅 카피 복제
-
-## 현재 진단 요약 (2026-07-28 17:35 실측)
-
-| 상태 | 내용 |
-|---|---|
-| 템플릿 | 9개 전부 존재 (ContentDetail/List/Corp/Detail/Hub/Pricing/Solution/Tool/Auth) |
-| 라우트 | 공개 15개 전부 + 앱 15개 전부 존재, page.tsx 107개 |
-| analytics 코드 | 이미 커밋됨 (`6029dac`), 도메인 대시보드 + domain-overview API |
-| **미적용** | DB에 analytics 원천 테이블 4개 미적용 (`keyword_metrics` 등) → API 500 |
-| 자동개선 루프 | 다른 에이전트가 50/100 으로 진행 중 (guard pending) |
-| 작업 디렉터리 | `.Codex`/`.omo`/`autoresearch` 진행 파일만 미커밋 |
+## 완료 조건 (Quality Gate)
+- tsc --noEmit 통과, eslint 통과
+- 기존 테스트 회귀 없음 (insights.test.ts / schedule.test.ts / collect.test.ts)
+- Phase 단위 커밋 (P1/P2/P3 각 1커밋)

@@ -5,8 +5,10 @@ import {
   type CampaignSummary,
 } from "@/components/position-tracking/PositionTrackingDashboard";
 import { PositionTrackingLanding } from "@/components/position-tracking/PositionTrackingLanding";
+import { PositionTrackingProjects } from "@/components/position-tracking/PositionTrackingProjects";
 import { db } from "@/db/client";
 import { positionTrackingCampaigns } from "@/db/schema";
+import { getCampaignListSummary } from "@/server/position-tracking/overview";
 import { pageSession } from "@/server/page-auth";
 
 export const dynamic = "force-dynamic";
@@ -49,12 +51,22 @@ export default async function PositionTrackingPage({
     ? [selectedCampaign, ...campaigns.filter((campaign) => campaign.id !== selectedCampaign.id)]
     : campaigns;
 
+  // 캠페인이 있으면 원본처럼 프로젝트 목록 테이블을, 없으면 소개 랜딩을 보여준다.
+  const listItems = !selectedCampaign && campaigns.length > 0
+    ? await getCampaignListSummary(auth)
+    : null;
+
   return (
     <AppShell activeToolkit="seo" activeHref="/position-tracking/">
       {selectedCampaign ? (
         <PositionTrackingDashboard
           campaigns={orderedCampaigns}
           canCollect={Boolean(capabilities.create)}
+        />
+      ) : listItems ? (
+        <PositionTrackingProjects
+          items={listItems}
+          canCreate={Boolean(capabilities.create)}
         />
       ) : (
         <PositionTrackingLanding

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { TrendChart } from "@/components/app/app-primitives";
 import { DiscoveredCompetitorsPanel } from "@/components/position-tracking/DiscoveredCompetitorsPanel";
 import { GscNotice } from "@/components/position-tracking/GscNotice";
+import { OverviewKpiCards } from "@/components/position-tracking/OverviewKpiCards";
 import { RankDistributionPanel } from "@/components/position-tracking/RankDistributionPanel";
 import { ScheduleControl } from "@/components/position-tracking/ScheduleControl";
 import {
@@ -660,6 +661,10 @@ export function PositionTrackingDashboard({
                 )} · ${copy.visibility} ${report!.visibility}%`)}
         </section>
       )}
+
+      <div className="mt-4">
+        <OverviewKpiCards campaignId={selectedId} refreshKey={refreshKey} />
+      </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-[2fr_1fr]">
         {visibilitySeries.length > 0 ? (

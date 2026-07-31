@@ -1,9 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { api, ClientApiError } from "@/lib/client-api";
 import { cn } from "@/lib/utils";
+import type { RankDistributionHistory } from "@/server/position-tracking/overview";
 
 interface RankBucket {
   key: "top3" | "top10" | "top20" | "top50" | "top100" | "unranked";
@@ -12,6 +22,8 @@ interface RankBucket {
   count: number;
   keywords: string[];
 }
+
+type BucketKey = RankBucket["key"];
 
 interface RankDistribution {
   campaignId: string;
@@ -35,6 +47,8 @@ const COPY = {
       "아직 수집 이력이 없습니다. 개요 탭에서 '지금 순위 수집'을 실행하면 순위 분포가 집계됩니다.",
     loadError: "순위 분포를 불러오지 못했습니다.",
     keywords: "키워드",
+    dailyTitle: "일별 분포 (최근 14일)",
+    latestTitle: "최신 스냅샷 분포",
     bucketLabels: {
       top3: "1–3위",
       top10: "4–10위",
@@ -56,6 +70,8 @@ const COPY = {
       "No collection history yet. Run “Collect positions now” on the Overview tab to build the distribution.",
     loadError: "Rank distribution could not be loaded.",
     keywords: "Keywords",
+    dailyTitle: "Daily distribution (last 14 days)",
+    latestTitle: "Latest snapshot distribution",
     bucketLabels: {
       top3: "1–3",
       top10: "4–10",
@@ -77,6 +93,8 @@ const BUCKET_COLORS: Record<RankBucket["key"], string> = {
   unranked: "#c3cad4",
 };
 
+const HISTORY_BUCKETS: BucketKey[] = ["top3", "top10", "top20", "top50", "top100", "unranked"];
+
 export function RankDistributionPanel({
   campaignId,
   refreshKey,
@@ -92,6 +110,11 @@ export function RankDistributionPanel({
     data: RankDistribution | null;
     error: string | null;
   } | null>(null);
+  const [history, setHistory] = useState<RankDistributionHistory | null>(null);
+  // 순위권 외는 기본으로 숨겨 원본처럼 상위 버킷 위주로 보여준다.
+  const [enabledBuckets, setEnabledBuckets] = useState<Set<BucketKey>>(
+    () => new Set<BucketKey>(["top3", "top10", "top20", "top50", "top100"])
+  );
   const requestKey = `${campaignId}:${refreshKey}`;
   const loading = result?.key !== requestKey;
 
@@ -99,10 +122,20 @@ export function RankDistributionPanel({
     let cancelled = false;
     void (async () => {
       try {
-        const response = await api.get<RankDistribution>(
-          `/api/position-tracking/${encodeURIComponent(campaignId)}/rank-distribution/`
-        );
-        if (!cancelled) setResult({ key: requestKey, data: response.data, error: null });
+        const [distribution, dailyHistory] = await Promise.all([
+          api.get<RankDistribution>(
+            `/api/position-tracking/${encodeURIComponent(campaignId)}/rank-distribution/`
+          ),
+          api
+            .get<RankDistributionHistory>(
+              `/api/position-tracking/${encodeURIComponent(campaignId)}/rank-history/?days=14`
+            )
+            .catch(() => null),
+        ]);
+        if (!cancelled) {
+          setResult({ key: requestKey, data: distribution.data, error: null });
+          setHistory(dailyHistory?.data ?? null);
+        }
       } catch (caught) {
         if (!cancelled) {
           setResult({
@@ -111,6 +144,7 @@ export function RankDistributionPanel({
             error:
               caught instanceof ClientApiError ? caught.message : COPY.ko.loadError,
           });
+          setHistory(null);
         }
       }
     })();
@@ -118,6 +152,24 @@ export function RankDistributionPanel({
       cancelled = true;
     };
   }, [campaignId, requestKey]);
+
+  const toggleBucket = (bucket: BucketKey) => {
+    setEnabledBuckets((current) => {
+      const next = new Set(current);
+      if (next.has(bucket)) next.delete(bucket);
+      else next.add(bucket);
+      return next;
+    });
+  };
+
+  const historyChartData = useMemo(
+    () =>
+      (history?.history ?? []).map((day) => ({
+        date: day.date.slice(5).replace("-", "/"),
+        ...day.counts,
+      })),
+    [history]
+  );
 
   const dateFormatter = useMemo(
     () =>
@@ -162,7 +214,71 @@ export function RankDistributionPanel({
 
       {data?.hasData && (
         <>
-          <ul className="mt-4 space-y-2">
+          {historyChartData.length > 1 && (
+            <div className="mt-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h4 className="text-[13px] font-medium text-app-text">{copy.dailyTitle}</h4>
+                <div className="flex flex-wrap gap-2">
+                  {HISTORY_BUCKETS.map((bucket) => (
+                    <label
+                      key={bucket}
+                      className="flex cursor-pointer items-center gap-1 text-[12px] text-app-text-secondary"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={enabledBuckets.has(bucket)}
+                        onChange={() => toggleBucket(bucket)}
+                        className="h-3.5 w-3.5"
+                        style={{ accentColor: BUCKET_COLORS[bucket] }}
+                      />
+                      {copy.bucketLabels[bucket]}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-2 h-[220px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={historyChartData} margin={{ top: 8, right: 8, left: -22, bottom: 0 }}>
+                    <CartesianGrid stroke="#eef0f3" vertical={false} />
+                    <XAxis
+                      dataKey="date"
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fontSize: 11, fill: "#7a7d86" }}
+                    />
+                    <YAxis
+                      allowDecimals={false}
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fontSize: 11, fill: "#7a7d86" }}
+                    />
+                    <Tooltip
+                      contentStyle={{ borderRadius: 8, border: "1px solid #e4e5e9", fontSize: 12 }}
+                      formatter={(value, name) => [
+                        value,
+                        copy.bucketLabels[name as BucketKey] ?? String(name),
+                      ]}
+                    />
+                    {HISTORY_BUCKETS.filter((bucket) => enabledBuckets.has(bucket)).map(
+                      (bucket) => (
+                        <Bar
+                          key={bucket}
+                          dataKey={bucket}
+                          stackId="rank"
+                          fill={BUCKET_COLORS[bucket]}
+                          maxBarSize={42}
+                          isAnimationActive={false}
+                        />
+                      )
+                    )}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          <h4 className="mt-5 text-[13px] font-medium text-app-text">{copy.latestTitle}</h4>
+          <ul className="mt-2 space-y-2">
             {data.buckets.map((bucket) => {
               const share =
                 data.collectedKeywords > 0 ? bucket.count / data.collectedKeywords : 0;

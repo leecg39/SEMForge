@@ -20,18 +20,18 @@ import type { AuthContext } from "@/lib/session";
  */
 
 /** collect.ts 의 정규화 규칙과 동일하게 맞춘다 (collect.ts 내부 함수는 비수출). */
-function normalizeKeyword(keyword: string): string {
+export function normalizeKeyword(keyword: string): string {
   return keyword.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 /** collect.ts 의 지역 → 국가 추론과 동일 규칙. */
-function inferCountryCode(location: string | null | undefined): string {
+export function inferCountryCode(location: string | null | undefined): string {
   if (!location) return "KR";
   return /korea|seoul|대한|서울/i.test(location) ? "KR" : "US";
 }
 
 /** 캠페인 소유권 확인. 없으면 404. */
-async function requireCampaign(auth: AuthContext, campaignId: string) {
+export async function requireCampaign(auth: AuthContext, campaignId: string) {
   const [campaign] = await db
     .select()
     .from(positionTrackingCampaigns)
@@ -49,7 +49,7 @@ async function requireCampaign(auth: AuthContext, campaignId: string) {
   return campaign;
 }
 
-type CampaignRow = typeof positionTrackingCampaigns.$inferSelect;
+export type CampaignRow = typeof positionTrackingCampaigns.$inferSelect;
 
 export interface SnapshotSerpRow {
   domain: string;
@@ -65,7 +65,7 @@ export interface KeywordLatestSnapshot {
 }
 
 /** 캠페인 엔진을 SERP 스냅샷 엔진 값으로 변환. chatgpt 는 SERP 집계 불가라 null. */
-function snapshotEngine(campaign: CampaignRow): "google" | "bing" | null {
+export function snapshotEngine(campaign: CampaignRow): "google" | "bing" | null {
   if (campaign.searchEngine === "bing") return "bing";
   if (campaign.searchEngine === "google") return "google";
   return null;
@@ -76,7 +76,7 @@ function snapshotEngine(campaign: CampaignRow): "google" | "bing" | null {
  * listTrackedKeywords(src/server/talordata/collect.ts)와 같은 해석 규칙:
  * 캠페인의 국가/기기/엔진 조건에 맞는 최신 기간 메트릭의 최신 capturedAt 행 묶음.
  */
-async function loadLatestSnapshotsByKeyword(
+export async function loadLatestSnapshotsByKeyword(
   campaign: CampaignRow,
   keywords: { id: string; keyword: string }[]
 ): Promise<Map<string, KeywordLatestSnapshot>> {
@@ -171,7 +171,7 @@ async function loadLatestSnapshotsByKeyword(
 }
 
 /** 스냅샷 행 묶음에서 대상 도메인(서브도메인 포함)의 순위를 찾는다. */
-function findDomainPosition(
+export function findDomainPosition(
   rows: SnapshotSerpRow[],
   targetDomain: string
 ): { position: number; url: string } | null {
@@ -214,7 +214,7 @@ export interface RankDistribution {
   buckets: RankBucket[];
 }
 
-const BUCKET_RANGES: { key: RankBucketKey; min: number | null; max: number | null }[] = [
+export const BUCKET_RANGES: { key: RankBucketKey; min: number | null; max: number | null }[] = [
   { key: "top3", min: 1, max: 3 },
   { key: "top10", min: 4, max: 10 },
   { key: "top20", min: 11, max: 20 },
@@ -223,7 +223,7 @@ const BUCKET_RANGES: { key: RankBucketKey; min: number | null; max: number | nul
   { key: "unranked", min: null, max: null },
 ];
 
-function bucketOf(position: number | null): RankBucketKey {
+export function bucketOf(position: number | null): RankBucketKey {
   if (position === null) return "unranked";
   if (position <= 3) return "top3";
   if (position <= 10) return "top10";
