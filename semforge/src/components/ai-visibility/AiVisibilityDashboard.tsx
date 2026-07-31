@@ -10,7 +10,9 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { AiDomainDiagnosticsPanel } from "@/components/ai-visibility/AiDomainDiagnosticsPanel";
 import { api, ClientApiError } from "@/lib/client-api";
+import type { AiVisibilityDomainDiagnostic } from "@/server/ai-visibility/domain-diagnostic";
 import type { AiVisibilityOverview } from "@/server/ai-visibility/overview";
 
 interface Props {
@@ -45,9 +47,12 @@ export function AiVisibilityDashboard({ initialDomain = "" }: Props) {
   const [domain, setDomain] = useState(initialDomain);
   const [domainInput, setDomainInput] = useState(initialDomain);
   const [overview, setOverview] = useState<AiVisibilityOverview | null>(null);
+  const [diagnostic, setDiagnostic] = useState<AiVisibilityDomainDiagnostic | null>(null);
   const [loading, setLoading] = useState(false);
+  const [diagnosticLoading, setDiagnosticLoading] = useState(false);
   const [collecting, setCollecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [diagnosticError, setDiagnosticError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [newQuery, setNewQuery] = useState("");
   const [newCountry, setNewCountry] = useState("KR");
@@ -70,15 +75,60 @@ export function AiVisibilityDashboard({ initialDomain = "" }: Props) {
     }
   }, []);
 
+  const loadDiagnostic = useCallback(async (target: string) => {
+    if (!target) return;
+    setDiagnosticLoading(true);
+    setDiagnosticError(null);
+    try {
+      const { data } = await api.post<AiVisibilityDomainDiagnostic>(
+        "/api/ai-visibility/domain-diagnostics/",
+        { domain: target }
+      );
+      setDiagnostic(data);
+    } catch (cause) {
+      setDiagnosticError(
+        cause instanceof ClientApiError
+          ? cause.message
+          : "AI 검색 접근성 진단을 실행하지 못했습니다."
+      );
+      setDiagnostic(null);
+    } finally {
+      setDiagnosticLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     let alive = true;
     void Promise.resolve().then(() => {
-      if (alive && domain) void load(domain);
+      if (alive && domain) {
+        void load(domain);
+        void loadDiagnostic(domain);
+      }
     });
     return () => {
       alive = false;
     };
-  }, [domain, load]);
+  }, [domain, load, loadDiagnostic]);
+
+  const submitDomain = () => {
+    const target = domainInput.trim();
+    if (!target) {
+      setDomain("");
+      setOverview(null);
+      setDiagnostic(null);
+      setError(null);
+      setDiagnosticError(null);
+      return;
+    }
+    if (target === domain) {
+      void load(target);
+      void loadDiagnostic(target);
+      return;
+    }
+    setOverview(null);
+    setDiagnostic(null);
+    setDomain(target);
+  };
 
   const addQuery = async () => {
     if (!newQuery.trim() || !domain) return;
@@ -147,20 +197,22 @@ export function AiVisibilityDashboard({ initialDomain = "" }: Props) {
         className="mb-6 flex flex-wrap items-center gap-2"
         onSubmit={(event) => {
           event.preventDefault();
-          setDomain(domainInput.trim());
+          submitDomain();
         }}
       >
         <input
           value={domainInput}
           onChange={(event) => setDomainInput(event.target.value)}
           placeholder="도메인 입력 (예: example.com)"
+          aria-label="진단할 도메인"
           className="h-10 w-72 rounded-lg border border-zinc-300 px-3 text-sm outline-none focus:border-zinc-900"
         />
         <button
           type="submit"
-          className="h-10 rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
+          disabled={loading || diagnosticLoading}
+          className="h-10 rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
         >
-          불러오기
+          {loading || diagnosticLoading ? "불러오는 중…" : "불러오기"}
         </button>
         {domain && (
           <button
@@ -175,12 +227,22 @@ export function AiVisibilityDashboard({ initialDomain = "" }: Props) {
       </form>
 
       {error && (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
       {notice && (
-        <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+        <div role="status" className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
           {notice}
         </div>
+      )}
+
+      {domain && (
+        <AiDomainDiagnosticsPanel
+          domain={domain}
+          report={diagnostic}
+          loading={diagnosticLoading}
+          error={diagnosticError}
+          onRefresh={() => void loadDiagnostic(domain)}
+        />
       )}
 
       {!domain && (
@@ -189,7 +251,7 @@ export function AiVisibilityDashboard({ initialDomain = "" }: Props) {
         </div>
       )}
 
-      {domain && loading && <div className={`${CARD} text-sm text-zinc-500`}>불러오는 중…</div>}
+      {domain && loading && <div role="status" className={`${CARD} text-sm text-zinc-500`}>AIO 개요를 불러오는 중…</div>}
 
       {domain && !loading && overview && (
         <>
