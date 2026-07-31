@@ -2,11 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TrendChart } from "@/components/app/app-primitives";
+import { CampaignSummaryCard } from "@/components/position-tracking/CampaignSummaryCard";
 import { DiscoveredCompetitorsPanel } from "@/components/position-tracking/DiscoveredCompetitorsPanel";
 import { GscNotice } from "@/components/position-tracking/GscNotice";
+import { KeywordHighlightsRow } from "@/components/position-tracking/KeywordHighlightsRow";
 import { OverviewKpiCards } from "@/components/position-tracking/OverviewKpiCards";
+import { PagesPanel } from "@/components/position-tracking/PagesPanel";
 import { RankDistributionPanel } from "@/components/position-tracking/RankDistributionPanel";
 import { ScheduleControl } from "@/components/position-tracking/ScheduleControl";
+import { SerpFeaturesPanel } from "@/components/position-tracking/SerpFeaturesPanel";
 import {
   normalizeGscKeyword,
   useGscKeywordMetrics,
@@ -685,6 +689,19 @@ export function PositionTrackingDashboard({
           </div>
         )}
 
+        {campaign && (
+          <CampaignSummaryCard
+            campaignId={selectedId}
+            campaign={{
+              domain: campaign.domain,
+              location: campaign.location,
+              searchEngine: campaign.searchEngine,
+              device: campaign.device,
+            }}
+            refreshKey={refreshKey}
+          />
+        )}
+
         <section className="rounded-[8px] border border-app-border bg-white p-4">
           <div className="flex items-baseline justify-between gap-2">
             <h3 className="text-[14px] font-semibold leading-[20px] text-app-text">
@@ -954,6 +971,15 @@ export function PositionTrackingDashboard({
           </tbody>
         </table>
       </section>
+
+      <div className="mt-4">
+        <KeywordHighlightsRow campaignId={selectedId} refreshKey={refreshKey} />
+      </div>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+        <SerpFeaturesPanel keywords={keywords} />
+        <PagesPanel campaignId={selectedId} refreshKey={refreshKey} />
+      </div>
       </>
       )}
     </div>

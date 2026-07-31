@@ -10,6 +10,7 @@
     "test:analytics": "tsx --test src/lib/analytics/metrics.test.ts src/lib/analytics/intent.test.ts",
     "test:talordata": "tsx --test src/server/talordata/client.test.ts src/server/talordata/collect.test.ts src/server/talordata/trends.test.ts src/server/talordata/insights.test.ts",
     "test:siteaudit": "tsx --test src/server/siteaudit/linkgraph.test.ts",
+    "test:position": "tsx --test src/server/position-tracking/insights.test.ts src/server/position-tracking/schedule.test.ts src/server/position-tracking/overview.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:cleanup:demo": "tsx scripts/db-cleanup-demo.ts",
