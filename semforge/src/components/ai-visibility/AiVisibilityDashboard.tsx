@@ -11,6 +11,9 @@ import {
   YAxis,
 } from "recharts";
 import { AiDomainDiagnosticsPanel } from "@/components/ai-visibility/AiDomainDiagnosticsPanel";
+import { AiPlatformBreakdownPanel } from "@/components/ai-visibility/AiPlatformBreakdownPanel";
+import type { PlatformBreakdown } from "@/server/ai-visibility/platform-breakdown";
+import type { ProviderResult } from "@/server/providers/types";
 import { api, ClientApiError } from "@/lib/client-api";
 import type { AiVisibilityDomainDiagnostic } from "@/server/ai-visibility/domain-diagnostic";
 import type { AiVisibilityOverview } from "@/server/ai-visibility/overview";
@@ -48,6 +51,7 @@ export function AiVisibilityDashboard({ initialDomain = "" }: Props) {
   const [domainInput, setDomainInput] = useState(initialDomain);
   const [overview, setOverview] = useState<AiVisibilityOverview | null>(null);
   const [diagnostic, setDiagnostic] = useState<AiVisibilityDomainDiagnostic | null>(null);
+  const [breakdown, setBreakdown] = useState<ProviderResult<PlatformBreakdown> | null>(null);
   const [loading, setLoading] = useState(false);
   const [diagnosticLoading, setDiagnosticLoading] = useState(false);
   const [collecting, setCollecting] = useState(false);
@@ -97,18 +101,40 @@ export function AiVisibilityDashboard({ initialDomain = "" }: Props) {
     }
   }, []);
 
+  const loadBreakdown = useCallback(async (target: string) => {
+    if (!target) return;
+    try {
+      const { data } = await api.get<ProviderResult<PlatformBreakdown>>(
+        `/api/ai-visibility/platform-breakdown/?domain=${encodeURIComponent(target)}`
+      );
+      setBreakdown(data);
+    } catch (cause) {
+      // 집계 실패도 봉투로 표현해 패널이 "수집 실패"를 그대로 보여주게 한다.
+      setBreakdown({
+        status: "error",
+        source: "ai-visibility-breakdown",
+        fetchedAt: new Date().toISOString(),
+        reason:
+          cause instanceof ClientApiError
+            ? cause.message
+            : "플랫폼 분포를 불러오지 못했습니다.",
+      });
+    }
+  }, []);
+
   useEffect(() => {
     let alive = true;
     void Promise.resolve().then(() => {
       if (alive && domain) {
         void load(domain);
         void loadDiagnostic(domain);
+        void loadBreakdown(domain);
       }
     });
     return () => {
       alive = false;
     };
-  }, [domain, load, loadDiagnostic]);
+  }, [domain, load, loadDiagnostic, loadBreakdown]);
 
   const submitDomain = () => {
     const target = domainInput.trim();
@@ -244,6 +270,8 @@ export function AiVisibilityDashboard({ initialDomain = "" }: Props) {
           onRefresh={() => void loadDiagnostic(domain)}
         />
       )}
+
+      {domain && breakdown && <AiPlatformBreakdownPanel result={breakdown} />}
 
       {!domain && (
         <div className={`${CARD} text-sm text-zinc-500`}>
