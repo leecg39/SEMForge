@@ -11,7 +11,19 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { api } from "@/lib/client-api";
+
+/**
+ * /api/gsc/* 는 앱 공통 봉투({ data })가 아니라 ProviderResult
+ * ({ status, data, reason })를 최상위로 반환한다. 공용 api 래퍼는 이를
+ * 한 단계 더 감싸 해석하므로, 여기서는 fetch 로 직접 status 를 읽는다.
+ */
+async function fetchProvider<T>(url: string): Promise<ProviderEnvelope<T>> {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) {
+    return { status: "error", reason: `요청 실패 (HTTP ${response.status})` };
+  }
+  return (await response.json()) as ProviderEnvelope<T>;
+}
 
 const CARD = "rounded-xl border border-zinc-200 bg-white p-5";
 const LABEL = "text-xs font-medium text-zinc-500";
@@ -61,11 +73,9 @@ export function TrafficOverviewDashboard({ initialSiteUrl = "" }: { initialSiteU
   const [reason, setReason] = useState<string | null>(null);
 
   useEffect(() => {
-    api
-      .get<ProviderEnvelope<GscStatusEnvelope> | GscStatusEnvelope>("/api/gsc/status/")
-      .then(({ data }) => {
-        const envelope = data as ProviderEnvelope<GscStatusEnvelope>;
-        const payload = (envelope.data ?? data) as GscStatusEnvelope;
+    fetchProvider<GscStatusEnvelope>("/api/gsc/status/")
+      .then((envelope) => {
+        const payload = envelope.data ?? {};
         setStatus(payload);
         if (!siteUrl && payload.siteUrl) {
           setSiteUrl(payload.siteUrl);
@@ -83,13 +93,11 @@ export function TrafficOverviewDashboard({ initialSiteUrl = "" }: { initialSiteU
     const base = `/api/gsc/query/?siteUrl=${encodeURIComponent(target)}&startDate=${current.start}&endDate=${current.end}`;
     try {
       const [dateRes, queryRes, pageRes] = await Promise.all([
-        api.get<ProviderEnvelope<{ rows: GscRow[] }>>(`${base}&dimensions=date&rowLimit=100`),
-        api.get<ProviderEnvelope<{ rows: GscRow[] }>>(`${base}&dimensions=query&rowLimit=25`),
-        api.get<ProviderEnvelope<{ rows: GscRow[] }>>(`${base}&dimensions=page&rowLimit=25`),
+        fetchProvider<{ rows: GscRow[] }>(`${base}&dimensions=date&rowLimit=100`),
+        fetchProvider<{ rows: GscRow[] }>(`${base}&dimensions=query&rowLimit=25`),
+        fetchProvider<{ rows: GscRow[] }>(`${base}&dimensions=page&rowLimit=25`),
       ]);
-      const unavailable = [dateRes.data, queryRes.data, pageRes.data].find(
-        (item) => item.status !== "live"
-      );
+      const unavailable = [dateRes, queryRes, pageRes].find((item) => item.status !== "live");
       if (unavailable) {
         setReason(unavailable.reason ?? "Search Console 데이터를 가져올 수 없습니다.");
         setTrend([]);
@@ -100,9 +108,9 @@ export function TrafficOverviewDashboard({ initialSiteUrl = "" }: { initialSiteU
       const sortByDate = (rows: GscRow[]) =>
         [...rows].sort((a, b) => (a.keys[0] ?? "").localeCompare(b.keys[0] ?? ""));
       const byClicks = (a: GscRow, b: GscRow) => b.clicks - a.clicks;
-      setTrend(sortByDate(dateRes.data.data?.rows ?? []));
-      setQueries([...(queryRes.data.data?.rows ?? [])].sort(byClicks));
-      setPages([...(pageRes.data.data?.rows ?? [])].sort(byClicks));
+      setTrend(sortByDate(dateRes.data?.rows ?? []));
+      setQueries([...(queryRes.data?.rows ?? [])].sort(byClicks));
+      setPages([...(pageRes.data?.rows ?? [])].sort(byClicks));
     } catch {
       setReason("Search Console 조회 중 오류가 발생했습니다.");
     } finally {

@@ -76,7 +76,22 @@ async function gbpFetch<T>(
       );
     }
     if (response.status === 429) {
-      throw new ApiError("RATE_LIMITED", "Google Business Profile API 사용량 한도에 도달했습니다.");
+      // 429 는 두 가지 원인이 있다:
+      //  (a) 신규 프로젝트의 기본 할당량이 0 이라 첫 호출부터 막히는 경우
+      //      (액세스 미승인) — Google 응답에 limit 값 0 신호가 담긴다.
+      //  (b) 액세스가 승인된 프로덕션에서 실제 분당/일일 사용량을 초과한 경우.
+      // 응답 본문의 할당량 한도 값이 0 이면 (a), 아니면 (b) 로 구분한다.
+      const raw = isRecord(payload) ? JSON.stringify(payload) : "";
+      const zeroQuota = /"?(?:quota[_ ]?limit[_ ]?value|limit)"?\s*:\s*"?0"?/i.test(raw);
+      if (zeroQuota) {
+        throw new GbpUnavailableError(
+          "Google Business Profile API 할당량이 0입니다. 신규 프로젝트는 Google의 Business Profile API 액세스 신청(https://developers.google.com/my-business/content/prereqs)이 승인되어야 호출할 수 있습니다."
+        );
+      }
+      throw new ApiError(
+        "RATE_LIMITED",
+        "Google Business Profile API 사용량 한도(429)에 도달했습니다. 잠시 후 다시 시도해 주세요."
+      );
     }
     throw new ApiError("INTERNAL", `Google Business Profile API 오류: ${message}`);
   }
