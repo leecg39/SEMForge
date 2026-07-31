@@ -98,10 +98,13 @@ const HISTORY_BUCKETS: BucketKey[] = ["top3", "top10", "top20", "top50", "top100
 export function RankDistributionPanel({
   campaignId,
   refreshKey,
+  viewDomain,
 }: {
   campaignId: string;
   /** 수동 수집 완료 후 증가시켜 재조회를 유도한다. */
   refreshKey: number;
+  /** 관점 도메인 (null 이면 자사). 같은 스냅샷을 해당 도메인 기준으로 집계한다. */
+  viewDomain?: string | null;
 }) {
   const { locale } = useLocale();
   const copy = COPY[locale];
@@ -115,7 +118,8 @@ export function RankDistributionPanel({
   const [enabledBuckets, setEnabledBuckets] = useState<Set<BucketKey>>(
     () => new Set<BucketKey>(["top3", "top10", "top20", "top50", "top100"])
   );
-  const requestKey = `${campaignId}:${refreshKey}`;
+  const domainQuery = viewDomain ? `&domain=${encodeURIComponent(viewDomain)}` : "";
+  const requestKey = `${campaignId}:${refreshKey}:${viewDomain ?? ""}`;
   const loading = result?.key !== requestKey;
 
   useEffect(() => {
@@ -124,11 +128,11 @@ export function RankDistributionPanel({
       try {
         const [distribution, dailyHistory] = await Promise.all([
           api.get<RankDistribution>(
-            `/api/position-tracking/${encodeURIComponent(campaignId)}/rank-distribution/`
+            `/api/position-tracking/${encodeURIComponent(campaignId)}/rank-distribution/?_=1${domainQuery}`
           ),
           api
             .get<RankDistributionHistory>(
-              `/api/position-tracking/${encodeURIComponent(campaignId)}/rank-history/?days=14`
+              `/api/position-tracking/${encodeURIComponent(campaignId)}/rank-history/?days=14${domainQuery}`
             )
             .catch(() => null),
         ]);
@@ -151,7 +155,7 @@ export function RankDistributionPanel({
     return () => {
       cancelled = true;
     };
-  }, [campaignId, requestKey]);
+  }, [campaignId, requestKey, domainQuery]);
 
   const toggleBucket = (bucket: BucketKey) => {
     setEnabledBuckets((current) => {

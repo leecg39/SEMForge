@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TrendChart } from "@/components/app/app-primitives";
 import { CampaignSummaryCard } from "@/components/position-tracking/CampaignSummaryCard";
+import { CompetitiveMapCard } from "@/components/position-tracking/CompetitiveMapCard";
 import { DiscoveredCompetitorsPanel } from "@/components/position-tracking/DiscoveredCompetitorsPanel";
 import { GscNotice } from "@/components/position-tracking/GscNotice";
 import { KeywordHighlightsRow } from "@/components/position-tracking/KeywordHighlightsRow";
@@ -11,6 +12,7 @@ import { PagesPanel } from "@/components/position-tracking/PagesPanel";
 import { RankDistributionPanel } from "@/components/position-tracking/RankDistributionPanel";
 import { ScheduleControl } from "@/components/position-tracking/ScheduleControl";
 import { SerpFeaturesPanel } from "@/components/position-tracking/SerpFeaturesPanel";
+import { TagsPanel } from "@/components/position-tracking/TagsPanel";
 import {
   normalizeGscKeyword,
   useGscKeywordMetrics,
@@ -46,6 +48,7 @@ interface TrackedKeywordRow {
   volume: number | null;
   difficulty: number | null;
   updatedAt: string;
+  tags: string[];
   serpFeatures: string[];
   serpCapturedAt: string | null;
   competitorPositions: CompetitorPosition[];
@@ -134,6 +137,10 @@ const COPY = {
     tabOverview: "개요",
     tabDistribution: "순위 분포",
     tabDiscovery: "경쟁자 발견",
+    viewAs: "도메인 관점",
+    viewOwnBadge: "내 도메인",
+    competitorViewNote:
+      "경쟁자 관점: 순위·순위 분포가 선택한 도메인 기준으로 표시됩니다. 이전/변동, 검색량, GSC 열은 내 도메인 전용이라 유지됩니다.",
     serpGroupLabel: "실시간 SERP · TalorData",
     gscGroupLabel: "GSC 실측 · 최근 28일",
     gscClicks: "클릭",
@@ -192,6 +199,10 @@ const COPY = {
     tabOverview: "Overview",
     tabDistribution: "Rank distribution",
     tabDiscovery: "Competitor discovery",
+    viewAs: "Domain view",
+    viewOwnBadge: "My domain",
+    competitorViewNote:
+      "Competitor view: positions and rank distribution reflect the selected domain. Previous/change, volume, and GSC columns stay scoped to my domain.",
     serpGroupLabel: "Live SERP · TalorData",
     gscGroupLabel: "GSC actuals · last 28 days",
     gscClicks: "Clicks",
@@ -324,6 +335,10 @@ export function PositionTrackingDashboard({
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
   // 수집 완료/경쟁사 추가 후 탭 패널들이 다시 집계되도록 증가시키는 키.
   const [refreshKey, setRefreshKey] = useState(0);
+  // 관점 도메인 (null = 자사). 순위 열과 순위 분포에 적용된다.
+  const [viewDomain, setViewDomain] = useState<string | null>(null);
+  // 태그 필터 (키워드 테이블에 적용).
+  const [activeTag, setActiveTag] = useState<string | null>(null);
 
   const campaign = useMemo(
     () => campaigns.find((item) => item.id === selectedId) ?? null,
@@ -492,6 +507,25 @@ export function PositionTrackingDashboard({
     [visibilityHistory, dateFormatter]
   );
 
+  const viewingCompetitor = viewDomain !== null;
+  const filteredKeywords = useMemo(
+    () => (activeTag ? keywords.filter((row) => row.tags.includes(activeTag)) : keywords),
+    [keywords, activeTag]
+  );
+  const ownAvgPosition = useMemo(() => {
+    const ranked = keywords.filter((row) => row.position !== null);
+    if (ranked.length === 0) return null;
+    return (
+      Math.round(
+        (ranked.reduce((sum, row) => sum + row.position!, 0) / ranked.length) * 10
+      ) / 10
+    );
+  }, [keywords]);
+  const ownRankedCount = useMemo(
+    () => keywords.filter((row) => row.position !== null).length,
+    [keywords]
+  );
+
   if (campaigns.length === 0) {
     return (
       <div className="p-6">
@@ -560,7 +594,12 @@ export function PositionTrackingDashboard({
             </span>
             <select
               value={selectedId}
-              onChange={(event) => setSelectedId(event.target.value)}
+              onChange={(event) => {
+                setSelectedId(event.target.value);
+                // 관점·태그 필터는 캠페인 단위 상태라 함께 초기화한다.
+                setViewDomain(null);
+                setActiveTag(null);
+              }}
               className="h-[40px] w-full rounded-[8px] border border-app-border bg-white px-3 text-[14px] text-app-text"
             >
               {campaigns.map((item) => (
@@ -605,6 +644,49 @@ export function PositionTrackingDashboard({
         </div>
       </section>
 
+      {campaign && (
+        <div className="mt-4 flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-[12px] font-medium text-app-text-secondary">
+            {copy.viewAs}
+          </span>
+          <button
+            type="button"
+            onClick={() => setViewDomain(null)}
+            className={cn(
+              "h-[28px] rounded-full border px-3 text-[12px] font-medium transition-colors",
+              viewDomain === null
+                ? "border-app-blue bg-[#eaf3ff] text-app-blue"
+                : "border-app-border text-app-text hover:bg-[#f6f7f9]"
+            )}
+          >
+            {campaign.domain}
+            <span className="ml-1 text-[10px] text-app-text-secondary">{copy.viewOwnBadge}</span>
+          </button>
+          {competitors.map((competitor) => (
+            <button
+              key={competitor.id}
+              type="button"
+              onClick={() =>
+                setViewDomain(viewDomain === competitor.domain ? null : competitor.domain)
+              }
+              className={cn(
+                "h-[28px] rounded-full border px-3 text-[12px] font-medium transition-colors",
+                viewDomain === competitor.domain
+                  ? "border-app-blue bg-[#eaf3ff] text-app-blue"
+                  : "border-app-border text-app-text hover:bg-[#f6f7f9]"
+              )}
+            >
+              {competitor.domain}
+            </button>
+          ))}
+          {viewingCompetitor && (
+            <span className="basis-full text-[11px] leading-[16px] text-app-text-secondary">
+              {copy.competitorViewNote}
+            </span>
+          )}
+        </div>
+      )}
+
       <nav className="mt-4 flex gap-1 border-b border-app-border" role="tablist">
         {tabs.map((tab) => (
           <button
@@ -627,7 +709,11 @@ export function PositionTrackingDashboard({
 
       {activeTab === "distribution" && (
         <div className="mt-4">
-          <RankDistributionPanel campaignId={selectedId} refreshKey={refreshKey} />
+          <RankDistributionPanel
+            campaignId={selectedId}
+            refreshKey={refreshKey}
+            viewDomain={viewDomain}
+          />
         </div>
       )}
 
@@ -889,30 +975,54 @@ export function PositionTrackingDashboard({
                 </td>
               </tr>
             )}
-            {keywords.map((row) => {
+            {filteredKeywords.map((row) => {
               const gscMetric = gscReady
                 ? gscReady.rows.get(normalizeGscKeyword(row.keyword))
                 : undefined;
+              // 경쟁자 관점이면 순위 열을 같은 스냅샷의 해당 도메인 순위로 바꾼다.
+              const displayPosition = viewingCompetitor
+                ? (row.competitorPositions.find(
+                    (item) => item.domain === viewDomain
+                  )?.position ?? null)
+                : row.position;
               return (
               <tr key={row.id} className="border-b border-app-border text-[13px] last:border-b-0">
-                <td className="px-4 py-2.5 font-medium text-app-text">{row.keyword}</td>
+                <td className="px-4 py-2.5 font-medium text-app-text">
+                  {row.keyword}
+                  {row.tags.length > 0 && (
+                    <span className="ml-1.5 inline-flex flex-wrap gap-1 align-middle">
+                      {row.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="rounded-[4px] bg-[#eef2f7] px-1 py-px text-[10px] text-[#475166]"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                </td>
                 <td className="px-4 py-2.5">
                   <FeatureBadges features={row.serpFeatures} locale={locale} />
                 </td>
                 <td className="px-4 py-2.5 text-right font-semibold text-app-text">
-                  {row.position ?? (
+                  {displayPosition ?? (
                     <span className="font-normal text-app-text-secondary">{copy.notFound}</span>
                   )}
                 </td>
                 <td className="px-4 py-2.5 text-right text-app-text-secondary">
-                  {row.previousPosition ?? "—"}
+                  {viewingCompetitor ? "—" : (row.previousPosition ?? "—")}
                 </td>
                 <td className="px-4 py-2.5 text-right">
-                  <ChangeBadge
-                    position={row.position}
-                    previousPosition={row.previousPosition}
-                    copy={copy}
-                  />
+                  {viewingCompetitor ? (
+                    <span className="text-app-text-secondary">—</span>
+                  ) : (
+                    <ChangeBadge
+                      position={row.position}
+                      previousPosition={row.previousPosition}
+                      copy={copy}
+                    />
+                  )}
                 </td>
                 {competitors.map((competitor) => {
                   const hit = row.competitorPositions.find(
@@ -975,6 +1085,32 @@ export function PositionTrackingDashboard({
       <div className="mt-4">
         <KeywordHighlightsRow campaignId={selectedId} refreshKey={refreshKey} />
       </div>
+
+      <div className="mt-4">
+        <TagsPanel
+          campaignId={selectedId}
+          keywords={keywords}
+          canEdit={canCollect}
+          activeTag={activeTag}
+          onSelectTag={setActiveTag}
+          onChanged={() => {
+            if (selectedId) void loadKeywords(selectedId);
+          }}
+        />
+      </div>
+
+      {campaign && (
+        <div className="mt-4">
+          <CompetitiveMapCard
+            campaignId={selectedId}
+            refreshKey={refreshKey}
+            ownDomain={campaign.domain}
+            ownAvgPosition={ownAvgPosition}
+            ownRankedCount={ownRankedCount}
+            onOpenDiscovery={() => setActiveTab("discovery")}
+          />
+        </div>
+      )}
 
       <div className="mt-4 grid gap-4 xl:grid-cols-2">
         <SerpFeaturesPanel keywords={keywords} />

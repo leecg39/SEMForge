@@ -434,6 +434,8 @@ export const trackedKeywords = sqliteTable(
     previousPosition: integer("previous_position"),
     volume: integer("volume"),
     difficulty: integer("difficulty"),
+    /** 키워드 그룹 태그 — JSON 문자열 배열. 태그 관리 모달에서 일괄 편집한다 (0016) */
+    tags: text("tags").notNull().default("[]"),
     ...auditColumns,
   },
   (t) => [

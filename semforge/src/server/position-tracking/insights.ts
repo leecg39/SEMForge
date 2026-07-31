@@ -235,12 +235,14 @@ export function bucketOf(position: number | null): RankBucketKey {
 
 /**
  * 순위 분포 탭 집계.
- * 캠페인 키워드의 최신 스냅샷에서 자사 도메인 순위를 버킷으로 나눈다.
+ * 캠페인 키워드의 최신 스냅샷에서 대상 도메인(기본: 자사) 순위를 버킷으로 나눈다.
+ * viewDomain 을 주면 같은 스냅샷을 경쟁자 관점으로 다시 집계한다 (추가 수집 없음).
  * 스냅샷이 없는 키워드는 버킷에서 제외하고 uncollectedKeywords 로만 보고한다.
  */
 export async function getRankDistribution(
   auth: AuthContext,
-  campaignId: string
+  campaignId: string,
+  viewDomain?: string
 ): Promise<RankDistribution> {
   const campaign = await requireCampaign(auth, campaignId);
   const engine = snapshotEngine(campaign);
@@ -270,11 +272,12 @@ export async function getRankDistribution(
   }));
   const bucketByKey = new Map(buckets.map((bucket) => [bucket.key, bucket]));
 
+  const targetDomain = viewDomain?.trim() || campaign.domain;
   let capturedAt: Date | null = null;
   for (const keyword of keywords) {
     const snapshot = snapshots.get(keyword.id);
     if (!snapshot) continue;
-    const own = findDomainPosition(snapshot.rows, campaign.domain);
+    const own = findDomainPosition(snapshot.rows, targetDomain);
     const bucket = bucketByKey.get(bucketOf(own?.position ?? null));
     if (!bucket) continue;
     bucket.count += 1;

@@ -773,12 +773,27 @@ export interface TrackedKeywordWithSerp {
   volume: number | null;
   difficulty: number | null;
   updatedAt: Date;
+  /** 키워드 그룹 태그 (tags 컬럼의 JSON 배열) */
+  tags: string[];
   /** 최신 스냅샷에서 감지된 SERP 피처 */
   serpFeatures: string[];
   /** 최신 스냅샷 수집 시각. 한 번도 수집되지 않았으면 null */
   serpCapturedAt: Date | null;
   /** 같은 스냅샷에서 계산한 경쟁사별 순위 */
   competitorPositions: CompetitorPosition[];
+}
+
+/** tags 컬럼(JSON 문자열 배열)을 안전하게 파싱한다. 손상된 값은 빈 배열. */
+function parseKeywordTags(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((tag): tag is string => typeof tag === "string")
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -911,6 +926,7 @@ export async function listTrackedKeywords(
       volume: keyword.volume,
       difficulty: keyword.difficulty,
       updatedAt: keyword.updatedAt,
+      tags: parseKeywordTags(keyword.tags),
       serpFeatures,
       serpCapturedAt: latest ?? null,
       competitorPositions,

@@ -3,13 +3,14 @@ import { assertCan } from "@/lib/rbac";
 import { requireAuth } from "@/lib/session";
 import { getRankDistribution } from "@/server/position-tracking/insights";
 
-/** 순위 분포 탭: 최신 SERP 스냅샷 기준 자사 순위 버킷 집계. */
+/** 순위 분포: 최신 SERP 스냅샷 기준 버킷 집계. ?domain= 으로 경쟁자 관점 전환. */
 export const GET = route(
   async (request: Request, context: { params: Promise<{ campaignId: string }> }) => {
     const auth = await requireAuth(request);
     assertCan(auth, "read");
     const { campaignId } = await context.params;
-    const distribution = await getRankDistribution(auth, campaignId);
+    const viewDomain = new URL(request.url).searchParams.get("domain") ?? undefined;
+    const distribution = await getRankDistribution(auth, campaignId, viewDomain);
     return jsonOk(distribution);
   }
 );

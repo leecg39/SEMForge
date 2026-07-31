@@ -392,13 +392,15 @@ const EMPTY_COUNTS = (): Record<RankBucketKey, number> => ({
 });
 
 /**
- * 일별 순위 분포. 키워드마다 날짜별 최신 스냅샷에서 자사 순위를 버킷으로
- * 집계한다. 스냅샷이 없는 날은 데이터 없음으로 두고 0 으로 채우지 않는다.
+ * 일별 순위 분포. 키워드마다 날짜별 최신 스냅샷에서 대상 도메인(기본: 자사)
+ * 순위를 버킷으로 집계한다. viewDomain 을 주면 경쟁자 관점으로 다시 집계한다.
+ * 스냅샷이 없는 날은 데이터 없음으로 두고 0 으로 채우지 않는다.
  */
 export async function getRankDistributionHistory(
   auth: AuthContext,
   campaignId: string,
-  days = 14
+  days = 14,
+  viewDomain?: string
 ): Promise<RankDistributionHistory> {
   const campaign = await requireCampaign(auth, campaignId);
   const engine = snapshotEngine(campaign);
@@ -482,12 +484,12 @@ export async function getRankDistributionHistory(
     }
   }
 
-  const ownDomain = normalizeDomain(campaign.domain);
+  const targetDomain = normalizeDomain(viewDomain?.trim() || campaign.domain);
   const byDay = new Map<string, Record<RankBucketKey, number>>();
   for (const [key, snapshot] of byMetricDay) {
     const day = key.slice(key.indexOf(":") + 1);
     const counts = byDay.get(day) ?? EMPTY_COUNTS();
-    const own = findDomainPosition(snapshot.rows, ownDomain);
+    const own = findDomainPosition(snapshot.rows, targetDomain);
     counts[bucketOf(own?.position ?? null)] += 1;
     byDay.set(day, counts);
   }
