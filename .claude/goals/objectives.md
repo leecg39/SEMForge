@@ -34,6 +34,61 @@
 - 인벤토리에 없는 신규 기능
 - 상표·로고·원문 마케팅 카피 복제
 
+---
+
+# 목표 2 — AI 가시성 카테고리 구현 (2026-07-31 설정)
+
+## 목표
+
+> Semrush AI 가시성(참조 영상 기준)의 구조를 SEMForge에 이식하되, **실제로 측정 가능한 것만 측정하고
+> 나머지는 정직하게 `unavailable` 로 표시**하는 상태.
+
+## 확정된 제약 (실측)
+
+| 항목 | 사실 |
+|---|---|
+| 현재 수집 가능 | Google AI Overview 인용 여부 (TalorData `parseAiOverview`) |
+| 현재 저장 범위 | `ai_visibility_snapshots` 의 aioPresent / cited / citedDomains 뿐. 답변 본문 없음 |
+| LLM 자격증명 | **없음** — `.env.local` 9개 변수에 OpenAI·Anthropic·Gemini·Perplexity 키 0개 |
+| 따라서 | ChatGPT·Gemini 언급률, 감정·내러티브 분석은 **착수 불가** |
+
+## Phase 목표
+
+| Phase | 내용 | 신규 외부 API | 상태 |
+|---|---|---|---|
+| Phase 0 | AI 크롤러 접근성 진단 (robots.txt AI 봇 차단 + llms.txt 품질) | 0개 | 진행 중 |
+| Phase 1 | 프롬프트 데이터 모델 (`ai_visibility_prompts` / `_answers`) | 0개 | 진행 중 |
+| Phase 2 | 가시성 개요 화면 (AIO 만 live, 타 플랫폼 `unavailable` 배지) | 0개 | 대기 |
+| Phase 3 | LLM 플랫폼 연동 (ChatGPT·Gemini) | **키 필요** | **차단 — 자격증명 게이트** |
+| Phase 4+ | 경쟁자 리서치 / 인식 / 내러티브 / 프롬프트 리서치 | Phase 3 의존 | 차단 |
+
+## 완료 조건
+
+| # | 조건 | 측정 |
+|---|---|---|
+| A1 | robots.txt 의 AI 봇 차단 여부를 봇별로 판정 (Allow 우선·와일드카드·$ 포함) | 단위 테스트 |
+| A2 | llms.txt 파싱 + 0~100 품질 점수 | 단위 테스트 |
+| A3 | 프롬프트·답변 스키마 마이그레이션 적용, 기존 AIO 경로 무손상 | `db:migrate` + 기존 테스트 통과 |
+| A4 | 가시성 개요가 AIO 는 실데이터, 미연동 플랫폼은 `unavailable` 로 표시 | 화면 + `ProviderResult` 배지 |
+| A5 | 전 구간 `npm run verify` 통과 | 게이트 exit 0 |
+
+## 범위 밖
+
+- 가짜 LLM 언급률·감정 점수 생성 (데이터 원칙 위반)
+- Semrush 독자 지표(AI 검색량·주제 난이도)의 수치 재현
+- 7.9만 프롬프트 규모 수집 (개인 프로젝트 비용 범위 밖)
+
+## 작업 분담
+
+| 작업 | 담당 | 소유 파일 |
+|---|---|---|
+| AIV-T1 크롤러 접근성 모듈 | Codex 패널 (term_c384550a) | `server/ai-visibility/crawler-access.ts(.test)` |
+| AIV-T2 llms.txt 모듈 | Codex 패널 (term_8ee26b1a) | `server/ai-visibility/llms-txt.ts(.test)` |
+| AIV-T3 스키마·마이그레이션 | 오케스트레이터 | `db/schema/ai-visibility.ts`, `db/migrations/**` (직렬 전용) |
+| AIV-T4 조립·API·화면 | 오케스트레이터 | T1·T2 완료 후 |
+
+---
+
 ## 현재 진단 요약 (2026-07-28 17:35 실측)
 
 | 상태 | 내용 |
