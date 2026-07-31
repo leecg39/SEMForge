@@ -10,9 +10,9 @@ import { normalizeDomain } from "@/lib/analytics/metrics";
  */
 
 const ENDPOINT = "https://serpapi.talordata.net/serp/v1/request";
-const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
-const DEFAULT_MAX_ATTEMPTS = 3;
-const DEFAULT_RETRY_BASE_DELAY_MS = 750;
+export const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+export const DEFAULT_MAX_ATTEMPTS = 3;
+export const DEFAULT_RETRY_BASE_DELAY_MS = 750;
 
 export type SerpEngine = "google" | "bing";
 
@@ -87,7 +87,7 @@ interface TalordataOrganicRaw {
   description?: string;
 }
 
-interface TalordataMetadata {
+export interface TalordataMetadata {
   id?: string;
   status?: string;
   total_time_taken?: number;
@@ -104,7 +104,7 @@ export interface TalordataClientOptions {
 
 type RetryableFailureKind = "timeout" | "network" | "provider" | "invalid-response";
 
-class RetryableTalordataError extends Error {
+export class RetryableTalordataError extends Error {
   constructor(
     message: string,
     readonly kind: RetryableFailureKind,
@@ -133,7 +133,7 @@ const FEATURE_KEYS: Record<string, string> = {
   news: "top_stories",
 };
 
-function getToken(): string {
+export function getToken(): string {
   const token = process.env.TALORDATA_API_TOKEN?.trim();
   if (!token) {
     throw new ApiError(
@@ -172,7 +172,7 @@ function isRetryableProviderFailure(message: string): boolean {
   );
 }
 
-function positiveInteger(value: number | undefined, fallback: number): number {
+export function positiveInteger(value: number | undefined, fallback: number): number {
   return Number.isFinite(value) && value !== undefined && value > 0
     ? Math.floor(value)
     : fallback;
@@ -283,15 +283,15 @@ function parseLocalResults(data: Record<string, unknown>): LocalResultItem[] {
   return [];
 }
 
-function defaultSleep(milliseconds: number): Promise<void> {
+export function defaultSleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-async function requestOnce(input: {
+export async function requestOnce(input: {
   token: string;
   body: URLSearchParams;
   fetchImpl: typeof fetch;
@@ -362,6 +362,23 @@ async function requestOnce(input: {
     );
   }
   const payload = rawPayload;
+
+  // 실측(2026-07-31 프로브)으로 확인된 실패 모드: 봉투 code=0 인데 data 가
+  // 오류 문자열인 형태 — {"code":0,"data":"error, Collection failed"}.
+  // 봉투 코드만 믿으면 정상 흐름으로 통과되므로 문자열 data 는 별도 분류한다.
+  if (typeof payload.data === "string") {
+    const message = payload.data.trim() || "제공사가 빈 오류 응답을 반환했습니다.";
+    if (isAuthenticationFailure(message)) {
+      throw new ApiError("INTERNAL", "SERP API 토큰이 유효하지 않습니다.");
+    }
+    if (isQuotaFailure(message)) {
+      throw new ApiError(
+        "RATE_LIMITED",
+        "SERP API 사용량 한도에 도달했습니다. 대시보드에서 잔량을 확인하세요."
+      );
+    }
+    throw new RetryableTalordataError(message, "provider");
+  }
 
   // 실제 응답 봉투: { code, data: {...}, task_id } — SERP 데이터는 data 아래에 있다.
   const data = isRecord(payload.data) ? payload.data : payload;

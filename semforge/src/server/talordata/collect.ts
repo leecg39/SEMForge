@@ -9,7 +9,9 @@ import {
   trackedKeywords,
 } from "@/db/schema";
 import { ApiError } from "@/lib/api";
+import { classifyIntent } from "@/lib/analytics/intent";
 import { ctrForPosition, normalizeDomain } from "@/lib/analytics/metrics";
+import type { AnalyticsIntent } from "@/lib/analytics/types";
 import { newId } from "@/lib/ids";
 import type { AuthContext } from "@/lib/session";
 import {
@@ -53,6 +55,8 @@ async function upsertKeywordMetric(input: {
   countryCode: string;
   device: "desktop" | "mobile";
   volume?: number | null;
+  /** clone-intent-v1 분류 결과. 신규 행에만 기록한다 (기존 행은 관측치 보존). */
+  intent?: AnalyticsIntent;
 }): Promise<string> {
   const normalized = normalizeKeyword(input.keyword);
   const periodStart = currentMonthStart();
@@ -89,7 +93,7 @@ async function upsertKeywordMetric(input: {
     device: input.device,
     periodStart,
     volume: Math.max(0, input.volume ?? 0),
-    intent: "informational",
+    intent: input.intent ?? "informational",
     source: "talordata-serp",
   });
   return id;
@@ -241,7 +245,11 @@ export async function collectKeywordSerp(input: {
     device: input.device,
   });
 
-  const keywordMetricId = await upsertKeywordMetric(input);
+  // SERP 피처까지 반영해 의도를 분류하고 신규 metric 행에 기록한다 (clone-intent-v1).
+  const keywordMetricId = await upsertKeywordMetric({
+    ...input,
+    intent: classifyIntent({ keyword: input.keyword, serpFeatures: serp.features }).intent,
+  });
   if (serp.organic.length > 0) {
     // 동시 수집이나 동일 밀리초의 재수집은 (metric, engine, capturedAt,
     // position, isAd) 유니크 제약과 충돌할 수 있다 — 스냅샷은 append-only

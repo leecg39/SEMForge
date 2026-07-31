@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import { keywordMetrics, serpSnapshots } from "@/db/schema";
+import { classifyIntent, type IntentEvidence } from "@/lib/analytics/intent";
 import {
   buildKeywordOverviewMetrics,
   normalizeDomain,
@@ -28,6 +29,24 @@ export interface KeywordOverviewResult extends SerpOrganicItem {
   previousPosition: number | null;
 }
 
+/**
+ * KD 게이팅 임계값 (계획서 R6 채택안): top10 결과 중 링크 그래프 프로필
+ * (백링크/참조 도메인)이 확인된 도메인이 이 값 미만이면 KD 를 제공하지 않는다.
+ * 근거 부족 상태에서 0~100 숫자를 내보내면 가짜 확신을 주기 때문이다.
+ */
+export const KD_MIN_PROFILE_DOMAINS = 5;
+
+export interface KeywordDifficultyReport {
+  /** clone-kd-v1 점수 (0~100). 근거 부족(sufficientEvidence=false)이면 null. */
+  score: number | null;
+  /** top10 결과 도메인 수. */
+  top10Count: number;
+  /** top10 중 링크 그래프 프로필이 확인된 도메인 수. */
+  top10WithProfile: number;
+  sufficientEvidence: boolean;
+  model: "clone-kd-v1";
+}
+
 export interface KeywordOverviewReport {
   keyword: string;
   countryCode: string;
@@ -39,8 +58,13 @@ export interface KeywordOverviewReport {
   volume: number;
   volumeMonthsUsed: number;
   intent: string | null;
+  /** clone-intent-v1 판정 근거 (매칭된 키워드 패턴/SERP 피처). */
+  intentEvidence: IntentEvidence[];
+  intentModel: "clone-intent-v1";
   cpcCents: number | null;
   difficulty: number;
+  /** KD 게이팅 결과. UI 는 difficulty 대신 이 필드를 사용한다. */
+  kd: KeywordDifficultyReport;
   features: string[];
   results: KeywordOverviewResult[];
   /** 이 키워드의 라이브 수집 이력 (최신순, 최대 10회). */
@@ -185,6 +209,29 @@ export async function getKeywordOverview(input: {
     };
   });
 
+  // KD 게이팅: top10 중 링크 그래프 프로필이 확인된 도메인 수가 임계값 미만이면
+  // 점수를 제공하지 않는다 (정직한 미제공).
+  const top10 = results.filter((item) => item.position <= 10);
+  const top10WithProfile = top10.filter(
+    (item) => item.referringDomains > 0 || item.backlinks > 0
+  ).length;
+  const sufficientEvidence = top10WithProfile >= KD_MIN_PROFILE_DOMAINS;
+  const kd: KeywordDifficultyReport = {
+    score: sufficientEvidence ? metrics.difficulty : null,
+    top10Count: top10.length,
+    top10WithProfile,
+    sufficientEvidence,
+    model: "clone-kd-v1",
+  };
+
+  // 의도는 방금 확보한 SERP 피처로 라이브 분류한다 (clone-intent-v1).
+  // DB의 metric.intent 는 신규 행 삽입 시점의 분류라 과거 기본값(informational)이
+  // 남아 있을 수 있어 리포트에서는 항상 재계산 결과를 쓴다.
+  const intentClassification = classifyIntent({
+    keyword: input.keyword,
+    serpFeatures: collection.features,
+  });
+
   const normalizedTarget = input.domain ? normalizeDomain(input.domain) : "";
   const rankHit = normalizedTarget
     ? (results.find(
@@ -203,9 +250,12 @@ export async function getKeywordOverview(input: {
     fromCache: collection.fromCache,
     volume: metrics.volume,
     volumeMonthsUsed: metrics.volumeMonthsUsed,
-    intent: metrics.intent,
+    intent: intentClassification.intent,
+    intentEvidence: intentClassification.evidence,
+    intentModel: intentClassification.model,
     cpcCents: metrics.cpcCents,
     difficulty: metrics.difficulty,
+    kd,
     features: collection.features,
     results,
     captures: history.captures,

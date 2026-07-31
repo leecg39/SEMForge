@@ -1,5 +1,5 @@
 import { AppShell } from "@/components/app/AppShell";
-import { KeywordOverviewDashboard } from "@/components/analytics/KeywordOverviewDashboard";
+import { KeywordOverviewDashboard } from "@/components/analytics/keyword-overview/KeywordOverviewDashboard";
 
 export const dynamic = "force-dynamic";
 

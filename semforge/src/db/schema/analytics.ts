@@ -149,7 +149,47 @@ export const linkGraphEdges = sqliteTable(
   ],
 );
 
+/**
+ * 원천 4: 키워드 스코프의 시점 관측 JSON (Google Trends 시계열, 관련 쿼리 등).
+ * serp_snapshots 와 같은 append-only 문법이며, 조회는 항상 스코프 내 최신 1건이다.
+ * TTL 판정은 테이블이 아니라 조회 로직이 kind 별로 한다 (trend 계열 7일 등).
+ */
+export const keywordInsights = sqliteTable(
+  "keyword_insights",
+  {
+    id: text("id").primaryKey(),
+    keyword: text("keyword").notNull(),
+    normalizedKeyword: text("normalized_keyword").notNull(),
+    /** trends geo 스코프. 국가 코드(KR 등)를 명시한다 — 제공사가 geo 미지정 시 US 로 기본 처리하므로 빈 값은 쓰지 않는다. */
+    countryCode: text("country_code").notNull(),
+    kind: text("kind", {
+      enum: [
+        "trend_timeseries",
+        "related_queries",
+        "related_topics",
+        "geo_interest",
+        "related_searches",
+        "people_also_ask",
+      ],
+    }).notNull(),
+    /** kind 별 구조화 JSON. trend_timeseries 는 [{date, timestamp, value}] 형태. */
+    payload: text("payload").notNull(),
+    /** 데이터 출처. 삽입 시 명시 필수 (talordata-trends 등). */
+    source: text("source").notNull(),
+    capturedAt: timestampMs("captured_at").notNull(),
+  },
+  (t) => [
+    index("keyword_insights_scope_idx").on(
+      t.normalizedKeyword,
+      t.countryCode,
+      t.kind,
+      t.capturedAt,
+    ),
+  ],
+);
+
 export type KeywordMetric = typeof keywordMetrics.$inferSelect;
 export type SerpSnapshot = typeof serpSnapshots.$inferSelect;
 export type ClickstreamEvent = typeof clickstreamEvents.$inferSelect;
 export type LinkGraphEdge = typeof linkGraphEdges.$inferSelect;
+export type KeywordInsight = typeof keywordInsights.$inferSelect;
