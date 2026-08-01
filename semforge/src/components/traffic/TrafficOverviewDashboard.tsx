@@ -33,6 +33,8 @@ import {
   buildPageMovers,
   normalizeGscTarget,
   previousDateRange,
+  resolveAccessibleCampaign,
+  resolveAccessibleGscProperty,
   summarizeGscRows,
   type MarketPlayer,
   type PageMover,
@@ -184,6 +186,10 @@ export function TrafficOverviewDashboard({
   campaigns?: CampaignListItem[];
 }) {
   const router = useRouter();
+  const initialCampaign = resolveAccessibleCampaign({
+    requested: initialCampaignId,
+    campaigns,
+  });
   const [gscStatus, setGscStatus] = useState<GscStatusData | null>(null);
   const [properties, setProperties] = useState<GscSite[]>([]);
   const [siteUrl, setSiteUrl] = useState(initialSiteUrl);
@@ -192,8 +198,12 @@ export function TrafficOverviewDashboard({
   const [gsc, setGsc] = useState<GscDataset | null>(null);
   const [gscLoading, setGscLoading] = useState(false);
   const [gscReason, setGscReason] = useState<string | null>(null);
-  const [selectedCampaignId, setSelectedCampaignId] = useState(
-    initialCampaignId || campaigns.find((item) => item.configured)?.id || campaigns[0]?.id || "",
+  const [gscNotice, setGscNotice] = useState<string | null>(null);
+  const [selectedCampaignId, setSelectedCampaignId] = useState(initialCampaign.value);
+  const [campaignNotice, setCampaignNotice] = useState<string | null>(
+    initialCampaign.requestedUnavailable
+      ? "요청한 검색 시장 프로젝트는 현재 워크스페이스에서 사용할 수 없어 접근 가능한 프로젝트로 전환했습니다."
+      : null,
   );
   const [market, setMarket] = useState<MarketDataset | null>(null);
   const [marketLoading, setMarketLoading] = useState(false);
@@ -207,13 +217,23 @@ export function TrafficOverviewDashboard({
     ]).then(([statusResult, sitesResult]) => {
       if (cancelled) return;
       const statusData = statusResult.data ?? { connected: false, siteUrl: null };
+      const siteRows = sitesResult.status === "live" ? sitesResult.data?.sites ?? [] : [];
+      const resolvedSite = resolveAccessibleGscProperty({
+        requested: initialSiteUrl,
+        properties: siteRows.map((item) => item.siteUrl),
+        connected: statusData.siteUrl,
+      });
       setGscStatus(statusData);
-      setProperties(sitesResult.status === "live" ? sitesResult.data?.sites ?? [] : []);
-      const nextSite = initialSiteUrl || statusData.siteUrl || sitesResult.data?.sites?.[0]?.siteUrl || "";
-      if (nextSite) {
-        setSiteUrl(nextSite);
-        setSiteInput(nextSite);
+      setProperties(siteRows);
+      if (resolvedSite.value) {
+        setSiteUrl(resolvedSite.value);
+        setSiteInput(resolvedSite.value);
       }
+      setGscNotice(
+        resolvedSite.requestedUnavailable
+          ? `요청한 Search Console 속성(${initialSiteUrl})에 접근 권한이 없어 연결된 속성(${resolvedSite.value})으로 전환했습니다.`
+          : null,
+      );
       if (statusResult.status !== "live") setGscReason(statusResult.reason ?? "Search Console 연결 상태를 확인할 수 없습니다.");
     }).catch((error) => {
       if (!cancelled) setGscReason(error instanceof Error ? error.message : "Search Console 연결 상태를 확인할 수 없습니다.");
@@ -330,6 +350,12 @@ export function TrafficOverviewDashboard({
     event.preventDefault();
     const target = normalizeGscTarget(siteInput, propertyValues);
     if (!target) return;
+    if (propertyValues.length > 0 && !propertyValues.includes(target)) {
+      setGscReason("현재 Google 계정에 등록된 Search Console 속성을 선택해 주세요.");
+      return;
+    }
+    setGscReason(null);
+    setGscNotice(null);
     setSiteUrl(target);
     router.push(`/analytics/traffic/traffic-overview/?siteUrl=${encodeURIComponent(target)}${selectedCampaignId ? `&campaign=${encodeURIComponent(selectedCampaignId)}` : ""}`);
   };
@@ -355,7 +381,10 @@ export function TrafficOverviewDashboard({
             <input
               list="gsc-properties"
               value={siteInput}
-              onChange={(event) => setSiteInput(event.target.value)}
+              onChange={(event) => {
+                setSiteInput(event.target.value);
+                setGscReason(null);
+              }}
               placeholder="예: example.com 또는 sc-domain:example.com"
               className="mt-1.5 h-10 w-full rounded-[7px] border border-app-border bg-white px-3 text-[13px] text-app-text outline-none focus:border-app-blue focus:ring-2 focus:ring-app-blue/10"
             />
@@ -367,6 +396,7 @@ export function TrafficOverviewDashboard({
               value={selectedCampaignId}
               onChange={(event) => {
                 setMarket(null);
+                setCampaignNotice(null);
                 setSelectedCampaignId(event.target.value);
               }}
               className="mt-1.5 h-10 w-full rounded-[7px] border border-app-border bg-white px-3 text-[13px] outline-none focus:border-app-blue"
@@ -390,8 +420,16 @@ export function TrafficOverviewDashboard({
         ))}
       </nav>
 
+      {(gscNotice || campaignNotice) && (
+        <div role="status" className="mt-4 rounded-[8px] border border-[#b8d7f2] bg-[#f2f8ff] px-4 py-3 text-[12px] text-[#185ea8]">
+          {[gscNotice, campaignNotice].filter(Boolean).join(" ")}
+        </div>
+      )}
+
       {(gscReason || marketReason) && (
-        <div role="alert" className="mt-4 rounded-[8px] border border-[#f2b8b5] bg-[#fff4f3] px-4 py-3 text-[12px] text-[#a4002a]">{gscReason || marketReason}</div>
+        <div role="alert" className="mt-4 rounded-[8px] border border-[#f2b8b5] bg-[#fff4f3] px-4 py-3 text-[12px] text-[#a4002a]">
+          {[gscReason, marketReason].filter(Boolean).join(" ")}
+        </div>
       )}
 
       {initialView === "overview" && (

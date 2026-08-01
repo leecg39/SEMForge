@@ -25,7 +25,14 @@ export interface SerpQuery {
   gl?: string;
   /** UI 언어 (hl). 기본 ko */
   hl?: string;
-  device?: "desktop" | "mobile";
+  device?: "desktop" | "mobile" | "tablet";
+  /** Google/Bing 지역 타겟팅용 canonical 위치. */
+  location?: string;
+  /** Google 위치 인코딩. location 과 함께 전달한다. */
+  uule?: string;
+  /** Bing 위치 좌표. 둘 다 있을 때만 전달한다. */
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface SerpOrganicItem {
@@ -36,6 +43,24 @@ export interface SerpOrganicItem {
   domain: string;
   displayLink: string | null;
   description: string | null;
+}
+
+export type SerpPaidKind = "search_ad" | "shopping_ad";
+export type SerpAdPlacement = "top" | "bottom" | "shopping" | "unknown";
+
+/** 검색 광고와 쇼핑 광고를 하나의 공급자 중립 형태로 정규화한 결과. */
+export interface SerpPaidItem {
+  position: number;
+  kind: SerpPaidKind;
+  placement: SerpAdPlacement;
+  title: string;
+  link: string;
+  domain: string;
+  displayLink: string | null;
+  description: string | null;
+  advertiser: string | null;
+  price: string | null;
+  imageUrl: string | null;
 }
 
 /** AIO(Google AI 개요) 인용 소스 한 건. */
@@ -69,6 +94,10 @@ export interface SerpResult {
   query: string;
   engine: SerpEngine;
   organic: SerpOrganicItem[];
+  /** 같은 SERP에서 관측한 텍스트/쇼핑 광고. 광고가 없으면 빈 배열이다. */
+  paid: SerpPaidItem[];
+  /** 공급자 응답에 쇼핑 결과 블록 자체가 있었는지 여부. 빈 배열과 미지원 응답을 구분한다. */
+  shoppingAvailability: "available" | "unavailable";
   /** 페이지에서 감지된 SERP 피처 이름 (local_pack, knowledge_panel 등) */
   features: string[];
   /** AIO 출현/인용 정보. AIO가 없으면 present=false. */
@@ -85,6 +114,94 @@ interface TalordataOrganicRaw {
   link?: string;
   display_link?: string;
   description?: string;
+}
+
+function firstString(record: Record<string, unknown>, keys: readonly string[]): string | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function firstScalarText(record: Record<string, unknown>, keys: readonly string[]): string | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  }
+  return null;
+}
+
+function paidItemsFrom(
+  data: Record<string, unknown>,
+  keys: readonly string[],
+  kind: SerpPaidKind,
+  placement: SerpAdPlacement,
+): SerpPaidItem[] {
+  const rows: SerpPaidItem[] = [];
+  for (const key of keys) {
+    const value = data[key];
+    if (!Array.isArray(value)) continue;
+    value.forEach((entry, index) => {
+      if (!isRecord(entry)) return;
+      const link = firstString(entry, ["link", "url", "product_link", "landing_page"]);
+      if (!link || !/^https?:\/\//i.test(link)) return;
+      const parsedPosition = Number(entry.position ?? entry.rank);
+      rows.push({
+        position:
+          Number.isInteger(parsedPosition) && parsedPosition > 0 ? parsedPosition : index + 1,
+        kind,
+        placement,
+        title: firstString(entry, ["title", "headline", "name", "product_title"]) ?? "",
+        link,
+        domain: normalizeDomain(link),
+        displayLink: firstString(entry, ["display_link", "displayed_link", "visible_url"]),
+        description: firstString(entry, ["description", "snippet", "text"]),
+        advertiser: firstString(entry, ["advertiser", "merchant", "source", "seller"]),
+        price: firstScalarText(entry, ["price", "extracted_price", "price_text"]),
+        imageUrl: firstString(entry, ["image", "thumbnail", "image_url"]),
+      });
+    });
+  }
+  return rows;
+}
+
+/** 공급자별 키 이름 차이를 흡수하고 중복 광고를 제거한다. */
+export function parsePaidResults(data: Record<string, unknown>): SerpPaidItem[] {
+  const candidates = [
+    ...paidItemsFrom(data, ["top_ads", "ads_top", "ads", "ad_results", "paid_results"], "search_ad", "top"),
+    ...paidItemsFrom(data, ["bottom_ads", "ads_bottom"], "search_ad", "bottom"),
+    ...paidItemsFrom(
+      data,
+      ["shopping", "shopping_results", "immersive_products", "inline_products", "product_results"],
+      "shopping_ad",
+      "shopping",
+    ),
+  ];
+  const seen = new Set<string>();
+  return candidates.filter((item) => {
+    const key = `${item.kind}\u0000${item.placement}\u0000${item.link}\u0000${item.title}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+const SHOPPING_RESULT_KEYS = [
+  "shopping",
+  "shopping_results",
+  "immersive_products",
+  "inline_products",
+  "product_results",
+] as const;
+
+export function shoppingResponseAvailability(
+  data: Record<string, unknown>,
+): "available" | "unavailable" {
+  return SHOPPING_RESULT_KEYS.some((key) => Object.prototype.hasOwnProperty.call(data, key))
+    ? "available"
+    : "unavailable";
 }
 
 export interface TalordataMetadata {
@@ -431,11 +548,29 @@ export async function fetchSerp(
     engine,
     q: query.q,
     num: String(Math.min(100, Math.max(1, query.num ?? 10))),
-    gl: (query.gl ?? "kr").toLowerCase(),
-    hl: (query.hl ?? "ko").toLowerCase(),
-    device: query.device ?? "desktop",
     json: "1",
   });
+  const country = (query.gl ?? "kr").toLowerCase();
+  const language = (query.hl ?? "ko").toLowerCase();
+  if (engine === "google") {
+    body.set("gl", country);
+    body.set("hl", language);
+    body.set("device", query.device ?? "desktop");
+    if (query.location && query.uule) {
+      body.set("location", query.location);
+      body.set("uule", query.uule);
+    }
+  } else {
+    body.set("cc", country);
+    body.set("mkt", `${language}-${country.toUpperCase()}`);
+    if (query.location && query.latitude !== undefined && query.longitude !== undefined) {
+      body.set("location", query.location);
+      body.set("lat", String(query.latitude));
+      body.set("lon", String(query.longitude));
+    }
+    // TalorData 가 tablet 계약 테스트를 통과한 환경에서만 호출부가 tablet 을 전달한다.
+    body.set("device", query.device ?? "desktop");
+  }
   const fetchImpl = options.fetchImpl ?? fetch;
   const sleep = options.sleep ?? defaultSleep;
   const timeoutMs = positiveInteger(options.requestTimeoutMs, DEFAULT_REQUEST_TIMEOUT_MS);
@@ -469,6 +604,8 @@ export async function fetchSerp(
           description: item.description ?? null,
         }));
 
+      const paid = parsePaidResults(data);
+
       // 오가닉 0건은 "순위권 밖"이 아니라 제공사 차단/일시 오류 신호다.
       // 그대로 진행하면 순위가 null 로 덮여 이력이 오염되므로 재시도한다.
       if (organic.length === 0) {
@@ -501,6 +638,8 @@ export async function fetchSerp(
         query: query.q,
         engine,
         organic,
+        paid,
+        shoppingAvailability: shoppingResponseAvailability(data),
         features: [...new Set(features)],
         aiOverview,
         localResults,

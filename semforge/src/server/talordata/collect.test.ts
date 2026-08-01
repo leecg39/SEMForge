@@ -41,6 +41,13 @@ function serpResponse(): Response {
           description: "Second description",
         },
       ],
+      top_ads: [
+        { position: 1, title: "Same paid ad", link: "https://ads.example.com/landing" },
+      ],
+      bottom_ads: [
+        { position: 1, title: "Same paid ad", link: "https://ads.example.com/landing" },
+      ],
+      shopping_results: [],
     },
   });
 }
@@ -78,6 +85,8 @@ test("최초 수집은 API 를 호출하고 제목/설명을 포함한 스냅샷
   assert.equal(collection.fromCache, false);
   assert.equal(collection.results.length, 2);
   assert.equal(collection.results[0]?.title, "First result");
+  assert.deepEqual(collection.paid.map((item) => item.placement).sort(), ["bottom", "top"]);
+  assert.equal(collection.shoppingAvailability, "available");
 });
 
 test("TTL 이내 같은 조건 재수집은 API 호출 없이 캐시 스냅샷을 반환한다", async () => {
@@ -89,6 +98,8 @@ test("TTL 이내 같은 조건 재수집은 API 호출 없이 캐시 스냅샷�
   assert.equal(collection.results[0]?.title, "First result");
   assert.equal(collection.results[0]?.description, "First description");
   assert.equal(collection.results[0]?.domain, "first.example.com");
+  assert.deepEqual(collection.paid.map((item) => item.placement).sort(), ["bottom", "top"]);
+  assert.equal(collection.shoppingAvailability, "available");
 });
 
 test("forceRefresh 는 캐시를 무시하고 실시간 재수집한다", async () => {

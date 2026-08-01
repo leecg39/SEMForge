@@ -9,6 +9,9 @@ import { GscNotice } from "@/components/position-tracking/GscNotice";
 import { KeywordHighlightsRow } from "@/components/position-tracking/KeywordHighlightsRow";
 import { OverviewKpiCards } from "@/components/position-tracking/OverviewKpiCards";
 import { PagesPanel } from "@/components/position-tracking/PagesPanel";
+import {
+  PositionTrackingRunProgress,
+} from "@/components/position-tracking/PositionTrackingRunProgress";
 import { RankDistributionPanel } from "@/components/position-tracking/RankDistributionPanel";
 import { ScheduleControl } from "@/components/position-tracking/ScheduleControl";
 import { SerpFeaturesPanel } from "@/components/position-tracking/SerpFeaturesPanel";
@@ -65,23 +68,6 @@ interface VisibilityPoint {
   visibility: number;
   rankedCount: number;
   keywordCount: number;
-}
-
-interface CollectReport {
-  campaignName: string;
-  domain: string;
-  collected: number;
-  failed: number;
-  visibility: number;
-  capturedAt: string;
-  outcomes: {
-    keyword: string;
-    position: number | null;
-    previousPosition: number | null;
-    features?: string[];
-    competitorPositions?: CompetitorPosition[];
-    error?: string;
-  }[];
 }
 
 const MAX_COMPETITORS = 5;
@@ -309,9 +295,11 @@ function ChangeBadge({
 export function PositionTrackingDashboard({
   campaigns,
   canCollect,
+  initialRunId,
 }: {
   campaigns: CampaignSummary[];
   canCollect: boolean;
+  initialRunId?: string;
 }) {
   const { locale } = useLocale();
   const copy = COPY[locale];
@@ -323,9 +311,9 @@ export function PositionTrackingDashboard({
   const [loadedId, setLoadedId] = useState<string | null>(null);
   const loading = selectedId !== loadedId;
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [collecting, setCollecting] = useState(false);
+  const [collecting, setCollecting] = useState(Boolean(initialRunId));
   const [collectError, setCollectError] = useState<string | null>(null);
-  const [report, setReport] = useState<CollectReport | null>(null);
+  const [activeRunId, setActiveRunId] = useState(initialRunId ?? "");
   const [competitorInput, setCompetitorInput] = useState("");
   const [competitorError, setCompetitorError] = useState<string | null>(null);
   const [addingCompetitor, setAddingCompetitor] = useState(false);
@@ -408,22 +396,25 @@ export function PositionTrackingDashboard({
     if (!selectedId || collecting) return;
     setCollecting(true);
     setCollectError(null);
-    setReport(null);
     try {
-      const response = await api.post<CollectReport>("/api/serp/collect-campaign/", {
-        campaignId: selectedId,
-      });
-      setReport(response.data);
-      setRefreshKey((key) => key + 1);
-      await Promise.all([loadKeywords(selectedId), loadVisibility(selectedId)]);
+      const response = await api.post<{ runId: string; total: number; reused: boolean }>(
+        `/api/position-tracking/${encodeURIComponent(selectedId)}/runs/`,
+        { trigger: "manual" },
+      );
+      setActiveRunId(response.data.runId);
     } catch (caught) {
+      setCollecting(false);
       setCollectError(
         caught instanceof ClientApiError ? caught.message : COPY.ko.collectError
       );
-    } finally {
-      setCollecting(false);
     }
   };
+
+  const handleRunFinished = useCallback(async () => {
+    setCollecting(false);
+    setRefreshKey((key) => key + 1);
+    if (selectedId) await Promise.all([loadKeywords(selectedId), loadVisibility(selectedId)]);
+  }, [loadKeywords, loadVisibility, selectedId]);
 
   const addKeyword = async () => {
     const keyword = keywordInput.trim();
@@ -586,6 +577,17 @@ export function PositionTrackingDashboard({
         )}
       </header>
 
+      {activeRunId && (
+        <div className="mt-5">
+          <PositionTrackingRunProgress
+            key={activeRunId}
+            runId={activeRunId}
+            canProcess={canCollect}
+            onFinished={handleRunFinished}
+          />
+        </div>
+      )}
+
       <section className="mt-5 rounded-[10px] border border-app-border bg-white p-4">
         <div className="flex flex-wrap items-end gap-4">
           <label className="min-w-[240px] flex-1">
@@ -596,6 +598,8 @@ export function PositionTrackingDashboard({
               value={selectedId}
               onChange={(event) => {
                 setSelectedId(event.target.value);
+                setActiveRunId("");
+                setCollecting(false);
                 // 관점·태그 필터는 캠페인 단위 상태라 함께 초기화한다.
                 setViewDomain(null);
                 setActiveTag(null);
@@ -731,24 +735,12 @@ export function PositionTrackingDashboard({
 
       {activeTab === "overview" && (
       <>
-      {(report || collectError) && (
+      {collectError && (
         <section
-          className={cn(
-            "mt-4 rounded-[8px] border px-4 py-3 text-[13px]",
-            collectError || (report && report.collected === 0 && report.failed > 0)
-              ? "border-[#f5c2cd] bg-[#fdecef] text-[#a4002a]"
-              : "border-[#bfe6d8] bg-[#e6f5f0] text-[#0a6b57]"
-          )}
-          role="status"
+          className="mt-4 rounded-[8px] border border-[#f5c2cd] bg-[#fdecef] px-4 py-3 text-[13px] text-[#a4002a]"
+          role="alert"
         >
-          {collectError ??
-            (report!.collected === 0 && report!.failed > 0
-              ? `${copy.collectError} · ${report!.outcomes.find((outcome) => outcome.error)?.error ?? ""}`
-              : `${copy.collectDone} · ${copy.resultSummary(
-                  report!.collected,
-                  report!.failed,
-                  report!.outcomes.length
-                )} · ${copy.visibility} ${report!.visibility}%`)}
+          {collectError}
         </section>
       )}
 

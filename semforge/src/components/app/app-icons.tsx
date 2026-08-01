@@ -27,13 +27,26 @@ function IconBase({ children, ...props }: AppIconProps) {
   );
 }
 
-export function HomeIcon(props: AppIconProps) {
+export function FireIcon(props: AppIconProps) {
   return (
-    <IconBase {...props}>
-      <path d="m4 11 8-7 8 7" />
-      <path d="M6 9.8V19a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V9.8" />
-      <path d="M10 20v-5.5h4V20" />
-    </IconBase>
+    <svg
+      viewBox="0 0 24 24"
+      width={24}
+      height={24}
+      aria-hidden="true"
+      {...props}
+    >
+      <circle cx="12" cy="12" r="12" fill="#eceeef" />
+      <rect x="6.5" y="4.5" width="11" height="15" rx="3" fill="#171918" />
+      <path
+        d="M12.7 8.1c.2 1.7-1.3 2.4-1.3 3.7 0 .6.3 1.1.8 1.4 0-.9.5-1.6 1.2-2.2 1.3 1.1 2 2.3 2 3.5a3.4 3.4 0 0 1-6.8 0c0-1.2.6-2.3 1.6-3.2 0 1.1.5 1.8 1.2 2.2-.2-1.6.3-3.2 1.3-5.4Z"
+        fill="#ff5b2e"
+      />
+      <path
+        d="M10.9 14.8c0 1 .5 1.7 1.2 1.7.8 0 1.3-.7 1.3-1.6 0-.6-.2-1.1-.6-1.5 0 .7-.3 1.1-.7 1.3 0-.5-.3-1-.7-1.3-.3.5-.5.9-.5 1.4Z"
+        fill="#ffb23f"
+      />
+    </svg>
   );
 }
 
@@ -146,7 +159,7 @@ export function ChevronDownIcon(props: AppIconProps) {
 
 /** appGlobalNav / appToolkits 의 icon 문자열 키 → 아이콘 컴포넌트 */
 export const appIcons: Record<string, AppIcon> = {
-  home: HomeIcon,
+  home: FireIcon,
   seo: SearchIcon,
   ai: AiSparkleIcon,
   traffic: TrafficIcon,

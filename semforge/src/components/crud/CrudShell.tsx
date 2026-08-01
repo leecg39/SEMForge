@@ -170,7 +170,12 @@ export function CrudShell({
                       open && !active && "bg-black/[0.04]"
                     )}
                   >
-                    {Icon && <Icon width={24} height={24} />}
+                    {Icon && (
+                      <Icon
+                        width={item.icon === "home" ? 36 : 24}
+                        height={item.icon === "home" ? 36 : 24}
+                      />
+                    )}
                     <span
                       className={cn(
                         "text-[12px] font-medium leading-[16px]",

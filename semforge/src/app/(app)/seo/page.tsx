@@ -1,26 +1,35 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, or } from "drizzle-orm";
 import { AppShell } from "@/components/app/AppShell";
 import { SeoWidgetDashboard } from "@/components/seo-dash/SeoWidgetDashboard";
 import type { AiVisibilityWidgetSummary } from "@/components/seo-dash/WidgetAiSearch";
 import type { RefDomainMonth } from "@/components/seo-dash/WidgetBacklinks";
-import type { PositionTrackingWidgetSummary } from "@/components/seo-dash/WidgetPositionTracking";
+import type {
+  PositionTrackingActiveRunSummary,
+  PositionTrackingWidgetSummary,
+} from "@/components/seo-dash/WidgetPositionTracking";
 import type { SiteAuditWidgetSummary } from "@/components/seo-dash/WidgetSiteAudit";
 import { db } from "@/db/client";
 import {
   folders,
+  linkGraphEdges,
   positionTrackingCampaigns,
+  positionTrackingRuns,
   siteAuditCampaigns,
   trackedKeywords,
 } from "@/db/schema";
 import { normalizeDomain } from "@/lib/analytics/metrics";
-import { getAuth } from "@/lib/session";
-import { getAiVisibilityOverview } from "@/server/ai-visibility/overview";
+import { normalizeHostname } from "@/lib/position-tracking/targets";
+import { getProjectAiVisibilityDashboard } from "@/server/ai-visibility/dashboard";
+import { findAiVisibilityProject } from "@/server/ai-visibility/projects";
 import { getDomainAnalytics } from "@/server/analytics";
+import { getOnpageDomainSummary } from "@/server/onpage/store";
+import { pageSession } from "@/server/page-auth";
 import { getSiteAuditOverview } from "@/server/siteaudit/overview";
+import { listVisibilityHistory } from "@/server/talordata/collect";
 
 export const dynamic = "force-dynamic";
 
-/** link_graph firstSeenAt 기준 최근 12개월 누적 참조 도메인 수 */
+/** link_graph firstSeenAt 기준 최근 12개월 누적 참조 도메인·백링크 수 */
 function buildMonthlyRefDomains(
   edges: { sourceDomain: string; firstSeenAt: Date }[]
 ): RefDomainMonth[] {
@@ -37,10 +46,14 @@ function buildMonthlyRefDomains(
   }
   return months.map((month) => {
     const seen = new Set<string>();
+    let backlinks = 0;
     for (const edge of edges) {
-      if (new Date(edge.firstSeenAt) < month.end) seen.add(edge.sourceDomain);
+      if (new Date(edge.firstSeenAt) < month.end) {
+        seen.add(edge.sourceDomain);
+        backlinks += 1;
+      }
     }
-    return { label: month.label, referringDomains: seen.size };
+    return { label: month.label, referringDomains: seen.size, backlinks };
   });
 }
 
@@ -50,7 +63,8 @@ export default async function SeoDashboardPage({
   searchParams: Promise<{ domain?: string }>;
 }) {
   const { domain: rawDomain } = await searchParams;
-  const auth = await getAuth();
+  // 이 화면은 보호된 수집 API를 자동 호출하므로 세션 없는 상태로 렌더링하지 않는다.
+  const { auth } = await pageSession();
 
   const folderRows = auth
     ? await db
@@ -69,12 +83,13 @@ export default async function SeoDashboardPage({
 
   const normalized = rawDomain ? normalizeDomain(rawDomain) : "";
   const domain = normalized.includes(".") ? normalized : (projects[0]?.domain ?? "");
+  const positionTrackingDomain = normalizeHostname(rawDomain ?? domain) || domain;
+  const currentFolderId = folderRows.find(
+    (folder) => normalizeDomain(folder.domain) === domain,
+  )?.id ?? null;
   const countryCode = domain.endsWith(".kr") ? "KR" : "US";
 
-  // 링크 그래프는 아직 라이브 수집 소스가 없어 참조 도메인 추이를 제공하지 않는다.
-  const edges: { sourceDomain: string; firstSeenAt: Date }[] = [];
-
-  const [report, auditCampaignRows, positionCampaignRows] = await Promise.all([
+  const [report, auditCampaignRows, positionCampaignRows, edges] = await Promise.all([
     domain
       ? getDomainAnalytics({ domain, countryCode, device: "desktop" })
       : Promise.resolve(null),
@@ -113,6 +128,21 @@ export default async function SeoDashboardPage({
           .orderBy(desc(positionTrackingCampaigns.updatedAt))
           .limit(1)
       : Promise.resolve([]),
+    // 사이트 진단 크롤러가 적재한 실측 링크 그래프 (이 도메인으로 향하는 백링크).
+    domain
+      ? db
+          .select({
+            sourceDomain: linkGraphEdges.sourceDomain,
+            firstSeenAt: linkGraphEdges.firstSeenAt,
+          })
+          .from(linkGraphEdges)
+          .where(
+            and(
+              eq(linkGraphEdges.targetDomain, domain),
+              eq(linkGraphEdges.source, "site-audit-crawler")
+            )
+          )
+      : Promise.resolve([] as { sourceDomain: string; firstSeenAt: Date }[]),
   ]);
 
   const auditOverview =
@@ -134,20 +164,51 @@ export default async function SeoDashboardPage({
       }
     : null;
 
-  const positionKeywordRows = positionCampaignRows[0]
-    ? await db
-        .select({
-          keyword: trackedKeywords.keyword,
-          position: trackedKeywords.position,
-        })
-        .from(trackedKeywords)
-        .where(
-          and(
-            eq(trackedKeywords.campaignId, positionCampaignRows[0].id),
-            isNull(trackedKeywords.deletedAt)
-          )
-        )
-    : [];
+  const [positionKeywordRows, visibilityHistoryRows, activeRunRows] = positionCampaignRows[0]
+    ? await Promise.all([
+        db
+          .select({
+            keyword: trackedKeywords.keyword,
+            position: trackedKeywords.position,
+            previousPosition: trackedKeywords.previousPosition,
+          })
+          .from(trackedKeywords)
+          .where(
+            and(
+              eq(trackedKeywords.campaignId, positionCampaignRows[0].id),
+              isNull(trackedKeywords.deletedAt)
+            )
+          ),
+        auth
+          ? listVisibilityHistory(auth, positionCampaignRows[0].id)
+          : Promise.resolve([]),
+        auth
+          ? db
+              .select({
+                runId: positionTrackingRuns.id,
+                status: positionTrackingRuns.status,
+                total: positionTrackingRuns.totalCount,
+                processed: positionTrackingRuns.processedCount,
+                succeeded: positionTrackingRuns.successCount,
+                failed: positionTrackingRuns.failedCount,
+                currentKeyword: positionTrackingRuns.currentKeyword,
+              })
+              .from(positionTrackingRuns)
+              .where(
+                and(
+                  eq(positionTrackingRuns.workspaceId, auth.workspaceId),
+                  eq(positionTrackingRuns.campaignId, positionCampaignRows[0].id),
+                  or(
+                    eq(positionTrackingRuns.status, "queued"),
+                    eq(positionTrackingRuns.status, "running"),
+                  ),
+                ),
+              )
+              .orderBy(desc(positionTrackingRuns.createdAt))
+              .limit(1)
+          : Promise.resolve([]),
+      ])
+    : [[], [], []];
   const positionTrackingSummary: PositionTrackingWidgetSummary | null = positionCampaignRows[0]
     ? {
         campaignId: positionCampaignRows[0].id,
@@ -157,25 +218,55 @@ export default async function SeoDashboardPage({
         visibility: positionCampaignRows[0].visibility,
         updatedAt: positionCampaignRows[0].updatedAt?.toISOString() ?? null,
         keywords: positionKeywordRows,
+        history: visibilityHistoryRows.map((row) => ({
+          capturedAt: new Date(row.capturedAt).toISOString(),
+          visibility: row.visibility,
+        })),
+      }
+    : null;
+  const positionTrackingActiveRun: PositionTrackingActiveRunSummary | null = activeRunRows[0]
+    ? {
+        ...activeRunRows[0],
+        status: activeRunRows[0].status as "queued" | "running",
       }
     : null;
 
-  // AI 가시성 위젯용 실측 요약 (추적 쿼리가 없으면 null → 위젯이 수집 안내 표시).
+  // AI 가시성 위젯은 개요 화면과 동일한 프로젝트 집계 서비스를 사용한다.
   const aiVisibilitySummary: AiVisibilityWidgetSummary | null =
-    auth && domain
+    auth && currentFolderId
       ? await (async () => {
-          const overview = await getAiVisibilityOverview(auth, domain);
-          if (overview.stats.queryCount === 0) return null;
+          const project = await findAiVisibilityProject(auth, currentFolderId);
+          if (!project) return null;
+          const overview = await getProjectAiVisibilityDashboard(auth, currentFolderId, { range: "1m" });
           return {
-            queryCount: overview.stats.queryCount,
-            aioCount: overview.stats.aioCount,
-            citedCount: overview.stats.citedCount,
-            judgeableAioCount: overview.stats.judgeableAioCount,
-            unknownCitationCount: overview.stats.unknownCitationCount,
-            lastCollectedAt: overview.stats.lastCollectedAt,
+            promptCount: overview.scope.prompts,
+            visibility: overview.kpis.visibility.value,
+            mentions: overview.kpis.mentions.value,
+            citations: overview.kpis.citations.value,
+            citedPages: overview.kpis.citedPages.value,
+            measurable: overview.completeness.measurableCells,
+            unknown: overview.completeness.unknownCells,
+            lastCollectedAt: overview.provenance.lastCollectedAt,
+            providers: overview.scope.configuredProviders.map((provider) => {
+              const row = overview.providerBreakdown.find((item) => item.key === provider);
+              const capability = overview.capabilities.providers[provider];
+              return {
+                key: provider,
+                label: provider === "google_aio" ? "Google AI 개요" : provider === "chatgpt_web" ? "ChatGPT 웹 검색" : "Gemini 그라운딩",
+                enabled: capability.enabled,
+                reason: capability.reason,
+                visibility: row?.visibility ?? null,
+                mentions: row?.mentions ?? 0,
+                citations: row?.citations ?? 0,
+              };
+            }),
           };
         })()
       : null;
+
+  // 온페이지 SEO 위젯용 실측 집계 (분석 이력이 없으면 null → 위젯이 설정 CTA 표시).
+  const onpageSummary =
+    auth && domain ? await getOnpageDomainSummary(auth.workspaceId, domain) : null;
 
   const freshest = report?.freshness.serpCapturedAt ?? report?.freshness.keywordMetricsThrough;
   const dateLabel = freshest
@@ -196,7 +287,11 @@ export default async function SeoDashboardPage({
         dateLabel={dateLabel}
         siteAuditSummary={siteAuditSummary}
         positionTrackingSummary={positionTrackingSummary}
+        positionTrackingActiveRun={positionTrackingActiveRun}
+        positionTrackingDomain={positionTrackingDomain}
+        currentFolderId={currentFolderId}
         aiVisibilitySummary={aiVisibilitySummary}
+        onpageSummary={onpageSummary}
       />
     </AppShell>
   );

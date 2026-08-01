@@ -510,12 +510,30 @@ export const positionTrackingCampaigns = sqliteTable(
     ...folderScoped,
     name: text("name").notNull(),
     domain: text("domain").notNull(),
+    /** 순위 판정 범위. 기존 캠페인은 root_domain 으로 백필한다. */
+    targetType: text("target_type", {
+      enum: ["root_domain", "subdomain", "exact_url", "subfolder"],
+    })
+      .notNull()
+      .default("root_domain"),
+    /** 범위 판정에 쓰는 정규화된 호스트 또는 URL. */
+    targetValue: text("target_value").notNull().default(""),
     location: text("location").notNull().default("Seoul, South Korea"),
+    countryCode: text("country_code").notNull().default("KR"),
+    languageCode: text("language_code").notNull().default("ko"),
+    locationKey: text("location_key").notNull().default("KR-SEOUL"),
+    locationLabel: text("location_label").notNull().default("Seoul, South Korea"),
+    businessName: text("business_name"),
+    weeklyDigestEnabled: integer("weekly_digest_enabled", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    /** 설정 재전송 시 중복 캠페인 생성을 막는 클라이언트 요청 키. */
+    setupRequestId: text("setup_request_id"),
     device: text("device", { enum: ["desktop", "mobile", "tablet"] })
       .notNull()
       .default("desktop"),
     searchEngine: text("search_engine", {
-      enum: ["google", "bing", "chatgpt"],
+      enum: ["google", "bing", "chatgpt", "gemini"],
     })
       .notNull()
       .default("google"),
@@ -537,6 +555,9 @@ export const positionTrackingCampaigns = sqliteTable(
       .where(sql`deleted_at IS NULL`),
     index("position_tracking_workspace_idx").on(t.workspaceId, t.deletedAt),
     index("position_tracking_due_idx").on(t.collectSchedule, t.nextRunAt),
+    uniqueIndex("position_tracking_setup_request_unique")
+      .on(t.workspaceId, t.setupRequestId)
+      .where(sql`setup_request_id IS NOT NULL`),
   ]
 );
 
@@ -554,12 +575,167 @@ export const trackedKeywords = sqliteTable(
     difficulty: integer("difficulty"),
     /** 키워드 그룹 태그 — JSON 문자열 배열. 태그 관리 모달에서 일괄 편집한다 (0016) */
     tags: text("tags").notNull().default("[]"),
+    lastResultUrl: text("last_result_url"),
+    mentioned: integer("mentioned", { mode: "boolean" }),
+    lastError: text("last_error"),
+    lastCollectedAt: timestampMs("last_collected_at"),
     ...auditColumns,
   },
   (t) => [
     uniqueIndex("tracked_keywords_unique")
       .on(t.campaignId, t.keyword)
       .where(sql`deleted_at IS NULL`),
+  ]
+);
+
+/** 브라우저를 닫아도 복구할 수 있는 포지션 추적 수집 실행. */
+export const positionTrackingRuns = sqliteTable(
+  "position_tracking_runs",
+  {
+    id: text("id").primaryKey(),
+    ...scoped,
+    campaignId: text("campaign_id")
+      .notNull()
+      .references(() => positionTrackingCampaigns.id, { onDelete: "cascade" }),
+    trigger: text("trigger", { enum: ["initial", "manual", "scheduled"] })
+      .notNull()
+      .default("manual"),
+    status: text("status", {
+      enum: ["queued", "running", "completed", "partial", "failed", "cancelled"],
+    })
+      .notNull()
+      .default("queued"),
+    totalCount: integer("total_count").notNull().default(0),
+    processedCount: integer("processed_count").notNull().default(0),
+    successCount: integer("success_count").notNull().default(0),
+    failedCount: integer("failed_count").notNull().default(0),
+    currentKeyword: text("current_keyword"),
+    errorMessage: text("error_message"),
+    startedAt: timestampMs("started_at"),
+    completedAt: timestampMs("completed_at"),
+    createdAt: timestampMs("created_at")
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: timestampMs("updated_at")
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    createdBy: text("created_by"),
+  },
+  (t) => [
+    index("position_tracking_runs_campaign_idx").on(t.campaignId, t.createdAt),
+    index("position_tracking_runs_workspace_status_idx").on(t.workspaceId, t.status, t.updatedAt),
+  ]
+);
+
+/** 실행 안에서 처리할 키워드별 영속 큐. */
+export const positionTrackingRunItems = sqliteTable(
+  "position_tracking_run_items",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => positionTrackingRuns.id, { onDelete: "cascade" }),
+    trackedKeywordId: text("tracked_keyword_id")
+      .notNull()
+      .references(() => trackedKeywords.id, { onDelete: "cascade" }),
+    status: text("status", {
+      enum: ["queued", "running", "succeeded", "failed", "cancelled"],
+    })
+      .notNull()
+      .default("queued"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    errorMessage: text("error_message"),
+    startedAt: timestampMs("started_at"),
+    completedAt: timestampMs("completed_at"),
+  },
+  (t) => [
+    uniqueIndex("position_tracking_run_items_unique").on(t.runId, t.trackedKeywordId),
+    index("position_tracking_run_items_status_idx").on(t.runId, t.status),
+  ]
+);
+
+/** 검색엔진 순위 또는 AI 인용 순위의 append-only 관측값. */
+export const positionTrackingObservations = sqliteTable(
+  "position_tracking_observations",
+  {
+    id: text("id").primaryKey(),
+    campaignId: text("campaign_id")
+      .notNull()
+      .references(() => positionTrackingCampaigns.id, { onDelete: "cascade" }),
+    runId: text("run_id")
+      .notNull()
+      .references(() => positionTrackingRuns.id, { onDelete: "cascade" }),
+    trackedKeywordId: text("tracked_keyword_id")
+      .notNull()
+      .references(() => trackedKeywords.id, { onDelete: "cascade" }),
+    measurementKind: text("measurement_kind", {
+      enum: ["organic_rank", "citation_rank"],
+    }).notNull(),
+    position: integer("position"),
+    url: text("url"),
+    mentioned: integer("mentioned", { mode: "boolean" }).notNull().default(false),
+    localPackPosition: integer("local_pack_position"),
+    features: text("features").notNull().default("[]"),
+    citations: text("citations").notNull().default("[]"),
+    source: text("source").notNull(),
+    capturedAt: timestampMs("captured_at").notNull(),
+  },
+  (t) => [
+    index("position_tracking_observations_keyword_idx").on(t.trackedKeywordId, t.capturedAt),
+    index("position_tracking_observations_run_idx").on(t.runId),
+  ]
+);
+
+/** 사용자별 주간 포지션 추적 앱 알림 구독. */
+export const positionTrackingSubscriptions = sqliteTable(
+  "position_tracking_subscriptions",
+  {
+    id: text("id").primaryKey(),
+    ...scoped,
+    campaignId: text("campaign_id")
+      .notNull()
+      .references(() => positionTrackingCampaigns.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    weeklyDigestEnabled: integer("weekly_digest_enabled", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    createdAt: timestampMs("created_at")
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: timestampMs("updated_at")
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [
+    uniqueIndex("position_tracking_subscriptions_unique").on(t.campaignId, t.userId),
+    index("position_tracking_subscriptions_user_idx").on(t.userId, t.weeklyDigestEnabled),
+  ]
+);
+
+/** 상단 헤더에서 읽는 공급자 중립 앱 알림 inbox. */
+export const appNotifications = sqliteTable(
+  "app_notifications",
+  {
+    id: text("id").primaryKey(),
+    ...scoped,
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    title: text("title").notNull(),
+    message: text("message").notNull(),
+    href: text("href"),
+    dedupeKey: text("dedupe_key").notNull(),
+    readAt: timestampMs("read_at"),
+    createdAt: timestampMs("created_at")
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [
+    uniqueIndex("app_notifications_dedupe_unique").on(t.userId, t.dedupeKey),
+    index("app_notifications_user_idx").on(t.userId, t.readAt, t.createdAt),
   ]
 );
 
@@ -778,3 +954,8 @@ export type ApiKey = typeof apiKeys.$inferSelect;
 export type PositionTrackingCompetitor = typeof positionTrackingCompetitors.$inferSelect;
 export type PositionTrackingVisibilityPoint =
   typeof positionTrackingVisibilityHistory.$inferSelect;
+export type PositionTrackingCampaign = typeof positionTrackingCampaigns.$inferSelect;
+export type PositionTrackingRun = typeof positionTrackingRuns.$inferSelect;
+export type PositionTrackingRunItem = typeof positionTrackingRunItems.$inferSelect;
+export type PositionTrackingObservation = typeof positionTrackingObservations.$inferSelect;
+export type AppNotification = typeof appNotifications.$inferSelect;

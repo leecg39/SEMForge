@@ -5,6 +5,8 @@ import {
   buildPageMovers,
   normalizeGscTarget,
   previousDateRange,
+  resolveAccessibleCampaign,
+  resolveAccessibleGscProperty,
   summarizeGscRows,
 } from "@/lib/traffic-market";
 
@@ -25,6 +27,44 @@ test("일반 도메인은 연결 속성과 매칭하고 없으면 sc-domain 속�
     "https://example.com/",
   );
   assert.equal(normalizeGscTarget("www.newsite.com/path"), "sc-domain:newsite.com");
+});
+
+test("권한 없는 URL 속성은 실제 연결된 GSC 속성으로 전환한다", () => {
+  assert.deepEqual(
+    resolveAccessibleGscProperty({
+      requested: "sc-domain:smb.soverin.cloud",
+      properties: ["https://bsa.soverin.cloud/"],
+      connected: "https://bsa.soverin.cloud/",
+    }),
+    {
+      value: "https://bsa.soverin.cloud/",
+      requestedUnavailable: true,
+    },
+  );
+  assert.deepEqual(
+    resolveAccessibleGscProperty({
+      requested: "bsa.soverin.cloud",
+      properties: ["https://bsa.soverin.cloud/"],
+      connected: "https://bsa.soverin.cloud/",
+    }),
+    {
+      value: "https://bsa.soverin.cloud/",
+      requestedUnavailable: false,
+    },
+  );
+});
+
+test("현재 워크스페이스에 없는 캠페인은 수집 가능한 캠페인으로 대체한다", () => {
+  assert.deepEqual(
+    resolveAccessibleCampaign({
+      requested: "stale-campaign",
+      campaigns: [
+        { id: "empty-campaign", configured: false },
+        { id: "live-campaign", configured: true },
+      ],
+    }),
+    { value: "live-campaign", requestedUnavailable: true },
+  );
 });
 
 test("직전 기간은 현재 기간과 같은 일수로 계산한다", () => {

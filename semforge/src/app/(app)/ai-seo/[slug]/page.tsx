@@ -1,6 +1,8 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { AppShell } from "@/components/app/AppShell";
 import { AiVisibilityDashboard } from "@/components/ai-visibility/AiVisibilityDashboard";
+import { getAuth } from "@/lib/session";
+import { resolveAiVisibilityFolderByDomain } from "@/server/ai-visibility/projects";
 
 const slugs = [
   "overview",
@@ -76,16 +78,31 @@ export default async function AiSeoPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { slug } = await params;
-  const { domain } = await searchParams;
+  const search = await searchParams;
+  const { domain, fid } = search;
   const href = `/ai-seo/${slug}/`;
 
   if (!slugs.includes(slug as Slug)) notFound();
 
   if (slug === "overview") {
-    const initialDomain = typeof domain === "string" ? domain : "";
+    const initialFolderId = typeof fid === "string" ? fid : "";
+    if (!initialFolderId && typeof domain === "string") {
+      const auth = await getAuth();
+      const resolved = auth ? await resolveAiVisibilityFolderByDomain(auth, domain) : null;
+      if (resolved) {
+        const next = new URLSearchParams();
+        for (const [key, value] of Object.entries(search)) {
+          if (key === "domain" || value === undefined) continue;
+          if (Array.isArray(value)) value.forEach((item) => next.append(key, item));
+          else next.set(key, value);
+        }
+        next.set("fid", resolved);
+        redirect(`/ai-seo/overview/?${next.toString()}`);
+      }
+    }
     return (
       <AppShell activeToolkit="ai" activeHref={href}>
-        <AiVisibilityDashboard initialDomain={initialDomain} />
+        <AiVisibilityDashboard initialFolderId={initialFolderId} />
       </AppShell>
     );
   }

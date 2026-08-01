@@ -70,11 +70,23 @@ export const serpSnapshots = sqliteTable(
     url: text("url").notNull(),
     position: integer("position").notNull(),
     isAd: integer("is_ad", { mode: "boolean" }).notNull().default(false),
+    resultType: text("result_type", {
+      enum: ["organic", "search_ad", "shopping_ad"],
+    })
+      .notNull()
+      .default("organic"),
+    adPlacement: text("ad_placement", {
+      enum: ["top", "bottom", "shopping", "unknown"],
+    })
+      .notNull()
+      .default("unknown"),
     /** 수집 당시 결과 제목/스니펫. TTL 캐시 재사용 시 UI 표시용 (라이브 수집분만 채워진다). */
     title: text("title"),
     description: text("description"),
     /** featured_snippet, local_pack 같은 피처 이름의 JSON 배열. */
     serpFeatures: text("serp_features").notNull().default("[]"),
+    /** 가격·판매자·이미지 등 공급자별 광고 부가정보(JSON 객체). */
+    resultMetadata: text("result_metadata").notNull().default("{}"),
     /** 데이터 출처. 삽입 시 명시 필수 (talordata 등). demo 기본값은 제거됨 */
     source: text("source").notNull(),
     capturedAt: timestampMs("captured_at").notNull(),
@@ -86,8 +98,11 @@ export const serpSnapshots = sqliteTable(
       t.capturedAt,
       t.position,
       t.isAd,
+      t.resultType,
+      t.adPlacement,
     ),
     index("serp_snapshot_domain_idx").on(t.domain, t.capturedAt),
+    index("serp_snapshot_paid_domain_idx").on(t.isAd, t.domain, t.capturedAt),
     index("serp_snapshot_keyword_idx").on(t.keywordMetricId, t.capturedAt),
   ],
 );

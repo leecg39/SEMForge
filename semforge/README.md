@@ -23,6 +23,7 @@ SEMForge — SEO & AI 가시성 플랫폼. Semrush의 UI/UX를 관찰 기반으�
 | **TalorData SERP** | 키워드 순위, SERP 피처(AI 개요·로컬팩 등), 도메인 실시간 수집 | `TALORDATA_API_TOKEN` | google/bing, gl/hl 지원 |
 | **Firecrawl** | 사이트 진단 크롤 (없으면 자체 BFS 크롤러로 폴백) | `FIRECRAWL_API_KEY` | 선택 |
 | **PageSpeed Insights** | 사이트 성능, Core Web Vitals (사이트 진단 테마 카드) | `PAGESPEED_API_KEY` | 선택, 없어도 저쿼터 동작 |
+| **ChatMock** | ChatGPT 계정 인증 기반 광고 문구·키워드 제안 | `CHATMOCK_BASE_URL` / `CHATMOCK_ADVERTISING_MODEL` | OpenAI API 키 불필요, 로컬 프록시 실행 필요 |
 | **Google Search Console** | 소유 사이트의 클릭·노출·CTR·평균 포지션 (포지션 추적, 트래픽 개요) | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GSC_REDIRECT_URI` | OAuth 연결 필요 |
 | **Google Business Profile** | 리스팅 위치, 리뷰 조회·답글 (지역 툴킷) | 위와 동일 + `GBP_REDIRECT_URI` | 별도 scope(`business.manage`) |
 
@@ -42,6 +43,16 @@ npm run db:seed      # 구조 시드 (데모 지표 없음. SEED_DEMO_DATA=1 시
 npm run dev          # http://localhost:3000
 ```
 
+광고 AI는 [ChatMock](https://github.com/RayBytes/chatmock)으로 인증된 ChatGPT 계정을 사용합니다.
+최초 한 번 로그인한 뒤 SEMForge와 별도 터미널에서 프록시를 실행하세요.
+
+```bash
+brew tap RayBytes/chatmock
+brew install chatmock
+npm run chatmock:login
+npm run chatmock:serve  # 기본 http://127.0.0.1:8000/v1
+```
+
 - **Node.js는 Homebrew v25(`/opt/homebrew/bin/node`)를 사용하세요.** 시스템 Node 22로 실행하면
   better-sqlite3 버전 불일치로 500 오류가 발생합니다. Node 버전을 바꾸면 `npm rebuild better-sqlite3`가 필요합니다.
 - `npm run db:reset`은 DB 파일을 지우고 마이그레이션 + 시드를 다시 실행합니다.
@@ -53,6 +64,8 @@ npm run dev          # http://localhost:3000
 
 ```bash
 TALORDATA_API_TOKEN=     # TalorData 대시보드에서 발급
+CHATMOCK_BASE_URL=       # 기본값 http://127.0.0.1:8000/v1 (광고 AI)
+CHATMOCK_ADVERTISING_MODEL=gpt-5.4
 FIRECRAWL_API_KEY=       # Firecrawl 대시보드에서 발급
 PAGESPEED_API_KEY=       # (선택) Google Cloud 콘솔에서 발급
 GOOGLE_CLIENT_ID=        # Google Cloud "웹 애플리케이션" OAuth 클라이언트

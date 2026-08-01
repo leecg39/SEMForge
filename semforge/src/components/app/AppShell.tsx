@@ -6,7 +6,7 @@ import { appGlobalNav, appToolkits } from "@/data/app-nav";
 import { appIcons } from "@/components/app/app-icons";
 import { AppHeader } from "@/components/app/AppHeader";
 import { AppGlobalNav } from "@/components/app/AppGlobalNav";
-import { ToolkitSideNav } from "@/components/app/ToolkitSideNav";
+import { ToolkitMobileNav, ToolkitSideNav } from "@/components/app/ToolkitSideNav";
 import { cn } from "@/lib/utils";
 import { useLocalizedValue, useSiteText } from "@/i18n/useLocalizedValue";
 
@@ -35,7 +35,7 @@ export function AppShell({ activeToolkit, activeHref, children, hideSideNav }: A
       {/* 모바일: 툴킷 가로 스크롤 탭 */}
       <nav
         aria-label={tx("Toolkits")}
-        className="sticky top-[56px] z-40 flex gap-1 overflow-x-auto border-b border-app-border bg-white px-2 py-[6px] lg:hidden"
+        className="sticky top-[56px] z-40 flex gap-1 overflow-x-auto border-b border-app-border bg-white px-2 py-[6px] min-[1025px]:hidden"
       >
         {globalNav.map((item) => {
           const Icon = appIcons[item.icon];
@@ -59,9 +59,10 @@ export function AppShell({ activeToolkit, activeHref, children, hideSideNav }: A
         })}
       </nav>
 
-      <div className="flex flex-1 flex-row">
+      <div className="flex flex-1 flex-col min-[1025px]:flex-row">
         <AppGlobalNav activeKey={activeToolkit} />
         {showSideNav && <ToolkitSideNav toolkitKey={activeToolkit} activeHref={activeHref} />}
+        {showSideNav && <ToolkitMobileNav toolkitKey={activeToolkit} activeHref={activeHref} />}
         <main className="min-w-0 flex-1 overflow-auto bg-app-bg">{children}</main>
       </div>
     </div>

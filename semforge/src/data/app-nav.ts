@@ -7,6 +7,7 @@ export interface AppTool {
   label: string;
   href: string;
   group?: string;
+  badge?: string;
 }
 
 export interface AppToolkit {
@@ -240,17 +241,11 @@ export const appToolkits: Record<string, AppToolkit> = {
     icon: "advertising",
     dashboardHref: "/advertising/",
     groups: [
-      { heading: "Dashboard", tools: [{ label: "Advertising Dashboard", href: "/advertising/" }] },
       {
-        heading: "Create & Launch",
         tools: [
+          { label: "Get started", href: "/advertising/" },
           { label: "Ads Launch Assistant", href: "/advertising/ads-launch-assistant" },
-          { label: "Ads AI Agent", href: "/advertising/ads-ai-agent" },
-        ],
-      },
-      {
-        heading: "Research",
-        tools: [
+          { label: "Ads AI Agent", href: "/advertising/ads-ai-agent", badge: "New" },
           { label: "Advertising Research", href: "/analytics/adwords/positions/" },
           { label: "PLA Research", href: "/analytics/pla/positions/" },
           { label: "AdClarity", href: "/apps/adclarity-advertising-intelligence/" },

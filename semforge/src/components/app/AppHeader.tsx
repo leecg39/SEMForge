@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronDownIcon, SearchIcon } from "@/components/app/app-icons";
+import { AppNotificationsMenu } from "@/components/app/AppNotificationsMenu";
 import { LanguageSwitcher } from "@/components/shell/LanguageSwitcher";
-import { SiteAuditNotificationsMenu } from "@/components/siteaudit/SiteAuditNotificationsMenu";
 import { useLocale } from "@/i18n/LocaleProvider";
 
 const headerLinkClass =
@@ -71,7 +71,7 @@ export function AppHeader() {
           {locale === "ko" ? "더보기" : "More"}
           <ChevronDownIcon width={14} height={14} className="text-app-text-secondary" />
         </button>
-        <SiteAuditNotificationsMenu />
+        <AppNotificationsMenu />
         <LanguageSwitcher variant="header" />
         <button
           type="button"

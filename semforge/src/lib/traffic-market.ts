@@ -78,6 +78,65 @@ export function normalizeGscTarget(input: string, properties: string[] = []): st
   return matched ?? `sc-domain:${domain}`;
 }
 
+export interface AccessibleSelection {
+  value: string;
+  requestedUnavailable: boolean;
+}
+
+/**
+ * URL에 남은 오래된 GSC 속성이 현재 OAuth 계정에서 보이지 않으면
+ * 실제 접근 가능한 대표 속성으로 안전하게 전환한다.
+ */
+export function resolveAccessibleGscProperty(input: {
+  requested: string;
+  properties: string[];
+  connected: string | null | undefined;
+}): AccessibleSelection {
+  const requested = input.requested.trim();
+  const properties = input.properties.filter(Boolean);
+  const normalizedRequested = requested
+    ? normalizeGscTarget(requested, properties)
+    : "";
+  const requestedMatch = requested
+    ? properties.find(
+      (property) => property === requested || property === normalizedRequested,
+    )
+    : undefined;
+  if (requestedMatch) {
+    return { value: requestedMatch, requestedUnavailable: false };
+  }
+
+  const connected = input.connected?.trim() ?? "";
+  const fallback =
+    properties.find((property) => property === connected) ??
+    properties[0] ??
+    connected;
+  return {
+    value: fallback,
+    requestedUnavailable: Boolean(requested && fallback),
+  };
+}
+
+/** URL의 캠페인이 현재 워크스페이스 목록에 없으면 호출 전에 대체한다. */
+export function resolveAccessibleCampaign(input: {
+  requested: string;
+  campaigns: Array<{ id: string; configured: boolean }>;
+}): AccessibleSelection {
+  const requested = input.requested.trim();
+  const requestedMatch = input.campaigns.find((campaign) => campaign.id === requested);
+  if (requestedMatch) {
+    return { value: requestedMatch.id, requestedUnavailable: false };
+  }
+  const fallback =
+    input.campaigns.find((campaign) => campaign.configured)?.id ??
+    input.campaigns[0]?.id ??
+    "";
+  return {
+    value: fallback,
+    requestedUnavailable: Boolean(requested && fallback),
+  };
+}
+
 export function previousDateRange(start: string, end: string): { start: string; end: string } {
   const startAt = new Date(`${start}T00:00:00Z`);
   const endAt = new Date(`${end}T00:00:00Z`);

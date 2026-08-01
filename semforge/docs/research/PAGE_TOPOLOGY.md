@@ -1,28 +1,46 @@
-# PAGE TOPOLOGY — Semrush 공개 홈 (PUB-001)
+# Semrush Organic Research 개요 — 페이지 토폴로지
 
-레이아웃: TopBanner(36px) → GlobalHeader(sticky 84px) → main 섹션들 → Footer CTA → Footer nav → legal
+원본: `https://ko.semrush.com/analytics/organic/overview/?db=kr&q=https%3A%2F%2Fmega-info.co.kr&searchType=domain`
+기준 스크린샷: `docs/design-references/semrush-organic/desktop-1440-full.png` (섹션별 크롭 01~13)
 
-| # | 섹션 | 클래스 | 높이(1440px) | 배경 | 비고 |
+## 전역 레이아웃
+
+- **비반응형**: 콘텐츠 최소 폭 ≈1050px. 390px 뷰포트에서도 데스크톱 레이아웃 유지(가로 스크롤). 모바일 브레이크포인트 없음.
+- 1440px 기준: 사이드바(≈208px, SEMForge에서는 AppShell 담당) + 콘텐츠 영역.
+- **콘텐츠 컬럼**: x=308 시작(사이드바 208 + 좌 패딩), 폭 **1085px**, 좌우 패딩 32px 계열.
+- **2열 카드**: 각 폭 **534px**, 갭 **17px** (534+17+534=1085).
+- 카드 세로 간격 **16px**.
+- **Sticky/fixed 요소 없음** — 헤더·필터바·탭바 모두 일반 흐름(스크롤과 함께 사라짐).
+- 페이지 배경 `rgb(255,255,255)`. 본문 기본 폰트 `Inter, sans-serif`, 12px, `rgb(51,51,51)`.
+- Semrush 앱 푸터(요금제 안내 등)는 **클론 범위 제외** (SEMForge AppShell 소유).
+
+## 섹션 순서 (SEMForge 컴포넌트 매핑)
+
+| # | 섹션 | 폭 | 크롭 | 인터랙션 모델 | 컴포넌트 |
 |---|---|---|---|---|---|
-| 1 | Hero | .mp-hero | ~1325px | pattern-hero.svg repeat-x + hero-gradient | H1 84px, 서브 18px, 폼, 제품 데모 비디오(autoplay), padding-top 64px |
-| 2 | Logo marquee | .mp-logo-marquee | 180px | 투명 | 로고 12종 x2 무한 스크롤, 로고 높이 ~28px(natural 100) |
-| 3 | Promo: Semrush One | .mp-promo-block__card--semrush-one | 569px | #c190ff | 좌 텍스트+CTA, 우 영상 포스터(sem_one.webp), padding 56px, radius 카드 |
-| 4 | Promo: MCP | .mp-promo-block__card--semrush-mcp | 569px | #f3f6f6 | "Ask AI. Get Semrush data." + sem_mcp.webp |
-| 5 | Promo: Enterprise | .mp-promo-cards.mp-enterprise | 620px | enterprise_bg.webp | "Bigger scale. Bigger advantage." + Book a demo |
-| 6 | Toolkits slider | .mp-section.mp-toolkits.mp-slider | 932px | 흰색 | 라벨 "SOLUTIONS (9)", 헤딩 "GET SEEN...", 카드 430x500 민트+패턴, 9장, Prev/Next |
-| 7 | Stats | .mp-section.mp-stats | 1407px | 다크 블록 | 5개 스탯(28B/43T/808M/142/289M+), 숫자 Lazzer 180px 500 white ls -10.8px, Learn more |
-| 8 | AI Visibility Index | .mp-section.mp-ai-visibility-index | 1382px | #181e15 + pattern | 다크 섹션, 브랜드 언급 테이블 10행, Explore CTA |
-| 9 | Testimonials | .mp-client-testimonials | 704px | 흰색 | ZoomInfo 후기 + +373% 스탯 카드(패턴 배경) |
-| 10 | Resources slider | .mp-section.mp-resources.mp-slider | 953px | 흰색 | 라벨 "RESOURCES (9)", 카드 9장(이미지+제목+설명+태그) |
+| 1 | 헤더(브레드크럼+제목+우측 링크) + 필터바(DB 탭/장치/날짜/통화) + 페이지 탭바 | 전체 | 01 | 클릭(탭·드롭다운) | `OrganicHeader`, `OrganicFilterBar`, `OrganicPageTabs` |
+| 2 | KPI 행: 키워드/트래픽/트래픽 비용/브랜드 트래픽/비브랜드 트래픽 (스파크라인 포함) | 1085 | 02 | 정적+hover 툴팁 | `OrganicKpiRow` |
+| 3 | 자연 키워드 추세 (스택 바 차트, 범례 체크박스, 기간 필) | 1085 | 03 | 클릭(체크박스·기간 필) | `OrganicTrendChart` |
+| 4 | 상위 키워드 (세그먼트 탭 3종 + 테이블 + 모두 보기) | 534 | 04 | 클릭(세그먼트 전환) | `TopKeywordsCard` |
+| 5 | 의도별 키워드 (분포 바 + 의도 테이블) | 534 | 05 | 정적+링크 | `IntentKeywordsCard` |
+| 6 | 자연 검색 상위 포지션 변동 (신규/누락/상승/하락 세그먼트 + 빈 상태) | 534 | 06 | 클릭(세그먼트) | `PositionChangesCard` |
+| 7 | SERP 구성 요소 상위 포지션 변동 (신규/누락 + 빈 상태) | 534 | 07 | 클릭(세그먼트) | `SerpPositionChangesCard` |
+| 8 | SERP 구성 요소 트렌드 (3색 라인 차트 + 체크박스 + 기간 필) | 1085 | 08 | 클릭(체크박스·기간 필) | `SerpTrendsChart` |
+| 9 | SERP 구성 요소 그리드 (도메인으로 연결됨/연결되지 않음 2그룹 × 아이콘+키워드 수) | 1085 | 09 | 정적+링크 | `SerpFeaturesGrid` |
+| 10 | 상위 페이지 (URL 테이블) | 534 | 10 | 정적+링크 | `TopPagesCard` |
+| 11 | 상위 서브도메인 (테이블) | 534 | 11 | 정적+링크 | `TopSubdomainsCard` |
+| 12 | 주요 자연 경쟁자 (경쟁 수준 바 테이블) | 534 | 12 | 정적+링크 | `CompetitorsCard` |
+| 13 | 경쟁 포지셔닝 지도 (버블 차트 + 범례) | 534 | 13 | hover 툴팁 | `PositioningMapCard` |
 
-공통: 섹션 패딩 120px 상하(--mp-vertical-padding), 컨테이너 max 1440px + 32px 인라인 패딩.
-섹션 라벨 패턴: 소형 uppercase 라벨(h2) + 대형 uppercase 헤딩(h3, 48~64px)
-z-index: 헤더 500, 드로어/모달 600+
+## 원본 DOM 추출물
 
-## 공개 페이지 셸 공통 구조 (모든 PUB-* 템플릿)
+- 카드별 computed-style 트리: `docs/research/extract/*-full.json` (13개)
+- 헤더 영역: `extract/header-filter-tabbar-full.json`
 
-TopBanner + GlobalHeader + [템플릿 본문] + FooterCTA + FooterNav
+## SEMForge 통합 방침
 
-## 앱 셸 구조 (로그인 후 확정 예정)
-
-앱 헤더(로고/검색/Pricing/More/Profile) + 좌측 AppGlobalNav(11 툴킷) + ToolkitSideNav + 작업 캔버스
+- 페이지: 기존 `/analytics/organic/overview/` (`src/app/(app)/analytics/organic/overview/page.tsx`) 유지, `OrganicResearchDashboard`를 신규 섹션 컴포넌트 조합으로 재작성.
+- 신규 컴포넌트 위치: `src/components/analytics/organic/`.
+- 데이터: `getDomainAnalytics` 실데이터(serp_snapshots) 유지. 원본에 있으나 데이터가 없는 지표(브랜드 트래픽, 의도, SERP 구성 요소 등)는 SEMForge 데이터 원칙대로 정직한 빈/미제공 상태로 렌더 (가짜 숫자 금지).
+- 차트: recharts (기존 의존성) 사용, 원본 SVG 팔레트 재현.
+- 빈 상태 일러스트: Semrush 에셋을 복사하지 않고 유사한 느낌의 자체 제작 미니 SVG 사용.

@@ -12,11 +12,13 @@ import type { AnalyticsDevice, AnalyticsRawDataset } from "@/lib/analytics/types
 /**
  * 라이브(실측) 소스만 인정한다.
  * 데모/시드 소스(demo-*)는 리포트 계산에서 전부 제외한다 — AGENTS.md 원칙.
- * clickstream/링크 그래프는 아직 라이브 수집 소스가 없으므로 빈 배열을 돌려준다
- * (패널 트래픽·백링크·Authority Score 는 소스가 생길 때까지 미제공).
+ * 링크 그래프는 사이트 진단 크롤러가 적재하는 실측 엣지(site-audit-crawler)만 사용한다.
+ * clickstream 은 아직 라이브 수집 소스가 없으므로 빈 배열을 돌려준다
+ * (패널 트래픽은 소스가 생길 때까지 미제공).
  */
 const LIVE_KEYWORD_SOURCES = ["talordata-serp"];
 const LIVE_SERP_SOURCES = ["talordata"];
+const LIVE_LINK_SOURCES = ["site-audit-crawler"];
 
 /**
  * 분석 원천 데이터셋 로더.
@@ -40,7 +42,7 @@ export async function getAnalyticsDataset(query: {
       ),
     db.select().from(serpSnapshots).where(inArray(serpSnapshots.source, LIVE_SERP_SOURCES)),
     Promise.resolve([] as (typeof clickstreamEvents.$inferSelect)[]),
-    Promise.resolve([] as (typeof linkGraphEdges.$inferSelect)[]),
+    db.select().from(linkGraphEdges).where(inArray(linkGraphEdges.source, LIVE_LINK_SOURCES)),
   ]);
 
   return { keywords, serp, clickstream, links };

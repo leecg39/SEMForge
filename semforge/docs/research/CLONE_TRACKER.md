@@ -208,7 +208,7 @@
 | SEO-005 | /analytics/organic/overview | APP-ANALYSIS | B |
 | SEO-006 | /analytics/toppages/ | APP-ANALYSIS | B |
 | SEO-007 | /analytics/comparedomains/ | APP-ANALYSIS | B |
-| SEO-008 | /analytics/keywordgap/ | APP-ANALYSIS | B |
+| SEO-008 | /analytics/keywordgap/ | APP-ANALYSIS | Q |
 | SEO-009 | /analytics/gap/backlinks/ | APP-ANALYSIS | B |
 | SEO-010 | /analytics/keywordoverview/ | APP-ANALYSIS | B |
 | SEO-011 | /analytics/keywordmagic/ | APP-ANALYSIS | B |

@@ -5,6 +5,7 @@ import { listDueJobs, runDueJobs } from "@/server/providers/scheduler";
 import { ensureDbRetentionJob } from "@/server/providers/retention";
 import { ensureSiteAuditDueJob } from "@/server/siteaudit/due";
 import { registerPositionTrackingDueJob } from "@/server/position-tracking/schedule";
+import { registerAiVisibilityDueJob } from "@/server/ai-visibility/schedule";
 
 /**
  * 주기 수집 트리거. 외부 cron/launchd 가 이 엔드포인트를 주기 호출한다.
@@ -36,6 +37,7 @@ export const GET = route(async (request: Request) => {
   ensureSiteAuditDueJob();
   ensureDbRetentionJob();
   await registerPositionTrackingDueJob();
+  registerAiVisibilityDueJob();
 
   const { searchParams } = new URL(request.url);
   const onlyParam = searchParams.get("only")?.trim();

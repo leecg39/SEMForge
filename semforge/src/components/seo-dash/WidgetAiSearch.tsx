@@ -6,25 +6,37 @@ import { SM, SelectLink, WidgetCard } from "@/components/seo-dash/tokens";
 import { cn } from "@/lib/utils";
 
 export interface AiVisibilityWidgetSummary {
-  queryCount: number;
-  aioCount: number;
-  citedCount: number;
-  judgeableAioCount: number;
-  unknownCitationCount: number;
+  promptCount: number;
+  visibility: number | null;
+  mentions: number;
+  citations: number;
+  citedPages: number;
+  measurable: number;
+  unknown: number;
   lastCollectedAt: string | null;
+  providers: {
+    key: string;
+    label: string;
+    enabled: boolean;
+    reason: string | null;
+    visibility: number | null;
+    mentions: number;
+    citations: number;
+  }[];
 }
 
 /**
  * AI 검색 위젯.
- * Google AI 개요(AIO) 실측 수집(ai_visibility_*)만 표시한다.
- * ChatGPT/Gemini 등 타 엔진 지표는 소스가 없어 표시하지 않는다.
+ * 프로젝트 AI 가시성 개요와 같은 최신 셀·unknown 제외 공식을 사용한다.
  */
 export function WidgetAiSearch({
   summary,
   domain,
+  folderId,
 }: {
   summary?: AiVisibilityWidgetSummary | null;
   domain?: string;
+  folderId?: string | null;
 }) {
   const { locale } = useLocale();
   const ko = locale === "ko";
@@ -39,22 +51,22 @@ export function WidgetAiSearch({
           <span className="rounded-full bg-[#eef7ee] px-2 py-0.5 text-[10px] font-medium text-[#1c6b3c]">
             {ko ? "실측" : "Live"}
           </span>
-          <SelectLink>Google AIO</SelectLink>
+          <SelectLink>{ko ? "전체 플랫폼" : "All platforms"}</SelectLink>
         </div>
       </div>
 
       {!summary ? (
         <div className="mt-4 rounded-[8px] border border-dashed border-app-border bg-app-bg px-4 py-6 text-center">
           <p className={cn("text-[14px] font-semibold", SM.title)}>
-            {ko ? "추적 중인 쿼리가 없습니다" : "No queries tracked yet"}
+            {ko ? "AI 가시성 프로젝트가 없습니다" : "No AI Visibility project yet"}
           </p>
           <p className={cn("mx-auto mt-1 max-w-[320px] text-[12px] leading-[18px]", SM.caption)}>
             {ko
-              ? "AI 가시성 도구에서 쿼리를 추가하고 수집하면 Google AI 개요 출현·인용 실측이 여기에 표시됩니다."
-              : "Add queries in AI Visibility and collect to see Google AI Overview presence and citations here."}
+              ? "프로젝트에서 프롬프트를 추가하고 수집하면 Google AIO·ChatGPT·Gemini의 실제 언급과 인용이 표시됩니다."
+              : "Add prompts and collect to see measured mentions and citations across available AI platforms."}
           </p>
           <Link
-            href={domain ? `/ai-seo/overview/?domain=${encodeURIComponent(domain)}` : "/ai-seo/overview/"}
+            href={folderId ? `/ai-seo/overview/?fid=${encodeURIComponent(folderId)}` : domain ? `/ai-seo/overview/?domain=${encodeURIComponent(domain)}` : "/ai-seo/overview/"}
             className="mt-3 inline-flex h-[30px] items-center rounded-[6px] border border-[#cfd1d6] bg-white px-3 text-[13px] font-medium text-app-text hover:bg-[#f6f7f8]"
           >
             {ko ? "AI 가시성으로 이동" : "Open AI Visibility"}
@@ -65,24 +77,19 @@ export function WidgetAiSearch({
           <div className="mt-3 grid grid-cols-3 gap-2">
             {[
               {
-                label: ko ? "AIO 출현" : "AIO present",
-                value: `${summary.aioCount}/${summary.queryCount}`,
-                hint: null,
+                label: ko ? "AI 가시성" : "AI visibility",
+                value: summary.visibility === null ? "—" : `${summary.visibility}%`,
+                hint: ko ? `측정 가능 ${summary.measurable}셀` : `${summary.measurable} measurable cells`,
               },
               {
-                label: ko ? "인용됨" : "Cited",
-                value: String(summary.citedCount),
-                hint:
-                  summary.judgeableAioCount > 0
-                    ? ko
-                      ? `판정 가능 ${summary.judgeableAioCount}건 중`
-                      : `of ${summary.judgeableAioCount} judgeable`
-                    : null,
+                label: ko ? "언급" : "Mentions",
+                value: String(summary.mentions),
+                hint: ko ? `프롬프트 ${summary.promptCount}개` : `${summary.promptCount} prompts`,
               },
               {
-                label: ko ? "판정 불가" : "Unknown",
-                value: String(summary.unknownCitationCount),
-                hint: ko ? "제공사 본문 미제공" : "No AIO body from provider",
+                label: ko ? "인용 / 페이지" : "Citations / pages",
+                value: `${summary.citations} / ${summary.citedPages}`,
+                hint: summary.unknown > 0 ? (ko ? `측정 불가 ${summary.unknown}셀` : `${summary.unknown} unknown`) : null,
               },
             ].map((metric) => (
               <div key={metric.label}>
@@ -97,11 +104,26 @@ export function WidgetAiSearch({
             ))}
           </div>
 
-          <p className={cn("mt-4 text-[12px] leading-[18px]", SM.caption)}>
-            {ko
-              ? "Google AI 개요(AIO) 기준입니다. ChatGPT·Gemini 등 타 플랫폼 지표는 데이터 소스가 없어 제공하지 않습니다."
-              : "Based on Google AI Overview. Other platforms (ChatGPT, Gemini…) are not offered — no data source connected."}
-          </p>
+          <table className="mt-4 w-full table-fixed text-left text-[13px]">
+            <thead>
+              <tr className={SM.caption}>
+                <th className="w-[44%] pb-1.5 font-normal">{ko ? "플랫폼" : "Platform"}</th>
+                <th className="w-[28%] pb-1.5 text-right font-normal">{ko ? "가시성" : "Visibility"}</th>
+                <th className="w-[28%] pb-1.5 text-right font-normal">{ko ? "인용" : "Cited"}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summary.providers.map((provider) => (
+                <tr key={provider.key} className="border-t border-[#eceef0]">
+                  <td className={cn("py-2 font-medium", SM.title)}>{provider.label}</td>
+                  {provider.enabled ? <>
+                    <td className={cn("py-2 text-right", SM.body)}>{provider.visibility === null ? "—" : `${provider.visibility}%`}</td>
+                    <td className={cn("py-2 text-right", SM.body)}>{provider.citations}</td>
+                  </> : <td colSpan={2} className="py-2 text-right"><span title={provider.reason ?? undefined} className="rounded-full bg-[#fff2dd] px-1.5 py-px text-[10px] font-medium text-[#8a651d]">{ko ? "키 필요" : "Key required"}</span></td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
           <div className="mt-2 flex items-center justify-between">
             <span className={cn("text-[12px]", SM.caption)} suppressHydrationWarning>
               {summary.lastCollectedAt
@@ -111,7 +133,7 @@ export function WidgetAiSearch({
                   : "Not collected yet"}
             </span>
             <Link
-              href={domain ? `/ai-seo/overview/?domain=${encodeURIComponent(domain)}` : "/ai-seo/overview/"}
+              href={folderId ? `/ai-seo/overview/?fid=${encodeURIComponent(folderId)}` : domain ? `/ai-seo/overview/?domain=${encodeURIComponent(domain)}` : "/ai-seo/overview/"}
               className={cn("text-[13px] font-medium hover:underline", SM.stub)}
             >
               {ko ? "전체 보고서 보기 →" : "View full report →"}

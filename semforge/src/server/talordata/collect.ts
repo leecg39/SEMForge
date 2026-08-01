@@ -18,6 +18,7 @@ import {
   fetchSerp,
   type AiOverviewInfo,
   type LocalResultItem,
+  type SerpPaidItem,
   type SerpEngine,
   type SerpOrganicItem,
 } from "@/server/talordata/client";
@@ -103,6 +104,8 @@ export interface KeywordSerpCollection {
   keywordMetricId: string;
   capturedAt: Date;
   results: SerpOrganicItem[];
+  paid: SerpPaidItem[];
+  shoppingAvailability: "available" | "unavailable";
   features: string[];
   /**
    * AIO 출현/인용 정보. 캐시 재사용 시에는 스냅샷에 인용 소스가 저장되지
@@ -116,6 +119,17 @@ export interface KeywordSerpCollection {
   localResults?: LocalResultItem[];
   /** true 면 TTL 이내의 기존 스냅샷을 재사용했다 (외부 API 미호출). */
   fromCache: boolean;
+}
+
+function parseResultMetadata(value: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
 }
 
 /** TTL 이내의 최신 라이브(talordata) 스냅샷을 SERP 결과 형태로 복원한다. */
@@ -182,6 +196,7 @@ async function findFreshSnapshot(input: {
   if (rows.length === 0) return null;
 
   const cachedFeatures = parseSerpFeatures(rows[0].serpFeatures);
+  const cachedMetadata = parseResultMetadata(rows[0].resultMetadata);
   return {
     keywordMetricId: latest.keywordMetricId,
     capturedAt: latest.capturedAt,
@@ -195,6 +210,26 @@ async function findFreshSnapshot(input: {
         displayLink: null,
         description: row.description,
       })),
+    paid: rows
+      .filter((row) => row.isAd)
+      .map((row) => {
+        const metadata = parseResultMetadata(row.resultMetadata);
+        return {
+          position: row.position,
+          kind: row.resultType === "shopping_ad" ? "shopping_ad" : "search_ad",
+          placement: row.adPlacement ?? "unknown",
+          title: row.title ?? "",
+          link: row.url,
+          domain: row.domain,
+          displayLink: typeof metadata.displayLink === "string" ? metadata.displayLink : null,
+          description: row.description,
+          advertiser: typeof metadata.advertiser === "string" ? metadata.advertiser : null,
+          price: typeof metadata.price === "string" ? metadata.price : null,
+          imageUrl: typeof metadata.imageUrl === "string" ? metadata.imageUrl : null,
+        } satisfies SerpPaidItem;
+      }),
+    shoppingAvailability:
+      cachedMetadata.shoppingAvailability === "available" ? "available" : "unavailable",
     features: cachedFeatures,
     aiOverview: {
       present: cachedFeatures.includes("ai_overview"),
@@ -265,12 +300,45 @@ export async function collectKeywordSerp(input: {
           url: item.link,
           position: item.position,
           isAd: false,
+          resultType: "organic" as const,
+          adPlacement: "unknown" as const,
           title: item.title || null,
           description: item.description,
           serpFeatures: JSON.stringify(serp.features),
+          resultMetadata: JSON.stringify({ shoppingAvailability: serp.shoppingAvailability }),
           source: "talordata",
           capturedAt: serp.capturedAt,
         }))
+      )
+      .onConflictDoNothing();
+  }
+  if (serp.paid.length > 0) {
+    await db
+      .insert(serpSnapshots)
+      .values(
+        serp.paid.map((item) => ({
+          id: newId("srp"),
+          keywordMetricId,
+          searchEngine: serp.engine,
+          domain: item.domain || item.link,
+          url: item.link,
+          position: item.position,
+          isAd: true,
+          resultType: item.kind,
+          adPlacement: item.placement,
+          title: item.title || null,
+          description: item.description,
+          serpFeatures: JSON.stringify(serp.features),
+          resultMetadata: JSON.stringify({
+            shoppingAvailability: serp.shoppingAvailability,
+            displayLink: item.displayLink,
+            advertiser: item.advertiser,
+            price: item.price,
+            imageUrl: item.imageUrl,
+          }),
+          source: "talordata",
+          capturedAt: serp.capturedAt,
+        })),
       )
       .onConflictDoNothing();
   }
@@ -279,6 +347,8 @@ export async function collectKeywordSerp(input: {
     keywordMetricId,
     capturedAt: serp.capturedAt,
     results: serp.organic,
+    paid: serp.paid,
+    shoppingAvailability: serp.shoppingAvailability,
     features: serp.features,
     aiOverview: serp.aiOverview,
     localResults: serp.localResults,
@@ -357,10 +427,10 @@ export async function collectCampaignRankings(
   if (!campaign) {
     throw new ApiError("NOT_FOUND", "포지션 추적 캠페인을 찾을 수 없습니다.");
   }
-  if (campaign.searchEngine === "chatgpt") {
+  if (campaign.searchEngine === "chatgpt" || campaign.searchEngine === "gemini") {
     throw new ApiError(
       "VALIDATION_ERROR",
-      "ChatGPT 엔진은 SERP API 로 수집할 수 없습니다. Google/Bing 캠페인에서 수집하세요."
+      "AI 엔진은 기존 SERP 수집 API로 수집할 수 없습니다. 실행 기반 포지션 추적 API를 사용하세요."
     );
   }
 

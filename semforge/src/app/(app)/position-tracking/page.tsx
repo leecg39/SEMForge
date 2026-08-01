@@ -7,7 +7,7 @@ import {
 import { PositionTrackingLanding } from "@/components/position-tracking/PositionTrackingLanding";
 import { PositionTrackingProjects } from "@/components/position-tracking/PositionTrackingProjects";
 import { db } from "@/db/client";
-import { positionTrackingCampaigns } from "@/db/schema";
+import { positionTrackingCampaigns, positionTrackingRuns } from "@/db/schema";
 import { getCampaignListSummary } from "@/server/position-tracking/overview";
 import { pageSession } from "@/server/page-auth";
 
@@ -16,13 +16,14 @@ export const dynamic = "force-dynamic";
 export default async function PositionTrackingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ campaign?: string | string[] }>;
+  searchParams: Promise<{ campaign?: string | string[]; run?: string | string[] }>;
 }) {
   const { auth, capabilities } = await pageSession();
   const query = await searchParams;
   const requestedCampaignId = Array.isArray(query.campaign)
     ? query.campaign[0]
     : query.campaign;
+  const requestedRunId = Array.isArray(query.run) ? query.run[0] : query.run;
 
   const campaigns: CampaignSummary[] = await db
     .select({
@@ -50,6 +51,19 @@ export default async function PositionTrackingPage({
   const orderedCampaigns = selectedCampaign
     ? [selectedCampaign, ...campaigns.filter((campaign) => campaign.id !== selectedCampaign.id)]
     : campaigns;
+  const validRunRows = selectedCampaign && requestedRunId
+    ? await db
+        .select({ id: positionTrackingRuns.id })
+        .from(positionTrackingRuns)
+        .where(
+          and(
+            eq(positionTrackingRuns.id, requestedRunId),
+            eq(positionTrackingRuns.workspaceId, auth.workspaceId),
+            eq(positionTrackingRuns.campaignId, selectedCampaign.id),
+          ),
+        )
+        .limit(1)
+    : [];
 
   // 캠페인이 있으면 원본처럼 프로젝트 목록 테이블을, 없으면 소개 랜딩을 보여준다.
   const listItems = !selectedCampaign && campaigns.length > 0
@@ -62,6 +76,7 @@ export default async function PositionTrackingPage({
         <PositionTrackingDashboard
           campaigns={orderedCampaigns}
           canCollect={Boolean(capabilities.create)}
+          initialRunId={validRunRows[0]?.id}
         />
       ) : listItems ? (
         <PositionTrackingProjects

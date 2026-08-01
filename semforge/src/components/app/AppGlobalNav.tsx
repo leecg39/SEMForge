@@ -14,7 +14,7 @@ export function AppGlobalNav({ activeKey }: { activeKey: string }) {
   return (
     <aside
       aria-label={tx("Toolkits")}
-      className="sticky top-[56px] z-30 hidden h-[calc(100dvh-56px)] w-[64px] shrink-0 flex-col items-center gap-[2px] overflow-y-auto border-r border-app-border bg-white pb-4 pt-2 lg:flex"
+      className="sticky top-[56px] z-30 hidden h-[calc(100dvh-56px)] w-[64px] shrink-0 flex-col items-center gap-[2px] overflow-y-auto border-r border-app-border bg-white pb-4 pt-2 min-[1025px]:flex"
     >
       {globalNav.map((item) => {
         const Icon = appIcons[item.icon];

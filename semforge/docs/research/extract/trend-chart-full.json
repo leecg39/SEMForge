@@ -1,0 +1,1560 @@
+{
+ "tag": "div",
+ "s": {
+  "fontSize": "12px",
+  "fontWeight": "400",
+  "lineHeight": "12px",
+  "color": "rgb(51, 51, 51)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "width": "1084.88px",
+  "height": "327px",
+  "display": "block",
+  "flexDirection": "row",
+  "borderRadius": "0px 0px 8px 8px",
+  "border": "0px none rgb(51, 51, 51)",
+  "borderBottom": "0px none rgb(51, 51, 51)",
+  "boxShadow": "rgba(0, 21, 16, 0.07) 0px 0px 1px 0px, rgba(0, 21, 16, 0.07) 0px 1px 3px 0px",
+  "textAlign": "start",
+  "opacity": "1",
+  "fill": "rgb(0, 0, 0)"
+ },
+ "kids": [
+  {
+   "tag": "div",
+   "s": {
+    "fontSize": "12px",
+    "fontWeight": "400",
+    "lineHeight": "12px",
+    "color": "rgb(51, 51, 51)",
+    "margin": "20px 20px 0px",
+    "width": "1044.88px",
+    "height": "24px",
+    "display": "flex",
+    "flexDirection": "row",
+    "justifyContent": "space-between",
+    "alignItems": "center",
+    "border": "0px none rgb(51, 51, 51)",
+    "borderBottom": "0px none rgb(51, 51, 51)",
+    "textAlign": "start",
+    "opacity": "1",
+    "fill": "rgb(0, 0, 0)"
+   },
+   "kids": [
+    {
+     "tag": "div",
+     "s": {
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "lineHeight": "12px",
+      "color": "rgb(51, 51, 51)",
+      "width": "104.469px",
+      "height": "24px",
+      "display": "flex",
+      "flexDirection": "row",
+      "alignItems": "center",
+      "border": "0px none rgb(51, 51, 51)",
+      "borderBottom": "0px none rgb(51, 51, 51)",
+      "textAlign": "start",
+      "opacity": "1",
+      "fill": "rgb(0, 0, 0)"
+     },
+     "kids": [
+      {
+       "tag": "div",
+       "s": {
+        "fontSize": "12px",
+        "fontWeight": "400",
+        "lineHeight": "12px",
+        "color": "rgb(51, 51, 51)",
+        "width": "104.469px",
+        "height": "24px",
+        "display": "block",
+        "flexDirection": "row",
+        "border": "0px none rgb(51, 51, 51)",
+        "borderBottom": "0px none rgb(51, 51, 51)",
+        "textAlign": "start",
+        "whiteSpace": "nowrap",
+        "cursor": "help",
+        "opacity": "1",
+        "fill": "rgb(0, 0, 0)"
+       },
+       "kids": [
+        {
+         "tag": "div",
+         "s": {
+          "fontSize": "12px",
+          "fontWeight": "400",
+          "lineHeight": "12px",
+          "color": "rgb(51, 51, 51)",
+          "width": "104.469px",
+          "height": "24px",
+          "display": "inline-block",
+          "flexDirection": "row",
+          "border": "0px none rgb(51, 51, 51)",
+          "borderBottom": "0px none rgb(51, 51, 51)",
+          "textAlign": "start",
+          "whiteSpace": "nowrap",
+          "cursor": "help",
+          "opacity": "1",
+          "fill": "rgb(0, 0, 0)"
+         },
+         "kids": [
+          {
+           "tag": "span",
+           "text": "자연 키워드 추세",
+           "s": {
+            "fontSize": "16px",
+            "fontWeight": "700",
+            "lineHeight": "24px",
+            "color": "rgb(51, 51, 51)",
+            "display": "inline",
+            "flexDirection": "row",
+            "border": "0px none rgb(51, 51, 51)",
+            "borderBottom": "0px none rgb(51, 51, 51)",
+            "textAlign": "start",
+            "whiteSpace": "nowrap",
+            "cursor": "help",
+            "opacity": "1",
+            "fill": "rgb(0, 0, 0)"
+           },
+           "kids": []
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "tag": "svg",
+     "a": {
+      "role": "button",
+      "aria-label": "트렌드 데이터 숨기기"
+     },
+     "s": {
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "lineHeight": "12px",
+      "color": "oklch(0.74 0.003 165.2)",
+      "width": "16px",
+      "height": "16px",
+      "display": "block",
+      "flexDirection": "row",
+      "border": "0px none oklch(0.74 0.003 165.2)",
+      "borderBottom": "0px none oklch(0.74 0.003 165.2)",
+      "textAlign": "start",
+      "cursor": "pointer",
+      "opacity": "1",
+      "fill": "oklch(0.74 0.003 165.2)"
+     },
+     "svg": "<svg role=\"button\" tabindex=\"0\" class=\"___SIcon_1ma42_gg_ __interactive_1ma42_gg_ _inAfterOutline_false_w9nx7_gg_ ___SBox_w9nx7_gg_\" data-ui-name=\"Close\" width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" focusable=\"true\" data-name=\"Close\" data-group=\"m\" color=\"gray-300\" data-at=\"close-widget\" aria-label=\"트렌드 데이터 숨기기\" data-path=\"Overview.mini_trends.close\" style=\"--color_1ma42: var(--gray-300, oklch(0.74 0.003 165.2));\"><path d=\"M3.758 3.758a1 1 0 0 0 0 1.414L6.586 8l-2.828 2.828a1 1 0 1 0 1.414 1.414L8 9.414l2.828 2.828a1 1 0 1 0 1.414-1.414L9.414 8l2.828-2.828a1 1 0 1 0-1.414-1.414L8 6.586 5.172 3.758a1 1 0 0 0-1.414 0Z\" shape-rendering=\"geometricPrecision\"></path></svg>"
+    }
+   ]
+  },
+  {
+   "tag": "div",
+   "s": {
+    "fontSize": "12px",
+    "fontWeight": "400",
+    "lineHeight": "12px",
+    "color": "rgba(1, 5, 0, 0.898)",
+    "padding": "20px",
+    "width": "1044.88px",
+    "height": "243px",
+    "display": "block",
+    "flexDirection": "row",
+    "border": "0px none rgba(1, 5, 0, 0.898)",
+    "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+    "textAlign": "start",
+    "opacity": "1",
+    "fill": "rgb(0, 0, 0)"
+   },
+   "kids": [
+    {
+     "tag": "div",
+     "s": {
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "lineHeight": "12px",
+      "color": "rgba(1, 5, 0, 0.898)",
+      "width": "1044.88px",
+      "height": "243px",
+      "display": "block",
+      "flexDirection": "row",
+      "border": "0px none rgba(1, 5, 0, 0.898)",
+      "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+      "textAlign": "start",
+      "opacity": "1",
+      "fill": "rgb(0, 0, 0)"
+     },
+     "kids": [
+      {
+       "tag": "div",
+       "s": {
+        "fontSize": "12px",
+        "fontWeight": "400",
+        "lineHeight": "12px",
+        "color": "rgba(1, 5, 0, 0.898)",
+        "margin": "0px 0px 20px",
+        "width": "1044.88px",
+        "height": "28px",
+        "display": "flex",
+        "flexDirection": "row",
+        "justifyContent": "space-between",
+        "border": "0px none rgba(1, 5, 0, 0.898)",
+        "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+        "textAlign": "start",
+        "opacity": "1",
+        "fill": "rgb(0, 0, 0)"
+       },
+       "kids": [
+        {
+         "tag": "div",
+         "s": {
+          "fontSize": "12px",
+          "fontWeight": "400",
+          "lineHeight": "12px",
+          "color": "rgba(1, 5, 0, 0.898)",
+          "width": "633.969px",
+          "height": "28px",
+          "display": "flex",
+          "flexDirection": "row",
+          "alignItems": "center",
+          "border": "0px none rgba(1, 5, 0, 0.898)",
+          "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+          "textAlign": "start",
+          "opacity": "1",
+          "fill": "rgb(0, 0, 0)"
+         },
+         "kids": [
+          {
+           "tag": "div",
+           "a": {
+            "role": "group",
+            "aria-label": "표시할 포지션"
+           },
+           "s": {
+            "fontSize": "12px",
+            "fontWeight": "400",
+            "lineHeight": "12px",
+            "color": "rgba(1, 5, 0, 0.898)",
+            "width": "510.969px",
+            "height": "19.875px",
+            "display": "flex",
+            "flexDirection": "row",
+            "alignItems": "flex-start",
+            "gap": "8px 16px",
+            "border": "0px none rgba(1, 5, 0, 0.898)",
+            "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+            "textAlign": "start",
+            "opacity": "1",
+            "fill": "rgb(0, 0, 0)"
+           },
+           "kids": [
+            {
+             "tag": "div",
+             "a": {
+              "aria-label": "상위 3개 키워드"
+             },
+             "s": {
+              "fontSize": "12px",
+              "fontWeight": "400",
+              "lineHeight": "12px",
+              "color": "rgba(1, 5, 0, 0.898)",
+              "width": "72.9219px",
+              "height": "19.875px",
+              "display": "flex",
+              "flexDirection": "row",
+              "alignItems": "flex-start",
+              "border": "0px none rgba(1, 5, 0, 0.898)",
+              "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+              "textAlign": "start",
+              "opacity": "1",
+              "fill": "rgb(0, 0, 0)"
+             },
+             "kids": [
+              {
+               "tag": "label",
+               "s": {
+                "fontSize": "12px",
+                "fontWeight": "400",
+                "lineHeight": "12px",
+                "color": "rgba(1, 5, 0, 0.898)",
+                "width": "24px",
+                "height": "18px",
+                "display": "flex",
+                "flexDirection": "row",
+                "alignItems": "flex-start",
+                "border": "0px none rgba(1, 5, 0, 0.898)",
+                "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                "textAlign": "start",
+                "cursor": "pointer",
+                "opacity": "1",
+                "fill": "rgb(0, 0, 0)"
+               },
+               "kids": [
+                {
+                 "tag": "input",
+                 "a": {
+                  "type": "checkbox",
+                  "checkedProp": true
+                 },
+                 "s": {
+                  "fontSize": "13.3333px",
+                  "fontWeight": "400",
+                  "color": "rgb(0, 0, 0)",
+                  "margin": "3px 3px 3px 4px",
+                  "width": "1px",
+                  "height": "1px",
+                  "display": "block",
+                  "flexDirection": "row",
+                  "border": "0px none rgb(0, 0, 0)",
+                  "borderBottom": "0px none rgb(0, 0, 0)",
+                  "textAlign": "start",
+                  "cursor": "default",
+                  "opacity": "1",
+                  "fill": "rgb(0, 0, 0)"
+                 },
+                 "kids": []
+                },
+                {
+                 "tag": "span",
+                 "s": {
+                  "fontSize": "12px",
+                  "fontWeight": "400",
+                  "lineHeight": "12px",
+                  "color": "rgba(1, 5, 0, 0.898)",
+                  "margin": "2px 0px 0px",
+                  "width": "16px",
+                  "height": "16px",
+                  "display": "flex",
+                  "flexDirection": "row",
+                  "border": "0px none rgba(1, 5, 0, 0.898)",
+                  "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                  "textAlign": "start",
+                  "cursor": "pointer",
+                  "opacity": "1",
+                  "fill": "rgb(0, 0, 0)"
+                 },
+                 "kids": []
+                },
+                {
+                 "tag": "span",
+                 "s": {
+                  "fontSize": "14px",
+                  "fontWeight": "400",
+                  "lineHeight": "19.88px",
+                  "color": "rgba(1, 5, 0, 0.898)",
+                  "margin": "0px 0px 0px 8px",
+                  "display": "block",
+                  "flexDirection": "row",
+                  "border": "0px none rgba(1, 5, 0, 0.898)",
+                  "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                  "textAlign": "start",
+                  "cursor": "pointer",
+                  "opacity": "1",
+                  "fill": "rgb(0, 0, 0)"
+                 },
+                 "kids": []
+                }
+               ]
+              },
+              {
+               "tag": "span",
+               "text": "상위 3개",
+               "a": {
+                "aria-label": "상위 3개 키워드"
+               },
+               "s": {
+                "fontSize": "14px",
+                "fontWeight": "400",
+                "lineHeight": "19.88px",
+                "color": "rgba(1, 5, 0, 0.898)",
+                "width": "48.9219px",
+                "height": "19.875px",
+                "display": "block",
+                "flexDirection": "row",
+                "border": "0px none rgba(1, 5, 0, 0.898)",
+                "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                "textAlign": "start",
+                "opacity": "1",
+                "fill": "rgb(0, 0, 0)"
+               },
+               "kids": []
+              }
+             ]
+            },
+            {
+             "tag": "div",
+             "a": {
+              "aria-label": "상위 4~10개 키워드"
+             },
+             "s": {
+              "fontSize": "12px",
+              "fontWeight": "400",
+              "lineHeight": "12px",
+              "color": "rgba(1, 5, 0, 0.898)",
+              "width": "54.0156px",
+              "height": "19.875px",
+              "display": "flex",
+              "flexDirection": "row",
+              "alignItems": "flex-start",
+              "border": "0px none rgba(1, 5, 0, 0.898)",
+              "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+              "textAlign": "start",
+              "opacity": "1",
+              "fill": "rgb(0, 0, 0)"
+             },
+             "kids": [
+              {
+               "tag": "label",
+               "s": {
+                "fontSize": "12px",
+                "fontWeight": "400",
+                "lineHeight": "12px",
+                "color": "rgba(1, 5, 0, 0.898)",
+                "width": "24px",
+                "height": "18px",
+                "display": "flex",
+                "flexDirection": "row",
+                "alignItems": "flex-start",
+                "border": "0px none rgba(1, 5, 0, 0.898)",
+                "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                "textAlign": "start",
+                "cursor": "pointer",
+                "opacity": "1",
+                "fill": "rgb(0, 0, 0)"
+               },
+               "kids": [
+                {
+                 "tag": "input",
+                 "a": {
+                  "type": "checkbox",
+                  "checkedProp": true
+                 },
+                 "s": {
+                  "fontSize": "13.3333px",
+                  "fontWeight": "400",
+                  "color": "rgb(0, 0, 0)",
+                  "margin": "3px 3px 3px 4px",
+                  "width": "1px",
+                  "height": "1px",
+                  "display": "block",
+                  "flexDirection": "row",
+                  "border": "0px none rgb(0, 0, 0)",
+                  "borderBottom": "0px none rgb(0, 0, 0)",
+                  "textAlign": "start",
+                  "cursor": "default",
+                  "opacity": "1",
+                  "fill": "rgb(0, 0, 0)"
+                 },
+                 "kids": []
+                },
+                {
+                 "tag": "span",
+                 "s": {
+                  "fontSize": "12px",
+                  "fontWeight": "400",
+                  "lineHeight": "12px",
+                  "color": "rgba(1, 5, 0, 0.898)",
+                  "margin": "2px 0px 0px",
+                  "width": "16px",
+                  "height": "16px",
+                  "display": "flex",
+                  "flexDirection": "row",
+                  "border": "0px none rgba(1, 5, 0, 0.898)",
+                  "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                  "textAlign": "start",
+                  "cursor": "pointer",
+                  "opacity": "1",
+                  "fill": "rgb(0, 0, 0)"
+                 },
+                 "kids": []
+                },
+                {
+                 "tag": "span",
+                 "s": {
+                  "fontSize": "14px",
+                  "fontWeight": "400",
+                  "lineHeight": "19.88px",
+                  "color": "rgba(1, 5, 0, 0.898)",
+                  "margin": "0px 0px 0px 8px",
+                  "display": "block",
+                  "flexDirection": "row",
+                  "border": "0px none rgba(1, 5, 0, 0.898)",
+                  "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                  "textAlign": "start",
+                  "cursor": "pointer",
+                  "opacity": "1",
+                  "fill": "rgb(0, 0, 0)"
+                 },
+                 "kids": []
+                }
+               ]
+              },
+              {
+               "tag": "span",
+               "text": "4-10",
+               "a": {
+                "aria-label": "상위 4~10개 키워드"
+               },
+               "s": {
+                "fontSize": "14px",
+                "fontWeight": "400",
+                "lineHeight": "19.88px",
+                "color": "rgba(1, 5, 0, 0.898)",
+                "width": "30.0156px",
+                "height": "19.875px",
+                "display": "block",
+                "flexDirection": "row",
+                "border": "0px none rgba(1, 5, 0, 0.898)",
+                "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                "textAlign": "start",
+                "opacity": "1",
+                "fill": "rgb(0, 0, 0)"
+               },
+               "kids": []
+              }
+             ]
+            },
+            {
+             "tag": "div",
+             "a": {
+              "aria-label": "상위 11~20개 키워드"
+             },
+             "s": {
+              "fontSize": "12px",
+              "fontWeight": "400",
+              "lineHeight": "12px",
+              "color": "rgba(1, 5, 0, 0.898)",
+              "width": "58.7344px",
+              "height": "19.875px",
+              "display": "flex",
+              "flexDirection": "row",
+              "alignItems": "flex-start",
+              "border": "0px none rgba(1, 5, 0, 0.898)",
+              "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+              "textAlign": "start",
+              "opacity": "1",
+              "fill": "rgb(0, 0, 0)"
+             },
+             "kids": [
+              {
+               "tag": "label",
+               "s": {
+                "fontSize": "12px",
+                "fontWeight": "400",
+                "lineHeight": "12px",
+                "color": "rgba(1, 5, 0, 0.898)",
+                "width": "24px",
+                "height": "18px",
+                "display": "flex",
+                "flexDirection": "row",
+                "alignItems": "flex-start",
+                "border": "0px none rgba(1, 5, 0, 0.898)",
+                "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                "textAlign": "start",
+                "cursor": "pointer",
+                "opacity": "1",
+                "fill": "rgb(0, 0, 0)"
+               },
+               "kids": [
+                {
+                 "tag": "input",
+                 "a": {
+                  "type": "checkbox",
+                  "checkedProp": true
+                 },
+                 "s": {
+                  "fontSize": "13.3333px",
+                  "fontWeight": "400",
+                  "color": "rgb(0, 0, 0)",
+                  "margin": "3px 3px 3px 4px",
+                  "width": "1px",
+                  "height": "1px",
+                  "display": "block",
+                  "flexDirection": "row",
+                  "border": "0px none rgb(0, 0, 0)",
+                  "borderBottom": "0px none rgb(0, 0, 0)",
+                  "textAlign": "start",
+                  "cursor": "default",
+                  "opacity": "1",
+                  "fill": "rgb(0, 0, 0)"
+                 },
+                 "kids": []
+                },
+                {
+                 "tag": "span",
+                 "s": {
+                  "fontSize": "12px",
+                  "fontWeight": "400",
+                  "lineHeight": "12px",
+                  "color": "rgba(1, 5, 0, 0.898)",
+                  "margin": "2px 0px 0px",
+                  "width": "16px",
+                  "height": "16px",
+                  "display": "flex",
+                  "flexDirection": "row",
+                  "border": "0px none rgba(1, 5, 0, 0.898)",
+                  "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                  "textAlign": "start",
+                  "cursor": "pointer",
+                  "opacity": "1",
+                  "fill": "rgb(0, 0, 0)"
+                 },
+                 "kids": []
+                },
+                {
+                 "tag": "span",
+                 "s": {
+                  "fontSize": "14px",
+                  "fontWeight": "400",
+                  "lineHeight": "19.88px",
+                  "color": "rgba(1, 5, 0, 0.898)",
+                  "margin": "0px 0px 0px 8px",
+                  "display": "block",
+                  "flexDirection": "row",
+                  "border": "0px none rgba(1, 5, 0, 0.898)",
+                  "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                  "textAlign": "start",
+                  "cursor": "pointer",
+                  "opacity": "1",
+                  "fill": "rgb(0, 0, 0)"
+                 },
+                 "kids": []
+                }
+               ]
+              },
+              {
+               "tag": "span",
+               "text": "11-20",
+               "a": {
+                "aria-label": "상위 11~20개 키워드"
+               },
+               "s": {
+                "fontSize": "14px",
+                "fontWeight": "400",
+                "lineHeight": "19.88px",
+                "color": "rgba(1, 5, 0, 0.898)",
+                "width": "34.7344px",
+                "height": "19.875px",
+                "display": "block",
+                "flexDirection": "row",
+                "border": "0px none rgba(1, 5, 0, 0.898)",
+                "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                "textAlign": "start",
+                "opacity": "1",
+                "fill": "rgb(0, 0, 0)"
+               },
+               "kids": []
+              }
+             ]
+            },
+            {
+             "tag": "div",
+             "a": {
+              "aria-label": "상위 21~50개 키워드"
+             },
+             "s": {
+              "fontSize": "12px",
+              "fontWeight": "400",
+              "lineHeight": "12px",
+              "color": "rgba(1, 5, 0, 0.898)",
+              "width": "61.8125px",
+              "height": "19.875px",
+              "display": "flex",
+              "flexDirection": "row",
+              "alignItems": "flex-start",
+              "border": "0px none rgba(1, 5, 0, 0.898)",
+              "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+              "textAlign": "start",
+              "opacity": "1",
+              "fill": "rgb(0, 0, 0)"
+             },
+             "kids": [
+              {
+               "tag": "label",
+               "s": {
+                "fontSize": "12px",
+                "fontWeight": "400",
+                "lineHeight": "12px",
+                "color": "rgba(1, 5, 0, 0.898)",
+                "width": "24px",
+                "height": "18px",
+                "display": "flex",
+                "flexDirection": "row",
+                "alignItems": "flex-start",
+                "border": "0px none rgba(1, 5, 0, 0.898)",
+                "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                "textAlign": "start",
+                "cursor": "pointer",
+                "opacity": "1",
+                "fill": "rgb(0, 0, 0)"
+               },
+               "kids": [
+                {
+                 "tag": "input",
+                 "a": {
+                  "type": "checkbox",
+                  "checkedProp": true
+                 },
+                 "s": {
+                  "fontSize": "13.3333px",
+                  "fontWeight": "400",
+                  "color": "rgb(0, 0, 0)",
+                  "margin": "3px 3px 3px 4px",
+                  "width": "1px",
+                  "height": "1px",
+                  "display": "block",
+                  "flexDirection": "row",
+                  "border": "0px none rgb(0, 0, 0)",
+                  "borderBottom": "0px none rgb(0, 0, 0)",
+                  "textAlign": "start",
+                  "cursor": "default",
+                  "opacity": "1",
+                  "fill": "rgb(0, 0, 0)"
+                 },
+                 "kids": []
+                },
+                {
+                 "tag": "span",
+                 "s": {
+                  "fontSize": "12px",
+                  "fontWeight": "400",
+                  "lineHeight": "12px",
+                  "color": "rgba(1, 5, 0, 0.898)",
+                  "margin": "2px 0px 0px",
+                  "width": "16px",
+                  "height": "16px",
+                  "display": "flex",
+                  "flexDirection": "row",
+                  "border": "0px none rgba(1, 5, 0, 0.898)",
+                  "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                  "textAlign": "start",
+                  "cursor": "pointer",
+                  "opacity": "1",
+                  "fill": "rgb(0, 0, 0)"
+                 },
+                 "kids": []
+                },
+                {
+                 "tag": "span",
+                 "s": {
+                  "fontSize": "14px",
+                  "fontWeight": "400",
+                  "lineHeight": "19.88px",
+                  "color": "rgba(1, 5, 0, 0.898)",
+                  "margin": "0px 0px 0px 8px",
+                  "display": "block",
+                  "flexDirection": "row",
+                  "border": "0px none rgba(1, 5, 0, 0.898)",
+                  "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                  "textAlign": "start",
+                  "cursor": "pointer",
+                  "opacity": "1",
+                  "fill": "rgb(0, 0, 0)"
+                 },
+                 "kids": []
+                }
+               ]
+              },
+              {
+               "tag": "span",
+               "text": "21-50",
+               "a": {
+                "aria-label": "상위 21~50개 키워드"
+               },
+               "s": {
+                "fontSize": "14px",
+                "fontWeight": "400",
+                "lineHeight": "19.88px",
+                "color": "rgba(1, 5, 0, 0.898)",
+                "width": "37.8125px",
+                "height": "19.875px",
+                "display": "block",
+                "flexDirection": "row",
+                "border": "0px none rgba(1, 5, 0, 0.898)",
+                "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                "textAlign": "start",
+                "opacity": "1",
+                "fill": "rgb(0, 0, 0)"
+               },
+               "kids": []
+              }
+             ]
+            },
+            {
+             "tag": "div",
+             "a": {
+              "aria-label": "상위 51~100개 키워드"
+             },
+             "s": {
+              "fontSize": "12px",
+              "fontWeight": "400",
+              "lineHeight": "12px",
+              "color": "rgba(1, 5, 0, 0.898)",
+              "width": "67.8125px",
+              "height": "19.875px",
+              "display": "flex",
+              "flexDirection": "row",
+              "alignItems": "flex-start",
+              "border": "0px none rgba(1, 5, 0, 0.898)",
+              "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+              "textAlign": "start",
+              "opacity": "1",
+              "fill": "rgb(0, 0, 0)"
+             },
+             "kids": [
+              {
+               "tag": "label",
+               "s": {
+                "fontSize": "12px",
+                "fontWeight": "400",
+                "lineHeight": "12px",
+                "color": "rgba(1, 5, 0, 0.898)",
+                "width": "24px",
+                "height": "18px",
+                "display": "flex",
+                "flexDirection": "row",
+                "alignItems": "flex-start",
+                "border": "0px none rgba(1, 5, 0, 0.898)",
+                "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                "textAlign": "start",
+                "cursor": "pointer",
+                "opacity": "1",
+                "fill": "rgb(0, 0, 0)"
+               },
+               "kids": [
+                {
+                 "tag": "input",
+                 "a": {
+                  "type": "checkbox",
+                  "checkedProp": true
+                 },
+                 "s": {
+                  "fontSize": "13.3333px",
+                  "fontWeight": "400",
+                  "color": "rgb(0, 0, 0)",
+                  "margin": "3px 3px 3px 4px",
+                  "width": "1px",
+                  "height": "1px",
+                  "display": "block",
+                  "flexDirection": "row",
+                  "border": "0px none rgb(0, 0, 0)",
+                  "borderBottom": "0px none rgb(0, 0, 0)",
+                  "textAlign": "start",
+                  "cursor": "default",
+                  "opacity": "1",
+                  "fill": "rgb(0, 0, 0)"
+                 },
+                 "kids": []
+                },
+                {
+                 "tag": "span",
+                 "s": {
+                  "fontSize": "12px",
+                  "fontWeight": "400",
+                  "lineHeight": "12px",
+                  "color": "rgba(1, 5, 0, 0.898)",
+                  "margin": "2px 0px 0px",
+                  "width": "16px",
+                  "height": "16px",
+                  "display": "flex",
+                  "flexDirection": "row",
+                  "border": "0px none rgba(1, 5, 0, 0.898)",
+                  "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                  "textAlign": "start",
+                  "cursor": "pointer",
+                  "opacity": "1",
+                  "fill": "rgb(0, 0, 0)"
+                 },
+                 "kids": []
+                },
+                {
+                 "tag": "span",
+                 "s": {
+                  "fontSize": "14px",
+                  "fontWeight": "400",
+                  "lineHeight": "19.88px",
+                  "color": "rgba(1, 5, 0, 0.898)",
+                  "margin": "0px 0px 0px 8px",
+                  "display": "block",
+                  "flexDirection": "row",
+                  "border": "0px none rgba(1, 5, 0, 0.898)",
+                  "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                  "textAlign": "start",
+                  "cursor": "pointer",
+                  "opacity": "1",
+                  "fill": "rgb(0, 0, 0)"
+                 },
+                 "kids": []
+                }
+               ]
+              },
+              {
+               "tag": "span",
+               "text": "51-100",
+               "a": {
+                "aria-label": "상위 51~100개 키워드"
+               },
+               "s": {
+                "fontSize": "14px",
+                "fontWeight": "400",
+                "lineHeight": "19.88px",
+                "color": "rgba(1, 5, 0, 0.898)",
+                "width": "43.8125px",
+                "height": "19.875px",
+                "display": "block",
+                "flexDirection": "row",
+                "border": "0px none rgba(1, 5, 0, 0.898)",
+                "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                "textAlign": "start",
+                "opacity": "1",
+                "fill": "rgb(0, 0, 0)"
+               },
+               "kids": []
+              }
+             ]
+            },
+            {
+             "tag": "div",
+             "a": {
+              "aria-label": "SERP 구성 요소"
+             },
+             "s": {
+              "fontSize": "12px",
+              "fontWeight": "400",
+              "lineHeight": "12px",
+              "color": "rgba(1, 5, 0, 0.898)",
+              "width": "115.672px",
+              "height": "19.875px",
+              "display": "flex",
+              "flexDirection": "row",
+              "alignItems": "flex-start",
+              "border": "0px none rgba(1, 5, 0, 0.898)",
+              "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+              "textAlign": "start",
+              "opacity": "1",
+              "fill": "rgb(0, 0, 0)"
+             },
+             "kids": [
+              {
+               "tag": "label",
+               "s": {
+                "fontSize": "12px",
+                "fontWeight": "400",
+                "lineHeight": "12px",
+                "color": "rgba(1, 5, 0, 0.898)",
+                "width": "24px",
+                "height": "18px",
+                "display": "flex",
+                "flexDirection": "row",
+                "alignItems": "flex-start",
+                "border": "0px none rgba(1, 5, 0, 0.898)",
+                "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                "textAlign": "start",
+                "cursor": "pointer",
+                "opacity": "1",
+                "fill": "rgb(0, 0, 0)"
+               },
+               "kids": [
+                {
+                 "tag": "input",
+                 "a": {
+                  "type": "checkbox",
+                  "checkedProp": true
+                 },
+                 "s": {
+                  "fontSize": "13.3333px",
+                  "fontWeight": "400",
+                  "color": "rgb(0, 0, 0)",
+                  "margin": "3px 3px 3px 4px",
+                  "width": "1px",
+                  "height": "1px",
+                  "display": "block",
+                  "flexDirection": "row",
+                  "border": "0px none rgb(0, 0, 0)",
+                  "borderBottom": "0px none rgb(0, 0, 0)",
+                  "textAlign": "start",
+                  "cursor": "default",
+                  "opacity": "1",
+                  "fill": "rgb(0, 0, 0)"
+                 },
+                 "kids": []
+                },
+                {
+                 "tag": "span",
+                 "s": {
+                  "fontSize": "12px",
+                  "fontWeight": "400",
+                  "lineHeight": "12px",
+                  "color": "rgba(1, 5, 0, 0.898)",
+                  "margin": "2px 0px 0px",
+                  "width": "16px",
+                  "height": "16px",
+                  "display": "flex",
+                  "flexDirection": "row",
+                  "border": "0px none rgba(1, 5, 0, 0.898)",
+                  "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                  "textAlign": "start",
+                  "cursor": "pointer",
+                  "opacity": "1",
+                  "fill": "rgb(0, 0, 0)"
+                 },
+                 "kids": []
+                },
+                {
+                 "tag": "span",
+                 "s": {
+                  "fontSize": "14px",
+                  "fontWeight": "400",
+                  "lineHeight": "19.88px",
+                  "color": "rgba(1, 5, 0, 0.898)",
+                  "margin": "0px 0px 0px 8px",
+                  "display": "block",
+                  "flexDirection": "row",
+                  "border": "0px none rgba(1, 5, 0, 0.898)",
+                  "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                  "textAlign": "start",
+                  "cursor": "pointer",
+                  "opacity": "1",
+                  "fill": "rgb(0, 0, 0)"
+                 },
+                 "kids": []
+                }
+               ]
+              },
+              {
+               "tag": "span",
+               "text": "SERP 구성 요소",
+               "a": {
+                "aria-label": "SERP 구성 요소"
+               },
+               "s": {
+                "fontSize": "14px",
+                "fontWeight": "400",
+                "lineHeight": "19.88px",
+                "color": "rgba(1, 5, 0, 0.898)",
+                "width": "91.6719px",
+                "height": "19.875px",
+                "display": "block",
+                "flexDirection": "row",
+                "border": "0px none rgba(1, 5, 0, 0.898)",
+                "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                "textAlign": "start",
+                "opacity": "1",
+                "fill": "rgb(0, 0, 0)"
+               },
+               "kids": []
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "tag": "div",
+           "s": {
+            "fontSize": "12px",
+            "fontWeight": "400",
+            "lineHeight": "12px",
+            "color": "rgba(1, 5, 0, 0.898)",
+            "margin": "0px 0px 0px 16px",
+            "width": "106px",
+            "height": "20.875px",
+            "display": "block",
+            "flexDirection": "row",
+            "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+            "textAlign": "start",
+            "opacity": "1",
+            "fill": "rgb(0, 0, 0)"
+           },
+           "kids": [
+            {
+             "tag": "div",
+             "s": {
+              "fontSize": "12px",
+              "fontWeight": "400",
+              "lineHeight": "12px",
+              "color": "rgba(1, 5, 0, 0.898)",
+              "padding": "0px 0px 0px 16px",
+              "width": "90px",
+              "height": "20.875px",
+              "minWidth": "90px",
+              "display": "block",
+              "flexDirection": "row",
+              "border": "0px none rgba(1, 5, 0, 0.898)",
+              "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+              "textAlign": "start",
+              "opacity": "1",
+              "fill": "rgb(0, 0, 0)"
+             },
+             "kids": [
+              {
+               "tag": "div",
+               "a": {
+                "role": "button",
+                "aria-label": "메모 관리",
+                "data-test": "notes-menu-open"
+               },
+               "s": {
+                "fontSize": "12px",
+                "fontWeight": "400",
+                "lineHeight": "12px",
+                "color": "rgba(1, 5, 0, 0.898)",
+                "width": "90px",
+                "height": "20.875px",
+                "display": "flex",
+                "flexDirection": "row",
+                "alignItems": "center",
+                "border": "0px none rgba(1, 5, 0, 0.898)",
+                "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                "textAlign": "start",
+                "cursor": "pointer",
+                "opacity": "1",
+                "fill": "rgb(0, 0, 0)"
+               },
+               "kids": [
+                {
+                 "tag": "svg",
+                 "s": {
+                  "fontSize": "12px",
+                  "fontWeight": "400",
+                  "lineHeight": "12px",
+                  "color": "rgba(1, 5, 0, 0.898)",
+                  "width": "16px",
+                  "height": "16px",
+                  "display": "block",
+                  "flexDirection": "row",
+                  "border": "0px none rgba(1, 5, 0, 0.898)",
+                  "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                  "textAlign": "start",
+                  "cursor": "pointer",
+                  "opacity": "1",
+                  "fill": "rgba(1, 5, 0, 0.898)"
+                 },
+                 "svg": "<svg aria-hidden=\"true\" tabindex=\"-1\" disabled=\"\" class=\"___SIcon_1ma42_gg_ _inAfterOutline_false_w9nx7_gg_ ___SBox_w9nx7_gg_\" data-ui-name=\"Chat\" width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" data-name=\"Chat\" data-group=\"m\"><path d=\"M2 15a1 1 0 0 1-.45-.11A1 1 0 0 1 1 14V1a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H6.39L2.6 14.79A1 1 0 0 1 2 15ZM3 2v10l2.46-1.82a1 1 0 0 1 .6-.2H13v-8L3 2Z\" shape-rendering=\"geometricPrecision\"></path></svg>"
+                },
+                {
+                 "tag": "span",
+                 "text": "메모",
+                 "s": {
+                  "fontSize": "14px",
+                  "fontWeight": "400",
+                  "lineHeight": "19.88px",
+                  "color": "rgba(1, 5, 0, 0.898)",
+                  "margin": "0px 0px 0px 4px",
+                  "width": "24.2344px",
+                  "height": "19.875px",
+                  "display": "block",
+                  "flexDirection": "row",
+                  "borderBottom": "1px solid rgba(0, 0, 0, 0)",
+                  "textAlign": "start",
+                  "cursor": "pointer",
+                  "opacity": "1",
+                  "fill": "rgb(0, 0, 0)"
+                 },
+                 "kids": []
+                },
+                {
+                 "tag": "svg",
+                 "s": {
+                  "fontSize": "12px",
+                  "fontWeight": "400",
+                  "lineHeight": "12px",
+                  "color": "rgba(1, 5, 0, 0.898)",
+                  "margin": "0px 0px 0px 4px",
+                  "width": "16px",
+                  "height": "16px",
+                  "display": "block",
+                  "flexDirection": "row",
+                  "border": "0px none rgba(1, 5, 0, 0.898)",
+                  "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                  "textAlign": "start",
+                  "cursor": "pointer",
+                  "opacity": "1",
+                  "fill": "rgba(1, 5, 0, 0.898)"
+                 },
+                 "svg": "<svg aria-hidden=\"true\" tabindex=\"-1\" disabled=\"\" class=\"___SIcon_1ma42_gg_ _inAfterOutline_false_w9nx7_gg_ ___SBox_w9nx7_gg_\" data-ui-name=\"ChevronDown\" width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" data-name=\"ChevronDown\" data-group=\"m\" style=\"margin-left: 4px;\"><path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M3.293 6.293a1 1 0 0 1 1.414 0L8 9.586l3.293-3.293a1 1 0 1 1 1.414 1.414l-4 4a1 1 0 0 1-1.414 0l-4-4a1 1 0 0 1 0-1.414Z\" shape-rendering=\"geometricPrecision\"></path></svg>"
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "tag": "div",
+         "s": {
+          "fontSize": "12px",
+          "fontWeight": "400",
+          "lineHeight": "12px",
+          "color": "rgba(1, 5, 0, 0.898)",
+          "width": "190.062px",
+          "height": "28px",
+          "display": "block",
+          "flexDirection": "row",
+          "border": "0px none rgba(1, 5, 0, 0.898)",
+          "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+          "textAlign": "start",
+          "opacity": "1",
+          "fill": "rgb(0, 0, 0)"
+         },
+         "kids": [
+          {
+           "tag": "div",
+           "a": {
+            "role": "tablist",
+            "aria-label": "기간"
+           },
+           "s": {
+            "fontSize": "12px",
+            "fontWeight": "400",
+            "lineHeight": "12px",
+            "color": "rgba(1, 5, 0, 0.898)",
+            "width": "190.062px",
+            "height": "28px",
+            "display": "flex",
+            "flexDirection": "row",
+            "border": "0px none rgba(1, 5, 0, 0.898)",
+            "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+            "textAlign": "start",
+            "opacity": "1",
+            "fill": "rgb(0, 0, 0)"
+           },
+           "kids": [
+            {
+             "tag": "button",
+             "a": {
+              "role": "tab",
+              "aria-selected": "false",
+              "type": "button"
+             },
+             "s": {
+              "fontSize": "13.3333px",
+              "fontWeight": "500",
+              "color": "rgba(1, 5, 0, 0.898)",
+              "margin": "0px 16px 0px 0px",
+              "width": "30.0312px",
+              "height": "28px",
+              "minWidth": "18px",
+              "display": "flex",
+              "flexDirection": "row",
+              "justifyContent": "center",
+              "alignItems": "center",
+              "border": "0px none rgba(1, 5, 0, 0.898)",
+              "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+              "textAlign": "center",
+              "whiteSpace": "nowrap",
+              "cursor": "pointer",
+              "opacity": "1",
+              "fill": "rgb(0, 0, 0)"
+             },
+             "kids": [
+              {
+               "tag": "span",
+               "text": "1개월",
+               "s": {
+                "fontSize": "14px",
+                "fontWeight": "500",
+                "lineHeight": "19.88px",
+                "color": "rgba(1, 5, 0, 0.898)",
+                "width": "30.0312px",
+                "height": "19.875px",
+                "display": "block",
+                "flexDirection": "row",
+                "border": "0px none rgba(1, 5, 0, 0.898)",
+                "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                "textAlign": "center",
+                "whiteSpace": "nowrap",
+                "cursor": "pointer",
+                "opacity": "1",
+                "fill": "rgb(0, 0, 0)"
+               },
+               "kids": []
+              }
+             ]
+            },
+            {
+             "tag": "button",
+             "a": {
+              "role": "tab",
+              "aria-selected": "false",
+              "type": "button"
+             },
+             "s": {
+              "fontSize": "13.3333px",
+              "fontWeight": "500",
+              "color": "rgba(1, 5, 0, 0.898)",
+              "margin": "0px 16px 0px 0px",
+              "width": "33.0469px",
+              "height": "28px",
+              "minWidth": "18px",
+              "display": "flex",
+              "flexDirection": "row",
+              "justifyContent": "center",
+              "alignItems": "center",
+              "border": "0px none rgba(1, 5, 0, 0.898)",
+              "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+              "textAlign": "center",
+              "whiteSpace": "nowrap",
+              "cursor": "pointer",
+              "opacity": "1",
+              "fill": "rgb(0, 0, 0)"
+             },
+             "kids": [
+              {
+               "tag": "span",
+               "text": "6개월",
+               "s": {
+                "fontSize": "14px",
+                "fontWeight": "500",
+                "lineHeight": "19.88px",
+                "color": "rgba(1, 5, 0, 0.898)",
+                "width": "33.0469px",
+                "height": "19.875px",
+                "display": "block",
+                "flexDirection": "row",
+                "border": "0px none rgba(1, 5, 0, 0.898)",
+                "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                "textAlign": "center",
+                "whiteSpace": "nowrap",
+                "cursor": "pointer",
+                "opacity": "1",
+                "fill": "rgb(0, 0, 0)"
+               },
+               "kids": []
+              }
+             ]
+            },
+            {
+             "tag": "button",
+             "a": {
+              "role": "tab",
+              "aria-selected": "false",
+              "type": "button"
+             },
+             "s": {
+              "fontSize": "13.3333px",
+              "fontWeight": "500",
+              "color": "rgba(1, 5, 0, 0.898)",
+              "margin": "0px 16px 0px 0px",
+              "width": "18px",
+              "height": "28px",
+              "minWidth": "18px",
+              "display": "flex",
+              "flexDirection": "row",
+              "justifyContent": "center",
+              "alignItems": "center",
+              "border": "0px none rgba(1, 5, 0, 0.898)",
+              "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+              "textAlign": "center",
+              "whiteSpace": "nowrap",
+              "cursor": "pointer",
+              "opacity": "1",
+              "fill": "rgb(0, 0, 0)"
+             },
+             "kids": [
+              {
+               "tag": "span",
+               "text": "1년",
+               "s": {
+                "fontSize": "14px",
+                "fontWeight": "500",
+                "lineHeight": "19.88px",
+                "color": "rgba(1, 5, 0, 0.898)",
+                "width": "17.9219px",
+                "height": "19.875px",
+                "display": "block",
+                "flexDirection": "row",
+                "border": "0px none rgba(1, 5, 0, 0.898)",
+                "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                "textAlign": "center",
+                "whiteSpace": "nowrap",
+                "cursor": "pointer",
+                "opacity": "1",
+                "fill": "rgb(0, 0, 0)"
+               },
+               "kids": []
+              }
+             ]
+            },
+            {
+             "tag": "button",
+             "a": {
+              "role": "tab",
+              "aria-selected": "false",
+              "type": "button"
+             },
+             "s": {
+              "fontSize": "13.3333px",
+              "fontWeight": "500",
+              "color": "rgba(1, 5, 0, 0.898)",
+              "margin": "0px 16px 0px 0px",
+              "width": "20.75px",
+              "height": "28px",
+              "minWidth": "18px",
+              "display": "flex",
+              "flexDirection": "row",
+              "justifyContent": "center",
+              "alignItems": "center",
+              "border": "0px none rgba(1, 5, 0, 0.898)",
+              "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+              "textAlign": "center",
+              "whiteSpace": "nowrap",
+              "cursor": "pointer",
+              "opacity": "1",
+              "fill": "rgb(0, 0, 0)"
+             },
+             "kids": [
+              {
+               "tag": "span",
+               "text": "2년",
+               "s": {
+                "fontSize": "14px",
+                "fontWeight": "500",
+                "lineHeight": "19.88px",
+                "color": "rgba(1, 5, 0, 0.898)",
+                "width": "20.75px",
+                "height": "19.875px",
+                "display": "block",
+                "flexDirection": "row",
+                "border": "0px none rgba(1, 5, 0, 0.898)",
+                "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                "textAlign": "center",
+                "whiteSpace": "nowrap",
+                "cursor": "pointer",
+                "opacity": "1",
+                "fill": "rgb(0, 0, 0)"
+               },
+               "kids": []
+              }
+             ]
+            },
+            {
+             "tag": "button",
+             "a": {
+              "role": "tab",
+              "aria-selected": "true",
+              "type": "button"
+             },
+             "s": {
+              "fontSize": "13.3333px",
+              "fontWeight": "500",
+              "color": "rgba(1, 5, 0, 0.898)",
+              "width": "24.2344px",
+              "height": "28px",
+              "minWidth": "18px",
+              "display": "flex",
+              "flexDirection": "row",
+              "justifyContent": "center",
+              "alignItems": "center",
+              "border": "0px none rgba(1, 5, 0, 0.898)",
+              "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+              "textAlign": "center",
+              "whiteSpace": "nowrap",
+              "cursor": "pointer",
+              "opacity": "1",
+              "fill": "rgb(0, 0, 0)"
+             },
+             "kids": [
+              {
+               "tag": "span",
+               "text": "항상",
+               "s": {
+                "fontSize": "14px",
+                "fontWeight": "500",
+                "lineHeight": "19.88px",
+                "color": "rgba(1, 5, 0, 0.898)",
+                "width": "24.2344px",
+                "height": "19.875px",
+                "display": "block",
+                "flexDirection": "row",
+                "border": "0px none rgba(1, 5, 0, 0.898)",
+                "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+                "textAlign": "center",
+                "whiteSpace": "nowrap",
+                "cursor": "pointer",
+                "opacity": "1",
+                "fill": "rgb(0, 0, 0)"
+               },
+               "kids": []
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "tag": "div",
+       "s": {
+        "fontSize": "12px",
+        "fontWeight": "400",
+        "lineHeight": "12px",
+        "color": "rgba(1, 5, 0, 0.898)",
+        "width": "1044.88px",
+        "height": "195px",
+        "display": "block",
+        "flexDirection": "row",
+        "border": "0px none rgba(1, 5, 0, 0.898)",
+        "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+        "textAlign": "start",
+        "opacity": "1",
+        "fill": "rgb(0, 0, 0)"
+       },
+       "kids": [
+        {
+         "tag": "div",
+         "s": {
+          "fontSize": "12px",
+          "fontWeight": "400",
+          "lineHeight": "12px",
+          "color": "rgba(1, 5, 0, 0.898)",
+          "width": "1044.88px",
+          "height": "195px",
+          "display": "block",
+          "flexDirection": "row",
+          "border": "0px none rgba(1, 5, 0, 0.898)",
+          "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+          "textAlign": "start",
+          "opacity": "1",
+          "fill": "rgb(0, 0, 0)"
+         },
+         "kids": [
+          {
+           "tag": "svg",
+           "text": "0 0 0 0 0 0",
+           "a": {
+            "aria-label": "Chart"
+           },
+           "s": {
+            "fontSize": "12px",
+            "fontWeight": "400",
+            "lineHeight": "12px",
+            "color": "rgba(1, 5, 0, 0.898)",
+            "width": "1060px",
+            "height": "195px",
+            "display": "inline",
+            "flexDirection": "row",
+            "border": "0px none rgba(1, 5, 0, 0.898)",
+            "borderBottom": "0px none rgba(1, 5, 0, 0.898)",
+            "textAlign": "start",
+            "opacity": "1",
+            "fill": "rgb(0, 0, 0)"
+           },
+           "svg": "<svg class=\"_inAfterOutline_false_w9nx7_gg_ ___SBox_w9nx7_gg_ ___SPlot_sfwjb_gg_\" data-ui-name=\"Plot\" aria-label=\"Chart\" tabindex=\"0\" data-plot-id=\"id-4\" width=\"1060\" height=\"195\"><line aria-hidden=\"true\" x1=\"50\" y1=\"167\" x2=\"1060\" y2=\"167\" class=\"___SAxis_a27vn_gg_\" data-ui-name=\"Axis\"></line><text aria-hidden=\"true\" x=\"57.78253424657539\" y=\"167\" class=\"___STick_a27vn_gg_ _position_bottom_a27vn_gg_\" data-ui-name=\"Axis.Ticks\" data-at=\"x-label\" style=\"cursor: pointer; white-space: nowrap;\">16년 12월</text><text aria-hidden=\"true\" x=\"161.5496575342466\" y=\"167\" class=\"___STick_a27vn_gg_ _position_bottom_a27vn_gg_\" data-ui-name=\"Axis.Ticks\" data-at=\"x-label\" style=\"cursor: pointer; white-space: nowrap;\">17년 12월</text><text aria-hidden=\"true\" x=\"265.31678082191786\" y=\"167\" class=\"___STick_a27vn_gg_ _position_bottom_a27vn_gg_\" data-ui-name=\"Axis.Ticks\" data-at=\"x-label\" style=\"cursor: pointer; white-space: nowrap;\">18년 12월</text><text aria-hidden=\"true\" x=\"369.08390410958907\" y=\"167\" class=\"___STick_a27vn_gg_ _position_bottom_a27vn_gg_\" data-ui-name=\"Axis.Ticks\" data-at=\"x-label\" style=\"cursor: pointer; white-space: nowrap;\">19년 12월</text><text aria-hidden=\"true\" x=\"472.8510273972603\" y=\"1…"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

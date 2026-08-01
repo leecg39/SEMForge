@@ -1,13 +1,14 @@
-import { and, asc, eq, isNotNull, isNull, lte, ne } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, lte, ne } from "drizzle-orm";
 import { db } from "@/db/client";
-import { positionTrackingCampaigns } from "@/db/schema";
+import { positionTrackingCampaigns, positionTrackingRuns } from "@/db/schema";
 import { ApiError } from "@/lib/api";
 import type { AuthContext } from "@/lib/session";
 import { registerDueJob } from "@/server/providers/scheduler";
 import {
-  collectCampaignRankings,
-  type CampaignCollectReport,
-} from "@/server/talordata/collect";
+  createPositionTrackingRun,
+  drainPositionTrackingRun,
+  type PositionTrackingRunView,
+} from "@/server/position-tracking/runs";
 
 /**
  * 포지션 추적 캠페인의 주기 수집 스케줄.
@@ -137,6 +138,39 @@ interface DueCampaignRow {
   nextRunAt: number | null;
 }
 
+interface InterruptedRunRow extends DueCampaignRow {
+  runId: string;
+}
+
+/** 브라우저가 닫혀도 다음 크론에서 이어받을 영속 실행 목록. */
+async function listInterruptedRuns(limit: number): Promise<InterruptedRunRow[]> {
+  try {
+    return await db
+      .select({
+        runId: positionTrackingRuns.id,
+        id: positionTrackingCampaigns.id,
+        workspaceId: positionTrackingCampaigns.workspaceId,
+        createdBy: positionTrackingCampaigns.createdBy,
+        domain: positionTrackingCampaigns.domain,
+        collectSchedule: positionTrackingCampaigns.collectSchedule,
+        nextRunAt: positionTrackingCampaigns.nextRunAt,
+      })
+      .from(positionTrackingRuns)
+      .innerJoin(positionTrackingCampaigns, eq(positionTrackingCampaigns.id, positionTrackingRuns.campaignId))
+      .where(
+        and(
+          inArray(positionTrackingRuns.status, ["queued", "running"]),
+          isNull(positionTrackingCampaigns.deletedAt),
+        ),
+      )
+      .orderBy(asc(positionTrackingRuns.updatedAt))
+      .limit(limit);
+  } catch (error) {
+    if (isMissingColumnError(error) || (error instanceof Error && /no such table/i.test(error.message))) return [];
+    throw error;
+  }
+}
+
 /** 실행 시각이 지난 캠페인을 전체 워크스페이스에서 찾는다 (크론 컨텍스트). */
 async function listDueCampaigns(nowMs: number, limit: number): Promise<DueCampaignRow[] | null> {
   try {
@@ -167,7 +201,7 @@ async function listDueCampaigns(nowMs: number, limit: number): Promise<DueCampai
   }
 }
 
-/** 크론 실행용 합성 인증 컨텍스트. collectCampaignRankings 는 workspaceId/userId 만 사용한다. */
+/** 크론 실행용 합성 인증 컨텍스트. 실행 큐와 알림의 workspaceId/userId 로 사용한다. */
 function buildCronAuth(campaign: { workspaceId: string; createdBy: string | null }): AuthContext {
   return {
     userId: campaign.createdBy ?? "system-cron",
@@ -204,7 +238,7 @@ export interface DueCollectResult {
   domain: string;
   schedule: CollectSchedule;
   ok: boolean;
-  report?: CampaignCollectReport;
+  report?: PositionTrackingRunView;
   error?: string;
 }
 
@@ -237,10 +271,45 @@ export async function collectDueCampaigns(options?: {
   }
 
   const results: DueCollectResult[] = [];
+  const recoveredCampaigns = new Set<string>();
+  const interruptedRows = await listInterruptedRuns(limit);
+  for (const row of interruptedRows) {
+    const schedule = toCollectSchedule(row.collectSchedule);
+    recoveredCampaigns.add(row.id);
+    try {
+      const report = await drainPositionTrackingRun(buildCronAuth(row), row.runId);
+      const ok = report.status !== "failed";
+      results.push({
+        campaignId: row.id,
+        domain: row.domain,
+        schedule,
+        ok,
+        report,
+        ...(!ok ? { error: report.error || "모든 키워드 수집에 실패했습니다." } : {}),
+      });
+    } catch (error) {
+      results.push({
+        campaignId: row.id,
+        domain: row.domain,
+        schedule,
+        ok: false,
+        error: error instanceof ApiError ? error.message : "중단된 실행 복구에 실패했습니다.",
+      });
+    }
+  }
   for (const row of dueRows) {
     const schedule = toCollectSchedule(row.collectSchedule);
+    if (recoveredCampaigns.has(row.id)) {
+      await advanceNextRun(row.id, schedule, now.getTime());
+      continue;
+    }
     try {
-      const report = await collectCampaignRankings(buildCronAuth(row), row.id);
+      const auth = buildCronAuth(row);
+      const created = await createPositionTrackingRun(auth, row.id, "scheduled");
+      const report = await drainPositionTrackingRun(auth, created.runId);
+      if (report.status === "failed") {
+        throw new ApiError("INTERNAL", report.error || "모든 키워드 수집에 실패했습니다.");
+      }
       await advanceNextRun(row.id, schedule, now.getTime());
       results.push({ campaignId: row.id, domain: row.domain, schedule, ok: true, report });
     } catch (error) {
@@ -261,7 +330,7 @@ export async function collectDueCampaigns(options?: {
 
   return {
     migrated: true,
-    checked: dueRows.length,
+    checked: interruptedRows.length + dueRows.filter((row) => !recoveredCampaigns.has(row.id)).length,
     collected: results.filter((result) => result.ok).length,
     failed: results.filter((result) => !result.ok).length,
     results,
@@ -273,7 +342,7 @@ export interface DueRunForCampaign {
   skipped: boolean;
   reason?: "schedule_off" | "not_due" | "not_migrated";
   nextRunAt: number | null;
-  report?: CampaignCollectReport;
+  report?: PositionTrackingRunView;
 }
 
 /**
@@ -296,7 +365,11 @@ export async function collectCampaignIfDue(
     return { skipped: true, reason: "not_due", nextRunAt: state.nextRunAt };
   }
 
-  const report = await collectCampaignRankings(auth, campaignId);
+  const created = await createPositionTrackingRun(auth, campaignId, "scheduled");
+  const report = await drainPositionTrackingRun(auth, created.runId);
+  if (report.status === "failed") {
+    throw new ApiError("INTERNAL", report.error || "모든 키워드 수집에 실패했습니다.");
+  }
   await advanceNextRun(campaignId, state.schedule, nowMs);
   return {
     skipped: false,

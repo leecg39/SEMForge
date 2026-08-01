@@ -21,11 +21,12 @@ export function WidgetSecondary({
   description,
   href,
   ctaLabel,
-}: Omit<SecondaryWidgetItem, "key"> & { ctaLabel?: string }) {
+  className,
+}: Omit<SecondaryWidgetItem, "key"> & { ctaLabel?: string; className?: string }) {
   const { locale } = useLocale();
   const ko = locale === "ko";
   return (
-    <WidgetCard ariaLabel={title} className="flex min-h-[224px] flex-col">
+    <WidgetCard ariaLabel={title} className={cn("flex min-h-[224px] flex-col", className)}>
       <h3 className={cn("pt-2 text-[16px] font-bold leading-[20px]", SM.title)}>{title}</h3>
       <p className={cn("mt-2 text-[14px] leading-[20px]", SM.body)}>{description}</p>
       <div className="mt-auto pt-4">

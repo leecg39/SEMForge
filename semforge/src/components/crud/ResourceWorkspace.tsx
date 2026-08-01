@@ -148,6 +148,7 @@ interface FolderMetricCell {
   value?: string;
   hint?: string;
   accent?: boolean;
+  href?: string;
 }
 
 /**
@@ -158,11 +159,16 @@ interface FolderMetricCell {
  */
 function buildFolderMetricCells(
   strip: FolderMetricStrip | undefined,
-  format: (value: number) => string
+  format: (value: number) => string,
+  domain: string,
 ): FolderMetricCell[] {
   const metric = (value: number | null) => (value === null ? "n/a" : format(value));
   return [
-    { label: "AI 가시성", value: metric(strip?.aiVisibility ?? null) },
+    {
+      label: "AI 가시성",
+      value: strip?.aiVisibility == null ? "n/a" : `${format(strip.aiVisibility)}%`,
+      href: `/ai-seo/overview/?domain=${encodeURIComponent(domain)}`,
+    },
     { label: "언급", value: format(strip?.mentions ?? 0), accent: true },
     strip?.siteHealth == null
       ? { label: "Site Health", hint: "웹사이트 문제를 확인하세요" }
@@ -1157,20 +1163,21 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                       )}
                     </div>
                   </div>
-                  {/* 지표 스트립 — 원본 8열 구성을 그대로 재현.
+                  {/* 지표 스트립 — AI 가시성을 첫 지표로 표시한다.
                       값은 /api/home/folder-metrics 의 워크스페이스 실측 데이터다. */}
-                  <div className="grid grid-cols-[repeat(8,minmax(0,1fr))] gap-x-[8px] px-[20px] pb-[20px] pt-[8px] max-lg:flex max-lg:overflow-x-auto">
-                    <div className="min-w-[110px]">
-                      <Link
-                        href="/seo/"
-                        className="text-[14px] font-medium text-app-link hover:underline"
-                      >
-                        SEO
-                      </Link>
-                    </div>
-                    {buildFolderMetricCells(folderMetrics[id], formatMetric).map((metric) => (
+                  <div className="grid grid-cols-[repeat(7,minmax(0,1fr))] gap-x-[8px] px-[20px] pb-[20px] pt-[8px] max-lg:flex max-lg:overflow-x-auto">
+                    {buildFolderMetricCells(folderMetrics[id], formatMetric, String(row.domain)).map((metric) => (
                       <div key={metric.label} className="min-w-[110px]">
-                        <p className="text-[14px] leading-[20px] text-a2-text">{tx(metric.label)}</p>
+                        {metric.href ? (
+                          <Link
+                            href={metric.href}
+                            className="text-[14px] leading-[20px] text-app-link hover:underline"
+                          >
+                            {tx(metric.label)}
+                          </Link>
+                        ) : (
+                          <p className="text-[14px] leading-[20px] text-a2-text">{tx(metric.label)}</p>
+                        )}
                         {metric.hint ? (
                           <p className="mt-[4px] text-[12px] leading-[16px] text-a2-value-muted">
                             {tx(metric.hint)}

@@ -5,3 +5,4 @@ export * from "./ai-visibility";
 export * from "./local";
 export * from "./connections";
 export * from "./onpage";
+export * from "./advertising";

@@ -3,6 +3,7 @@ import { jsonOk, parseBody, route } from "@/lib/api";
 import { assertCan } from "@/lib/rbac";
 import { requireAuth } from "@/lib/session";
 import { analyzeOnPage } from "@/server/onpage/analyze";
+import { persistOnpageAnalysis } from "@/server/onpage/store";
 
 /**
  * On-Page SEO Checker 분석 실행.
@@ -34,6 +35,14 @@ export const POST = route(async (request: Request) => {
     competitorCount: body.competitorCount,
     forceRefresh: body.forceRefresh,
   });
+
+  // SEO 대시보드 온페이지 위젯 집계용으로 스코프당 최신 분석을 보존한다.
+  // 저장 실패가 방금 끝난 분석 응답까지 망치지 않도록 격리한다.
+  try {
+    await persistOnpageAnalysis(auth, report);
+  } catch (error) {
+    console.error("[onpage] 분석 결과 저장 실패", error);
+  }
 
   return jsonOk(report, {
     meta: {

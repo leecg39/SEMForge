@@ -8,17 +8,24 @@ import { registerDueJob, type DueJobOutcome } from "@/server/providers/scheduler
  * append-only 스냅샷 테이블과 만료된 인증 부속 데이터를 주기적으로 정리한다.
  * /api/cron/run-due 가 실행하며, 보존 기간은 env 로 조정한다.
  *   - SNAPSHOT_RETENTION_DAYS (기본 90): serp/ai_visibility/map_rank 스냅샷 보존 일수
+ *   - AI_VISIBILITY_RETENTION_DAYS (기본 400): 프로젝트 AI 관측 보존 일수
  * 세션은 만료·폐기 후 7일, 삭제 확인 코드는 소비되었거나 만료 1일 뒤 정리한다.
  */
 
 export const DB_RETENTION_JOB_NAME = "db_retention";
 const DEFAULT_SNAPSHOT_RETENTION_DAYS = 90;
+const DEFAULT_AI_VISIBILITY_RETENTION_DAYS = 400;
 const SESSION_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 const CONFIRMATION_GRACE_MS = 24 * 60 * 60 * 1000;
 
 function snapshotRetentionDays(): number {
   const raw = Number(process.env.SNAPSHOT_RETENTION_DAYS);
   return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DEFAULT_SNAPSHOT_RETENTION_DAYS;
+}
+
+function aiVisibilityRetentionDays(): number {
+  const raw = Number(process.env.AI_VISIBILITY_RETENTION_DAYS);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DEFAULT_AI_VISIBILITY_RETENTION_DAYS;
 }
 
 interface RetentionTarget {
@@ -35,6 +42,7 @@ function deleteWhere(table: string, where: ReturnType<typeof sql>): number {
 export function runRetention(now = new Date()): DueJobOutcome {
   const nowMs = now.getTime();
   const snapshotCutoff = nowMs - snapshotRetentionDays() * 24 * 60 * 60 * 1000;
+  const aiVisibilityCutoff = nowMs - aiVisibilityRetentionDays() * 24 * 60 * 60 * 1000;
 
   const targets: RetentionTarget[] = [
     {
@@ -44,6 +52,10 @@ export function runRetention(now = new Date()): DueJobOutcome {
     {
       label: "ai_visibility_snapshots",
       run: () => deleteWhere("ai_visibility_snapshots", sql`captured_at < ${snapshotCutoff}`),
+    },
+    {
+      label: "ai_visibility_observations",
+      run: () => deleteWhere("ai_visibility_observations", sql`captured_at < ${aiVisibilityCutoff}`),
     },
     {
       label: "map_rank_snapshots",

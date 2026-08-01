@@ -1,20 +1,31 @@
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, max } from "drizzle-orm";
 import { db } from "@/db/client";
 import {
+  aiVisibilityQueries,
+  aiVisibilitySnapshots,
+  aiVisibilityProjects,
+  aiVisibilityObservations,
+  aiVisibilityCitations,
+  aiVisibilityPrompts,
   folders,
   positionTrackingCampaigns,
   siteAuditCampaigns,
 } from "@/db/schema";
-import { buildDomainAnalytics } from "@/lib/analytics/metrics";
+import { buildDomainAnalytics, normalizeDomain } from "@/lib/analytics/metrics";
 import type { AnalyticsDevice } from "@/lib/analytics/types";
 import type { AuthContext } from "@/lib/session";
 import { getAnalyticsDataset } from "@/server/analytics";
+import {
+  computeAiVisibilityMetric,
+  latestObservationPairs,
+  type DashboardObservation,
+} from "@/server/ai-visibility/dashboard";
 
 /**
  * 앱 홈(/home/) 전용 조회 레이어.
  *
  * 원본 ko.semrush.com/home/ 실측(PAGE_TOPOLOGY.md, 2026-07-28) 기준으로
- *   - 폴더 행 하단 지표 스트립 (SEO 7개 지표)
+ *   - 폴더 행 하단 지표 스트립 (AI 가시성부터 시작하는 7개 지표)
  *   - "모니터링할 도메인" 아코디언
  * 두 섹션의 데이터를 워크스페이스 스코프로 조립한다.
  *
@@ -22,14 +33,15 @@ import { getAnalyticsDataset } from "@/server/analytics";
  *   - Site Health  → site_audit_campaigns.siteHealth (최신 활성 캠페인)
  *   - 가시성       → position_tracking_campaigns.visibility (활성 캠페인 최댓값)
  *   - 자연검색 트래픽/자연 키워드/백링크 → 분석 파생 레이어(buildDomainAnalytics)
- *   - AI 가시성/언급 → 클론에 원천 데이터가 없으므로 null/0 (원본 무료 계정 표기와 동일)
+ *   - AI 가시성/언급 → ai_visibility_queries + 쿼리별 최신 ai_visibility_snapshots
  */
 
 export interface FolderMetricStrip {
   folderId: string;
   domain: string;
-  /** 원천 데이터 없음 → UI는 n/a */
+  /** 최신 수집 쿼리 중 자사 도메인이 인용된 비율(0~100). 수집 전이면 null. */
   aiVisibility: number | null;
+  /** 최신 스냅샷에서 자사 도메인이 인용된 쿼리 수. */
   mentions: number;
   /** 캠페인 미설정 시 null → UI는 CTA 힌트 표시 */
   siteHealth: number | null;
@@ -59,6 +71,12 @@ export interface MonitoredDomain {
 const HOME_ANALYTICS_COUNTRY = "US";
 const HOME_ANALYTICS_DEVICE: AnalyticsDevice = "desktop";
 
+export function calculateAiVisibility(collected: number, cited: number): number | null {
+  if (collected <= 0) return null;
+  const boundedCited = Math.min(collected, Math.max(0, cited));
+  return Math.round((boundedCited / collected) * 100);
+}
+
 export async function getFolderMetricStrips(
   auth: AuthContext,
   folderIds?: string[]
@@ -77,8 +95,11 @@ export async function getFolderMetricStrips(
   if (folderRows.length === 0) return [];
 
   const ids = folderRows.map((row) => row.id);
+  const normalizedDomains = [...new Set(
+    folderRows.map((row) => normalizeDomain(row.domain)).filter(Boolean),
+  )];
 
-  const [dataset, auditRows, trackingRows] = await Promise.all([
+  const [dataset, auditRows, trackingRows, aiQueryRows] = await Promise.all([
     getAnalyticsDataset({
       countryCode: HOME_ANALYTICS_COUNTRY,
       device: HOME_ANALYTICS_DEVICE,
@@ -112,7 +133,108 @@ export async function getFolderMetricStrips(
           inArray(positionTrackingCampaigns.folderId, ids)
         )
       ),
+    normalizedDomains.length > 0
+      ? db
+          .select({ id: aiVisibilityQueries.id, domain: aiVisibilityQueries.domain })
+          .from(aiVisibilityQueries)
+          .where(
+            and(
+              eq(aiVisibilityQueries.workspaceId, auth.workspaceId),
+              inArray(aiVisibilityQueries.domain, normalizedDomains),
+              isNull(aiVisibilityQueries.deletedAt),
+            ),
+          )
+      : Promise.resolve([]),
   ]);
+
+  const aiQueryIds = aiQueryRows.map((row) => row.id);
+  const latestAiRows = aiQueryIds.length > 0
+    ? await db
+        .select({
+          queryId: aiVisibilitySnapshots.queryId,
+          latest: max(aiVisibilitySnapshots.capturedAt),
+        })
+        .from(aiVisibilitySnapshots)
+        .where(inArray(aiVisibilitySnapshots.queryId, aiQueryIds))
+        .groupBy(aiVisibilitySnapshots.queryId)
+    : [];
+  const aiSnapshotRows = (
+    await Promise.all(
+      latestAiRows.map(async (row) => {
+        if (!row.latest) return null;
+        const [snapshot] = await db
+          .select({
+            queryId: aiVisibilitySnapshots.queryId,
+            cited: aiVisibilitySnapshots.cited,
+          })
+          .from(aiVisibilitySnapshots)
+          .where(
+            and(
+              eq(aiVisibilitySnapshots.queryId, row.queryId),
+              eq(aiVisibilitySnapshots.capturedAt, row.latest),
+            ),
+          )
+          .orderBy(desc(aiVisibilitySnapshots.capturedAt))
+          .limit(1);
+        return snapshot ?? null;
+      }),
+    )
+  ).filter((row): row is NonNullable<typeof row> => row !== null);
+
+  // 새 프로젝트 기반 스토어는 대시보드와 동일한 최신 셀·unknown 제외 공식을 공유한다.
+  const aiProjectRows = await db
+    .select({ id: aiVisibilityProjects.id, folderId: aiVisibilityProjects.folderId })
+    .from(aiVisibilityProjects)
+    .where(
+      and(
+        eq(aiVisibilityProjects.workspaceId, auth.workspaceId),
+        inArray(aiVisibilityProjects.folderId, ids),
+        isNull(aiVisibilityProjects.deletedAt),
+      ),
+    );
+  const aiProjectIds = aiProjectRows.map((row) => row.id);
+  const newObservationRows = aiProjectIds.length > 0
+    ? await db
+        .select({
+          id: aiVisibilityObservations.id,
+          projectId: aiVisibilityObservations.projectId,
+          runId: aiVisibilityObservations.runId,
+          promptId: aiVisibilityObservations.promptId,
+          prompt: aiVisibilityPrompts.prompt,
+          topic: aiVisibilityPrompts.topic,
+          provider: aiVisibilityObservations.provider,
+          countryCode: aiVisibilityObservations.countryCode,
+          locationKey: aiVisibilityObservations.locationKey,
+          visibilityStatus: aiVisibilityObservations.visibilityStatus,
+          brandMentioned: aiVisibilityObservations.brandMentioned,
+          citationsAvailable: aiVisibilityObservations.citationsAvailable,
+          responseText: aiVisibilityObservations.responseText,
+          source: aiVisibilityObservations.source,
+          fromCache: aiVisibilityObservations.fromCache,
+          capturedAt: aiVisibilityObservations.capturedAt,
+        })
+        .from(aiVisibilityObservations)
+        .innerJoin(aiVisibilityPrompts, eq(aiVisibilityPrompts.id, aiVisibilityObservations.promptId))
+        .where(inArray(aiVisibilityObservations.projectId, aiProjectIds))
+    : [];
+  const newObservationIds = newObservationRows.map((row) => row.id);
+  const newCitationRows = newObservationIds.length > 0
+    ? await db.select().from(aiVisibilityCitations).where(inArray(aiVisibilityCitations.observationId, newObservationIds))
+    : [];
+  const newAiStatsByFolder = new Map<string, { visibility: number | null; mentions: number }>();
+  for (const project of aiProjectRows) {
+    const rows = newObservationRows.filter((row) => row.projectId === project.id);
+    const latest = latestObservationPairs(rows as DashboardObservation[]).latest;
+    const latestIds = new Set(latest.map((row) => row.id));
+    const metric = computeAiVisibilityMetric(
+      latest,
+      newCitationRows.filter((row) => latestIds.has(row.observationId)),
+    );
+    newAiStatsByFolder.set(project.folderId, {
+      visibility: metric.visibility,
+      mentions: metric.mentions,
+    });
+  }
 
   // 최신 감사 캠페인부터 보면서 첫 번째 유효 Site Health 를 채택한다.
   const siteHealthByFolder = new Map<string, number>();
@@ -131,7 +253,25 @@ export async function getFolderMetricStrips(
     }
   }
 
+  // 쿼리별 최신 스냅샷만 사용한다. 동일 시각 중복 행은 첫 행만 집계한다.
+  const aiDomainByQuery = new Map(aiQueryRows.map((row) => [row.id, row.domain]));
+  const seenAiQueries = new Set<string>();
+  const aiStatsByDomain = new Map<string, { collected: number; cited: number }>();
+  for (const row of aiSnapshotRows) {
+    if (seenAiQueries.has(row.queryId)) continue;
+    seenAiQueries.add(row.queryId);
+    const domain = aiDomainByQuery.get(row.queryId);
+    if (!domain) continue;
+    const stats = aiStatsByDomain.get(domain) ?? { collected: 0, cited: 0 };
+    stats.collected += 1;
+    if (row.cited === true) stats.cited += 1;
+    aiStatsByDomain.set(domain, stats);
+  }
+
   return folderRows.map((folder) => {
+    const normalizedDomain = normalizeDomain(folder.domain);
+    const aiStats = aiStatsByDomain.get(normalizedDomain);
+    const projectAiStats = newAiStatsByFolder.get(folder.id);
     const report = buildDomainAnalytics(dataset, {
       domain: folder.domain,
       countryCode: HOME_ANALYTICS_COUNTRY,
@@ -140,8 +280,10 @@ export async function getFolderMetricStrips(
     return {
       folderId: folder.id,
       domain: folder.domain,
-      aiVisibility: null,
-      mentions: 0,
+      aiVisibility: projectAiStats
+        ? projectAiStats.visibility
+        : calculateAiVisibility(aiStats?.collected ?? 0, aiStats?.cited ?? 0),
+      mentions: projectAiStats ? projectAiStats.mentions : aiStats?.cited ?? 0,
       siteHealth: siteHealthByFolder.get(folder.id) ?? null,
       visibility: visibilityByFolder.get(folder.id) ?? null,
       organicTraffic: report?.metrics.organicTrafficEstimate.value ?? null,

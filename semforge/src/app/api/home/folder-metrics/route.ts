@@ -40,6 +40,8 @@ export const GET = route(async (request: Request) => {
     meta: {
       analyticsScope: { country: "US", device: "desktop" },
       sources: [
+        "ai_visibility_queries",
+        "ai_visibility_snapshots",
         "site_audit_campaigns",
         "position_tracking_campaigns",
         "keyword_metrics",
