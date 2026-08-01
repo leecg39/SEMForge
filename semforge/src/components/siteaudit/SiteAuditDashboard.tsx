@@ -1,15 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { api, ClientApiError } from "@/lib/client-api";
 import { cn } from "@/lib/utils";
 import { CoreWebVitalsPanel } from "@/components/siteaudit/CoreWebVitalsPanel";
-import {
-  SiteAuditSetupDialog,
-  type SiteAuditSetupValues,
-} from "@/components/siteaudit/SiteAuditSetupDialog";
 
 export interface SiteAuditCampaignRow {
   id: string;
@@ -47,6 +43,14 @@ interface RunReport {
   firecrawl?: { mappedUrls: number; scrapeFailures: number };
   linkGraph?: { edges: number; targetDomains: number };
   totals: { errors: number; warnings: number; notices: number };
+}
+
+interface RunStatus {
+  id: string;
+  status: "queued" | "running" | "completed" | "failed";
+  crawledPages: number;
+  pageLimit: number;
+  errorMessage: string | null;
 }
 
 type AuditTab = "overview" | "issues" | "pages" | "stats" | "themes";
@@ -712,12 +716,8 @@ export function SiteAuditDashboard({
   const [loadedIssuesFor, setLoadedIssuesFor] = useState<string | null>(null);
   const [issueTotals, setIssueTotals] = useState({ errors: 0, warnings: 0, notices: 0 });
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [setupOpen, setSetupOpen] = useState(
-    () => initialCampaigns.length === 0 && canManage
-  );
-  const [submitting, setSubmitting] = useState(false);
-  const [setupError, setSetupError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [runProgress, setRunProgress] = useState<{ crawledPages: number; pageLimit: number } | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const [report, setReport] = useState<RunReport | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -729,9 +729,6 @@ export function SiteAuditDashboard({
   const [pagesData, setPagesData] = useState<{ campaignId: string; rows: PageRow[] } | null>(null);
   const [loadedPagesFor, setLoadedPagesFor] = useState<string | null>(null);
   const [expandedTheme, setExpandedTheme] = useState<ThemeKey | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<SiteAuditCampaignRow | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const campaign = useMemo(
     () => campaigns.find((item) => item.id === selectedId) ?? null,
@@ -795,19 +792,13 @@ export function SiteAuditDashboard({
   }, []);
 
   const loadCampaigns = useCallback(async (keepSelected?: string) => {
+    if (!keepSelected) return;
     try {
-      const response = await api.get<SiteAuditCampaignRow[]>(
-        "/api/site-audits/?sort=updatedAt:desc&pageSize=100"
+      const response = await api.get<SiteAuditCampaignRow>(
+        `/api/site-audits/${encodeURIComponent(keepSelected)}/`
       );
-      setCampaigns(response.data);
-      if (keepSelected) setSelectedId(keepSelected);
-      else {
-        setSelectedId((current) =>
-          response.data.some((row) => row.id === current)
-            ? current
-            : (response.data[0]?.id ?? "")
-        );
-      }
+      setCampaigns([response.data]);
+      setSelectedId(keepSelected);
     } catch {
       setLoadError((prev) => prev ?? COPY.ko.listLoadError);
     }
@@ -836,98 +827,48 @@ export function SiteAuditDashboard({
     async (campaignId: string) => {
       if (running) return;
       setRunning(true);
+      setRunProgress(null);
       setRunError(null);
       setReport(null);
       setElapsed(0);
       try {
-        const response = await api.post<RunReport>(
+        const response = await api.post<RunStatus>(
           `/api/site-audits/${encodeURIComponent(campaignId)}/run/`
         );
-        setReport(response.data);
-        await Promise.all([
-          loadCampaigns(campaignId),
-          loadIssues(campaignId),
-          loadOverview(campaignId),
-          loadPages(campaignId),
-        ]);
+        setRunProgress({ crawledPages: response.data.crawledPages, pageLimit: response.data.pageLimit });
+        for (let attempt = 0; attempt < 240; attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 2500));
+          const polled = await api.get<RunStatus>(
+            `/api/site-audits/runs/${encodeURIComponent(response.data.id)}/`
+          );
+          setRunProgress({ crawledPages: polled.data.crawledPages, pageLimit: polled.data.pageLimit });
+          if (polled.data.status === "failed") {
+            throw new Error(polled.data.errorMessage ?? COPY.ko.runError);
+          }
+          if (polled.data.status === "completed") {
+            await Promise.all([
+              loadCampaigns(campaignId),
+              loadIssues(campaignId),
+              loadOverview(campaignId),
+              loadPages(campaignId),
+            ]);
+            break;
+          }
+        }
       } catch (caught) {
-        setRunError(caught instanceof ClientApiError ? caught.message : COPY.ko.runError);
+        setRunError(
+          caught instanceof ClientApiError || caught instanceof Error
+            ? caught.message
+            : COPY.ko.runError
+        );
         await loadCampaigns(campaignId);
       } finally {
         setRunning(false);
+        setRunProgress(null);
       }
     },
     [running, loadCampaigns, loadIssues, loadOverview, loadPages]
   );
-
-  const createAndRun = async (values: SiteAuditSetupValues) => {
-    if (submitting) return;
-    setSubmitting(true);
-    setSetupError(null);
-    try {
-      // 캠페인 생성(범용 리소스 라우트)과 예약 저장(전용 라우트)을 분리한다.
-      // 범용 create 스키마는 daily 를 모르므로 schedule 은 항상 전용 라우트로 저장한다.
-      const created = await api.post<SiteAuditCampaignRow>("/api/site-audits/", {
-        name: values.name,
-        domain: values.domain,
-        crawlScope: values.crawlScope,
-        pageLimit: values.pageLimit,
-        crawlSource: values.crawlSource,
-      });
-      let scheduleFailed = false;
-      if (values.schedule !== "off") {
-        try {
-          await api.post(`/api/site-audits/${encodeURIComponent(created.data.id)}/schedule/`, {
-            schedule: values.schedule,
-          });
-        } catch {
-          scheduleFailed = true;
-        }
-      }
-      setSetupOpen(false);
-      await loadCampaigns(created.data.id);
-      if (scheduleFailed) setRunError(copy.scheduleSaveError);
-      void runCrawl(created.data.id);
-    } catch (caught) {
-      setSetupError(
-        caught instanceof ClientApiError
-          ? (caught.fields?.name ?? caught.fields?.domain ?? caught.message)
-          : COPY.ko.createError
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const deleteCampaign = async () => {
-    if (!deleteTarget || deleting) return;
-    setDeleting(true);
-    setDeleteError(null);
-    try {
-      // 범용 리소스 라우트의 소프트 삭제(휴지통 이동) — 이슈 등 하위 데이터도 함께 이동한다.
-      await api.delete(`/api/site-audits/${encodeURIComponent(deleteTarget.id)}/`);
-      const deletedId = deleteTarget.id;
-      setDeleteTarget(null);
-      if (deletedId === selectedId) {
-        setReport(null);
-        setRunError(null);
-      }
-      await loadCampaigns();
-    } catch (caught) {
-      setDeleteError(caught instanceof ClientApiError ? caught.message : copy.deleteError);
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!deleteTarget) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !deleting) setDeleteTarget(null);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [deleteTarget, deleting]);
 
   const dateFormatter = useMemo(
     () =>
@@ -941,14 +882,6 @@ export function SiteAuditDashboard({
   );
 
   const filteredIssues = issues.filter((issue) => issue.severity === severityTab);
-  const scheduleLabel = (value: SiteAuditCampaignRow["schedule"]) =>
-    value === "daily"
-      ? copy.scheduleDaily
-      : value === "weekly"
-        ? copy.scheduleWeekly
-        : value === "monthly"
-          ? copy.scheduleMonthly
-          : copy.scheduleOff;
 
   const orderedThemes = useMemo(() => {
     if (!overview) return [];
@@ -975,6 +908,9 @@ export function SiteAuditDashboard({
     <div className="p-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
+          <Link href="/siteaudit/" className="mb-2 inline-flex items-center gap-1 text-[12px] font-medium text-app-blue hover:underline">
+            ← 사이트 진단 프로젝트
+          </Link>
           <p className="text-[11px] font-semibold uppercase tracking-[0.65px] text-app-blue">
             {copy.eyebrow}
           </p>
@@ -997,16 +933,12 @@ export function SiteAuditDashboard({
                 {running ? copy.running : copy.runAgain}
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => {
-                setSetupError(null);
-                setSetupOpen(true);
-              }}
+            <Link
+              href="/siteaudit/"
               className="h-[40px] rounded-[8px] bg-app-orange px-5 text-[14px] font-medium text-white transition-colors hover:bg-[#e5541f]"
             >
-              {copy.newAudit}
-            </button>
+              <span className="inline-flex h-full items-center">{copy.newAudit}</span>
+            </Link>
           </div>
         )}
       </header>
@@ -1018,13 +950,12 @@ export function SiteAuditDashboard({
             {copy.noCampaignsBody}
           </p>
           {canManage && (
-            <button
-              type="button"
-              onClick={() => setSetupOpen(true)}
+            <Link
+              href="/siteaudit/"
               className="mt-4 h-[38px] rounded-[8px] bg-app-orange px-5 text-[13px] font-medium text-white transition-colors hover:bg-[#e5541f]"
             >
-              {copy.noCampaignsCta}
-            </button>
+              <span className="inline-flex h-full items-center">{copy.noCampaignsCta}</span>
+            </Link>
           )}
         </section>
       ) : (
@@ -1083,6 +1014,7 @@ export function SiteAuditDashboard({
                 <p className="text-[14px] font-medium text-app-text">{copy.crawlerWorking}</p>
                 <p className="mt-0.5 text-[12px] text-app-text-secondary">
                   {copy.crawlerHint} · {copy.elapsed(elapsed)}
+                  {runProgress ? ` · ${runProgress.crawledPages}/${runProgress.pageLimit} 페이지` : ""}
                 </p>
                 <div className="relative mt-2.5 h-1.5 overflow-hidden rounded-full bg-[#dbe4f8]">
                   <div className="absolute inset-y-0 w-1/3 animate-[sa-crawl-progress_1.4s_ease-in-out_infinite] rounded-full bg-[#235FE2]" />
@@ -1752,194 +1684,7 @@ export function SiteAuditDashboard({
             </section>
           )}
 
-          <section className="mt-6">
-            <h2 className="mb-2 text-[15px] font-semibold text-app-text">{copy.projects}</h2>
-            <div className="overflow-hidden rounded-[10px] border border-app-border bg-white">
-              <table className="w-full border-collapse text-left">
-                <thead>
-                  <tr className="border-b border-app-border bg-[#f9fafb] text-[12px] text-app-text-secondary">
-                    <th className="px-4 py-2.5 font-medium">{copy.projectName}</th>
-                    <th className="px-4 py-2.5 font-medium">{copy.projectDomain}</th>
-                    <th className="px-4 py-2.5 font-medium">{copy.projectStatus}</th>
-                    <th className="px-4 py-2.5 text-center font-medium">{copy.projectHealth}</th>
-                    <th className="px-4 py-2.5 text-center font-medium">{copy.projectLimit}</th>
-                    <th className="px-4 py-2.5 text-center font-medium">{copy.projectSchedule}</th>
-                    <th className="px-4 py-2.5 font-medium">{copy.projectLastRun}</th>
-                    {canManage && (
-                      <th className="px-4 py-2.5 text-right font-medium">{copy.projectActions}</th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {campaigns.map((item) => (
-                    <tr
-                      key={item.id}
-                      onClick={() => setSelectedId(item.id)}
-                      className={cn(
-                        "cursor-pointer border-b border-app-border text-[13px] last:border-b-0 hover:bg-[#f9fafb]",
-                        item.id === selectedId && "bg-[#f4f7fe] hover:bg-[#f4f7fe]"
-                      )}
-                    >
-                      <td className="px-4 py-2.5 font-medium text-app-text">{item.name}</td>
-                      <td className="px-4 py-2.5 text-app-text-secondary">{item.domain}</td>
-                      <td className="px-4 py-2.5">
-                        <StatusBadge status={item.status} copy={copy} />
-                      </td>
-                      <td className="px-4 py-2.5 text-center">
-                        {item.siteHealth === null ? (
-                          <span className="text-app-text-secondary">–</span>
-                        ) : (
-                          <span
-                            className="font-semibold"
-                            style={{ color: healthColor(item.siteHealth) }}
-                          >
-                            {item.siteHealth}%
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2.5 text-center text-app-text-secondary">
-                        {item.pageLimit}
-                      </td>
-                      <td className="px-4 py-2.5 text-center text-app-text-secondary">
-                        {scheduleLabel(item.schedule)}
-                      </td>
-                      <td className="px-4 py-2.5 text-app-text-secondary" suppressHydrationWarning>
-                        {item.lastRunAt
-                          ? dateFormatter.format(new Date(item.lastRunAt))
-                          : copy.never}
-                      </td>
-                      {canManage && (
-                        <td className="px-4 py-2.5">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setSelectedId(item.id);
-                                void runCrawl(item.id);
-                              }}
-                              disabled={running || item.status === "running"}
-                              className="h-[30px] rounded-[6px] border border-app-border bg-white px-3 text-[12px] font-medium text-app-text transition-colors hover:bg-app-bg disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              {item.status === "running" ? copy.running : copy.runNow}
-                            </button>
-                            <DropdownMenu.Root>
-                              <DropdownMenu.Trigger asChild>
-                                <button
-                                  type="button"
-                                  aria-label={copy.moreActions}
-                                  title={copy.moreActions}
-                                  onClick={(event) => event.stopPropagation()}
-                                  className="flex h-[30px] w-[30px] items-center justify-center rounded-[6px] border border-app-border bg-white text-[15px] leading-none text-app-text-secondary transition-colors hover:bg-app-bg hover:text-app-text data-[state=open]:bg-app-bg data-[state=open]:text-app-text"
-                                >
-                                  ⋯
-                                </button>
-                              </DropdownMenu.Trigger>
-                              <DropdownMenu.Portal>
-                                <DropdownMenu.Content
-                                  align="end"
-                                  sideOffset={4}
-                                  className="z-[300] w-[160px] overflow-hidden rounded-[8px] border border-app-border bg-white py-1 shadow-lg"
-                                  onClick={(event) => event.stopPropagation()}
-                                >
-                                  <DropdownMenu.Item
-                                    disabled={
-                                      item.status === "running" ||
-                                      (running && item.id === selectedId)
-                                    }
-                                    onSelect={() => {
-                                      setDeleteError(null);
-                                      setDeleteTarget(item);
-                                    }}
-                                    className="block w-full cursor-pointer px-3 py-2 text-left text-[13px] text-app-red outline-none data-[highlighted]:bg-app-bg data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50"
-                                  >
-                                    {copy.deleteAction}
-                                  </DropdownMenu.Item>
-                                </DropdownMenu.Content>
-                              </DropdownMenu.Portal>
-                            </DropdownMenu.Root>
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
         </>
-      )}
-
-      <SiteAuditSetupDialog
-        open={setupOpen}
-        locale={locale}
-        submitting={submitting}
-        error={setupError}
-        onClose={() => setSetupOpen(false)}
-        onSubmit={(values) => void createAndRun(values)}
-      />
-
-      {deleteTarget && (
-        <div
-          className="fixed inset-0 z-[600] flex items-center justify-center bg-black/40 p-4"
-          role="presentation"
-          onClick={(event) => {
-            if (event.target === event.currentTarget && !deleting) setDeleteTarget(null);
-          }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={copy.deleteDialogTitle}
-            className="w-full max-w-[440px] rounded-[8px] bg-white shadow-xl"
-          >
-            <div className="flex items-center justify-between border-b border-app-border px-5 py-4">
-              <h2 className="text-[16px] font-semibold text-app-text">
-                {copy.deleteDialogTitle}
-              </h2>
-              <button
-                type="button"
-                aria-label={copy.cancel}
-                onClick={() => setDeleteTarget(null)}
-                disabled={deleting}
-                className="flex h-[28px] w-[28px] items-center justify-center rounded-[6px] text-app-text-secondary hover:bg-app-bg disabled:opacity-60"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="px-5 py-4">
-              <p className="text-[14px] text-app-text">
-                {copy.deleteDialogBody(deleteTarget.name)}
-              </p>
-              <p className="mt-2 text-[13px] leading-[19px] text-app-text-secondary">
-                {copy.deleteDialogHint}
-              </p>
-              {deleteError && (
-                <p className="mt-3 rounded-[8px] border border-[#f5c2cd] bg-[#fdecef] px-3 py-2 text-[13px] text-[#a4002a]">
-                  {deleteError}
-                </p>
-              )}
-            </div>
-            <div className="flex items-center justify-end gap-2 border-t border-app-border px-5 py-4">
-              <button
-                type="button"
-                onClick={() => setDeleteTarget(null)}
-                disabled={deleting}
-                className="h-[38px] rounded-[8px] border border-app-border bg-white px-4 text-[13px] font-medium text-app-text transition-colors hover:bg-app-bg disabled:opacity-60"
-              >
-                {copy.cancel}
-              </button>
-              <button
-                type="button"
-                onClick={() => void deleteCampaign()}
-                disabled={deleting}
-                className="h-[38px] rounded-[8px] bg-app-red px-4 text-[13px] font-medium text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {deleting ? copy.deleting : copy.deleteConfirm}
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );
