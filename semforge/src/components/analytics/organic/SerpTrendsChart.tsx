@@ -55,9 +55,9 @@ export function SerpTrendsChart({
 
   return (
     <OrganicCard wide title={copy.title}>
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-4">
+      <div className="mb-3 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-4">
             {FEATURE_KEYS.map((key) => (
               <OrganicLegendCheckbox
                 key={key}

@@ -88,7 +88,7 @@ export function OrganicCard({
     <section
       className={cn(
         "rounded-[6px] border bg-white p-4",
-        wide ? "col-span-2" : "col-span-1",
+        wide ? "col-span-1 lg:col-span-2" : "col-span-1",
         className,
       )}
       style={{ borderColor: ORGANIC_COLORS.divider, boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}
@@ -172,7 +172,7 @@ export function OrganicPeriodPills({
 }) {
   const order: OrganicPeriod[] = ["1m", "6m", "1y", "2y", "all"];
   return (
-    <div role="tablist" className="flex items-center gap-4">
+    <div role="tablist" className="flex items-center gap-4 overflow-x-auto">
       {order.map((p) => {
         const selected = p === value;
         return (
@@ -182,7 +182,7 @@ export function OrganicPeriodPills({
             role="tab"
             aria-selected={selected}
             onClick={() => onChange(p)}
-            className="relative h-[28px] text-[13.33px] font-medium"
+            className="relative h-[28px] shrink-0 whitespace-nowrap text-[13.33px] font-medium"
             style={{ color: ORGANIC_COLORS.heading }}
           >
             {labels[p]}
@@ -394,7 +394,7 @@ export function OrganicLegendCheckbox({
   onChange: (next: boolean) => void;
 }) {
   return (
-    <label className="inline-flex cursor-pointer select-none items-center gap-1.5">
+    <label className="inline-flex shrink-0 cursor-pointer select-none items-center gap-1.5">
       <input
         type="checkbox"
         checked={checked}
@@ -415,7 +415,7 @@ export function OrganicLegendCheckbox({
           </svg>
         )}
       </span>
-      <span className="text-[12px] text-black">{label}</span>
+      <span className="whitespace-nowrap text-[12px] text-black">{label}</span>
     </label>
   );
 }

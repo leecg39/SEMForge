@@ -636,7 +636,7 @@ export function OrganicResearchDashboard({
 
   return (
     <div className="min-h-full bg-white pb-16">
-      <div className="max-w-[1149px] px-8">
+      <div className="max-w-[1149px] px-4 sm:px-8">
         <OrganicHeader
           domain={initialDomain}
           domainHref={`https://${initialDomain}`}
@@ -664,7 +664,7 @@ export function OrganicResearchDashboard({
           active="0"
         />
 
-        <div className="mt-4 grid grid-cols-2 gap-4">
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <OrganicKpiRow items={kpiItems} />
           <OrganicTrendChart
             points={trendPoints}

@@ -235,7 +235,7 @@ export function SerpFeaturesGrid({
           >
             {group.heading}
           </h4>
-          <div className="grid grid-cols-6 gap-x-4 gap-y-2">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 lg:grid-cols-6">
             {group.items.map((item) => (
               <FeatureCell key={item.key} item={item} keywordCount={copy.keywordCount} />
             ))}
