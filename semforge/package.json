@@ -20,6 +20,7 @@
     "db:seed": "tsx src/db/seed.ts",
     "db:seed:analytics": "SEED_DEMO_DATA=1 tsx src/db/seed-analytics-cli.ts",
     "db:reset": "rm -rf data && npm run db:migrate && npm run db:seed",
+    "ai:collect": "tsx scripts/ai-visibility-collect.ts",
     "loop:bootstrap": "bash scripts/loop-bootstrap.sh",
     "loop:verify": "tsx scripts/loop-verify.ts",
     "loop:smoke": "tsx scripts/loop-smoke.ts"
