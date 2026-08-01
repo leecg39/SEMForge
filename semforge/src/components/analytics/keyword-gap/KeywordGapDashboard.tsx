@@ -500,7 +500,7 @@ export function KeywordGapDashboard({ initialReport }: { initialReport: KeywordG
                 {pageRows.length === 0 ? (
                   <OrganicEmptyState title={copy.noRows} hint={copy.universeHint} />
                 ) : (
-                  <OrganicTable>
+                  <OrganicTable className="min-w-[840px]">
                     <thead>
                       <tr>
                         <OrganicTh sortable>

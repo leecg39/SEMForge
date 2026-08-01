@@ -135,7 +135,7 @@ export function OrganicSegmented<T extends string>({
             type="button"
             onClick={() => onChange(opt.value)}
             className={cn(
-              "relative inline-flex items-center gap-1.5 border bg-white px-3 text-[14px] leading-none text-black",
+              "relative inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border bg-white px-3 text-[14px] leading-none text-black",
               size === "m" ? "h-[28px]" : "h-[24px] text-[12px]",
               i > 0 && "-ml-px",
               i === 0 && "rounded-l-[6px]",
