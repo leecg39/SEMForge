@@ -293,9 +293,15 @@ function ChangeBadge({
 export function PositionTrackingDashboard({
   campaigns,
   canCollect,
+  focusSection = "overview",
 }: {
   campaigns: CampaignSummary[];
   canCollect: boolean;
+  /**
+   * URL 탭이 지정하는 섹션. 페이지 상단 탭 내비게이션이 이 값을 준다.
+   * 내부 탭 바를 따로 두면 내비게이션이 두 벌이 되므로 여기서는 렌더하지 않는다.
+   */
+  focusSection?: DashboardTab;
 }) {
   const { locale } = useLocale();
   const copy = COPY[locale];
@@ -316,7 +322,7 @@ export function PositionTrackingDashboard({
   const [keywordInput, setKeywordInput] = useState("");
   const [keywordError, setKeywordError] = useState<string | null>(null);
   const [addingKeyword, setAddingKeyword] = useState(false);
-  const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
+  const activeTab: DashboardTab = focusSection;
   // 수집 완료/경쟁사 추가 후 탭 패널들이 다시 집계되도록 증가시키는 키.
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -506,11 +512,6 @@ export function PositionTrackingDashboard({
   const gscColumnCount = gscReady ? 4 : 0;
   const totalColumns = 8 + competitors.length + gscColumnCount;
 
-  const tabs: { id: DashboardTab; label: string }[] = [
-    { id: "overview", label: copy.tabOverview },
-    { id: "distribution", label: copy.tabDistribution },
-    { id: "discovery", label: copy.tabDiscovery },
-  ];
 
   return (
     <div className="p-6">
@@ -599,26 +600,6 @@ export function PositionTrackingDashboard({
           )}
         </div>
       </section>
-
-      <nav className="mt-4 flex gap-1 border-b border-app-border" role="tablist">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={cn(
-              "-mb-px border-b-2 px-3 py-2 text-[13px] transition-colors",
-              activeTab === tab.id
-                ? "border-app-blue font-semibold text-app-text"
-                : "border-transparent text-app-text-secondary hover:text-app-text"
-            )}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </nav>
 
       {activeTab === "distribution" && (
         <div className="mt-4">

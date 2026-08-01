@@ -5,6 +5,11 @@ import {
   type CampaignSummary,
 } from "@/components/position-tracking/PositionTrackingDashboard";
 import { PositionTrackingLanding } from "@/components/position-tracking/PositionTrackingLanding";
+import {
+  PositionTrackingPendingTab,
+  PositionTrackingTabs,
+} from "@/components/position-tracking/PositionTrackingTabs";
+import { resolveTab, toDashboardSection } from "@/components/position-tracking/tabs";
 import { db } from "@/db/client";
 import { folders, positionTrackingCampaigns } from "@/db/schema";
 import { normalizeDomain } from "@/lib/analytics/metrics";
@@ -20,6 +25,7 @@ export default async function PositionTrackingPage({
     campaign?: string | string[];
     project?: string | string[];
     domain?: string | string[];
+    tab?: string | string[];
   }>;
 }) {
   const { auth, capabilities } = await pageSession();
@@ -73,6 +79,12 @@ export default async function PositionTrackingPage({
     ? [selectedCampaign, ...campaigns.filter((campaign) => campaign.id !== selectedCampaign.id)]
     : campaigns;
 
+  // 탭은 화면 안의 이동이므로 알 수 없는 값이 와도 404 대신 현황으로 되돌린다.
+  const activeTab = resolveTab(Array.isArray(query.tab) ? query.tab[0] : query.tab);
+  const tabBaseQuery: Record<string, string> = {};
+  if (selectedCampaign) tabBaseQuery.campaign = selectedCampaign.id;
+  if (project) tabBaseQuery.project = project.id;
+
   return (
     <AppShell
       activeToolkit="seo"
@@ -88,10 +100,18 @@ export default async function PositionTrackingPage({
       }
     >
       {selectedCampaign ? (
-        <PositionTrackingDashboard
-          campaigns={orderedCampaigns}
-          canCollect={Boolean(capabilities.create)}
-        />
+        <>
+          <PositionTrackingTabs activeSlug={activeTab.slug} baseQuery={tabBaseQuery} />
+          {activeTab.status === "pending" ? (
+            <PositionTrackingPendingTab label={activeTab.label} reason={activeTab.reason ?? ""} />
+          ) : (
+            <PositionTrackingDashboard
+              campaigns={orderedCampaigns}
+              canCollect={Boolean(capabilities.create)}
+              focusSection={toDashboardSection(activeTab.slug) ?? "overview"}
+            />
+          )}
+        </>
       ) : (
         <PositionTrackingLanding
           campaigns={campaigns}
