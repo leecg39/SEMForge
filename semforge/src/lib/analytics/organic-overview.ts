@@ -269,8 +269,7 @@ export function buildOrganicOverviewExtras(
     }))
     .toSorted((a, b) => b.levelPct - a.levelPct || a.domain.localeCompare(b.domain));
   const others = competitorsAll.filter((row) => row.domain !== domain);
-  const self = competitorsAll.find((row) => row.domain === domain);
-  const competitors = [...others.slice(0, 5), ...(self ? [self] : [])];
+  const competitors = others.slice(0, 6);
 
   /* ---- 포지셔닝 버블: 자신 + 상위 경쟁자 (스토어 실측 범위) ---- */
   const bubbleDomains = [...new Set([...others.slice(0, 5).map((row) => row.domain), domain])];
