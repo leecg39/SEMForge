@@ -1,0 +1,151 @@
+{
+  "build_cycle": 1,
+  "features": {
+    "F1": {
+      "status": "complete",
+      "files": [
+        "src/app/(app)/siteaudit/page.tsx",
+        "src/components/siteaudit/SiteAuditProjectList.tsx",
+        "src/server/siteaudit/projects.ts",
+        "src/app/api/site-audits/projects/route.ts"
+      ],
+      "routes": ["/siteaudit/", "/api/site-audits/projects/"],
+      "test_files": ["src/server/siteaudit/projects.test.ts"],
+      "notes": "폴더와 레거시 캠페인을 워크스페이스 범위에서 합치고 실측 지표만 표시한다."
+    },
+    "F2": {
+      "status": "complete",
+      "files": [
+        "src/components/siteaudit/SeoProjectCreateDialog.tsx",
+        "src/server/siteaudit/domain.ts",
+        "src/app/api/site-audits/projects/route.ts",
+        "src/app/api/site-audits/validate-domain/route.ts"
+      ],
+      "routes": ["/api/site-audits/projects/", "/api/site-audits/validate-domain/"],
+      "test_files": ["src/server/siteaudit/domain.test.ts"],
+      "notes": "공인 DNS/IP, 수동 리다이렉트, HTTP(S) 도달 가능성, 중복 명시 확인을 적용한다."
+    },
+    "F3": {
+      "status": "complete",
+      "files": [
+        "src/components/siteaudit/SiteAuditProjectSetupDialog.tsx",
+        "src/server/resources.ts",
+        "src/db/schema/domain.ts"
+      ],
+      "routes": ["/api/site-audits/", "/api/site-audits/:id/", "/api/site-audits/:id/schedule/"],
+      "test_files": [],
+      "notes": "프로젝트의 고정 도메인 문맥에서 5단계 설정을 저장하고 프로젝트당 활성 캠페인 하나를 DB 제약으로 보장한다."
+    },
+    "F4": {
+      "status": "complete",
+      "files": [
+        "src/server/siteaudit/run.ts",
+        "src/server/siteaudit/due.ts",
+        "src/app/api/site-audits/[id]/run/route.ts",
+        "src/app/api/site-audits/runs/[runId]/route.ts",
+        "src/db/migrations/0017_fluffy_psylocke.sql"
+      ],
+      "routes": ["/api/site-audits/:id/run/", "/api/site-audits/runs/:runId/", "/api/cron/run-due/"],
+      "test_files": ["src/server/siteaudit/run.test.ts"],
+      "notes": "run을 먼저 저장하고 202를 반환한 뒤 Next after()에서 실행한다. 활성 실행 유일 인덱스와 due 복구가 있다."
+    },
+    "F5": {
+      "status": "complete",
+      "files": [
+        "src/components/siteaudit/SiteAuditProjectList.tsx",
+        "src/server/siteaudit/crawl.ts",
+        "src/server/siteaudit/firecrawl.ts",
+        "src/server/siteaudit/run.ts"
+      ],
+      "routes": ["/siteaudit/", "/api/site-audits/projects/"],
+      "test_files": ["src/server/siteaudit/run.test.ts"],
+      "notes": "실행 중에만 2.5초 폴링하며 DB의 crawledPages/pageLimit을 청록색 행과 지표 스피너로 표시한다."
+    },
+    "F6": {
+      "status": "complete",
+      "files": [
+        "src/server/siteaudit/metrics.ts",
+        "src/server/siteaudit/projects.ts",
+        "src/components/siteaudit/SiteAuditProjectList.tsx",
+        "src/db/schema/domain.ts"
+      ],
+      "routes": ["/api/site-audits/projects/"],
+      "test_files": ["src/server/siteaudit/metrics.test.ts", "src/server/siteaudit/projects.test.ts"],
+      "notes": "최신/직전 완료 스냅샷의 정확한 차이를 계산하며 첫 실행과 미측정 값은 null이다. 값과 미측정 사유에 출처 툴팁을 제공한다."
+    },
+    "F7": {
+      "status": "complete",
+      "files": ["src/components/siteaudit/SiteAuditProjectList.tsx", "src/server/siteaudit/projects.ts"],
+      "routes": ["/siteaudit/?q=&page=&pageSize=&sort=", "/api/site-audits/projects/"],
+      "test_files": ["src/server/siteaudit/projects.test.ts"],
+      "notes": "검색, 허용 정렬, 페이지 크기와 전체 수를 서버가 결정하고 URL 상태를 동기화한다."
+    },
+    "F8": {
+      "status": "complete",
+      "files": ["src/app/(app)/siteaudit/page.tsx", "src/components/siteaudit/SiteAuditDashboard.tsx"],
+      "routes": ["/siteaudit/", "/siteaudit/?campaign=:campaignId"],
+      "test_files": [],
+      "notes": "목록과 기존 상세 렌더를 분리하고 상세 내부 중복 프로젝트 표를 제거했으며 양방향 링크를 제공한다."
+    },
+    "F9": {
+      "status": "complete",
+      "files": [
+        "src/components/siteaudit/SeoProjectCreateDialog.tsx",
+        "src/components/siteaudit/SiteAuditProjectSetupDialog.tsx",
+        "src/components/siteaudit/SiteAuditProjectList.tsx"
+      ],
+      "routes": ["/siteaudit/", "/siteaudit/?campaign=:campaignId"],
+      "test_files": [],
+      "notes": "Radix Dialog 포커스 관리, aria-live, 텍스트 상태, 고정 첫 열과 가로 스크롤을 사용한다. 375/768/1280/1904px에서 브라우저 확인했다."
+    },
+    "F10": {
+      "status": "complete",
+      "files": [
+        "src/server/siteaudit/notifications.ts",
+        "src/server/siteaudit/email.ts",
+        "src/app/api/site-audits/notifications/route.ts",
+        "src/components/siteaudit/SiteAuditNotificationsMenu.tsx"
+      ],
+      "routes": ["/api/site-audits/notifications/"],
+      "test_files": [],
+      "notes": "run/channel 유일 키로 인앱·Resend 알림을 멱등 저장한다. 이메일 환경변수가 없으면 컨트롤과 이유를 명시적으로 비활성화한다."
+    },
+    "F11": {
+      "status": "complete",
+      "files": [
+        "src/components/siteaudit/SiteAuditProjectSetupDialog.tsx",
+        "src/server/siteaudit/rules.ts",
+        "src/server/siteaudit/crawl.ts",
+        "src/server/siteaudit/firecrawl.ts"
+      ],
+      "routes": ["/api/site-audits/", "/api/site-audits/:id/"],
+      "test_files": ["src/server/siteaudit/rules.test.ts"],
+      "notes": "허용/제외 pathname, 제거할 쿼리 키, 허용 User-Agent 프리셋을 실제 발견·정규화·요청 단계에 적용한다."
+    },
+    "F12": {
+      "status": "partial",
+      "files": ["src/components/siteaudit/SiteAuditDashboard.tsx", "docs/harness/ai-features.md"],
+      "routes": ["/siteaudit/?campaign=:campaignId"],
+      "test_files": [],
+      "notes": "현재 환경에 근거 기반 AI 요약 제공자가 없어 사양대로 CTA나 고정 요약을 노출하지 않았다. 제공자가 구성된 경우의 runId 버전 요약 생성은 미구현이다."
+    }
+  },
+  "dev_server": {
+    "application": {
+      "command": "PATH=/opt/homebrew/bin:$PATH npm run dev",
+      "port": 3000,
+      "url": "http://localhost:3000/siteaudit/"
+    },
+    "database": {
+      "command": "PATH=/opt/homebrew/bin:$PATH npm run db:migrate",
+      "path": "data/app.db"
+    }
+  },
+  "git_branch": "codex/harness-build-cycle-1",
+  "total_commits": 6,
+  "total_features": {
+    "complete": 11,
+    "partial": 1,
+    "not_started": 0
+  }
+}
