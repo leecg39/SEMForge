@@ -480,6 +480,56 @@ export const trackedKeywords = sqliteTable(
   ]
 );
 
+/**
+ * 키워드 태그. 원본의 "태그를 사용하면 키워드 그룹의 실적을 추적" 기능이다.
+ * 외부 데이터에 의존하지 않고 사용자가 직접 묶는 그룹이므로 완결적으로 구현할 수 있다.
+ */
+export const positionTrackingTags = sqliteTable(
+  "position_tracking_tags",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    campaignId: text("campaign_id")
+      .notNull()
+      .references(() => positionTrackingCampaigns.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** 대소문자·공백 차이로 중복 태그가 생기지 않도록 정규화한 이름. */
+    normalizedName: text("normalized_name").notNull(),
+    /** 화면 표시용 색상 토큰. 지정하지 않으면 기본값을 쓴다. */
+    color: text("color"),
+    ...auditColumns,
+  },
+  (t) => [
+    uniqueIndex("position_tracking_tags_unique")
+      .on(t.campaignId, t.normalizedName)
+      .where(sql`deleted_at IS NULL`),
+    index("position_tracking_tags_campaign_idx").on(t.workspaceId, t.campaignId, t.deletedAt),
+  ]
+);
+
+/** 키워드와 태그의 다대다 연결. 키워드 하나에 태그 여러 개를 붙일 수 있다. */
+export const positionTrackingKeywordTags = sqliteTable(
+  "position_tracking_keyword_tags",
+  {
+    id: text("id").primaryKey(),
+    tagId: text("tag_id")
+      .notNull()
+      .references(() => positionTrackingTags.id, { onDelete: "cascade" }),
+    keywordId: text("keyword_id")
+      .notNull()
+      .references(() => trackedKeywords.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [
+    uniqueIndex("position_tracking_keyword_tags_unique").on(t.tagId, t.keywordId),
+    index("position_tracking_keyword_tags_keyword_idx").on(t.keywordId),
+  ]
+);
+
 /** 랜딩 문구 "최대 5개 경쟁사의 순위를 같은 키워드로 비교" (O) */
 export const positionTrackingCompetitors = sqliteTable(
   "position_tracking_competitors",
