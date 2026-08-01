@@ -52,9 +52,7 @@ export const folders = sqliteTable(
     ...auditColumns,
   },
   (t) => [
-    uniqueIndex("folders_workspace_domain_unique")
-      .on(t.workspaceId, t.domain)
-      .where(sql`deleted_at IS NULL`),
+    index("folders_workspace_domain_idx").on(t.workspaceId, t.domain, t.deletedAt),
     index("folders_workspace_idx").on(t.workspaceId, t.deletedAt),
     index("folders_created_by_idx").on(t.createdBy),
   ]
@@ -309,12 +307,32 @@ export const siteAuditCampaigns = sqliteTable(
     nextRunAt: integer("next_run_at"),
     /** 크롤 시점 메타 JSON (robots.txt AI 봇 판정 등) (0007) */
     crawlMeta: text("crawl_meta"),
+    /** 실행 완료/실패 시 인앱 알림 생성 여부 */
+    notifyOnComplete: integer("notify_on_complete", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    /** 이메일 제공자가 구성된 경우 완료 알림 이메일 전송 여부 */
+    emailOnComplete: integer("email_on_complete", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    /** 자체 크롤러/Firecrawl 에 전달할 사용자 에이전트 프리셋 */
+    crawlerUserAgent: text("crawler_user_agent", {
+      enum: ["semforge", "googlebot", "bingbot"],
+    })
+      .notNull()
+      .default("semforge"),
+    /** 포함할 pathname prefix 목록(JSON 문자열) */
+    allowPaths: text("allow_paths").notNull().default("[]"),
+    /** 제외할 pathname prefix 목록(JSON 문자열) */
+    disallowPaths: text("disallow_paths").notNull().default("[]"),
+    /** URL 정규화 시 제거할 쿼리 매개변수 이름 목록(JSON 문자열) */
+    ignoreQueryParameters: text("ignore_query_parameters").notNull().default("[]"),
     ...auditColumns,
   },
   (t) => [
-    uniqueIndex("site_audit_workspace_name_unique")
-      .on(t.workspaceId, t.name)
-      .where(sql`deleted_at IS NULL`),
+    uniqueIndex("site_audit_folder_unique")
+      .on(t.workspaceId, t.folderId)
+      .where(sql`deleted_at IS NULL AND folder_id IS NOT NULL`),
     index("site_audit_workspace_idx").on(t.workspaceId, t.deletedAt),
     index("site_audit_campaigns_due_idx").on(t.nextRunAt),
   ]
@@ -381,6 +399,106 @@ export const siteAuditPages = sqliteTable(
   (t) => [
     index("site_audit_pages_campaign_idx").on(t.campaignId, t.createdAt),
     index("site_audit_pages_status_idx").on(t.campaignId, t.statusCode),
+  ]
+);
+
+/**
+ * 사이트 진단 1회 실행의 영속 상태. 브라우저 요청과 실제 크롤 생명주기를 분리하고
+ * 새로고침 뒤에도 queued/running 진행률을 복원하는 기준 테이블이다.
+ */
+export const siteAuditRuns = sqliteTable(
+  "site_audit_runs",
+  {
+    id: text("id").primaryKey(),
+    ...scoped,
+    campaignId: text("campaign_id")
+      .notNull()
+      .references(() => siteAuditCampaigns.id, { onDelete: "cascade" }),
+    status: text("status", {
+      enum: ["queued", "running", "completed", "failed"],
+    })
+      .notNull()
+      .default("queued"),
+    pageLimit: integer("page_limit").notNull(),
+    crawledPages: integer("crawled_pages").notNull().default(0),
+    failedFetches: integer("failed_fetches").notNull().default(0),
+    crawlEngine: text("crawl_engine", { enum: ["firecrawl", "self"] }),
+    sourceNote: text("source_note"),
+    errorMessage: text("error_message"),
+    startedAt: timestampMs("started_at"),
+    finishedAt: timestampMs("finished_at"),
+    /** 장시간 실행의 중단 여부 판정에 쓰는 마지막 진행 갱신 시각 */
+    heartbeatAt: timestampMs("heartbeat_at"),
+    createdAt: timestampMs("created_at")
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: timestampMs("updated_at")
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    createdBy: text("created_by"),
+  },
+  (t) => [
+    uniqueIndex("site_audit_runs_active_unique")
+      .on(t.campaignId)
+      .where(sql`status IN ('queued', 'running')`),
+    index("site_audit_runs_campaign_idx").on(t.campaignId, t.createdAt),
+    index("site_audit_runs_workspace_status_idx").on(t.workspaceId, t.status, t.updatedAt),
+  ]
+);
+
+/** 완료 실행마다 보존하는 목록용 지표. 최신/직전 행을 비교해 변화량을 계산한다. */
+export const siteAuditMetricSnapshots = sqliteTable(
+  "site_audit_metric_snapshots",
+  {
+    runId: text("run_id")
+      .primaryKey()
+      .references(() => siteAuditRuns.id, { onDelete: "cascade" }),
+    siteHealth: integer("site_health"),
+    crawledPages: integer("crawled_pages").notNull().default(0),
+    errorCount: integer("error_count").notNull().default(0),
+    warningCount: integer("warning_count").notNull().default(0),
+    noticeCount: integer("notice_count").notNull().default(0),
+    /** ThemeScore[] JSON. measurable=false 인 항목은 0이 아니라 null을 유지한다. */
+    themeScores: text("theme_scores").notNull().default("[]"),
+    /** PageSpeed Insights 응답의 scores/cwv/provenance JSON. 미수집이면 null. */
+    psiMetrics: text("psi_metrics"),
+    provenance: text("provenance").notNull().default("{}"),
+    capturedAt: timestampMs("captured_at").notNull(),
+  },
+  (t) => [index("site_audit_metric_snapshots_captured_idx").on(t.capturedAt)]
+);
+
+/** 실행 완료/실패 알림 전달 이력. run/user/channel 유일 키로 재시도 중복을 막는다. */
+export const siteAuditNotifications = sqliteTable(
+  "site_audit_notifications",
+  {
+    id: text("id").primaryKey(),
+    ...scoped,
+    campaignId: text("campaign_id")
+      .notNull()
+      .references(() => siteAuditCampaigns.id, { onDelete: "cascade" }),
+    runId: text("run_id")
+      .notNull()
+      .references(() => siteAuditRuns.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    channel: text("channel", { enum: ["in_app", "email"] }).notNull(),
+    status: text("status", {
+      enum: ["delivered", "failed", "unavailable"],
+    }).notNull(),
+    title: text("title").notNull(),
+    message: text("message").notNull(),
+    providerMessage: text("provider_message"),
+    readAt: timestampMs("read_at"),
+    deliveredAt: timestampMs("delivered_at"),
+    createdAt: timestampMs("created_at")
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [
+    uniqueIndex("site_audit_notifications_delivery_unique").on(t.runId, t.userId, t.channel),
+    index("site_audit_notifications_user_idx").on(t.userId, t.readAt, t.createdAt),
   ]
 );
 

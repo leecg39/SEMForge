@@ -1,31 +1,35 @@
+import { after } from "next/server";
 import { jsonOk, route } from "@/lib/api";
 import { assertCan } from "@/lib/rbac";
 import { requireAuth } from "@/lib/session";
-import { runSiteAuditCampaign } from "@/server/siteaudit/crawl";
 import { ensureSiteAuditDueJob } from "@/server/siteaudit/due";
-import { createFirecrawlCrawler } from "@/server/siteaudit/firecrawl";
+import { enqueueSiteAuditRun, executeSiteAuditRun } from "@/server/siteaudit/run";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 /**
- * 캠페인을 running 으로 표시하고 실제 크롤을 실행해 결과를 저장한 뒤 요약을 반환한다.
- * FIRECRAWL_API_KEY 가 있으면 Firecrawl 을 수집 엔진으로 우선 사용하고
- * (실패 시 자체 BFS 크롤러로 폴백), 없으면 자체 크롤러만 사용한다.
+ * 실행을 DB 큐에 먼저 저장하고 202를 반환한다. 실제 크롤은 응답 이후 `after()`에서
+ * 수행되므로 브라우저 연결이 긴 크롤의 생명주기를 붙잡지 않는다. 유실된 queued 실행은
+ * /api/cron/run-due 의 site_audit 복구 경로가 회수한다.
  */
 export const POST = route(async (request: Request, context: Ctx) => {
   ensureSiteAuditDueJob();
   const auth = await requireAuth(request);
   assertCan(auth, "create");
   const { id } = await context.params;
-  const firecrawlKey = process.env.FIRECRAWL_API_KEY?.trim();
-  const report = await runSiteAuditCampaign(auth, id, {
-    crawler: firecrawlKey ? createFirecrawlCrawler(firecrawlKey) : undefined,
+  const run = await enqueueSiteAuditRun(auth, id);
+  after(async () => {
+    const result = await executeSiteAuditRun(auth, run.id);
+    if (result.status === "failed") {
+      console.error(`[siteaudit] background run ${run.id} failed: ${result.message}`);
+    }
   });
-  return jsonOk(report, {
+  return jsonOk(run, {
+    status: 202,
     meta: {
-      crawler: report.crawlEngine === "firecrawl" ? "firecrawl/v1" : "CloneSiteAuditBot/1.0",
-      engine: report.crawlEngine,
-      maxPageLimit: 500,
+      execution: "background",
+      poll: `/api/site-audits/runs/${run.id}/`,
+      recovery: "/api/cron/run-due/?only=site_audit",
     },
   });
 });

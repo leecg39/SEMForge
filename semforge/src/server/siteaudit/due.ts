@@ -1,6 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db/client";
-import { siteAuditCampaigns } from "@/db/schema";
+import { siteAuditCampaigns, users } from "@/db/schema";
 import type { AuthContext } from "@/lib/session";
 import {
   listDueScheduleRows,
@@ -8,8 +8,11 @@ import {
   registerDueJob,
   type DueJobOutcome,
 } from "@/server/providers/scheduler";
-import { runSiteAuditCampaign } from "@/server/siteaudit/crawl";
-import { createFirecrawlCrawler } from "@/server/siteaudit/firecrawl";
+import {
+  enqueueSiteAuditRun,
+  executeSiteAuditRun,
+  recoverSiteAuditRuns,
+} from "@/server/siteaudit/run";
 import { computeSiteAuditNextRunAt } from "@/server/siteaudit/schedule";
 
 /**
@@ -31,11 +34,13 @@ export const SITE_AUDIT_DUE_JOB = "site_audit";
 function systemAuth(campaign: {
   workspaceId: string;
   createdBy: string | null;
+  ownerEmail?: string | null;
+  ownerName?: string | null;
 }): AuthContext {
   return {
     userId: campaign.createdBy ?? "due-scheduler",
-    email: "due-scheduler@system.local",
-    name: "스케줄 크롤",
+    email: campaign.ownerEmail ?? "due-scheduler@system.local",
+    name: campaign.ownerName ?? "스케줄 크롤",
     workspaceId: campaign.workspaceId,
     workspaceName: "",
     workspacePlan: "free",
@@ -60,6 +65,12 @@ async function runDueSiteAudits(context: {
   let failed = 0;
   const errors: string[] = [];
 
+  // 이전 응답의 after() 작업이 프로세스 종료 등으로 시작되지 못한 경우 먼저 회수한다.
+  const recovery = await recoverSiteAuditRuns({ now: context.now, limit: context.limit });
+  processed += recovery.recovered;
+  failed += recovery.failed;
+  errors.push(...recovery.errors);
+
   // 연쇄 크롤이 서버/대상 사이트에 부하를 주지 않도록 순차 실행한다.
   for (const due of dueRows) {
     const [campaign] = await db
@@ -81,16 +92,30 @@ async function runDueSiteAudits(context: {
       continue;
     }
 
+    const [owner] = campaign.createdBy
+      ? await db
+          .select({ email: users.email, name: users.name })
+          .from(users)
+          .where(eq(users.id, campaign.createdBy))
+          .limit(1)
+      : [];
+    const auth = systemAuth({
+      ...campaign,
+      ownerEmail: owner?.email,
+      ownerName: owner?.name,
+    });
     const nextRunAt = computeSiteAuditNextRunAt(
       campaign.schedule as "daily" | "weekly" | "monthly",
       context.now
     );
     try {
-      const firecrawlKey = process.env.FIRECRAWL_API_KEY?.trim();
-      await runSiteAuditCampaign(systemAuth(campaign), campaign.id, {
-        crawler: firecrawlKey ? createFirecrawlCrawler(firecrawlKey) : undefined,
-      });
-      processed += 1;
+      const run = await enqueueSiteAuditRun(auth, campaign.id);
+      const result = await executeSiteAuditRun(auth, run.id);
+      if (result.status === "completed") processed += 1;
+      else {
+        failed += 1;
+        errors.push(`${campaign.name}: ${result.message}`);
+      }
     } catch (error) {
       failed += 1;
       errors.push(

@@ -80,9 +80,6 @@ const folderResource: ResourceConfig = {
   filterableFields: ["owning", "tagId"],
   createSchema: folderCreate,
   updateSchema: folderUpdate,
-  uniqueRules: [
-    { fields: ["domain"], message: "이미 등록된 웹사이트입니다." },
-  ],
   // 원본 kebab 의 "핀 고정"을 목록 정렬에 반영 (O)
   primaryOrder: (cols) => [desc(cols.pinned)],
   extraWhere: (auth, query, cols) => {
@@ -192,20 +189,67 @@ const siteAuditResource: ResourceConfig = {
       .enum(["website", "sitemap", "url_list"])
       .optional()
       .default("website"),
-    schedule: z.enum(["off", "weekly", "monthly"]).optional().default("off"),
+    schedule: z.enum(["off", "daily", "weekly", "monthly"]).optional().default("off"),
+    notifyOnComplete: z.boolean().optional().default(true),
+    emailOnComplete: z.boolean().optional().default(false),
+    crawlerUserAgent: z
+      .enum(["semforge", "googlebot", "bingbot"])
+      .optional()
+      .default("semforge"),
+    allowPaths: z
+      .array(z.string().trim().max(300))
+      .max(50)
+      .optional()
+      .default([])
+      .transform((value) => JSON.stringify(value.filter(Boolean))),
+    disallowPaths: z
+      .array(z.string().trim().max(300))
+      .max(50)
+      .optional()
+      .default([])
+      .transform((value) => JSON.stringify(value.filter(Boolean))),
+    ignoreQueryParameters: z
+      .array(z.string().trim().regex(/^[A-Za-z0-9_.~-]+$/))
+      .max(50)
+      .optional()
+      .default([])
+      .transform((value) => JSON.stringify(value.filter(Boolean))),
   }),
   updateSchema: z.object({
     name: titleSchema("프로젝트 이름", 100).optional(),
     crawlScope: z.enum(["domain", "subdomain", "path"]).optional(),
     pageLimit: z.coerce.number().int().min(1).max(100000).optional(),
     crawlSource: z.enum(["website", "sitemap", "url_list"]).optional(),
-    schedule: z.enum(["off", "weekly", "monthly"]).optional(),
+    schedule: z.enum(["off", "daily", "weekly", "monthly"]).optional(),
+    notifyOnComplete: z.boolean().optional(),
+    emailOnComplete: z.boolean().optional(),
+    crawlerUserAgent: z.enum(["semforge", "googlebot", "bingbot"]).optional(),
+    allowPaths: z
+      .array(z.string().trim().max(300))
+      .max(50)
+      .optional()
+      .transform((value) =>
+        value === undefined ? undefined : JSON.stringify(value.filter(Boolean))
+      ),
+    disallowPaths: z
+      .array(z.string().trim().max(300))
+      .max(50)
+      .optional()
+      .transform((value) =>
+        value === undefined ? undefined : JSON.stringify(value.filter(Boolean))
+      ),
+    ignoreQueryParameters: z
+      .array(z.string().trim().regex(/^[A-Za-z0-9_.~-]+$/))
+      .max(50)
+      .optional()
+      .transform((value) =>
+        value === undefined ? undefined : JSON.stringify(value.filter(Boolean))
+      ),
     status: z
       .enum(["idle", "queued", "running", "completed", "failed"])
       .optional(),
     version: versionField,
   }),
-  uniqueRules: [{ fields: ["name"], message: "같은 이름의 캠페인이 이미 있습니다." }],
   cascade: [{ table: siteAuditIssues, foreignKey: "campaignId" }],
 };
 
@@ -390,4 +434,3 @@ export const TRASHABLE_KEYS = [
   reportResource.key,
   contentResource.key,
 ];
-

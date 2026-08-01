@@ -35,7 +35,7 @@ async function scrapePage(url: string, apiKey: string, ctx: CrawlContext): Promi
     page.responseMs = Date.now() - startedAt;
     // Firecrawl 이 따라간 최종 URL 로 표시/중복 판정을 통일한다.
     if (scraped.finalUrl) {
-      const normalized = normalizeUrl(scraped.finalUrl, url);
+      const normalized = normalizeUrl(scraped.finalUrl, url, ctx.rules);
       if (normalized) page.url = normalized;
     }
     if (scraped.html) {
@@ -65,7 +65,11 @@ async function scrapePage(url: string, apiKey: string, ctx: CrawlContext): Promi
  */
 export function createFirecrawlCrawler(apiKey: string) {
   return async (input: CrawlInput): Promise<CrawlOutcome> => {
-    const ctx: CrawlContext = { scope: input.scope, start: new URL(input.startUrl) };
+    const ctx: CrawlContext = {
+      scope: input.scope,
+      start: new URL(input.startUrl),
+      rules: input.rules,
+    };
     const mapped = await firecrawlMapUrls(
       input.startUrl,
       input.pageLimit,
@@ -76,12 +80,12 @@ export function createFirecrawlCrawler(apiKey: string) {
     // 시작 URL 을 항상 포함하고, 범위 밖/중복 URL 을 걸러 pageLimit 까지만 scrape 한다.
     const seen = new Set<string>();
     const targets: string[] = [];
-    const seed = normalizeUrl(input.startUrl, input.startUrl) ?? input.startUrl;
+    const seed = normalizeUrl(input.startUrl, input.startUrl, input.rules) ?? input.startUrl;
     seen.add(seed);
     targets.push(seed);
     for (const link of mapped) {
       if (targets.length >= input.pageLimit) break;
-      const normalized = normalizeUrl(link, input.startUrl);
+      const normalized = normalizeUrl(link, input.startUrl, input.rules);
       if (!normalized || seen.has(normalized) || !inScope(normalized, ctx)) continue;
       seen.add(normalized);
       targets.push(normalized);
@@ -99,6 +103,10 @@ export function createFirecrawlCrawler(apiKey: string) {
           if (seenFinal.has(page.url)) continue;
           seenFinal.add(page.url);
           pages.push(page);
+          await input.onProgress?.({
+            crawledPages: Math.min(input.pageLimit, pages.length),
+            failedFetches: pages.filter((item) => item.status === 0).length,
+          });
         }
       })
     );

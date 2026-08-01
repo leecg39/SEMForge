@@ -12,6 +12,14 @@ import {
 } from "@/server/siteaudit/linkgraph";
 import { mergeCrawlMeta, type RobotsMeta } from "@/server/siteaudit/meta";
 import { evaluateAiBots } from "@/server/siteaudit/robots";
+import {
+  applyQueryRules,
+  firstAllowedPath,
+  isPathAllowed,
+  parseCrawlRules,
+  resolveCrawlerUserAgent,
+  type SiteAuditCrawlRules,
+} from "@/server/siteaudit/rules";
 
 /**
  * Site Audit 실제 크롤러.
@@ -29,7 +37,7 @@ import { evaluateAiBots } from "@/server/siteaudit/robots";
  */
 
 export const SITE_AUDIT_USER_AGENT =
-  "Mozilla/5.0 (compatible; CloneSiteAuditBot/1.0; +http://localhost:3000/siteaudit)";
+  resolveCrawlerUserAgent("semforge");
 
 const FETCH_TIMEOUT_MS = 10_000;
 const CONCURRENCY = 4;
@@ -91,7 +99,11 @@ function isSkippablePath(pathname: string): boolean {
 }
 
 /** 링크를 절대 URL로 정규화한다. 크롤 불가 형식이면 null. */
-export function normalizeUrl(href: string, base: string): string | null {
+export function normalizeUrl(
+  href: string,
+  base: string,
+  rules?: SiteAuditCrawlRules
+): string | null {
   const trimmed = href.trim();
   if (!trimmed || trimmed.startsWith("#")) return null;
   if (/^(javascript|mailto|tel|data|ftp|sms):/i.test(trimmed)) return null;
@@ -100,6 +112,7 @@ export function normalizeUrl(href: string, base: string): string | null {
     if (url.protocol !== "http:" && url.protocol !== "https:") return null;
     url.hash = "";
     url.hostname = url.hostname.toLowerCase();
+    applyQueryRules(url, rules);
     if (url.pathname.length > 1 && url.pathname.endsWith("/")) {
       url.pathname = url.pathname.replace(/\/+$/, "");
     }
@@ -113,6 +126,7 @@ export function normalizeUrl(href: string, base: string): string | null {
 export interface CrawlContext {
   scope: "domain" | "subdomain" | "path";
   start: URL;
+  rules?: SiteAuditCrawlRules;
 }
 
 export function inScope(url: string, ctx: CrawlContext): boolean {
@@ -124,6 +138,7 @@ export function inScope(url: string, ctx: CrawlContext): boolean {
   }
   const host = parsed.hostname.toLowerCase();
   const startHost = ctx.start.hostname.toLowerCase();
+  if (!isPathAllowed(parsed.pathname, ctx.rules)) return false;
   if (ctx.scope === "domain") {
     const root = registrableDomain(startHost);
     return host === root || host.endsWith(`.${root}`);
@@ -313,7 +328,7 @@ export function applyHtmlToPage(page: CrawledPage, html: string, ctx: CrawlConte
   for (const anchor of doc.querySelectorAll("a")) {
     const href = anchor.getAttribute("href");
     if (!href) continue;
-    const normalized = normalizeUrl(href, page.url);
+    const normalized = normalizeUrl(href, page.url, ctx.rules);
     if (!normalized || normalized === page.url) continue;
     if (inScope(normalized, ctx)) {
       links.add(normalized);
@@ -337,7 +352,11 @@ export function applyHtmlToPage(page: CrawledPage, html: string, ctx: CrawlConte
   page.externalLinks = [...external.entries()].map(([url, isFollow]) => ({ url, isFollow }));
 }
 
-async function fetchPage(url: string, ctx: CrawlContext): Promise<CrawledPage> {
+async function fetchPage(
+  url: string,
+  ctx: CrawlContext,
+  userAgent = SITE_AUDIT_USER_AGENT
+): Promise<CrawledPage> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   const page = emptyCrawledPage(url);
@@ -347,7 +366,7 @@ async function fetchPage(url: string, ctx: CrawlContext): Promise<CrawledPage> {
       signal: controller.signal,
       redirect: "follow",
       headers: {
-        "user-agent": SITE_AUDIT_USER_AGENT,
+        "user-agent": userAgent,
         accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "accept-language": "ko,en;q=0.8",
       },
@@ -355,7 +374,7 @@ async function fetchPage(url: string, ctx: CrawlContext): Promise<CrawledPage> {
     page.status = response.status;
     // 리다이렉트를 따라간 최종 URL 로 표시/중복 판정을 통일한다 (apex↔www 중복 방지).
     if (response.url) {
-      const finalUrl = normalizeUrl(response.url, url);
+      const finalUrl = normalizeUrl(response.url, url, ctx.rules);
       if (finalUrl) page.url = finalUrl;
     }
     const contentType = response.headers.get("content-type") ?? "";
@@ -435,14 +454,17 @@ export async function fetchRobotsMeta(origin: string): Promise<RobotsMeta> {
 }
 
 /** robots.txt 의 Sitemap 지시와 기본 경로에서 사이트맵 URL 후보를 모은다. */
-async function discoverSitemapUrls(origin: string): Promise<string[]> {
+async function discoverSitemapUrls(
+  origin: string,
+  userAgent = SITE_AUDIT_USER_AGENT
+): Promise<string[]> {
   const candidates = [`${origin}/sitemap.xml`];
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     const robots = await fetch(`${origin}/robots.txt`, {
       signal: controller.signal,
-      headers: { "user-agent": SITE_AUDIT_USER_AGENT },
+      headers: { "user-agent": userAgent },
     }).finally(() => clearTimeout(timer));
     if (robots.ok) {
       const text = await robots.text();
@@ -457,14 +479,18 @@ async function discoverSitemapUrls(origin: string): Promise<string[]> {
   return [...new Set(candidates)];
 }
 
-async function fetchSitemapLocs(sitemapUrl: string, depth = 0): Promise<string[]> {
+async function fetchSitemapLocs(
+  sitemapUrl: string,
+  depth = 0,
+  userAgent = SITE_AUDIT_USER_AGENT
+): Promise<string[]> {
   if (depth > 2) return [];
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     const response = await fetch(sitemapUrl, {
       signal: controller.signal,
-      headers: { "user-agent": SITE_AUDIT_USER_AGENT, accept: "application/xml,text/xml,*/*" },
+      headers: { "user-agent": userAgent, accept: "application/xml,text/xml,*/*" },
     }).finally(() => clearTimeout(timer));
     if (!response.ok) return [];
     const xml = await response.text();
@@ -473,7 +499,7 @@ async function fetchSitemapLocs(sitemapUrl: string, depth = 0): Promise<string[]
     if (!isIndex) return locs;
     // 사이트맵 인덱스면 하위 사이트맵을 최대 5개까지 따라간다.
     const nested = await Promise.all(
-      locs.slice(0, 5).map((child) => fetchSitemapLocs(child, depth + 1))
+      locs.slice(0, 5).map((child) => fetchSitemapLocs(child, depth + 1, userAgent))
     );
     return nested.flat();
   } catch {
@@ -486,6 +512,12 @@ export interface CrawlInput {
   scope: CrawlContext["scope"];
   pageLimit: number;
   source: "website" | "sitemap";
+  rules?: SiteAuditCrawlRules;
+  userAgent?: string;
+  onProgress?: (progress: {
+    crawledPages: number;
+    failedFetches: number;
+  }) => void | Promise<void>;
 }
 
 export interface CrawlOutcome {
@@ -499,15 +531,26 @@ export interface CrawlOutcome {
 }
 
 async function crawlSite(input: CrawlInput): Promise<CrawlOutcome> {
-  const ctx: CrawlContext = { scope: input.scope, start: new URL(input.startUrl) };
+  const ctx: CrawlContext = {
+    scope: input.scope,
+    start: new URL(input.startUrl),
+    rules: input.rules,
+  };
+  const userAgent = input.userAgent ?? SITE_AUDIT_USER_AGENT;
+  const reportProgress = async (pages: CrawledPage[]) => {
+    await input.onProgress?.({
+      crawledPages: Math.min(input.pageLimit, pages.length),
+      failedFetches: pages.filter((page) => page.status === 0).length,
+    });
+  };
 
   if (input.source === "sitemap") {
     const origin = ctx.start.origin;
-    const sitemapUrls = await discoverSitemapUrls(origin);
+    const sitemapUrls = await discoverSitemapUrls(origin, userAgent);
     const collected = new Set<string>();
     for (const sitemapUrl of sitemapUrls) {
-      for (const loc of await fetchSitemapLocs(sitemapUrl)) {
-        const normalized = normalizeUrl(loc, input.startUrl);
+      for (const loc of await fetchSitemapLocs(sitemapUrl, 0, userAgent)) {
+        const normalized = normalizeUrl(loc, input.startUrl, input.rules);
         if (normalized && inScope(normalized, ctx)) collected.add(normalized);
         if (collected.size >= input.pageLimit) break;
       }
@@ -523,12 +566,13 @@ async function crawlSite(input: CrawlInput): Promise<CrawlOutcome> {
           for (;;) {
             const url = targets[cursor++];
             if (!url) return;
-            const page = await fetchPage(url, ctx);
+            const page = await fetchPage(url, ctx, userAgent);
             if (seenFinal.has(page.url)) continue;
             seenFinal.add(page.url);
             // 사이트맵 수집은 BFS 가 아니므로 경로 깊이로 근사한다.
             page.depth = approximatePathDepth(page.url);
             pages.push(page);
+            await reportProgress(pages);
           }
         })
       );
@@ -542,7 +586,7 @@ async function crawlSite(input: CrawlInput): Promise<CrawlOutcome> {
   const visited = new Set<string>();
   /** BFS 큐: 각 항목에 시드로부터의 클릭 깊이를 함께 저장한다. */
   const queue: { url: string; depth: number }[] = [];
-  const seed = normalizeUrl(input.startUrl, input.startUrl) ?? input.startUrl;
+  const seed = normalizeUrl(input.startUrl, input.startUrl, input.rules) ?? input.startUrl;
   visited.add(seed);
   queue.push({ url: seed, depth: 0 });
 
@@ -555,11 +599,12 @@ async function crawlSite(input: CrawlInput): Promise<CrawlOutcome> {
       if (pages.length >= input.pageLimit) return;
       const item = queue[cursor++];
       if (!item) return;
-      const page = await fetchPage(item.url, ctx);
+      const page = await fetchPage(item.url, ctx, userAgent);
       if (seenFinal.has(page.url)) continue;
       seenFinal.add(page.url);
       page.depth = item.depth;
       pages.push(page);
+      await reportProgress(pages);
       if (!page.isHtml || page.status >= 400) continue;
       for (const link of page.internalLinks) {
         if (visited.size >= input.pageLimit * VISITED_FACTOR) break;
@@ -672,6 +717,7 @@ export type CrawlExecutor = (input: CrawlInput) => Promise<CrawlOutcome>;
 export interface RunSiteAuditOptions {
   /** 지정하면 자체 BFS 대신 이 수집 엔진을 먼저 사용하고, 실패 시 자체 크롤러로 폴백한다. */
   crawler?: CrawlExecutor;
+  onProgress?: CrawlInput["onProgress"];
 }
 
 /** 메타 설명 중복 그룹 키는 길이가 길 수 있어 앞부분만 저장한다. */
@@ -765,12 +811,20 @@ export async function runSiteAuditCampaign(
       );
     }
     const pageLimit = Math.max(1, Math.min(MAX_PAGE_LIMIT, campaign.pageLimit));
-    const startUrl = `https://${campaign.domain.replace(/^https?:\/\//, "")}`;
+    const rules = parseCrawlRules(campaign);
+    const crawlerUserAgent = resolveCrawlerUserAgent(campaign.crawlerUserAgent);
+    const allowedPath = firstAllowedPath(rules);
+    const startUrl = `https://${campaign.domain.replace(/^https?:\/\//, "")}${
+      allowedPath === "/" ? "" : allowedPath
+    }`;
     const crawlInput: CrawlInput = {
       startUrl,
       scope: campaign.crawlScope,
       pageLimit,
       source: campaign.crawlSource,
+      rules,
+      userAgent: crawlerUserAgent,
+      onProgress: options?.onProgress,
     };
 
     // 수집 엔진 선택: 외부 엔진(Firecrawl)이 주입되면 우선 시도하고,
