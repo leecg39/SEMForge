@@ -96,8 +96,10 @@ export function WebsiteDomainPicker({
       <button
         type="button"
         id={id}
+        role="combobox"
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-controls={`${id}-listbox`}
         aria-invalid={invalid}
         onClick={() => setOpen((v) => !v)}
         className={cn(
@@ -122,6 +124,7 @@ export function WebsiteDomainPicker({
 
       {open && (
         <div
+          id={`${id}-listbox`}
           role="listbox"
           aria-label={tx("모든 웹사이트")}
           className="absolute left-0 right-0 z-10 mt-1 rounded-[8px] border border-app-border bg-white py-2 shadow-lg"
