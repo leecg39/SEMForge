@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TrendChart } from "@/components/app/app-primitives";
 import { DiscoveredCompetitorsPanel } from "@/components/position-tracking/DiscoveredCompetitorsPanel";
+import { MetricCards } from "@/components/position-tracking/MetricCards";
+import { buildMetricCards } from "@/components/position-tracking/metric-cards";
 import { GscNotice } from "@/components/position-tracking/GscNotice";
 import { RankDistributionPanel } from "@/components/position-tracking/RankDistributionPanel";
 import { ScheduleControl } from "@/components/position-tracking/ScheduleControl";
@@ -323,6 +325,18 @@ export function PositionTrackingDashboard({
   const [keywordError, setKeywordError] = useState<string | null>(null);
   const [addingKeyword, setAddingKeyword] = useState(false);
   const activeTab: DashboardTab = focusSection;
+
+  const metricCards = useMemo(
+    () =>
+      buildMetricCards({
+        visibilityHistory,
+        keywords: keywords.map((row) => ({
+          position: row.position,
+          volume: row.volume,
+        })),
+      }),
+    [visibilityHistory, keywords]
+  );
   // 수집 완료/경쟁사 추가 후 탭 패널들이 다시 집계되도록 증가시키는 키.
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -621,6 +635,7 @@ export function PositionTrackingDashboard({
 
       {activeTab === "overview" && (
       <>
+      <MetricCards cards={metricCards} />
       {(report || collectError) && (
         <section
           className={cn(

@@ -1,5 +1,8 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { AppShell } from "@/components/app/AppShell";
+import { CannibalizationPanel } from "@/components/position-tracking/CannibalizationPanel";
+import { FeaturedSnippetsPanel } from "@/components/position-tracking/FeaturedSnippetsPanel";
+import { PagesPanel } from "@/components/position-tracking/PagesPanel";
 import {
   PositionTrackingDashboard,
   type CampaignSummary,
@@ -15,6 +18,11 @@ import { folders, positionTrackingCampaigns } from "@/db/schema";
 import { normalizeDomain } from "@/lib/analytics/metrics";
 import { pageSession } from "@/server/page-auth";
 import { getSeoProjectSettings } from "@/server/seo-projects/settings";
+import {
+  loadCannibalization,
+  loadFeaturedSnippets,
+  loadPageRankings,
+} from "@/server/position-tracking/page-insights-query";
 
 export const dynamic = "force-dynamic";
 
@@ -85,6 +93,20 @@ export default async function PositionTrackingPage({
   if (selectedCampaign) tabBaseQuery.campaign = selectedCampaign.id;
   if (project) tabBaseQuery.project = project.id;
 
+  // 서버 컴포넌트에서 선택한 탭의 데이터만 읽어 불필요한 DB 조회를 피한다.
+  const pagesResult =
+    selectedCampaign && activeTab.slug === "pages"
+      ? await loadPageRankings(auth, selectedCampaign.id)
+      : null;
+  const cannibalizationResult =
+    selectedCampaign && activeTab.slug === "cannibalization"
+      ? await loadCannibalization(auth, selectedCampaign.id)
+      : null;
+  const featuredSnippetsResult =
+    selectedCampaign && activeTab.slug === "featured-snippets"
+      ? await loadFeaturedSnippets(auth, selectedCampaign.id)
+      : null;
+
   return (
     <AppShell
       activeToolkit="seo"
@@ -104,6 +126,18 @@ export default async function PositionTrackingPage({
           <PositionTrackingTabs activeSlug={activeTab.slug} baseQuery={tabBaseQuery} />
           {activeTab.status === "pending" ? (
             <PositionTrackingPendingTab label={activeTab.label} reason={activeTab.reason ?? ""} />
+          ) : pagesResult ? (
+            <div className="p-6">
+              <PagesPanel result={pagesResult} />
+            </div>
+          ) : cannibalizationResult ? (
+            <div className="p-6">
+              <CannibalizationPanel result={cannibalizationResult} />
+            </div>
+          ) : featuredSnippetsResult ? (
+            <div className="p-6">
+              <FeaturedSnippetsPanel result={featuredSnippetsResult} />
+            </div>
           ) : (
             <PositionTrackingDashboard
               campaigns={orderedCampaigns}

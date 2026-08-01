@@ -66,8 +66,16 @@ test("available 탭은 대시보드 내부 섹션으로 매핑된다", () => {
 });
 
 test("준비 중 탭은 대시보드 섹션이 없다", () => {
-  for (const slug of ["tags", "pages", "cannibalization", "featured-snippets", "devices"]) {
+  for (const slug of ["tags", "devices"]) {
     assert.equal(toDashboardSection(slug), null, `${slug} 는 매핑 대상이 아니다`);
+  }
+});
+
+test("저장된 SERP 스냅샷으로 제공하는 페이지 인사이트 탭은 사용 가능하다", () => {
+  for (const slug of ["pages", "cannibalization", "featured-snippets"]) {
+    const tab = resolveTab(slug);
+    assert.equal(tab.status, "available");
+    assert.equal(tab.reason, undefined);
   }
 });
 

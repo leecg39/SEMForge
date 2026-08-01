@@ -34,12 +34,7 @@ export const POSITION_TRACKING_TABS: readonly PositionTrackingTab[] = [
     reason:
       "키워드를 그룹으로 묶는 태그 저장소가 아직 없습니다. 태그 테이블을 추가하면 그룹별 실적을 집계할 수 있습니다.",
   },
-  {
-    slug: "pages",
-    label: "페이지",
-    status: "pending",
-    reason: "수집된 SERP 스냅샷의 URL 별 집계를 준비 중입니다.",
-  },
+  { slug: "pages", label: "페이지", status: "available" },
   {
     slug: "devices",
     label: "기기 및 위치",
@@ -47,19 +42,9 @@ export const POSITION_TRACKING_TABS: readonly PositionTrackingTab[] = [
     reason:
       "캠페인이 기기·위치 조합을 하나만 수집하고 있습니다. 비교하려면 같은 키워드를 여러 조합으로 수집해야 합니다.",
   },
-  {
-    slug: "cannibalization",
-    label: "카니발리제이션",
-    status: "pending",
-    reason: "같은 키워드에 자사 URL 이 여러 개 잡히는 경우를 찾는 분석을 준비 중입니다.",
-  },
+  { slug: "cannibalization", label: "카니발리제이션", status: "available" },
   { slug: "competitors", label: "경쟁자 발견", status: "available" },
-  {
-    slug: "featured-snippets",
-    label: "추천 스니펫",
-    status: "pending",
-    reason: "스냅샷의 SERP 구성 요소에서 추천 스니펫 점유를 골라내는 분석을 준비 중입니다.",
-  },
+  { slug: "featured-snippets", label: "추천 스니펫", status: "available" },
 ];
 
 /** 대시보드가 이미 갖고 있는 내부 섹션. 탭 내비게이션을 두 벌 두지 않기 위해 매핑한다. */
