@@ -77,10 +77,36 @@ function MetricCell({
 
   const value = row.metrics?.[metric.key] ?? null;
   const delta = row.deltas?.[metric.key] ?? null;
-  if (value === null) return <span className="text-app-text-secondary">—</span>;
+  const provider =
+    metric.key === "performance" || metric.key === "coreWebVitals"
+      ? row.provenance.psi
+      : row.provenance.crawl;
+  const providerLabel =
+    provider === "pagespeed-insights"
+      ? "PageSpeed Insights"
+      : provider === "firecrawl"
+        ? "Firecrawl"
+        : provider === "self"
+          ? "SEMForge 자체 크롤러"
+          : provider === "legacy-latest"
+            ? "기존 최신 크롤 결과"
+            : null;
+  if (value === null) {
+    const psiReason = typeof row.provenance.psiError === "string"
+      ? row.provenance.psiError
+      : "PageSpeed Insights 측정값이 없습니다.";
+    return (
+      <span
+        className="cursor-help text-app-text-secondary"
+        title={metric.key === "performance" || metric.key === "coreWebVitals" ? psiReason : "이번 실행에서 측정할 수 없는 지표입니다."}
+      >
+        —
+      </span>
+    );
+  }
   const favorable = delta === null || delta === 0 ? null : metric.inverse ? delta < 0 : delta > 0;
   return (
-    <span className="inline-flex flex-col items-end">
+    <span className="inline-flex flex-col items-end" title={providerLabel ? `데이터 출처: ${providerLabel}` : undefined}>
       <span className="font-medium tabular-nums text-app-text">
         {value.toLocaleString("ko-KR")}{metric.compact ? "" : "%"}
       </span>

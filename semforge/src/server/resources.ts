@@ -182,7 +182,7 @@ const siteAuditResource: ResourceConfig = {
       .number()
       .int()
       .min(1, "1 이상이어야 합니다.")
-      .max(100000, "100,000 이하여야 합니다.")
+      .max(500, "500 이하여야 합니다.")
       .optional()
       .default(100),
     crawlSource: z
@@ -218,7 +218,7 @@ const siteAuditResource: ResourceConfig = {
   updateSchema: z.object({
     name: titleSchema("프로젝트 이름", 100).optional(),
     crawlScope: z.enum(["domain", "subdomain", "path"]).optional(),
-    pageLimit: z.coerce.number().int().min(1).max(100000).optional(),
+    pageLimit: z.coerce.number().int().min(1).max(500).optional(),
     crawlSource: z.enum(["website", "sitemap", "url_list"]).optional(),
     schedule: z.enum(["off", "daily", "weekly", "monthly"]).optional(),
     notifyOnComplete: z.boolean().optional(),

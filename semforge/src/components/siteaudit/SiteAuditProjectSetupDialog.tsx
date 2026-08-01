@@ -99,8 +99,8 @@ export function SiteAuditProjectSetupDialog({
 
   const parsedLimit = Number.parseInt(pageLimit, 10);
   const validation = useMemo(() => {
-    if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 100_000) {
-      return "페이지 제한은 1~100,000 사이의 정수여야 합니다.";
+    if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 500) {
+      return "페이지 제한은 1~500 사이의 정수여야 합니다.";
     }
     const pathValues = [...lines(allowPaths), ...lines(disallowPaths)];
     if (pathValues.some((path) => !path.startsWith("/"))) {
@@ -226,7 +226,7 @@ export function SiteAuditProjectSetupDialog({
                     </div>
                     <label className="block">
                       <span className="mb-2 block text-[13px] font-semibold text-app-text">페이지 제한</span>
-                      <input type="number" min={1} max={100000} value={pageLimit} onChange={(event) => setPageLimit(event.target.value)} className="h-10 w-full rounded-[7px] border border-app-border px-3 text-[14px] outline-none focus:border-app-blue" />
+                      <input type="number" min={1} max={500} value={pageLimit} onChange={(event) => setPageLimit(event.target.value)} className="h-10 w-full rounded-[7px] border border-app-border px-3 text-[14px] outline-none focus:border-app-blue" />
                       <span className="mt-1.5 block text-[12px] text-app-text-secondary">실행 진행률의 분모와 최대 수집 페이지 수에 실제로 적용됩니다.</span>
                     </label>
                     <div>
