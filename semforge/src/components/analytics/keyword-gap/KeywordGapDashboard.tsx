@@ -148,10 +148,6 @@ export function KeywordGapDashboard({ initialReport }: { initialReport: KeywordG
     [filtered, sort],
   );
 
-  useEffect(() => {
-    setPage(0);
-  }, [tab, search, posTarget, posBand, volumeBand, kdBand, intents, pageSize]);
-
   const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
   const safePage = Math.min(page, pageCount - 1);
   const pageRows = sorted.slice(safePage * pageSize, safePage * pageSize + pageSize);
@@ -178,6 +174,7 @@ export function KeywordGapDashboard({ initialReport }: { initialReport: KeywordG
     setVolumeBand("any");
     setKdBand("any");
     setIntents(new Set());
+    setPage(0);
   };
 
   const exportCsv = () => {
@@ -363,7 +360,10 @@ export function KeywordGapDashboard({ initialReport }: { initialReport: KeywordG
                     ),
                   }))}
                   value={tab}
-                  onChange={setTab}
+                  onChange={(next) => {
+                    setTab(next);
+                    setPage(0);
+                  }}
                 />
               </div>
 
@@ -372,7 +372,10 @@ export function KeywordGapDashboard({ initialReport }: { initialReport: KeywordG
                 <input
                   type="search"
                   value={search}
-                  onChange={(event) => setSearch(event.target.value)}
+                  onChange={(event) => {
+                    setSearch(event.target.value);
+                    setPage(0);
+                  }}
                   placeholder={copy.searchPlaceholder}
                   aria-label={copy.searchPlaceholder}
                   className="h-8 w-[200px] rounded-[6px] border border-app-border bg-white px-2.5 text-[13px] text-a2-text outline-none transition-colors focus:border-app-blue"
@@ -381,7 +384,10 @@ export function KeywordGapDashboard({ initialReport }: { initialReport: KeywordG
                   {copy.positionFilter}
                   <select
                     value={posTarget}
-                    onChange={(event) => setPosTarget(Number(event.target.value))}
+                    onChange={(event) => {
+                      setPosTarget(Number(event.target.value));
+                      setPage(0);
+                    }}
                     aria-label={`${copy.positionFilter} ${copy.positionTarget}`}
                     className="h-8 max-w-[160px] rounded-[6px] border border-app-border bg-white px-1.5 text-[12px] text-a2-text outline-none focus:border-app-blue"
                   >
@@ -393,7 +399,10 @@ export function KeywordGapDashboard({ initialReport }: { initialReport: KeywordG
                   </select>
                   <select
                     value={posBand}
-                    onChange={(event) => setPosBand(event.target.value)}
+                    onChange={(event) => {
+                      setPosBand(event.target.value);
+                      setPage(0);
+                    }}
                     aria-label={copy.positionFilter}
                     className="h-8 rounded-[6px] border border-app-border bg-white px-1.5 text-[12px] text-a2-text outline-none focus:border-app-blue"
                   >
@@ -409,7 +418,10 @@ export function KeywordGapDashboard({ initialReport }: { initialReport: KeywordG
                   {copy.volumeFilter}
                   <select
                     value={volumeBand}
-                    onChange={(event) => setVolumeBand(event.target.value)}
+                    onChange={(event) => {
+                      setVolumeBand(event.target.value);
+                      setPage(0);
+                    }}
                     aria-label={copy.volumeFilter}
                     className="h-8 rounded-[6px] border border-app-border bg-white px-1.5 text-[12px] text-a2-text outline-none focus:border-app-blue"
                   >
@@ -425,7 +437,10 @@ export function KeywordGapDashboard({ initialReport }: { initialReport: KeywordG
                   {copy.kdFilter}
                   <select
                     value={kdBand}
-                    onChange={(event) => setKdBand(event.target.value)}
+                    onChange={(event) => {
+                      setKdBand(event.target.value);
+                      setPage(0);
+                    }}
                     aria-label={copy.kdFilter}
                     className="h-8 rounded-[6px] border border-app-border bg-white px-1.5 text-[12px] text-a2-text outline-none focus:border-app-blue"
                   >
@@ -448,14 +463,15 @@ export function KeywordGapDashboard({ initialReport }: { initialReport: KeywordG
                         type="button"
                         aria-pressed={active}
                         title={meta.label[locale]}
-                        onClick={() =>
+                        onClick={() => {
                           setIntents((current) => {
                             const next = new Set(current);
                             if (next.has(intent)) next.delete(intent);
                             else next.add(intent);
                             return next;
-                          })
-                        }
+                          });
+                          setPage(0);
+                        }}
                         className="flex h-7 w-7 items-center justify-center rounded-[6px] border text-[12px] font-semibold transition-colors"
                         style={{
                           color: meta.color,
@@ -611,7 +627,10 @@ export function KeywordGapDashboard({ initialReport }: { initialReport: KeywordG
                     {copy.rowsPerPage}
                     <select
                       value={pageSize}
-                      onChange={(event) => setPageSize(Number(event.target.value))}
+                      onChange={(event) => {
+                        setPageSize(Number(event.target.value));
+                        setPage(0);
+                      }}
                       aria-label={copy.rowsPerPage}
                       className="h-7 rounded-[6px] border border-app-border bg-white px-1.5 text-[12px] text-a2-text outline-none focus:border-app-blue"
                     >
