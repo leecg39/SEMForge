@@ -1,8 +1,11 @@
-import { and, desc, eq, gte, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db/client";
 import {
   keywordMetrics,
   positionTrackingCampaigns,
+  positionTrackingObservations,
+  positionTrackingRunItems,
+  positionTrackingRuns,
   positionTrackingVisibilityHistory,
   serpSnapshots,
   trackedKeywords,
@@ -215,7 +218,36 @@ export interface CampaignOverview {
   newRanked: number;
   dropped: number;
   keywordCount: number;
+  /** 최신 종료 실행의 키워드별 공급자 실측값. KPI 계산 근거를 화면에 공개한다. */
+  latestCollection: {
+    runId: string;
+    trigger: "initial" | "manual" | "scheduled";
+    status: "completed" | "partial" | "failed" | "cancelled";
+    total: number;
+    succeeded: number;
+    failed: number;
+    completedAt: string | null;
+    capturedAt: string | null;
+    results: {
+      keywordId: string;
+      keyword: string;
+      status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+      attempts: number;
+      error: string | null;
+      measurementKind: "organic_rank" | "citation_rank" | null;
+      position: number | null;
+      url: string | null;
+      mentioned: boolean;
+      localPackPosition: number | null;
+      features: string[];
+      citationCount: number;
+      source: string | null;
+      capturedAt: string | null;
+    }[];
+  } | null;
 }
+
+type LatestCollectionStatus = NonNullable<CampaignOverview["latestCollection"]>["status"];
 
 const TOP_THRESHOLDS = [
   { key: "top3", threshold: 3 },
@@ -226,6 +258,22 @@ const TOP_THRESHOLDS = [
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function parseJsonArray(value: string | null): unknown[] {
+  if (!value) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseStringArray(value: string | null): string[] {
+  return parseJsonArray(value).filter(
+    (item): item is string => typeof item === "string"
+  );
 }
 
 /** KPI 카드 집계. 순위·검색량은 실측이고 예상 트래픽만 clone-traffic-v1 계산식이다. */
@@ -259,6 +307,84 @@ export async function getCampaignOverview(
     .orderBy(desc(positionTrackingVisibilityHistory.capturedAt))
     .limit(30);
 
+  const [latestRun] = await db
+    .select({
+      id: positionTrackingRuns.id,
+      trigger: positionTrackingRuns.trigger,
+      status: positionTrackingRuns.status,
+      total: positionTrackingRuns.totalCount,
+      succeeded: positionTrackingRuns.successCount,
+      failed: positionTrackingRuns.failedCount,
+      completedAt: positionTrackingRuns.completedAt,
+    })
+    .from(positionTrackingRuns)
+    .where(
+      and(
+        eq(positionTrackingRuns.campaignId, campaignId),
+        inArray(positionTrackingRuns.status, ["completed", "partial", "failed", "cancelled"])
+      )
+    )
+    .orderBy(desc(positionTrackingRuns.completedAt), desc(positionTrackingRuns.createdAt))
+    .limit(1);
+
+  const latestRows = latestRun
+    ? await db
+        .select({
+          keywordId: trackedKeywords.id,
+          keyword: trackedKeywords.keyword,
+          status: positionTrackingRunItems.status,
+          attempts: positionTrackingRunItems.attemptCount,
+          error: positionTrackingRunItems.errorMessage,
+          measurementKind: positionTrackingObservations.measurementKind,
+          position: positionTrackingObservations.position,
+          url: positionTrackingObservations.url,
+          mentioned: positionTrackingObservations.mentioned,
+          localPackPosition: positionTrackingObservations.localPackPosition,
+          features: positionTrackingObservations.features,
+          citations: positionTrackingObservations.citations,
+          source: positionTrackingObservations.source,
+          capturedAt: positionTrackingObservations.capturedAt,
+        })
+        .from(positionTrackingRunItems)
+        .innerJoin(
+          trackedKeywords,
+          eq(trackedKeywords.id, positionTrackingRunItems.trackedKeywordId)
+        )
+        .leftJoin(
+          positionTrackingObservations,
+          and(
+            eq(positionTrackingObservations.runId, latestRun.id),
+            eq(
+              positionTrackingObservations.trackedKeywordId,
+              positionTrackingRunItems.trackedKeywordId
+            )
+          )
+        )
+        .where(eq(positionTrackingRunItems.runId, latestRun.id))
+        .orderBy(asc(trackedKeywords.createdAt))
+    : [];
+
+  const latestResults = latestRows.map((row) => ({
+    keywordId: row.keywordId,
+    keyword: row.keyword,
+    status: row.status,
+    attempts: row.attempts,
+    error: row.error,
+    measurementKind: row.measurementKind,
+    position: row.position,
+    url: row.url,
+    mentioned: row.mentioned ?? false,
+    localPackPosition: row.localPackPosition,
+    features: parseStringArray(row.features),
+    citationCount: parseJsonArray(row.citations).length,
+    source: row.source,
+    capturedAt: row.capturedAt?.toISOString() ?? null,
+  }));
+  const latestCapturedAt = latestRows.reduce<Date | null>((latest, row) => {
+    if (!row.capturedAt) return latest;
+    return !latest || row.capturedAt > latest ? row.capturedAt : latest;
+  }, null);
+
   const series = history
     .slice()
     .reverse()
@@ -287,16 +413,14 @@ export async function getCampaignOverview(
   let trafficCurrent = 0;
   let trafficPrevious = 0;
   let covered = 0;
-  let coveredPrevious = 0;
   for (const row of keywords) {
     if (row.volume === null) continue;
+    covered += 1;
     if (row.position !== null) {
       trafficCurrent += row.volume * ctrForPosition(row.position);
-      covered += 1;
     }
     if (row.previousPosition !== null) {
       trafficPrevious += row.volume * ctrForPosition(row.previousPosition);
-      coveredPrevious += 1;
     }
   }
 
@@ -346,9 +470,9 @@ export async function getCampaignOverview(
       rankedCount: ranked.length,
     },
     estimatedTraffic: {
-      current: keywords.length > 0 ? round2(trafficCurrent) : null,
+      current: covered > 0 ? round2(trafficCurrent) : null,
       diff:
-        covered > 0 && coveredPrevious > 0
+        covered > 0 && previousVisibility !== null
           ? round2(trafficCurrent - trafficPrevious)
           : null,
       coveredKeywords: covered,
@@ -361,6 +485,21 @@ export async function getCampaignOverview(
     newRanked,
     dropped,
     keywordCount: keywords.length,
+    latestCollection: latestRun
+      ? {
+          runId: latestRun.id,
+          trigger: latestRun.trigger,
+          // SQL 조건에서 종료 상태만 조회한다. Drizzle의 inArray는 TS union을 축소하지 않는다.
+          status: latestRun.status as LatestCollectionStatus,
+          total: latestRun.total,
+          succeeded: latestRun.succeeded,
+          failed: latestRun.failed,
+          completedAt: latestRun.completedAt?.toISOString() ?? null,
+          capturedAt:
+            latestCapturedAt?.toISOString() ?? latestRun.completedAt?.toISOString() ?? null,
+          results: latestResults,
+        }
+      : null,
   };
 }
 

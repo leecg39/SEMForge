@@ -54,6 +54,9 @@ before(async () => {
   sqlite.exec(
     "INSERT INTO position_tracking_campaigns (id, workspace_id, name, domain, visibility) VALUES ('c1','w1','테스트','example.com',55)"
   );
+  sqlite.exec(
+    "INSERT INTO position_tracking_campaigns (id, workspace_id, name, domain, visibility) VALUES ('c2','w1','검색량 없음','novolume.example',0)"
+  );
 
   // k1 상승(5→2), k2 하락(4→12), k3 이탈(8→없음), k4 신규(→1, volume 없음)
   const keyword = sqlite.prepare(
@@ -63,12 +66,33 @@ before(async () => {
   keyword.run("k2", "c1", "beta", 12, 4, 500);
   keyword.run("k3", "c1", "gamma", null, 8, null);
   keyword.run("k4", "c1", "delta", 1, null, null);
+  keyword.run("k5", "c2", "epsilon", null, null, null);
 
   const history = sqlite.prepare(
     "INSERT INTO position_tracking_visibility_history (id, campaign_id, visibility, ranked_count, keyword_count, captured_at) VALUES (?,?,?,?,?,?)"
   );
   history.run("h1", "c1", 40, 2, 4, EARLIER);
   history.run("h2", "c1", 55, 3, 4, NOW);
+  history.run("h3", "c2", 0, 0, 1, NOW);
+
+  sqlite.exec(`
+    INSERT INTO position_tracking_runs
+      (id, workspace_id, campaign_id, trigger, status, total_count, processed_count, success_count, failed_count, completed_at)
+    VALUES ('r1', 'w1', 'c1', 'manual', 'partial', 4, 4, 3, 1, ${NOW});
+    INSERT INTO position_tracking_run_items
+      (id, run_id, tracked_keyword_id, status, attempt_count, error_message, completed_at)
+    VALUES
+      ('ri1', 'r1', 'k1', 'succeeded', 1, NULL, ${NOW}),
+      ('ri2', 'r1', 'k2', 'succeeded', 1, NULL, ${NOW}),
+      ('ri3', 'r1', 'k3', 'failed', 2, '공급자 시간 초과', ${NOW}),
+      ('ri4', 'r1', 'k4', 'succeeded', 1, NULL, ${NOW});
+    INSERT INTO position_tracking_observations
+      (id, campaign_id, run_id, tracked_keyword_id, measurement_kind, position, url, mentioned, local_pack_position, features, citations, source, captured_at)
+    VALUES
+      ('o1', 'c1', 'r1', 'k1', 'organic_rank', 2, 'https://example.com/a', 0, NULL, '["ai_overview"]', '[]', 'talordata', ${NOW - 2000}),
+      ('o2', 'c1', 'r1', 'k2', 'organic_rank', 12, 'https://example.com/b', 0, NULL, '[]', '[]', 'talordata', ${NOW - 1000}),
+      ('o4', 'c1', 'r1', 'k4', 'organic_rank', 1, 'https://example.com/d', 0, 2, '["local_pack"]', '[]', 'talordata', ${NOW});
+  `);
 
   const metric = sqlite.prepare(
     "INSERT INTO keyword_metrics (id, keyword, normalized_keyword, country_code, device, period_start, volume, intent, source) VALUES (?,?,?,?,?,?,?,?,'talordata-serp')"
@@ -102,8 +126,9 @@ after(() => {
 
 test("목록 요약은 가시성 차이와 개선/하락 키워드 수를 실측으로 집계한다", async () => {
   const items = await getCampaignListSummary(auth);
-  assert.equal(items.length, 1);
-  const [item] = items;
+  assert.equal(items.length, 2);
+  const item = items.find((row) => row.id === "c1");
+  assert.ok(item);
   assert.equal(item.visibility, 55);
   assert.equal(item.visibilityDiff, 15);
   // 개선 = k1(5→2) + k4(신규 진입), 하락 = k2(4→12) + k3(이탈)
@@ -140,6 +165,24 @@ test("KPI 집계는 평균 포지션·버킷 진입/이탈·상승vs하락을 �
   assert.equal(overview.falling, 1);
   assert.equal(overview.newRanked, 1);
   assert.equal(overview.dropped, 1);
+
+  assert.equal(overview.latestCollection?.runId, "r1");
+  assert.equal(overview.latestCollection?.status, "partial");
+  assert.equal(overview.latestCollection?.results.length, 4);
+  const alpha = overview.latestCollection?.results.find((row) => row.keywordId === "k1");
+  assert.equal(alpha?.position, 2);
+  assert.equal(alpha?.source, "talordata");
+  assert.deepEqual(alpha?.features, ["ai_overview"]);
+  const gamma = overview.latestCollection?.results.find((row) => row.keywordId === "k3");
+  assert.equal(gamma?.status, "failed");
+  assert.equal(gamma?.error, "공급자 시간 초과");
+});
+
+test("검색량 원자료가 없으면 예상 트래픽을 실제 0으로 오인시키지 않는다", async () => {
+  const overview = await getCampaignOverview(auth, "c2");
+  assert.equal(overview.estimatedTraffic.current, null);
+  assert.equal(overview.estimatedTraffic.diff, null);
+  assert.equal(overview.estimatedTraffic.coveredKeywords, 0);
 });
 
 test("일별 분포는 날짜별 최신 스냅샷의 자사 버킷을 집계한다", async () => {
