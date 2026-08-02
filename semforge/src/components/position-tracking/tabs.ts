@@ -27,13 +27,7 @@ export const POSITION_TRACKING_TABS: readonly PositionTrackingTab[] = [
       "현황 탭이 같은 지표를 이미 보여줍니다. 원본의 개요 탭은 기간별 비교 표가 중심이라 이력 데이터가 더 쌓인 뒤 분리합니다.",
   },
   { slug: "rank-distribution", label: "순위 분포", status: "available" },
-  {
-    slug: "tags",
-    label: "태그",
-    status: "pending",
-    reason:
-      "키워드를 그룹으로 묶는 태그 저장소가 아직 없습니다. 태그 테이블을 추가하면 그룹별 실적을 집계할 수 있습니다.",
-  },
+  { slug: "tags", label: "태그", status: "available" },
   { slug: "pages", label: "페이지", status: "available" },
   {
     slug: "devices",
@@ -48,11 +42,12 @@ export const POSITION_TRACKING_TABS: readonly PositionTrackingTab[] = [
 ];
 
 /** 대시보드가 이미 갖고 있는 내부 섹션. 탭 내비게이션을 두 벌 두지 않기 위해 매핑한다. */
-export type DashboardSection = "overview" | "distribution" | "discovery";
+export type DashboardSection = "overview" | "distribution" | "discovery" | "tags";
 
 const SECTION_BY_SLUG: Record<string, DashboardSection> = {
   landscape: "overview",
   "rank-distribution": "distribution",
+  tags: "tags",
   competitors: "discovery",
 };
 

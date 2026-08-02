@@ -27,7 +27,7 @@ test("slug 는 URL 에 쓸 수 있는 형태다", () => {
 
 test("이미 구현된 위젯이 있는 탭은 available 이다", () => {
   // 순위 분포와 경쟁자 발견은 독립 컴포넌트가 이미 존재한다.
-  for (const slug of ["landscape", "rank-distribution", "competitors"]) {
+  for (const slug of ["landscape", "rank-distribution", "tags", "competitors"]) {
     assert.equal(resolveTab(slug).status, "available", `${slug} 는 available 이어야 한다`);
   }
 });
@@ -62,11 +62,12 @@ test("available 탭은 대시보드 내부 섹션으로 매핑된다", () => {
   // 대시보드가 이미 갖고 있던 3개 섹션과 1:1 로 연결한다. 탭 내비게이션을 두 벌 두지 않는다.
   assert.equal(toDashboardSection("landscape"), "overview");
   assert.equal(toDashboardSection("rank-distribution"), "distribution");
+  assert.equal(toDashboardSection("tags"), "tags");
   assert.equal(toDashboardSection("competitors"), "discovery");
 });
 
 test("준비 중 탭은 대시보드 섹션이 없다", () => {
-  for (const slug of ["tags", "devices"]) {
+  for (const slug of ["devices"]) {
     assert.equal(toDashboardSection(slug), null, `${slug} 는 매핑 대상이 아니다`);
   }
 });

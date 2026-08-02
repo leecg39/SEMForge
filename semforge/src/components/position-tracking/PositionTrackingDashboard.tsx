@@ -8,6 +8,7 @@ import { buildMetricCards } from "@/components/position-tracking/metric-cards";
 import { GscNotice } from "@/components/position-tracking/GscNotice";
 import { RankDistributionPanel } from "@/components/position-tracking/RankDistributionPanel";
 import { ScheduleControl } from "@/components/position-tracking/ScheduleControl";
+import { TagsPanel } from "@/components/position-tracking/TagsPanel";
 import {
   normalizeGscKeyword,
   useGscKeywordMetrics,
@@ -249,7 +250,7 @@ function GscSourceBadge({ label }: { label: string }) {
   );
 }
 
-type DashboardTab = "overview" | "distribution" | "discovery";
+type DashboardTab = "overview" | "distribution" | "discovery" | "tags";
 
 function ChangeBadge({
   position,
@@ -630,6 +631,12 @@ export function PositionTrackingDashboard({
             trackedCount={competitors.length}
             onAdded={handleCompetitorAdded}
           />
+        </div>
+      )}
+
+      {activeTab === "tags" && (
+        <div className="mt-4">
+          <TagsPanel key={selectedId} campaignId={selectedId} canEdit={canCollect} />
         </div>
       )}
 
