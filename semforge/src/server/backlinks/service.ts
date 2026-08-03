@@ -264,7 +264,8 @@ function listResult(input: {
 function csvCell(value: unknown): string {
   if (value === null || value === undefined) return "";
   const text = typeof value === "boolean" ? (value ? "true" : "false") : String(value);
-  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  const safe = /^[=+\-@]/.test(text) ? `'${text}` : text;
+  return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
 export function backlinkRowsCsv(rows: BacklinkRow[]): string {
@@ -275,4 +276,3 @@ export function backlinkRowsCsv(rows: BacklinkRow[]): string {
     ...rows.map((row) => headers.map((header) => csvCell((row as unknown as Record<string, unknown>)[header])).join(",")),
   ].join("\r\n");
 }
-
