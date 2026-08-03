@@ -15,12 +15,12 @@ function translateDynamic(text: string): string | null {
   match = text.match(/^(\d+)개 페이지 · Site Health (.+) · 오류 (\d+)건 · 경고 (\d+)건$/u);
   if (match) {
     const health = match[2] === "미측정" ? "Not measured" : match[2];
-    return `${match[1]} pages · Site Health ${health} · ${match[3]} errors · ${match[4]} warnings`;
+    return `${match[1]} ${Number(match[1]) === 1 ? "page" : "pages"} · Site Health ${health} · ${match[3]} ${Number(match[3]) === 1 ? "error" : "errors"} · ${match[4]} ${Number(match[4]) === 1 ? "warning" : "warnings"}`;
   }
   match = text.match(/^(.+) 주간 순위 업데이트$/u);
   if (match) return `${match[1]} weekly ranking update`;
   match = text.match(/^(\d+)개 키워드 수집 완료(?: · (\d+)개 실패)?$/u);
-  if (match) return `${match[1]} keywords collected${match[2] ? ` · ${match[2]} failed` : ""}`;
+  if (match) return `${match[1]} ${Number(match[1]) === 1 ? "keyword" : "keywords"} collected${match[2] ? ` · ${match[2]} failed` : ""}`;
   return null;
 }
 
