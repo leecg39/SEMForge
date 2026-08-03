@@ -17,16 +17,41 @@ export const backlinkDatasetSchema = z.enum([
 ]);
 export type BacklinkDataset = z.infer<typeof backlinkDatasetSchema>;
 
-export const backlinkFiltersSchema = z.object({
-  status: z.enum(["all", "new", "lost"]).default("all"),
-  attribute: z
-    .enum(["all", "follow", "nofollow", "sponsored", "ugc"])
-    .default("all"),
-  linkType: z.enum(["all", "text", "image", "form", "frame"]).default("all"),
-  search: z.string().trim().max(200).default(""),
-  dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().default(null),
-  dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().default(null),
-});
+function isCalendarDate(value: string): boolean {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
+const backlinkDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "날짜는 YYYY-MM-DD 형식이어야 합니다.")
+  .refine(isCalendarDate, "실제 달력 날짜를 입력해 주세요.");
+
+export const backlinkFiltersSchema = z
+  .object({
+    status: z.enum(["all", "new", "lost"]).default("all"),
+    attribute: z
+      .enum(["all", "follow", "nofollow", "sponsored", "ugc"])
+      .default("all"),
+    linkType: z.enum(["all", "text", "image", "form", "frame"]).default("all"),
+    search: z.string().trim().max(200).default(""),
+    dateFrom: backlinkDateSchema.nullable().default(null),
+    dateTo: backlinkDateSchema.nullable().default(null),
+  })
+  .superRefine((filters, context) => {
+    if (filters.dateFrom && filters.dateTo && filters.dateFrom > filters.dateTo) {
+      context.addIssue({
+        code: "custom",
+        path: ["dateTo"],
+        message: "종료일은 시작일과 같거나 이후여야 합니다.",
+      });
+    }
+  });
 export type BacklinkFilters = z.infer<typeof backlinkFiltersSchema>;
 
 export const backlinkReportRequestSchema = z.object({
