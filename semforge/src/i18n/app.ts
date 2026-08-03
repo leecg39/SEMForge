@@ -64,6 +64,8 @@ const KO_TO_EN: Record<string, string> = {
   "© 2026 SEMForge Holdings. All rights reserved.":
     "© 2026 SEMForge Holdings. All rights reserved.",
   "툴킷 추천": "Toolkit recommendations",
+  "추천 툴킷 및 앱": "Recommended toolkits and apps",
+  "보유 툴킷": "Owned toolkit",
   "툴킷 바로가기": "Jump to a toolkit",
   "오른쪽으로 스크롤": "Scroll right",
   "제품 카드": "Product card",
@@ -115,6 +117,8 @@ const KO_TO_EN: Record<string, string> = {
   정렬: "Sort",
   활성: "Active",
   "테이블 보기(SEO 전용)": "Table view (SEO only)",
+  "필터 숨기기 및 보기 전환": "Hide filters and view options",
+  "필터 표시 및 보기 전환": "Show filters and view options",
   "CSV 내보내기": "Export CSV",
   증거: "Evidence",
   "선택사항": "optional",
