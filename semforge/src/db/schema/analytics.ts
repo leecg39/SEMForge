@@ -6,6 +6,7 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import { workspaces } from "./platform";
 
 /**
  * 데이터 인텔리전스 원천 스토어.
@@ -165,6 +166,87 @@ export const linkGraphEdges = sqliteTable(
 );
 
 /**
+ * Semrush 같은 외부 백링크 공급자에서 읽은 집계 보고서 캐시.
+ *
+ * 사이트 진단 크롤러의 link_graph_edges 와 의미가 다르므로 별도 저장한다.
+ * 외부 응답은 공급자 중립 JSON으로 정규화한 뒤 24시간만 fresh 로 취급하며,
+ * status/lease 컬럼으로 동시에 같은 유료 수집이 중복 실행되지 않게 한다.
+ */
+export const backlinkReportCaches = sqliteTable(
+  "backlink_report_caches",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    target: text("target").notNull(),
+    scope: text("scope", {
+      enum: ["root_domain", "subdomain", "page"],
+    }).notNull(),
+    provider: text("provider", { enum: ["semrush-v4"] })
+      .notNull()
+      .default("semrush-v4"),
+    status: text("status", { enum: ["ready", "refreshing", "failed"] })
+      .notNull()
+      .default("refreshing"),
+    overviewPayload: text("overview_payload"),
+    historyPayload: text("history_payload"),
+    scoreProfilePayload: text("score_profile_payload"),
+    requestIdsPayload: text("request_ids_payload").notNull().default("[]"),
+    fetchedAt: timestampMs("fetched_at"),
+    expiresAt: timestampMs("expires_at"),
+    refreshLeaseUntil: timestampMs("refresh_lease_until"),
+    lastErrorCode: text("last_error_code"),
+    lastErrorMessage: text("last_error_message"),
+    createdAt: timestampMs("created_at")
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: timestampMs("updated_at")
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [
+    uniqueIndex("backlink_report_cache_scope_unique").on(
+      t.workspaceId,
+      t.target,
+      t.scope,
+      t.provider,
+    ),
+    index("backlink_report_cache_expiry_idx").on(t.expiresAt),
+    index("backlink_report_cache_workspace_idx").on(t.workspaceId, t.updatedAt),
+  ],
+);
+
+/** 공급자 목록 API의 필터·정렬·페이지 단위 캐시. */
+export const backlinkListCaches = sqliteTable(
+  "backlink_list_caches",
+  {
+    id: text("id").primaryKey(),
+    reportId: text("report_id")
+      .notNull()
+      .references(() => backlinkReportCaches.id, { onDelete: "cascade" }),
+    dataset: text("dataset", {
+      enum: ["links", "ref_domains", "anchors", "pages"],
+    }).notNull(),
+    queryHash: text("query_hash").notNull(),
+    queryPayload: text("query_payload").notNull(),
+    rowsPayload: text("rows_payload").notNull(),
+    total: integer("total").notNull(),
+    requestId: text("request_id"),
+    fetchedAt: timestampMs("fetched_at").notNull(),
+    expiresAt: timestampMs("expires_at").notNull(),
+    createdAt: timestampMs("created_at")
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [
+    uniqueIndex("backlink_list_cache_query_unique").on(t.reportId, t.queryHash),
+    index("backlink_list_cache_expiry_idx").on(t.expiresAt),
+    index("backlink_list_cache_report_idx").on(t.reportId, t.dataset),
+  ],
+);
+
+/**
  * 원천 4: 키워드 스코프의 시점 관측 JSON (Google Trends 시계열, 관련 쿼리 등).
  * serp_snapshots 와 같은 append-only 문법이며, 조회는 항상 스코프 내 최신 1건이다.
  * TTL 판정은 테이블이 아니라 조회 로직이 kind 별로 한다 (trend 계열 7일 등).
@@ -207,4 +289,6 @@ export type KeywordMetric = typeof keywordMetrics.$inferSelect;
 export type SerpSnapshot = typeof serpSnapshots.$inferSelect;
 export type ClickstreamEvent = typeof clickstreamEvents.$inferSelect;
 export type LinkGraphEdge = typeof linkGraphEdges.$inferSelect;
+export type BacklinkReportCache = typeof backlinkReportCaches.$inferSelect;
+export type BacklinkListCache = typeof backlinkListCaches.$inferSelect;
 export type KeywordInsight = typeof keywordInsights.$inferSelect;

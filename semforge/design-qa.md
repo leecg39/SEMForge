@@ -51,6 +51,43 @@ final result: passed
 
 ---
 
+# Home AI Visibility Folder Design QA
+
+## Evidence
+
+- Source visual truth: `/Users/user01/Desktop/스크린샷 2026-08-03 오후 11.44.52.png`.
+- Browser-rendered implementation: `/Users/user01/Music/SEMForge/semforge/artifacts/home-ai-visibility-dashboard-1731x861.png`.
+- Mobile implementation: `/Users/user01/Music/SEMForge/semforge/artifacts/home-ai-visibility-dashboard-390x844.png`.
+- Same-frame comparison: `/Users/user01/Music/SEMForge/semforge/artifacts/home-folder-design-comparison.png`.
+- Route and state: `/home/`, authenticated Korean workspace, two owned folders, neither folder has an AI visibility observation yet.
+- CSS viewport: `1731 × 861`; visual document width `1716px` because of the 15px vertical scrollbar. Mobile viewport: `390 × 844`, visual document width `375px`.
+
+## Findings
+
+- No actionable P0, P1, or P2 visual or interaction differences remain.
+- The implementation matches the reference hierarchy: compact folder header and filters, white project cards on a gray list canvas, project/domain header, seven aligned metric columns, and an AI visibility semicircle graph.
+- The reference contains three populated sample projects, while the authenticated workspace contains two projects without AI observations. The implementation intentionally displays `수집 전` and an empty gauge instead of copying or fabricating the reference values.
+- Project names and numeric accents use the same blue/purple emphasis as the reference while preserving existing SEMForge AppShell tokens.
+
+## Data-Truth and Interaction Evidence
+
+- Home metrics use the latest completed or partially completed AI visibility run as one snapshot. `unknown` observations are excluded from the visibility denominator, matching the AI visibility overview formula.
+- The gauge fills only when a project has measurable observations. Before the first run, the card shows `수집 전`; a run with only unmeasurable observations shows `측정 없음`.
+- Both visible AI visibility links preserve their exact folder `fid` and canonical `range=1m&tab=top_topics&page=1` query contract.
+- The filter toggle hides and restores the folder search/filter row. The desktop page has no horizontal overflow; the mobile metric strip owns its horizontal scroll without widening the document.
+- A fresh authenticated reload produced zero browser console error entries.
+
+## Quality Evidence
+
+- `src/server/home.test.ts`: 2/2 passed, covering measured/unknown legacy observations and the no-data state.
+- `npm run test:ai-visibility`: 39/39 passed.
+- TypeScript, targeted ESLint, and `git diff --check` passed.
+- The production build and full lint were already verified after the data and graph integration; lint reported zero errors and 13 pre-existing unrelated image warnings.
+
+final result: passed
+
+---
+
 # AI Prompt Research Design QA
 
 ## Evidence

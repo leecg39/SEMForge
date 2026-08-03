@@ -933,6 +933,7 @@ export function ResourceWorkspace({
   return (
     // 폴더 화면은 원본처럼 제목·버튼·목록이 하나의 흰 카드 안에 들어간다 (내부 패딩 20px).
     <div
+      data-testid={spec.view === "folder" ? "folder-workspace" : undefined}
       className={cn(
         "flex flex-col gap-4",
         spec.view === "folder" &&
@@ -1347,7 +1348,7 @@ export function ResourceWorkspace({
                     {spec.view === "folder" ? (
                       <Link
                         href={`/seo/?domain=${encodeURIComponent(String(row.domain))}`}
-                        className="whitespace-nowrap text-[16px] font-bold text-app-link hover:underline"
+                        className="whitespace-nowrap text-[16px] font-bold text-[#1769e0] hover:underline"
                       >
                         {String(row.name)}
                       </Link>
