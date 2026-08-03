@@ -3,6 +3,8 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { notificationAriaLabel, translateNotificationText } from "@/i18n/notifications";
 import { api } from "@/lib/client-api";
 import { cn } from "@/lib/utils";
 
@@ -38,7 +40,9 @@ interface SiteAuditNotification {
 }
 
 export function AppNotificationsMenu() {
+  const { locale } = useLocale();
   const [items, setItems] = useState<NotificationItem[]>([]);
+  const tx = (text: string) => translateNotificationText(locale, text);
 
   const load = useCallback(async () => {
     const [appResult, auditResult] = await Promise.allSettled([
@@ -101,7 +105,7 @@ export function AppNotificationsMenu() {
       <DropdownMenu.Trigger asChild>
         <button
           type="button"
-          aria-label={`앱 알림${unread > 0 ? `, 읽지 않음 ${unread}개` : ""}`}
+          aria-label={notificationAriaLabel(locale, unread)}
           className="relative flex h-10 w-10 items-center justify-center rounded-full bg-faint text-hof hover:bg-bebe focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rausch"
         >
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
@@ -118,12 +122,12 @@ export function AppNotificationsMenu() {
       <DropdownMenu.Portal>
         <DropdownMenu.Content align="end" sideOffset={8} className="z-[600] w-[min(390px,calc(100vw-24px))] overflow-hidden rounded-[12px] border border-bebe bg-white shadow-[var(--shadow-dropdown)]">
           <div className="flex items-center justify-between border-b border-app-border px-4 py-3">
-            <p className="text-[14px] font-semibold text-app-text">알림</p>
-            {unread > 0 && <button type="button" onClick={() => void markRead()} className="text-[11px] font-medium text-app-blue hover:underline">모두 읽음</button>}
+            <p className="text-[14px] font-semibold text-app-text">{tx("알림")}</p>
+            {unread > 0 && <button type="button" onClick={() => void markRead()} className="text-[11px] font-medium text-app-blue hover:underline">{tx("모두 읽음")}</button>}
           </div>
           <div className="max-h-[420px] overflow-y-auto">
             {items.length === 0 ? (
-              <p className="px-5 py-10 text-center text-[13px] text-app-text-secondary">아직 알림이 없습니다.</p>
+              <p className="px-5 py-10 text-center text-[13px] text-app-text-secondary">{tx("아직 알림이 없습니다.")}</p>
             ) : items.map((item) => (
               <DropdownMenu.Item key={`${item.source}-${item.id}`} asChild>
                 <Link
@@ -134,10 +138,10 @@ export function AppNotificationsMenu() {
                   <span className="flex items-start gap-2">
                     <span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", item.readAt ? "bg-transparent" : "bg-app-blue")} aria-hidden="true" />
                     <span className="min-w-0">
-                      <span className="block text-[13px] font-semibold text-app-text">{item.title}</span>
-                      <span className="mt-0.5 block text-[12px] leading-5 text-app-text-secondary">{item.message}</span>
+                      <span className="block text-[13px] font-semibold text-app-text">{tx(item.title)}</span>
+                      <span className="mt-0.5 block text-[12px] leading-5 text-app-text-secondary">{tx(item.message)}</span>
                       <span className="mt-1 block text-[10px] text-app-text-secondary" suppressHydrationWarning>
-                        {new Intl.DateTimeFormat("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(item.createdAt))}
+                        {new Intl.DateTimeFormat(locale === "ko" ? "ko-KR" : "en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(item.createdAt))}
                       </span>
                     </span>
                   </span>
