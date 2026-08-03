@@ -32,6 +32,7 @@ function ToolIcon({ name }: { name?: "home" | "workspaces" | "library" }) {
 export function ToolkitMobileNav({ toolkitKey, activeHref }: ToolkitSideNavProps) {
   const sourceToolkit = appToolkits[toolkitKey];
   const toolkit = useLocalizedValue(sourceToolkit);
+  const tx = useSiteText();
   const searchParams = useSearchParams();
   const selectedFolderId = searchParams.get("fid") ?? "";
   if (!sourceToolkit || !toolkit) return null;
@@ -39,7 +40,7 @@ export function ToolkitMobileNav({ toolkitKey, activeHref }: ToolkitSideNavProps
 
   return (
     <nav
-      aria-label={`${toolkit.label} 도구`}
+      aria-label={tx("Toolkit tools").replace("{toolkit}", toolkit.label)}
       className="sticky top-[109px] z-30 flex max-w-full gap-1 overflow-x-auto border-b border-bebe bg-white px-2 py-[6px] min-[1025px]:hidden"
     >
       {tools.map((tool) => {
@@ -138,7 +139,7 @@ export function ToolkitSideNav({ toolkitKey, activeHref }: ToolkitSideNavProps) 
         </span>
         <button
           type="button"
-          aria-label={collapsed ? (toolkit.label + " 펼치기") : tx("Collapse sidebar")}
+          aria-label={collapsed ? tx("Expand sidebar") : tx("Collapse sidebar")}
           aria-expanded={!collapsed}
           onClick={() => setCollapsed(!collapsed)}
           className="flex h-[24px] w-[24px] items-center justify-center rounded-[6px] text-app-text-secondary hover:bg-app-bg"
@@ -148,7 +149,7 @@ export function ToolkitSideNav({ toolkitKey, activeHref }: ToolkitSideNavProps) 
       </div>
 
       {!collapsed && <div className="px-3 pt-3">
-        <label className="sr-only" htmlFor={`toolkit-folder-${toolkitKey}`}>프로젝트 선택</label>
+        <label className="sr-only" htmlFor={`toolkit-folder-${toolkitKey}`}>{tx("Select project")}</label>
         <select
           id={`toolkit-folder-${toolkitKey}`}
           value={selectedFolderId}
@@ -160,7 +161,7 @@ export function ToolkitSideNav({ toolkitKey, activeHref }: ToolkitSideNavProps) 
           }}
           className="h-[40px] w-full rounded-[8px] border border-bebe bg-white px-3 text-[13px] text-hof outline-none transition-colors hover:bg-faint focus:border-rausch focus:ring-2 focus:ring-rausch/20"
         >
-          <option value="">내 프로젝트</option>
+          <option value="">{tx("My projects")}</option>
           {folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name} · {folder.domain}</option>)}
         </select>
       </div>}

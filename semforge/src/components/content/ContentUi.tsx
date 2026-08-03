@@ -1,5 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { translateContentText } from "@/i18n/content";
 import { cn } from "@/lib/utils";
 
 export function ContentPageHeader({
@@ -26,6 +28,7 @@ export function ContentPageHeader({
 }
 
 export function StatusPill({ status }: { status: string }) {
+  const { locale } = useLocale();
   const labels: Record<string, string> = {
     active: "진행 중",
     awaiting_approval: "승인 대기",
@@ -56,7 +59,7 @@ export function StatusPill({ status }: { status: string }) {
         ["queued", "draft", "in_review", "archived", "cancelled", "awaiting_approval", "awaiting_storyboard_approval", "awaiting_keyframe_approval"].includes(status) && "bg-faint text-foggy",
       )}
     >
-      {labels[status] ?? status}
+      {translateContentText(locale, labels[status] ?? status)}
     </span>
   );
 }
