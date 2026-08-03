@@ -1,7 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@/lib/client-api";
+import {
+  BACKLINK_SORT_OPTIONS,
+  resolveInitialBacklinkSort,
+} from "@/components/analytics/backlinks/list-state";
 import type {
   BacklinkDataset,
   BacklinkFilters,
@@ -17,13 +21,6 @@ const EMPTY_FILTERS: BacklinkFilters = {
   search: "",
   dateFrom: null,
   dateTo: null,
-};
-
-const DEFAULT_SORT: Record<BacklinkDataset, string> = {
-  links: "page_score",
-  ref_domains: "backlinks_count",
-  anchors: "domains_count",
-  pages: "domains_count",
 };
 
 const SORT_LABELS: Record<string, { ko: string; en: string }> = {
@@ -140,7 +137,7 @@ export function BacklinkListPanel({
   const [draft, setDraft] = useState<BacklinkFilters>(EMPTY_FILTERS);
   const [filters, setFilters] = useState<BacklinkFilters>(EMPTY_FILTERS);
   const [page, setPage] = useState(Math.max(1, initialPage));
-  const [sort, setSort] = useState(initialSort || DEFAULT_SORT[dataset]);
+  const [sort, setSort] = useState(resolveInitialBacklinkSort(dataset, initialSort));
   const [direction, setDirection] = useState<"asc" | "desc">(initialDirection);
   const [result, setResult] = useState<BacklinkListResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -171,13 +168,7 @@ export function BacklinkListPanel({
     return () => { active = false; };
   }, [dataset, direction, filters, ko, page, scope, sort, target]);
 
-  const sortOptions = useMemo(() => {
-    if (dataset === "links") return ["page_score", "domain_score", "first_seen_at", "last_seen_at"];
-    if (dataset === "ref_domains") return ["backlinks_count", "domain_score", "first_seen_at", "last_seen_at"];
-    return dataset === "anchors"
-      ? ["domains_count", "backlinks_count", "first_seen_at", "last_seen_at"]
-      : ["domains_count", "backlinks_count", "first_seen_at", "last_seen_at"];
-  }, [dataset]);
+  const sortOptions = BACKLINK_SORT_OPTIONS[dataset];
 
   const updateQuery = (next: { page?: number; sort?: string; direction?: "asc" | "desc" }) => {
     const nextPage = next.page ?? page;
