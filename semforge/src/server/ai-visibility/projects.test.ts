@@ -111,3 +111,28 @@ test("활성 실행 중 중복 요청은 같은 실행 ID를 반환하고 행렬
 test("다른 워크스페이스의 fid는 조회할 수 없다", async () => {
   await assert.rejects(projects.getAiVisibilitySettings(auth, "f2"), /프로젝트를 찾을 수 없습니다/);
 });
+
+test("기본 진입은 소유한 설정 완료 프로젝트를 우선하고 외부 fid를 선택하지 않는다", async () => {
+  assert.equal(await projects.resolveDefaultAiVisibilityFolder(auth), "f1");
+  assert.equal((await projects.findOwnedAiFolder(auth, "f1"))?.id, "f1");
+  assert.equal(await projects.findOwnedAiFolder(auth, "f2"), null);
+});
+
+test("포지션 추적 키워드가 없으면 가져오기 가능 여부와 사유를 반환한다", async () => {
+  const settings = await projects.getAiVisibilitySettings(auth, "f1");
+  assert.equal(settings.imports.positionTracking.available, false);
+  assert.equal(settings.imports.positionTracking.keywordCount, 0);
+  assert.match(settings.imports.positionTracking.reason ?? "", /포지션 추적 캠페인이 없습니다/);
+});
+
+test("런타임에서 비활성인 공급자는 직접 API 저장도 거부한다", async () => {
+  await assert.rejects(
+    projects.saveAiVisibilitySettings(auth, "f1", {
+      brandName: "Acme",
+      providers: ["gemini_grounded"],
+      locationKeys: ["KR-SEOUL"],
+      schedule: "weekly",
+    }),
+    /선택할 수 없습니다/,
+  );
+});

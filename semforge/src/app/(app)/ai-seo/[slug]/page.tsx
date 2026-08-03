@@ -1,8 +1,13 @@
 import { notFound, redirect } from "next/navigation";
 import { AppShell } from "@/components/app/AppShell";
 import { AiVisibilityDashboard } from "@/components/ai-visibility/AiVisibilityDashboard";
-import { getAuth } from "@/lib/session";
-import { resolveAiVisibilityFolderByDomain } from "@/server/ai-visibility/projects";
+import { pageSession } from "@/server/page-auth";
+import {
+  findOwnedAiFolder,
+  listAiVisibilityFolders,
+  resolveAiVisibilityFolderByDomain,
+  resolveDefaultAiVisibilityFolder,
+} from "@/server/ai-visibility/projects";
 
 const slugs = [
   "overview",
@@ -70,6 +75,59 @@ function PendingTool({ title, reason }: { title: string; reason: string }) {
   );
 }
 
+function canonicalOverviewSearch(
+  search: Record<string, string | string[] | undefined>,
+  fid: string,
+) {
+  const next = new URLSearchParams();
+  for (const [key, value] of Object.entries(search)) {
+    if (key === "domain" || key === "fid" || value === undefined) continue;
+    if (Array.isArray(value)) value.forEach((item) => next.append(key, item));
+    else next.set(key, value);
+  }
+  next.set("fid", fid);
+  if (!new Set(["1m", "6m", "all"]).has(next.get("range") ?? "")) next.set("range", "1m");
+  if (!new Set(["top_topics", "topic_opportunities", "cited_sources", "source_opportunities", "cited_pages"]).has(next.get("tab") ?? "")) {
+    next.set("tab", "top_topics");
+  }
+  const page = Number(next.get("page"));
+  if (!Number.isInteger(page) || page < 1) next.set("page", "1");
+  return next;
+}
+
+function ProjectSelection({
+  projects,
+  requestedFid,
+}: {
+  projects: Awaited<ReturnType<typeof listAiVisibilityFolders>>;
+  requestedFid: string;
+}) {
+  return (
+    <div className="min-h-[calc(100dvh-56px)] bg-[#f5f6f7] p-6">
+      <div className="mx-auto max-w-3xl rounded-[10px] border border-[#e4e6eb] bg-white p-8 shadow-sm">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#7770d8]">프로젝트 선택</p>
+        <h1 className="mt-2 text-[22px] font-semibold text-[#252930]">이 프로젝트의 가시성 개요를 열 수 없습니다</h1>
+        <p className="mt-2 text-[13px] leading-6 text-[#666d78]">
+          요청한 프로젝트{requestedFid ? ` (${requestedFid})` : ""}가 없거나 현재 워크스페이스에 속하지 않습니다. 접근 가능한 프로젝트를 선택해 주세요.
+        </p>
+        <div className="mt-5 grid gap-2">
+          {projects.map((project) => (
+            <a
+              key={project.id}
+              href={`/ai-seo/overview/?fid=${encodeURIComponent(project.id)}&range=1m&tab=top_topics&page=1`}
+              className="flex items-center justify-between rounded-[8px] border border-[#e0e2e7] px-4 py-3 text-[13px] hover:border-[#8884e8] hover:bg-[#f8f8ff]"
+            >
+              <span><b className="font-semibold text-[#333841]">{project.name}</b><span className="ml-2 text-[#7b818b]">{project.domain}</span></span>
+              <span className="text-[11px] font-medium text-[#5c5bdd]">{project.configured ? "개요 열기" : "설정 시작"}</span>
+            </a>
+          ))}
+          {projects.length === 0 && <a href="/projects/" className="mt-2 text-[13px] font-semibold text-[#315be8] hover:underline">프로젝트 만들기</a>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default async function AiSeoPage({
   params,
   searchParams,
@@ -85,24 +143,51 @@ export default async function AiSeoPage({
   if (!slugs.includes(slug as Slug)) notFound();
 
   if (slug === "overview") {
-    const initialFolderId = typeof fid === "string" ? fid : "";
-    if (!initialFolderId && typeof domain === "string") {
-      const auth = await getAuth();
-      const resolved = auth ? await resolveAiVisibilityFolderByDomain(auth, domain) : null;
-      if (resolved) {
-        const next = new URLSearchParams();
-        for (const [key, value] of Object.entries(search)) {
-          if (key === "domain" || value === undefined) continue;
-          if (Array.isArray(value)) value.forEach((item) => next.append(key, item));
-          else next.set(key, value);
-        }
-        next.set("fid", resolved);
-        redirect(`/ai-seo/overview/?${next.toString()}`);
+    const { auth } = await pageSession();
+    const requestedFid = typeof fid === "string" ? fid.trim() : "";
+    const requestedDomain = typeof domain === "string" ? domain.trim() : "";
+    let resolvedFid = requestedFid;
+    if (!resolvedFid && requestedDomain) {
+      resolvedFid = await resolveAiVisibilityFolderByDomain(auth, requestedDomain) ?? "";
+      if (!resolvedFid) {
+        const projects = await listAiVisibilityFolders(auth);
+        return (
+          <AppShell activeToolkit="ai" activeHref={href}>
+            <ProjectSelection projects={projects} requestedFid={`domain=${requestedDomain}`} />
+          </AppShell>
+        );
       }
     }
+    if (!resolvedFid) resolvedFid = await resolveDefaultAiVisibilityFolder(auth) ?? "";
+
+    if (requestedFid && !await findOwnedAiFolder(auth, requestedFid)) {
+      const projects = await listAiVisibilityFolders(auth);
+      return (
+        <AppShell activeToolkit="ai" activeHref={href}>
+          <ProjectSelection projects={projects} requestedFid={requestedFid} />
+        </AppShell>
+      );
+    }
+
+    const canonical = resolvedFid ? canonicalOverviewSearch(search, resolvedFid) : null;
+    if (resolvedFid && canonical) {
+      const currentRange = typeof search.range === "string" ? search.range : "";
+      const currentTab = typeof search.tab === "string" ? search.tab : "";
+      const currentPage = typeof search.page === "string" ? search.page : "";
+      if (
+        requestedFid !== resolvedFid
+        || typeof domain === "string"
+        || currentRange !== canonical.get("range")
+        || currentTab !== canonical.get("tab")
+        || currentPage !== canonical.get("page")
+      ) {
+        redirect(`/ai-seo/overview/?${canonical.toString()}`);
+      }
+    }
+
     return (
       <AppShell activeToolkit="ai" activeHref={href}>
-        <AiVisibilityDashboard initialFolderId={initialFolderId} />
+        <AiVisibilityDashboard key={canonical?.toString() ?? "empty"} initialFolderId={resolvedFid} />
       </AppShell>
     );
   }

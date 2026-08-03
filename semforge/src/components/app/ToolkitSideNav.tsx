@@ -8,6 +8,7 @@ import { ChevronDownIcon } from "@/components/app/app-icons";
 import { cn } from "@/lib/utils";
 import { useLocalizedValue, useSiteText } from "@/i18n/useLocalizedValue";
 import { api } from "@/lib/client-api";
+import { buildToolkitToolHref } from "@/components/app/toolkit-navigation";
 
 interface ToolkitSideNavProps {
   toolkitKey: string;
@@ -30,10 +31,7 @@ export function ToolkitMobileNav({ toolkitKey, activeHref }: ToolkitSideNavProps
     >
       {tools.map((tool) => {
         const active = tool.href === activeHref;
-        const separator = tool.href.includes("?") ? "&" : "?";
-        const href = selectedFolderId && (toolkitKey === "advertising" || toolkitKey === "ai")
-          ? `${tool.href}${separator}fid=${encodeURIComponent(selectedFolderId)}`
-          : tool.href;
+        const href = buildToolkitToolHref({ toolkitKey, href: tool.href, selectedFolderId });
         return (
           <Link
             key={tool.href}
@@ -108,11 +106,8 @@ export function ToolkitSideNav({ toolkitKey, activeHref }: ToolkitSideNavProps) 
     window.dispatchEvent(new Event(COLLAPSE_EVENT));
   };
 
-  const folderHref = (href: string) => {
-    if (!selectedFolderId || (toolkitKey !== "advertising" && toolkitKey !== "ai")) return href;
-    const separator = href.includes("?") ? "&" : "?";
-    return `${href}${separator}fid=${encodeURIComponent(selectedFolderId)}`;
-  };
+  const folderHref = (href: string) =>
+    buildToolkitToolHref({ toolkitKey, href, selectedFolderId });
   if (!sourceToolkit || !toolkit) return null;
 
   return (

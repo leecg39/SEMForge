@@ -40,6 +40,11 @@ interface PromptRow {
   enabled: boolean;
 }
 
+interface RunNotice {
+  tone: "success" | "warning";
+  message: string;
+}
+
 const PROVIDERS: { key: AiVisibilityProvider; label: string; short: string; color: string }[] = [
   { key: "google_aio", label: "Google AI 개요", short: "Google AIO", color: "#6b6de3" },
   { key: "chatgpt_web", label: "ChatGPT 웹 검색", short: "ChatGPT", color: "#3bcfa6" },
@@ -60,6 +65,19 @@ const PRIMARY = "inline-flex h-9 items-center justify-center rounded-[6px] bg-[#
 
 function message(error: unknown, fallback: string) {
   return error instanceof ClientApiError ? error.message : fallback;
+}
+
+function runOutcome(run: AiVisibilityRunView): RunNotice | null {
+  if (run.status === "completed") {
+    return { tone: "success", message: `실제 추적 ${run.succeeded}건을 완료했습니다.` };
+  }
+  if (run.status === "partial") {
+    return {
+      tone: "warning",
+      message: `실제 추적을 완료했습니다. 성공 ${run.succeeded}건 · 실패 ${run.failed}건`,
+    };
+  }
+  return null;
 }
 
 function compact(value: number) {
@@ -130,14 +148,20 @@ function Kpi({ label, value, delta, suffix = "" }: { label: string; value: strin
 }
 
 function TrendCard({ data }: { data: AiVisibilityDashboardResponse }) {
+  const [view, setView] = useState<"metrics" | "visibility">("metrics");
+  const hasMeasurement = Boolean(data.provenance.lastCollectedAt);
   return (
     <div className={`${CARD} min-h-[260px] p-4`}>
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#eef0f3] pb-3">
         <div className="grid flex-1 grid-cols-2 gap-4 sm:grid-cols-4">
           <Kpi label="AI 가시성" value={data.kpis.visibility.value === null ? "—" : `${data.kpis.visibility.value}%`} delta={data.kpis.visibility.delta} suffix="%p" />
-          <Kpi label="언급" value={compact(data.kpis.mentions.value)} delta={data.kpis.mentions.delta} />
-          <Kpi label="인용" value={compact(data.kpis.citations.value)} delta={data.kpis.citations.delta} />
-          <Kpi label="인용된 페이지" value={compact(data.kpis.citedPages.value)} delta={data.kpis.citedPages.delta} />
+          <Kpi label="언급" value={hasMeasurement ? compact(data.kpis.mentions.value) : "—"} delta={data.kpis.mentions.delta} />
+          <Kpi label="인용" value={hasMeasurement ? compact(data.kpis.citations.value) : "—"} delta={data.kpis.citations.delta} />
+          <Kpi label="인용된 페이지" value={hasMeasurement ? compact(data.kpis.citedPages.value) : "—"} delta={data.kpis.citedPages.delta} />
+        </div>
+        <div className="flex rounded-[6px] border border-[#dfe1e6] p-0.5 text-[10px]">
+          <button type="button" onClick={() => setView("metrics")} className={`rounded px-2 py-1 ${view === "metrics" ? "bg-[#eef0ff] font-semibold text-[#5551cd]" : "text-[#707680]"}`}>주요 측정항목</button>
+          <button type="button" onClick={() => setView("visibility")} className={`rounded px-2 py-1 ${view === "visibility" ? "bg-[#eef0ff] font-semibold text-[#5551cd]" : "text-[#707680]"}`}>AI 가시성</button>
         </div>
       </div>
       <div className="mt-3 h-[155px]">
@@ -148,12 +172,18 @@ function TrendCard({ data }: { data: AiVisibilityDashboardResponse }) {
             <LineChart data={data.trend} margin={{ top: 8, right: 12, left: -20, bottom: 0 }}>
               <CartesianGrid stroke="#eceef1" strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#858a94" }} tickLine={false} axisLine={false} minTickGap={24} />
-              <YAxis tick={{ fontSize: 10, fill: "#858a94" }} tickLine={false} axisLine={false} allowDecimals={false} />
+              <YAxis tick={{ fontSize: 10, fill: "#858a94" }} tickLine={false} axisLine={false} allowDecimals={false} domain={view === "visibility" ? [0, 100] : undefined} />
               <Tooltip contentStyle={{ border: "1px solid #e0e2e7", borderRadius: 8, fontSize: 12 }} />
               <Legend wrapperStyle={{ fontSize: 10 }} />
-              <Line type="monotone" dataKey="mentions" name="언급" stroke="#6b6de3" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="citations" name="인용" stroke="#3bcfa6" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="citedPages" name="인용된 페이지" stroke="#b777ed" strokeWidth={2} dot={false} />
+              {view === "visibility" ? (
+                <Line type="monotone" dataKey="visibility" name="AI 가시성 (%)" stroke="#6b6de3" strokeWidth={2.5} dot={{ r: 2 }} connectNulls={false} />
+              ) : (
+                <>
+                  <Line type="monotone" dataKey="mentions" name="언급" stroke="#6b6de3" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="citations" name="인용" stroke="#3bcfa6" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="citedPages" name="인용된 페이지" stroke="#b777ed" strokeWidth={2} dot={false} />
+                </>
+              )}
             </LineChart>
           </ResponsiveContainer>
         )}
@@ -180,13 +210,16 @@ function BreakdownCard({ title, rows, kind }: { title: string; rows: BreakdownRo
             {rows.map((row, index) => {
               const color = kind === "provider" ? providerMeta(row.key as AiVisibilityProvider).color : colors[index % colors.length];
               return (
-                <div key={row.key} className="grid grid-cols-[minmax(0,1fr)_70px_58px] items-center gap-3 py-2.5 text-[12px]">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} />
-                    <span className="truncate font-medium text-[#3a3f47]">{row.label}</span>
+                <div key={row.key} className="grid grid-cols-[minmax(0,1fr)_58px_68px] items-center gap-3 py-2.5 text-[12px]">
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} />
+                      <span className="truncate font-medium text-[#3a3f47]">{row.label}</span>
+                    </div>
+                    <div className="ml-[18px] mt-1 h-1.5 overflow-hidden rounded-full bg-[#eceef1]"><div className="h-full rounded-full" style={{ width: `${row.share}%`, background: color }} /></div>
                   </div>
-                  <span className="text-right text-[#626873]">{row.visibility === null ? "—" : `${row.visibility}%`}</span>
-                  <span className="text-right font-semibold text-[#4f57cf]">{row.citations}회</span>
+                  <span className="text-right text-[#626873]">{row.share}%</span>
+                  <span className="text-right font-semibold text-[#4f57cf]">언급 {row.mentions}회</span>
                 </div>
               );
             })}
@@ -231,6 +264,7 @@ function CompletenessBanner({ data }: { data: AiVisibilityDashboardResponse }) {
         {completeness.failedItems > 0 ? ` · 최근 실행 실패 ${completeness.failedItems}건` : ""}
       </span>
       <span className="text-[#806b34]">unknown {completeness.unknownCells}건은 가시성 점수 분모에서 제외됩니다.</span>
+      {data.latestRun?.error && <span className="w-full text-[#9a5b21]">최근 실행 사유: {data.latestRun.error}</span>}
     </div>
   );
 }
@@ -347,7 +381,19 @@ function splitCsvLine(line: string): string[] {
   return values;
 }
 
-function PromptManager({ fid, prompts, limit, onChanged }: { fid: string; prompts: PromptRow[]; limit: number; onChanged: () => Promise<void> }) {
+function PromptManager({
+  fid,
+  prompts,
+  limit,
+  positionTrackingImport,
+  onChanged,
+}: {
+  fid: string;
+  prompts: PromptRow[];
+  limit: number;
+  positionTrackingImport: AiVisibilitySettingsView["imports"]["positionTracking"];
+  onChanged: () => Promise<void>;
+}) {
   const [value, setValue] = useState("");
   const [topic, setTopic] = useState("");
   const [busy, setBusy] = useState(false);
@@ -388,16 +434,19 @@ function PromptManager({ fid, prompts, limit, onChanged }: { fid: string; prompt
           <p className="mt-1 text-[11px] text-[#767d87]">중복을 정규화해 제거하며 프로젝트당 최대 {limit}개입니다. 현재 {prompts.length}개</p>
         </div>
         <div className="flex gap-2">
-          <button className={BUTTON} disabled={busy || prompts.length >= limit} onClick={async () => {
+          <button className={BUTTON} title={positionTrackingImport.reason ?? undefined} disabled={busy || prompts.length >= limit || !positionTrackingImport.available} onClick={async () => {
             setBusy(true); setError(null);
             try { await api.post(`/api/ai-visibility/prompts/?fid=${encodeURIComponent(fid)}`, { mode: "position_tracking" }); await onChanged(); }
             catch (cause) { setError(message(cause, "포지션 추적 키워드를 가져오지 못했습니다.")); }
             finally { setBusy(false); }
-          }}>포지션 추적에서 가져오기</button>
+          }}>포지션 추적에서 가져오기{positionTrackingImport.available ? ` (${positionTrackingImport.keywordCount})` : ""}</button>
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); event.currentTarget.value = ""; }} />
           <button className={BUTTON} disabled={busy || prompts.length >= limit} onClick={() => fileRef.current?.click()}>CSV 업로드</button>
         </div>
       </div>
+      {!positionTrackingImport.available && positionTrackingImport.reason && (
+        <p className="mt-2 text-[11px] text-[#8a6b32]">포지션 추적 가져오기 비활성: {positionTrackingImport.reason}</p>
+      )}
       {error && <p className="mt-3 rounded bg-red-50 px-3 py-2 text-[12px] text-red-700">{error}</p>}
       <div className="mt-4 grid gap-2 md:grid-cols-[minmax(0,1fr)_180px_auto]">
         <textarea value={value} onChange={(event) => setValue(event.target.value)} rows={2} placeholder="프롬프트를 줄바꿈으로 입력" className="rounded-[6px] border border-[#d9dce2] px-3 py-2 text-[12px] outline-none focus:border-[#6b6de3]" />
@@ -518,9 +567,83 @@ function RunProgress({ run }: { run: AiVisibilityRunView }) {
   );
 }
 
+function OnboardingGuide({
+  configured,
+  promptCount,
+  collected,
+  collecting,
+  onSettings,
+  onPrompts,
+  onCollect,
+}: {
+  configured: boolean;
+  promptCount: number;
+  collected: boolean;
+  collecting: boolean;
+  onSettings: () => void;
+  onPrompts: () => void;
+  onCollect: () => void;
+}) {
+  const steps = [
+    { number: 1, title: "브랜드·국가·플랫폼 설정", done: configured, description: "측정할 브랜드와 실제 연결 가능한 데이터 소스를 확인합니다." },
+    { number: 2, title: "추적 프롬프트 등록", done: promptCount > 0, description: "직접 입력, CSV 또는 연결된 포지션 추적에서 최대 20개를 등록합니다." },
+    { number: 3, title: "첫 실측 수집", done: collected, description: "승인한 프롬프트만 플랫폼·국가별로 수집해 개요를 만듭니다." },
+  ];
+  return (
+    <section className={`${CARD} mt-4 overflow-hidden border-[#d9d4fb] bg-gradient-to-r from-white to-[#faf9ff]`}>
+      <div className="border-b border-[#ece9ff] px-5 py-4">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#7770d8]">시작 가이드</p>
+        <h2 className="mt-1 text-[17px] font-semibold text-[#292d34]">실제 AI 응답 수집을 3단계로 시작하세요</h2>
+        <p className="mt-1 text-[11px] text-[#747b85]">프롬프트를 자동 생성하거나 승인 없이 수집하지 않습니다.</p>
+      </div>
+      <div className="grid gap-px bg-[#eceef2] md:grid-cols-3">
+        {steps.map((step) => (
+          <div key={step.number} className="bg-white px-5 py-4">
+            <div className="flex items-center gap-2">
+              <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold ${step.done ? "bg-[#ddf7ef] text-[#168a65]" : "bg-[#eeedff] text-[#5b58d6]"}`}>{step.done ? "✓" : step.number}</span>
+              <h3 className="text-[12px] font-semibold text-[#383d45]">{step.title}</h3>
+            </div>
+            <p className="mt-2 text-[11px] leading-5 text-[#747b85]">{step.description}</p>
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap justify-end gap-2 px-5 py-3 print:hidden">
+        {!configured ? <button className={PRIMARY} onClick={onSettings}>1단계 설정 열기</button>
+          : promptCount === 0 ? <button className={PRIMARY} onClick={onPrompts}>2단계 프롬프트 등록</button>
+            : !collected ? <button className={PRIMARY} disabled={collecting} onClick={onCollect}>{collecting ? "수집 중…" : "3단계 첫 실측 수집"}</button>
+              : null}
+      </div>
+    </section>
+  );
+}
+
+function MeasurementDiagnostics({ data }: { data: AiVisibilityDashboardResponse }) {
+  return (
+    <section id="measurement-diagnostics" className={`${CARD} mt-3 scroll-mt-24 overflow-hidden`}>
+      <div className="border-b border-[#eceef1] px-4 py-3">
+        <h2 className="text-[14px] font-semibold text-[#30343b]">측정 불가 셀</h2>
+        <p className="mt-1 text-[11px] text-[#747b85]">공급자가 인용 정보를 제공하지 않아 점수 분모에서 제외된 실제 관측입니다.</p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[700px] text-left text-[11px]">
+          <thead className="bg-[#f6f7f8] text-[#666d78]"><tr><th className="px-4 py-2 font-medium">프롬프트</th><th className="px-3 py-2 font-medium">플랫폼</th><th className="px-3 py-2 font-medium">국가</th><th className="px-3 py-2 font-medium">수집 출처</th><th className="px-4 py-2 font-medium">수집 시각</th></tr></thead>
+          <tbody className="divide-y divide-[#eceef1]">
+            {data.diagnostics.unknownCells.length === 0 ? (
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-[#818791]">현재 필터에서 측정 불가 셀이 없습니다.</td></tr>
+            ) : data.diagnostics.unknownCells.map((row) => (
+              <tr key={row.id}><td className="max-w-[360px] truncate px-4 py-2.5 text-[#343942]">{row.prompt}</td><td className="px-3 py-2.5">{providerMeta(row.provider).short}</td><td className="px-3 py-2.5">{row.countryCode}</td><td className="px-3 py-2.5">{row.source}</td><td className="px-4 py-2.5">{formatDate(row.capturedAt)}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 export function AiVisibilityDashboard({ initialFolderId = "", printMode = false }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const measurementFilter = searchParams.get("measurement") === "unknown" ? "unknown" : "";
   const [projects, setProjects] = useState<AiVisibilityProjectListItem[]>([]);
   const [fid, setFid] = useState(initialFolderId);
   const [settings, setSettings] = useState<AiVisibilitySettingsView | null>(null);
@@ -537,6 +660,9 @@ export function AiVisibilityDashboard({ initialFolderId = "", printMode = false 
   const [showSettings, setShowSettings] = useState(false);
   const [showPrompts, setShowPrompts] = useState(false);
   const [run, setRun] = useState<AiVisibilityRunView | null>(null);
+  const [startingRun, setStartingRun] = useState(false);
+  const [runNotice, setRunNotice] = useState<RunNotice | null>(null);
+  const [dashboardVersion, setDashboardVersion] = useState(0);
 
   const loadProjects = async () => {
     const response = await api.get<AiVisibilityProjectListItem[]>("/api/ai-visibility/projects/");
@@ -603,12 +729,13 @@ export function AiVisibilityDashboard({ initialFolderId = "", printMode = false 
     if (countries.length) params.set("countries", countries.join(","));
     if (providers.length) params.set("providers", providers.join(","));
     if (q.trim()) params.set("q", q.trim());
+    if (measurementFilter) params.set("measurement", measurementFilter);
     router.replace(`${printMode ? "/ai-seo/overview/print/" : "/ai-seo/overview/"}?${params.toString()}`, { scroll: false });
     api.get<AiVisibilityDashboardResponse>(`/api/ai-visibility/overview/?${params.toString()}`)
       .then(({ data }) => { if (active) setDashboard(data); })
       .catch((cause) => { if (active) setError(message(cause, "AI 가시성 개요를 불러오지 못했습니다.")); });
     return () => { active = false; };
-  }, [fid, settings?.project, range, tab, page, q, countries, providers, router, printMode]);
+  }, [fid, settings?.project, range, tab, page, q, countries, providers, router, printMode, dashboardVersion, measurementFilter]);
 
   useEffect(() => {
     if (!run || (run.status !== "queued" && run.status !== "running")) return;
@@ -617,9 +744,19 @@ export function AiVisibilityDashboard({ initialFolderId = "", printMode = false 
         setRun(data);
         if (data.status !== "queued" && data.status !== "running") {
           window.clearInterval(timer);
-          if (fid) await loadFolder(fid);
+          if (fid) {
+            await loadFolder(fid);
+            setDashboardVersion((version) => version + 1);
+          }
+          const outcome = runOutcome(data);
+          if (outcome) setRunNotice(outcome);
+          else setError(data.error ?? "실제 추적을 완료하지 못했습니다.");
         }
-      }).catch(() => window.clearInterval(timer));
+      }).catch((cause) => {
+        window.clearInterval(timer);
+        setRun(null);
+        setError(message(cause, "수집 상태를 확인하지 못했습니다. 다시 시도해 주세요."));
+      });
     }, 1800);
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -643,8 +780,31 @@ export function AiVisibilityDashboard({ initialFolderId = "", printMode = false 
   }, [fid, range, tab, selectedCountries, selectedProviders, q]);
 
   const selectProject = (folderId: string) => {
-    setFid(folderId); setRun(null); setCountries([]); setProviders([]); setPage(1); setQ("");
-    router.push(`/ai-seo/overview/?fid=${encodeURIComponent(folderId)}`);
+    setFid(folderId); setRun(null); setRunNotice(null); setCountries([]); setProviders([]); setPage(1); setQ("");
+    router.push(`/ai-seo/overview/?fid=${encodeURIComponent(folderId)}&range=1m&tab=top_topics&page=1`);
+  };
+
+  const startCollection = async () => {
+    if (!fid || startingRun || run?.status === "queued" || run?.status === "running") return;
+    setStartingRun(true);
+    setRunNotice(null);
+    setError(null);
+    try {
+      const { data } = await api.post<{ runId: string }>("/api/ai-visibility/runs/", { fid });
+      const status = await api.get<AiVisibilityRunView>(`/api/ai-visibility/runs/${data.runId}/`);
+      setRun(status.data);
+      if (status.data.status !== "queued" && status.data.status !== "running") {
+        await loadFolder(fid);
+        setDashboardVersion((version) => version + 1);
+        const outcome = runOutcome(status.data);
+        if (outcome) setRunNotice(outcome);
+        else setError(status.data.error ?? "실제 추적을 완료하지 못했습니다.");
+      }
+    } catch (cause) {
+      setError(message(cause, "수집을 시작하지 못했습니다."));
+    } finally {
+      setStartingRun(false);
+    }
   };
 
   if (loading && !settings) {
@@ -694,22 +854,40 @@ export function AiVisibilityDashboard({ initialFolderId = "", printMode = false 
               <button className={BUTTON} onClick={() => setShowPrompts((value) => !value)}>프롬프트 {prompts.length}</button>
               <a className={BUTTON} href={exportQuery ? `/api/ai-visibility/export.csv/?${exportQuery}` : "#"}>CSV 내보내기</a>
               <button className={BUTTON} onClick={() => window.open(`/ai-seo/overview/print/?${exportQuery}`, "_blank", "noopener,noreferrer")}>PDF로 저장</button>
-              <button className={PRIMARY} disabled={!settings?.project || prompts.length === 0 || run?.status === "queued" || run?.status === "running"} onClick={async () => {
-                if (!fid) return;
-                setError(null);
-                try {
-                  const { data } = await api.post<{ runId: string }>("/api/ai-visibility/runs/", { fid });
-                  const status = await api.get<AiVisibilityRunView>(`/api/ai-visibility/runs/${data.runId}/`);
-                  setRun(status.data);
-                } catch (cause) { setError(message(cause, "수집을 시작하지 못했습니다.")); }
-              }}>{run?.status === "queued" || run?.status === "running" ? "수집 중…" : "지금 수집"}</button>
+              <button
+                className={PRIMARY}
+                disabled={!settings?.project || prompts.length === 0 || startingRun || run?.status === "queued" || run?.status === "running"}
+                onClick={startCollection}
+              >
+                {startingRun ? "수집 시작 중…" : run?.status === "queued" || run?.status === "running" ? "수집 중…" : "지금 수집"}
+              </button>
             </div>}
           </div>
         </header>
 
         {error && <div className="mt-4 rounded-[7px] border border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-700">{error}</div>}
+        {runNotice && (
+          <div
+            role="status"
+            aria-live="polite"
+            className={`mt-4 rounded-[7px] border px-4 py-3 text-[12px] ${runNotice.tone === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}
+          >
+            {runNotice.message}
+          </div>
+        )}
+        {!printMode && settings && (!settings.project || prompts.length === 0 || !dashboard?.provenance.lastCollectedAt) && (
+          <OnboardingGuide
+            configured={Boolean(settings.project)}
+            promptCount={prompts.length}
+            collected={Boolean(dashboard?.provenance.lastCollectedAt)}
+            collecting={startingRun || run?.status === "queued" || run?.status === "running"}
+            onSettings={() => setShowSettings(true)}
+            onPrompts={() => setShowPrompts(true)}
+            onCollect={() => void startCollection()}
+          />
+        )}
         {!printMode && settings && (!settings.project || showSettings) && <div className="mt-4"><SettingsPanel settings={settings} onSaved={async () => { await loadFolder(fid); setShowSettings(false); }} /></div>}
-        {!printMode && settings?.project && (showPrompts || prompts.length === 0) && <div className="mt-4"><PromptManager fid={fid} prompts={prompts} limit={settings.limits.prompts} onChanged={refreshPrompts} /></div>}
+        {!printMode && settings?.project && (showPrompts || prompts.length === 0) && <div className="mt-4"><PromptManager fid={fid} prompts={prompts} limit={settings.limits.prompts} positionTrackingImport={settings.imports.positionTracking} onChanged={refreshPrompts} /></div>}
         {run && (run.status === "queued" || run.status === "running") && <div className="mt-4"><RunProgress run={run} /></div>}
 
         {dashboard && settings?.project && (
@@ -735,17 +913,18 @@ export function AiVisibilityDashboard({ initialFolderId = "", printMode = false 
             </div>
 
             <CompletenessBanner data={dashboard} />
-            <div className="mt-3 grid gap-3 lg:grid-cols-12">
+            {measurementFilter && <MeasurementDiagnostics data={dashboard} />}
+            <div id="overview-results" className="mt-3 grid scroll-mt-24 gap-3 lg:grid-cols-12">
               <div className="lg:col-span-3"><Gauge value={dashboard.kpis.visibility.value} measured={dashboard.kpis.visibility.measured} /></div>
               <div className="lg:col-span-6"><TrendCard data={dashboard} /></div>
               <div className="lg:col-span-3"><ActionsCard data={dashboard} /></div>
-              <div className="lg:col-span-4"><BreakdownCard title="LLM별 분포" rows={dashboard.providerBreakdown} kind="provider" /></div>
+              <div className="lg:col-span-4"><BreakdownCard title="LLM별 언급 분포" rows={dashboard.providerBreakdown} kind="provider" /></div>
               <div className="lg:col-span-5"><BreakdownCard title="국가별 언급" rows={dashboard.countryBreakdown} kind="country" /></div>
             </div>
             <div className="mt-3 rounded-[8px] border border-[#c9d8ff] bg-gradient-to-r from-[#f4efff] to-[#eef8ff] px-4 py-3 text-[11px] text-[#59616c] print:hidden">
               가시성 공식: {dashboard.provenance.formula} · 보존 {dashboard.provenance.retentionDays}일 · {dashboard.provenance.sources.map((source) => source.source).join(" / ")}
             </div>
-            <ResultsTable data={dashboard} q={q} onQ={(value) => { setQ(value); setPage(1); }} onTab={(value) => { setTab(value); setPage(1); }} onPage={setPage} />
+            <div id="topic-and-sources" className="scroll-mt-24"><ResultsTable data={dashboard} q={q} onQ={(value) => { setQ(value); setPage(1); }} onTab={(value) => { setTab(value); setPage(1); }} onPage={setPage} /></div>
           </>
         )}
       </div>

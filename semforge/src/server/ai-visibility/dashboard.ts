@@ -116,7 +116,18 @@ export interface AiVisibilityDashboardResponse {
     failed: number;
     createdAt: string;
     completedAt: string | null;
+    error: string | null;
   } | null;
+  diagnostics: {
+    unknownCells: {
+      id: string;
+      prompt: string;
+      provider: AiVisibilityProvider;
+      countryCode: string;
+      source: string;
+      capturedAt: string;
+    }[];
+  };
   provenance: {
     formula: string;
     retentionDays: number;
@@ -188,6 +199,37 @@ export function latestObservationPairs(observations: DashboardObservation[]) {
   return { latest: [...latest.values()], previous: [...previous.values()] };
 }
 
+export interface DashboardRunSnapshot {
+  id: string;
+  createdAt: Date;
+  completedAt: Date | null;
+}
+
+/**
+ * 완료·부분 완료 실행 단위로 현재/직전 스냅샷을 고른다.
+ * 실행 이력이 없는 마이그레이션 데이터만 셀별 최신 관측 방식으로 호환한다.
+ */
+export function selectRunObservationSets(
+  observations: DashboardObservation[],
+  runs: DashboardRunSnapshot[],
+) {
+  const orderedRuns = [...runs].sort((a, b) =>
+    (b.completedAt ?? b.createdAt).getTime() - (a.completedAt ?? a.createdAt).getTime(),
+  );
+  if (orderedRuns.length === 0) {
+    const legacy = latestObservationPairs(observations.filter((row) => row.runId === null));
+    return { ...legacy, orderedRuns, legacy: true };
+  }
+  return {
+    latest: observations.filter((row) => row.runId === orderedRuns[0].id),
+    previous: orderedRuns[1]
+      ? observations.filter((row) => row.runId === orderedRuns[1].id)
+      : [],
+    orderedRuns,
+    legacy: false,
+  };
+}
+
 function citationMap(citations: DashboardCitation[]) {
   const result = new Map<string, DashboardCitation[]>();
   for (const citation of citations) {
@@ -244,15 +286,14 @@ export function metricBreakdown(
     const key = getKey(observation);
     groups.set(key, [...(groups.get(key) ?? []), observation]);
   }
-  const totalVisible = observations.filter((row) => row.visibilityStatus === "visible").length;
+  const totalMentions = observations.filter((row) => row.brandMentioned === true).length;
   return [...groups.entries()].map(([key, rows]) => {
     const metric = computeAiVisibilityMetric(rows, citations);
-    const visible = rows.filter((row) => row.visibilityStatus === "visible").length;
     return {
       key,
       label: getLabel(key),
       ...metric,
-      share: totalVisible > 0 ? Math.round((visible / totalVisible) * 1000) / 10 : 0,
+      share: totalMentions > 0 ? Math.round((metric.mentions / totalMentions) * 1000) / 10 : 0,
     };
   }).sort((a, b) => (b.visibility ?? -1) - (a.visibility ?? -1));
 }
@@ -337,13 +378,24 @@ export function buildCitationRows(
 
 function buildActions(input: {
   fid: string;
-  overall: AiVisibilityMetric;
+  range: AiVisibilityRange;
+  countries: string[];
   providers: BreakdownRow[];
   topicOpportunities: DashboardTableRow[];
   sourceOpportunities: DashboardTableRow[];
   unknownRatio: number;
 }): ActionRow[] {
   const actions: ActionRow[] = [];
+  const overviewHref = (values: Record<string, string>) => {
+    const params = new URLSearchParams({
+      fid: input.fid,
+      range: input.range,
+      page: "1",
+      ...values,
+    });
+    if (input.countries.length > 0) params.set("countries", input.countries.join(","));
+    return `/ai-seo/overview/?${params.toString()}`;
+  };
   const lowProvider = input.providers
     .filter((row) => row.measured > 0)
     .sort((a, b) => (a.visibility ?? 101) - (b.visibility ?? 101))[0];
@@ -352,7 +404,7 @@ function buildActions(input: {
       id: "provider-gap",
       title: `${lowProvider.label} 노출 보강`,
       description: `현재 가시성 ${lowProvider.visibility ?? 0}%로 가장 낮습니다. 해당 플랫폼의 실측 프롬프트를 우선 검토하세요.`,
-      href: `/ai-seo/overview/?fid=${encodeURIComponent(input.fid)}&providers=${lowProvider.key}`,
+      href: `${overviewHref({ tab: "top_topics", providers: lowProvider.key })}#overview-results`,
       cta: "플랫폼 결과 보기",
       severity: "high",
     });
@@ -363,8 +415,8 @@ function buildActions(input: {
       id: "topic-gap",
       title: `주제 기회: ${topic.label}`,
       description: `${topic.count}개 프롬프트의 가시성이 프로젝트 평균보다 낮습니다. 관련 페이지와 답변 근거를 보강하세요.`,
-      href: `/position-tracking/?folder=${encodeURIComponent(input.fid)}`,
-      cta: "포지션 추적 열기",
+      href: `${overviewHref({ tab: "topic_opportunities", q: topic.label })}#topic-and-sources`,
+      cta: "주제 기회 보기",
       severity: "medium",
     });
   }
@@ -374,8 +426,8 @@ function buildActions(input: {
       id: "source-gap",
       title: `반복 인용 소스 분석: ${source.label}`,
       description: `자사 미노출 응답에서 ${source.citations}회 인용됐습니다. 해당 출처가 제공하는 근거 구조를 비교하세요.`,
-      href: `/site-audit/?fid=${encodeURIComponent(input.fid)}`,
-      cta: "사이트 진단 열기",
+      href: `${overviewHref({ tab: "source_opportunities", q: source.label })}#topic-and-sources`,
+      cta: "소스 기회 보기",
       severity: "medium",
     });
   }
@@ -384,7 +436,7 @@ function buildActions(input: {
       id: "unknown-cells",
       title: "측정 불가 응답 확인",
       description: `최신 관측의 ${input.unknownRatio}%는 인용 정보가 없어 점수에서 제외되었습니다. 원문과 수집 출처를 확인하세요.`,
-      href: `/ai-seo/overview/?fid=${encodeURIComponent(input.fid)}&show=unknown`,
+      href: `${overviewHref({ tab: "top_topics", measurement: "unknown" })}#measurement-diagnostics`,
       cta: "측정 불가 보기",
       severity: "info",
     });
@@ -394,7 +446,7 @@ function buildActions(input: {
       id: "maintain",
       title: "주간 관측 유지",
       description: "현재 필터에서 큰 격차가 확인되지 않았습니다. 정기 수집으로 변화를 계속 확인하세요.",
-      href: `/ai-seo/overview/?fid=${encodeURIComponent(input.fid)}`,
+      href: `${overviewHref({ tab: "top_topics" })}#overview-results`,
       cta: "전체 결과 보기",
       severity: "info",
     });
@@ -433,28 +485,45 @@ export async function getProjectAiVisibilityDashboard(
   ];
   if (countries.length > 0) filters.push(inArray(aiVisibilityObservations.countryCode, countries));
   if (providers.length > 0) filters.push(inArray(aiVisibilityObservations.provider, providers));
-  const observations = await db
-    .select({
-      id: aiVisibilityObservations.id,
-      runId: aiVisibilityObservations.runId,
-      promptId: aiVisibilityObservations.promptId,
-      prompt: aiVisibilityPrompts.prompt,
-      topic: aiVisibilityPrompts.topic,
-      provider: aiVisibilityObservations.provider,
-      countryCode: aiVisibilityObservations.countryCode,
-      locationKey: aiVisibilityObservations.locationKey,
-      visibilityStatus: aiVisibilityObservations.visibilityStatus,
-      brandMentioned: aiVisibilityObservations.brandMentioned,
-      citationsAvailable: aiVisibilityObservations.citationsAvailable,
-      responseText: aiVisibilityObservations.responseText,
-      source: aiVisibilityObservations.source,
-      fromCache: aiVisibilityObservations.fromCache,
-      capturedAt: aiVisibilityObservations.capturedAt,
-    })
-    .from(aiVisibilityObservations)
-    .innerJoin(aiVisibilityPrompts, eq(aiVisibilityPrompts.id, aiVisibilityObservations.promptId))
-    .where(and(...filters))
-    .orderBy(desc(aiVisibilityObservations.capturedAt));
+  const [observations, terminalRuns] = await Promise.all([
+    db
+      .select({
+        id: aiVisibilityObservations.id,
+        runId: aiVisibilityObservations.runId,
+        promptId: aiVisibilityObservations.promptId,
+        prompt: aiVisibilityPrompts.prompt,
+        topic: aiVisibilityPrompts.topic,
+        provider: aiVisibilityObservations.provider,
+        countryCode: aiVisibilityObservations.countryCode,
+        locationKey: aiVisibilityObservations.locationKey,
+        visibilityStatus: aiVisibilityObservations.visibilityStatus,
+        brandMentioned: aiVisibilityObservations.brandMentioned,
+        citationsAvailable: aiVisibilityObservations.citationsAvailable,
+        responseText: aiVisibilityObservations.responseText,
+        source: aiVisibilityObservations.source,
+        fromCache: aiVisibilityObservations.fromCache,
+        capturedAt: aiVisibilityObservations.capturedAt,
+      })
+      .from(aiVisibilityObservations)
+      .innerJoin(aiVisibilityPrompts, eq(aiVisibilityPrompts.id, aiVisibilityObservations.promptId))
+      .where(and(...filters))
+      .orderBy(desc(aiVisibilityObservations.capturedAt)),
+    db
+      .select({
+        id: aiVisibilityRuns.id,
+        createdAt: aiVisibilityRuns.createdAt,
+        completedAt: aiVisibilityRuns.completedAt,
+      })
+      .from(aiVisibilityRuns)
+      .where(
+        and(
+          eq(aiVisibilityRuns.projectId, bundle.project.id),
+          inArray(aiVisibilityRuns.status, ["completed", "partial"]),
+          gte(aiVisibilityRuns.createdAt, cutoff),
+        ),
+      )
+      .orderBy(desc(aiVisibilityRuns.createdAt)),
+  ]);
   const observationIds = observations.map((row) => row.id);
   const citations: DashboardCitation[] = observationIds.length > 0
     ? await db
@@ -462,7 +531,11 @@ export async function getProjectAiVisibilityDashboard(
         .from(aiVisibilityCitations)
         .where(inArray(aiVisibilityCitations.observationId, observationIds))
     : [];
-  const { latest, previous } = latestObservationPairs(observations);
+  const observationSets = selectRunObservationSets(observations, terminalRuns);
+  const { latest, previous } = observationSets;
+  const hasPreviousSnapshot = observationSets.legacy
+    ? previous.length > 0
+    : observationSets.orderedRuns.length > 1;
   const latestIds = new Set(latest.map((row) => row.id));
   const previousIds = new Set(previous.map((row) => row.id));
   const latestCitations = citations.filter((citation) => latestIds.has(citation.observationId));
@@ -536,19 +609,27 @@ export async function getProjectAiVisibilityDashboard(
   const page = Math.min(totalPages, Math.max(1, options?.page ?? 1));
   const pagedRows = searchedRows.slice((page - 1) * pageSize, page * pageSize);
 
-  const trendGroups = new Map<string, DashboardObservation[]>();
-  for (const observation of observations) {
-    const key = observation.capturedAt.toISOString().slice(0, 10);
-    trendGroups.set(key, [...(trendGroups.get(key) ?? []), observation]);
-  }
-  const trend = [...trendGroups.entries()].map(([date, rows]) => {
-    const latestForDay = latestObservationPairs(rows).latest;
-    const ids = new Set(latestForDay.map((row) => row.id));
-    const metric = computeAiVisibilityMetric(
-      latestForDay,
-      citations.filter((citation) => ids.has(citation.observationId)),
-    );
-    return { date, ...metric };
+  const trendSnapshots = observationSets.legacy
+    ? [...new Set(observations.map((row) => row.capturedAt.toISOString().slice(0, 10)))]
+        .map((date) => ({
+          date,
+          rows: latestObservationPairs(
+            observations.filter((row) => row.capturedAt.toISOString().slice(0, 10) === date),
+          ).latest,
+        }))
+    : observationSets.orderedRuns.map((run) => ({
+        date: (run.completedAt ?? run.createdAt).toISOString().slice(0, 10),
+        rows: observations.filter((row) => row.runId === run.id),
+      }));
+  const trend = trendSnapshots.map(({ date, rows }) => {
+    const ids = new Set(rows.map((row) => row.id));
+    return {
+      date,
+      ...computeAiVisibilityMetric(
+        rows,
+        citations.filter((citation) => ids.has(citation.observationId)),
+      ),
+    };
   }).sort((a, b) => a.date.localeCompare(b.date)).map((row) => ({
     date: row.date,
     visibility: row.visibility,
@@ -567,7 +648,9 @@ export async function getProjectAiVisibilityDashboard(
   const capabilities = getAiSearchCapabilities();
   const runnableProviders = providers.filter((provider) => capabilities.providers[provider].enabled);
   const expectedCells = bundle.prompts.length * runnableProviders.length * countries.length;
-  const ratio = expectedCells > 0 ? Math.round((latest.length / expectedCells) * 1000) / 10 : 0;
+  const ratio = expectedCells > 0
+    ? Math.min(100, Math.round((latest.length / expectedCells) * 1000) / 10)
+    : 0;
   const measurementRatio = latest.length > 0
     ? Math.round((currentMetric.measured / latest.length) * 1000) / 10
     : 0;
@@ -597,15 +680,15 @@ export async function getProjectAiVisibilityDashboard(
     projects,
     capabilities,
     kpis: {
-      visibility: { value: currentMetric.visibility, delta: delta(currentMetric.visibility, previousMetric.visibility), measured: currentMetric.measured },
-      mentions: { value: currentMetric.mentions, delta: delta(currentMetric.mentions, previousMetric.mentions) },
-      citations: { value: currentMetric.citations, delta: delta(currentMetric.citations, previousMetric.citations) },
-      citedPages: { value: currentMetric.citedPages, delta: delta(currentMetric.citedPages, previousMetric.citedPages) },
+      visibility: { value: currentMetric.visibility, delta: hasPreviousSnapshot ? delta(currentMetric.visibility, previousMetric.visibility) : null, measured: currentMetric.measured },
+      mentions: { value: currentMetric.mentions, delta: hasPreviousSnapshot ? delta(currentMetric.mentions, previousMetric.mentions) : null },
+      citations: { value: currentMetric.citations, delta: hasPreviousSnapshot ? delta(currentMetric.citations, previousMetric.citations) : null },
+      citedPages: { value: currentMetric.citedPages, delta: hasPreviousSnapshot ? delta(currentMetric.citedPages, previousMetric.citedPages) : null },
     },
     trend,
     providerBreakdown,
     countryBreakdown,
-    actions: buildActions({ fid: folderId, overall: currentMetric, providers: providerBreakdown, topicOpportunities, sourceOpportunities, unknownRatio }),
+    actions: buildActions({ fid: folderId, range, countries, providers: providerBreakdown, topicOpportunities, sourceOpportunities, unknownRatio }),
     tabs: {
       top_topics: { count: topicRows.length },
       topic_opportunities: { count: topicOpportunities.length },
@@ -623,7 +706,20 @@ export async function getProjectAiVisibilityDashboard(
       failed: latestRun.failedCount,
       createdAt: latestRun.createdAt.toISOString(),
       completedAt: latestRun.completedAt?.toISOString() ?? null,
+      error: latestRun.errorMessage,
     } : null,
+    diagnostics: {
+      unknownCells: latest
+        .filter((row) => row.visibilityStatus === "unknown")
+        .map((row) => ({
+          id: row.id,
+          prompt: row.prompt,
+          provider: row.provider,
+          countryCode: row.countryCode,
+          source: row.source,
+          capturedAt: row.capturedAt.toISOString(),
+        })),
+    },
     provenance: {
       formula: "측정 가능한 최신 프롬프트×플랫폼×국가 셀 중 브랜드 언급 또는 자사 도메인 인용 비율",
       retentionDays: AI_VISIBILITY_RETENTION_DAYS,
@@ -632,7 +728,9 @@ export async function getProjectAiVisibilityDashboard(
         label: PROVIDER_LABELS[provider],
         source: provider === "google_aio" ? "TalorData SERP" : provider === "chatgpt_web" ? "OpenAI Responses 웹 검색" : "Gemini 검색 그라운딩",
       })),
-      lastCollectedAt: observations[0]?.capturedAt.toISOString() ?? null,
+      lastCollectedAt: latest.length > 0
+        ? new Date(Math.max(...latest.map((row) => row.capturedAt.getTime()))).toISOString()
+        : null,
     },
     completeness: {
       expectedCells,

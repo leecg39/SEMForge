@@ -7,6 +7,7 @@ import {
   computeAiVisibilityMetric,
   latestObservationPairs,
   metricBreakdown,
+  selectRunObservationSets,
   selectTopicOpportunities,
   type DashboardCitation,
   type DashboardObservation,
@@ -83,6 +84,35 @@ test("직전 대비는 동일 프롬프트·플랫폼·위치 셀의 두 최신 
   assert.deepEqual(pairs.previous.map((row) => row.id), ["old"]);
 });
 
+test("최신·직전 집계는 셀 시각이 아니라 완료 실행 단위로 분리한다", () => {
+  const rows = [
+    observation({ id: "latest-a", runId: "run-new", promptId: "p1", capturedAt: new Date("2026-08-02T01:00:00Z") }),
+    observation({ id: "latest-b", runId: "run-new", promptId: "p2", capturedAt: new Date("2026-08-02T01:01:00Z") }),
+    observation({ id: "previous-a", runId: "run-old", promptId: "p1", capturedAt: new Date("2026-08-01T01:05:00Z") }),
+    observation({ id: "legacy-newer", runId: null, promptId: "p3", capturedAt: new Date("2026-08-03T01:00:00Z") }),
+  ];
+  const selected = selectRunObservationSets(rows, [
+    { id: "run-old", createdAt: new Date("2026-08-01T00:00:00Z"), completedAt: new Date("2026-08-01T01:10:00Z") },
+    { id: "run-new", createdAt: new Date("2026-08-02T00:00:00Z"), completedAt: new Date("2026-08-02T01:10:00Z") },
+  ]);
+  assert.deepEqual(selected.latest.map((row) => row.id).sort(), ["latest-a", "latest-b"]);
+  assert.deepEqual(selected.previous.map((row) => row.id), ["previous-a"]);
+  assert.equal(selected.legacy, false);
+});
+
+test("부분 완료 실행도 최신 스냅샷으로 선택해 과거 성공 셀을 섞지 않는다", () => {
+  const rows = [
+    observation({ id: "partial-only", runId: "run-partial", promptId: "p1" }),
+    observation({ id: "old-extra", runId: "run-complete", promptId: "p2" }),
+  ];
+  const selected = selectRunObservationSets(rows, [
+    { id: "run-partial", createdAt: new Date("2026-08-02"), completedAt: new Date("2026-08-02T01:00:00Z") },
+    { id: "run-complete", createdAt: new Date("2026-08-01"), completedAt: new Date("2026-08-01T01:00:00Z") },
+  ]);
+  assert.deepEqual(selected.latest.map((row) => row.id), ["partial-only"]);
+  assert.deepEqual(selected.previous.map((row) => row.id), ["old-extra"]);
+});
+
 test("플랫폼·국가 분포는 같은 공식을 그룹별로 적용한다", () => {
   const rows = [
     observation({ id: "g-kr", visibilityStatus: "visible", brandMentioned: true }),
@@ -94,6 +124,8 @@ test("플랫폼·국가 분포는 같은 공식을 그룹별로 적용한다", (
   const chatgpt = byProvider.find((row) => row.key === "chatgpt_web");
   assert.equal(google?.visibility, 50);
   assert.equal(chatgpt?.visibility, 100);
+  assert.equal(google?.share, 50);
+  assert.equal(chatgpt?.share, 50);
   const byCountry = metricBreakdown(rows, [], (row) => row.countryCode, (key) => key);
   assert.equal(byCountry.find((row) => row.key === "KR")?.visibility, 100);
   assert.equal(byCountry.find((row) => row.key === "US")?.visibility, 0);

@@ -115,6 +115,21 @@ export async function requireOwnedAiFolder(auth: AuthContext, folderId: string) 
   return folder;
 }
 
+export async function findOwnedAiFolder(auth: AuthContext, folderId: string) {
+  const [folder] = await db
+    .select({ id: folders.id, name: folders.name, domain: folders.domain })
+    .from(folders)
+    .where(
+      and(
+        eq(folders.id, folderId),
+        eq(folders.workspaceId, auth.workspaceId),
+        isNull(folders.deletedAt),
+      ),
+    )
+    .limit(1);
+  return folder ?? null;
+}
+
 export async function findAiVisibilityProject(auth: AuthContext, folderId: string) {
   const [project] = await db
     .select()
@@ -174,6 +189,34 @@ export async function listAiVisibilityFolders(
   }));
 }
 
+/** 설정 완료 프로젝트를 우선하고, 없으면 핀·최근 수정 순으로 기본 프로젝트를 고른다. */
+export async function resolveDefaultAiVisibilityFolder(
+  auth: AuthContext,
+): Promise<string | null> {
+  const folderRows = await db
+    .select({
+      id: folders.id,
+      pinned: folders.pinned,
+      updatedAt: folders.updatedAt,
+    })
+    .from(folders)
+    .where(and(eq(folders.workspaceId, auth.workspaceId), isNull(folders.deletedAt)))
+    .orderBy(desc(folders.pinned), desc(folders.updatedAt));
+  if (folderRows.length === 0) return null;
+  const projectRows = await db
+    .select({ folderId: aiVisibilityProjects.folderId })
+    .from(aiVisibilityProjects)
+    .where(
+      and(
+        eq(aiVisibilityProjects.workspaceId, auth.workspaceId),
+        inArray(aiVisibilityProjects.folderId, folderRows.map((folder) => folder.id)),
+        isNull(aiVisibilityProjects.deletedAt),
+      ),
+    );
+  const configured = new Set(projectRows.map((project) => project.folderId));
+  return folderRows.find((folder) => configured.has(folder.id))?.id ?? folderRows[0].id;
+}
+
 /** 구 domain 링크는 현재 워크스페이스에서 정확히 하나의 활성 폴더와 일치할 때만 fid로 승격한다. */
 export async function resolveAiVisibilityFolderByDomain(
   auth: AuthContext,
@@ -209,6 +252,13 @@ export interface AiVisibilitySettingsView {
   };
   capabilities: ReturnType<typeof getAiSearchCapabilities>;
   locations: { key: string; countryCode: string; country: string; city: string; label: string }[];
+  imports: {
+    positionTracking: {
+      available: boolean;
+      keywordCount: number;
+      reason: string | null;
+    };
+  };
   limits: { prompts: number; scopes: number; aliases: number };
 }
 
@@ -223,8 +273,9 @@ export async function getAiVisibilitySettings(
   const availableProviders = AI_VISIBILITY_PROVIDERS.filter(
     (provider) => capabilities.providers[provider].enabled,
   );
-  const scopes = project
-    ? await db
+  const [scopes, positionCampaignRows] = await Promise.all([
+    project
+      ? db
         .select()
         .from(aiVisibilityScopes)
         .where(
@@ -234,7 +285,36 @@ export async function getAiVisibilitySettings(
           ),
         )
         .orderBy(asc(aiVisibilityScopes.createdAt))
+      : Promise.resolve([]),
+    db
+      .select({ id: positionTrackingCampaigns.id })
+      .from(positionTrackingCampaigns)
+      .where(
+        and(
+          eq(positionTrackingCampaigns.workspaceId, auth.workspaceId),
+          eq(positionTrackingCampaigns.folderId, folderId),
+          isNull(positionTrackingCampaigns.deletedAt),
+        ),
+      )
+      .orderBy(desc(positionTrackingCampaigns.updatedAt))
+      .limit(1),
+  ]);
+  const positionKeywordRows = positionCampaignRows[0]
+    ? await db
+        .select({ id: trackedKeywords.id })
+        .from(trackedKeywords)
+        .where(
+          and(
+            eq(trackedKeywords.campaignId, positionCampaignRows[0].id),
+            isNull(trackedKeywords.deletedAt),
+          ),
+        )
     : [];
+  const positionImportReason = !positionCampaignRows[0]
+    ? "이 프로젝트에 연결된 포지션 추적 캠페인이 없습니다."
+    : positionKeywordRows.length === 0
+      ? "포지션 추적에 가져올 활성 키워드가 없습니다."
+      : null;
   return {
     folder: { id: folder.id, name: folder.name, domain: normalizeDomain(folder.domain) },
     project: project
@@ -263,6 +343,13 @@ export async function getAiVisibilitySettings(
       city,
       label,
     })),
+    imports: {
+      positionTracking: {
+        available: positionImportReason === null,
+        keywordCount: positionKeywordRows.length,
+        reason: positionImportReason,
+      },
+    },
     limits: {
       prompts: MAX_AI_VISIBILITY_PROMPTS,
       scopes: MAX_AI_VISIBILITY_SCOPES,
@@ -291,6 +378,16 @@ export async function saveAiVisibilitySettings(
   }
   const aliases = cleanAliases(input.brandAliases ?? []);
   const providers = cleanProviders(input.providers);
+  const capabilities = getAiSearchCapabilities();
+  const unavailableProviders = providers.filter(
+    (provider) => !capabilities.providers[provider].enabled,
+  );
+  if (unavailableProviders.length > 0) {
+    throw new ApiError(
+      "VALIDATION_ERROR",
+      `연결되지 않은 AI 플랫폼은 선택할 수 없습니다: ${unavailableProviders.join(", ")}`,
+    );
+  }
   const locations = cleanLocations(input.locationKeys);
   const existing = await findAiVisibilityProject(auth, folderId);
   const projectId = existing?.id ?? newId("avp");
