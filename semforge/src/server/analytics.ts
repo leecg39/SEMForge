@@ -1,13 +1,15 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db/client";
 import {
   clickstreamEvents,
+  folders,
   keywordMetrics,
   linkGraphEdges,
   serpSnapshots,
 } from "@/db/schema";
 import { buildDomainAnalytics, normalizeDomain } from "@/lib/analytics/metrics";
 import type { AnalyticsDevice, AnalyticsRawDataset } from "@/lib/analytics/types";
+import type { AuthContext } from "@/lib/session";
 
 /**
  * 라이브(실측) 소스만 인정한다.
@@ -71,8 +73,19 @@ export async function getDomainAnalytics(query: {
  * 라이브 SERP 스냅샷 또는 링크 그래프에 잡힌 도메인의 합집합(정렬)을
  * 전체 테이블 스캔 없이 distinct 조회로 돌려준다.
  */
-export async function getAvailableDomains(): Promise<string[]> {
-  const [serpRows, linkRows] = await Promise.all([
+export async function getAvailableDomains(
+  auth: Pick<AuthContext, "workspaceId">,
+): Promise<string[]> {
+  const [folderRows, serpRows, linkRows] = await Promise.all([
+    db
+      .select({ domain: folders.domain })
+      .from(folders)
+      .where(
+        and(
+          eq(folders.workspaceId, auth.workspaceId),
+          isNull(folders.deletedAt),
+        ),
+      ),
     db
       .selectDistinct({ domain: serpSnapshots.domain })
       .from(serpSnapshots)
@@ -82,14 +95,18 @@ export async function getAvailableDomains(): Promise<string[]> {
       .from(linkGraphEdges)
       .where(inArray(linkGraphEdges.source, LIVE_LINK_SOURCES)),
   ]);
+  const allowedDomains = new Set(
+    folderRows.map((row) => normalizeDomain(row.domain)).filter(Boolean),
+  );
+  if (allowedDomains.size === 0) return [];
   const domains = new Set<string>();
   for (const row of serpRows) {
     const domain = normalizeDomain(row.domain);
-    if (domain) domains.add(domain);
+    if (domain && allowedDomains.has(domain)) domains.add(domain);
   }
   for (const row of linkRows) {
     const domain = normalizeDomain(row.domain);
-    if (domain) domains.add(domain);
+    if (domain && allowedDomains.has(domain)) domains.add(domain);
   }
   return [...domains].sort();
 }
