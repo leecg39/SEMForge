@@ -48,7 +48,14 @@ export function WidgetGoogleConnect({
   return (
     <WidgetCard big ariaLabel={ko ? "Google 서비스 연결" : "Connect Google services"} className="h-full min-h-[250px]">
       <div className="flex min-h-[210px] flex-col items-center justify-center gap-2 px-4 py-4 text-center sm:flex-row sm:gap-8 sm:text-left">
-        <Image src="/seo-dashboard/connect-google.png" alt="" width={132} height={132} className="h-[132px] w-[132px] shrink-0 object-contain" />
+        <Image
+          src="/seo-dashboard/connect-google.png"
+          alt=""
+          width={132}
+          height={132}
+          loading="eager"
+          className="h-[132px] w-[132px] shrink-0 object-contain"
+        />
         <div className="max-w-[520px]">
           <WidgetTitle>{ko ? "Google Search Console 연결" : "Connect Google Search Console"}</WidgetTitle>
           <p className={cn("mt-2 text-[13px] leading-5", SM.caption)}>
