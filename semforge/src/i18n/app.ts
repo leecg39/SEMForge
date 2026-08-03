@@ -66,6 +66,7 @@ const KO_TO_EN: Record<string, string> = {
   "툴킷 추천": "Toolkit recommendations",
   "추천 툴킷 및 앱": "Recommended toolkits and apps",
   "보유 툴킷": "Owned toolkit",
+  "내 프로젝트": "My project",
   "툴킷 바로가기": "Jump to a toolkit",
   "오른쪽으로 스크롤": "Scroll right",
   "제품 카드": "Product card",
@@ -83,6 +84,8 @@ const KO_TO_EN: Record<string, string> = {
     "Manage the full social media cycle, from creation and scheduling to analytics.",
   "ChatGPT, Google AI 및 기타 AI 검색 엔진에서 검색되도록 하세요.":
     "Get discovered in ChatGPT, Google AI, and other AI search engines.",
+  "경쟁자를 추적하고, 시장을 분석하고, 성장 기회를 발굴하세요.":
+    "Track competitors, analyze markets, and uncover growth opportunities.",
   "모니터링할 도메인": "Domains to monitor",
   열기: "Open",
   닫기: "Close",
@@ -119,6 +122,7 @@ const KO_TO_EN: Record<string, string> = {
   "테이블 보기(SEO 전용)": "Table view (SEO only)",
   "필터 숨기기 및 보기 전환": "Hide filters and view options",
   "필터 표시 및 보기 전환": "Show filters and view options",
+  공유: "Share",
   "CSV 내보내기": "Export CSV",
   증거: "Evidence",
   "선택사항": "optional",
