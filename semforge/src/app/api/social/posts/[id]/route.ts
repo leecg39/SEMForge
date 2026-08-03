@@ -6,7 +6,7 @@ import {
   getSocialPost,
   updateSocialPost,
 } from "@/server/social/posts";
-import { socialPostSchema } from "../route";
+import { socialPostSchema } from "../schema";
 type Context = { params: Promise<{ id: string }> };
 export const GET = route(async (request: Request, context: Context) => {
   const auth = await requireAuth(request);

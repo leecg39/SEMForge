@@ -6,7 +6,7 @@ import {
   linkGraphEdges,
   serpSnapshots,
 } from "@/db/schema";
-import { buildDomainAnalytics } from "@/lib/analytics/metrics";
+import { buildDomainAnalytics, normalizeDomain } from "@/lib/analytics/metrics";
 import type { AnalyticsDevice, AnalyticsRawDataset } from "@/lib/analytics/types";
 
 /**
@@ -64,4 +64,32 @@ export async function getDomainAnalytics(query: {
   // 데이터셋은 이미 라이브 소스만 포함하므로, 리포트가 만들어졌다면 실측이다.
   report.provenance = "live";
   return report;
+}
+
+/**
+ * 랜딩에 보여줄 "데이터 보유 도메인" 목록.
+ * 라이브 SERP 스냅샷 또는 링크 그래프에 잡힌 도메인의 합집합(정렬)을
+ * 전체 테이블 스캔 없이 distinct 조회로 돌려준다.
+ */
+export async function getAvailableDomains(): Promise<string[]> {
+  const [serpRows, linkRows] = await Promise.all([
+    db
+      .selectDistinct({ domain: serpSnapshots.domain })
+      .from(serpSnapshots)
+      .where(inArray(serpSnapshots.source, LIVE_SERP_SOURCES)),
+    db
+      .selectDistinct({ domain: linkGraphEdges.targetDomain })
+      .from(linkGraphEdges)
+      .where(inArray(linkGraphEdges.source, LIVE_LINK_SOURCES)),
+  ]);
+  const domains = new Set<string>();
+  for (const row of serpRows) {
+    const domain = normalizeDomain(row.domain);
+    if (domain) domains.add(domain);
+  }
+  for (const row of linkRows) {
+    const domain = normalizeDomain(row.domain);
+    if (domain) domains.add(domain);
+  }
+  return [...domains].sort();
 }

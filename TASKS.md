@@ -20,11 +20,11 @@
 ---
 
 ## Phase 1: 화면 골격 재구성 (Goal: SEMrush 레이아웃 뼈대 완성)
-- [ ] T1.1 랜딩 화면 — `domain` 파라미터 없으면 검색 히어로(입력+국가+검색) + 최근 확인 도메인(`availableDomains`)
-- [ ] T1.2 컴포넌트 분할 — `src/components/analytics/domain-overview/` (Landing, ReportHeader, KpiPanels, TrendsSection, OrganicResearchSection, AdvertisingSection, BacklinksSection, primitives)
-- [ ] T1.3 리포트 헤더 — 브레드크럼 + `도메인 개요: {domain}` + 국가 탭 + 기기 토글 + 갱신일 + 내보내기
-- [ ] T1.4 듀얼 KPI 패널 — AI 검색 패널(골격) + SEO 패널 배치
-- [ ] T1.5 섹션 재배치 + 회귀 확인 (기존 수집/리포트 흐름 유지, lint/빌드 통과)
+- [x] T1.1 랜딩 화면 — `domain` 파라미터 없으면 검색 히어로(입력+국가+검색) + 최근 확인 도메인(`availableDomains`)
+- [x] T1.2 컴포넌트 분할 — `src/components/analytics/domain-overview/` (Landing, ReportHeader, KpiPanels, TrendsSection, OrganicResearchSection, AdvertisingSection, BacklinksSection, primitives)
+- [x] T1.3 리포트 헤더 — 브레드크럼 + `도메인 개요: {domain}` + 국가 탭 + 기기 토글 + 갱신일 + 내보내기
+- [x] T1.4 듀얼 KPI 패널 — AI 검색 패널(골격) + SEO 패널 배치
+- [x] T1.5 섹션 재배치 + 회귀 확인 (기존 수집/리포트 흐름 유지, lint/빌드 통과)
 
 ## Phase 2: 서버 리포트 확장 (Goal: 신규 섹션에 실데이터 공급)
 - [ ] T2.1 `DomainAnalyticsReport` 타입 확장 — aiSearch, countries, competitors, positionTrend, paid

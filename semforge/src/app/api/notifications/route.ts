@@ -14,7 +14,7 @@ import { requireAuth } from "@/lib/session";
 
 const KEYS = ["educational", "product_news", "upcoming_events"] as const;
 
-export const LABELS: Record<(typeof KEYS)[number], string> = {
+const LABELS: Record<(typeof KEYS)[number], string> = {
   educational: "교육 콘텐츠",
   product_news: "제품 소식 및 업데이트",
   upcoming_events: "예정된 이벤트",
