@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import { ApiError } from "@/lib/api";
 import type { BacklinkScope } from "@/server/backlinks/contracts";
 
@@ -39,7 +40,12 @@ export function parseBacklinkTarget(raw: string, scope: BacklinkScope): ParsedBa
 
   const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
   const labels = hostname.split(".");
-  if (hostname.length > 253 || labels.length < 2 || labels.some((label) => !HOST_LABEL.test(label))) {
+  if (
+    isIP(hostname) ||
+    hostname.length > 253 ||
+    labels.length < 2 ||
+    labels.some((label) => !HOST_LABEL.test(label))
+  ) {
     throw new ApiError("VALIDATION_ERROR", "유효한 도메인 또는 URL을 입력해 주세요.", {
       fields: { target: "예: example.com 또는 https://example.com/page" },
     });
@@ -65,4 +71,3 @@ export function inferBacklinkScope(raw: string): BacklinkScope {
     return "root_domain";
   }
 }
-
