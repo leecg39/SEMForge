@@ -65,6 +65,20 @@ export async function requireContentBoard(auth: AuthContext, boardId: string) {
   return board;
 }
 
+export async function requireSourceContentArticle(auth: AuthContext, articleId: string) {
+  const [article] = await db
+    .select()
+    .from(contentArticles)
+    .where(and(
+      eq(contentArticles.id, articleId),
+      eq(contentArticles.workspaceId, auth.workspaceId),
+      isNull(contentArticles.deletedAt),
+    ))
+    .limit(1);
+  if (!article) throw new ApiError("NOT_FOUND", "연결할 콘텐츠 문서를 찾을 수 없습니다.");
+  return article;
+}
+
 export async function createContentBoard(
   auth: AuthContext,
   input: {
@@ -72,10 +86,17 @@ export async function createContentBoard(
     folderId?: string | null;
     intent: ContentIntent;
     aiProfile: ContentAiProfile;
+    sourceArticleId?: string | null;
   },
 ) {
   assertCan(auth, "create");
-  const folder = await requireFolder(auth, input.folderId);
+  const [folder, sourceArticle] = await Promise.all([
+    requireFolder(auth, input.folderId),
+    input.sourceArticleId ? requireSourceContentArticle(auth, input.sourceArticleId) : null,
+  ]);
+  if (sourceArticle && input.intent === "create" && sourceArticle.mode !== "brief") {
+    throw new ApiError("VALIDATION_ERROR", "새 기사 문맥에는 SEO 브리프 문서만 연결할 수 있습니다.");
+  }
   const boardId = newId("ctb");
   const messageId = newId("ctm");
   const now = new Date();
@@ -101,7 +122,11 @@ export async function createContentBoard(
       role: "user",
       kind: "text",
       body: input.prompt,
-      payloadJson: JSON.stringify({ aiProfile: input.aiProfile }),
+      payloadJson: JSON.stringify({
+        aiProfile: input.aiProfile,
+        sourceArticleId: sourceArticle?.id ?? null,
+        sourceArticleVersion: sourceArticle?.version ?? null,
+      }),
       createdAt: now,
       updatedAt: now,
       createdBy: auth.userId,
@@ -113,7 +138,7 @@ export async function createContentBoard(
     entityType: "content_boards",
     entityId: boardId,
     entityLabel: title,
-    after: { folderId: folder?.id ?? null, intent: input.intent, title, aiProfile: input.aiProfile },
+    after: { folderId: folder?.id ?? null, intent: input.intent, title, aiProfile: input.aiProfile, sourceArticleId: sourceArticle?.id ?? null },
   });
   return getContentBoard(auth, boardId);
 }

@@ -3,6 +3,7 @@ import {
   CONTENT_AI_PROFILES,
   DEFAULT_CONTENT_AI_PROFILE,
 } from "@/lib/content-ai";
+import type { ContentSeoSuggestion } from "@/lib/content-seo";
 
 export const contentAiProfileSchema = z.enum(
   CONTENT_AI_PROFILES.map((profile) => profile.id) as [
@@ -21,6 +22,7 @@ export const createContentBoardSchema = z.object({
   folderId: z.string().trim().min(1).optional().nullable(),
   intent: contentIntentSchema.optional().default("create"),
   aiProfile: contentAiProfileSchema.optional().default(DEFAULT_CONTENT_AI_PROFILE),
+  sourceArticleId: z.string().trim().min(1).optional().nullable(),
 });
 
 export const updateContentBoardSchema = z.object({
@@ -45,12 +47,46 @@ export const contentRunInputSchema = z.object({
   countryCode: z.string().trim().length(2).transform((value) => value.toUpperCase()).default("KR"),
   targetWordCount: z.coerce.number().int().min(500).max(5_000).default(1_400),
   sourceUrl: z.string().trim().url().max(2_000).optional().nullable(),
+  sourceArticleId: z.string().trim().min(1).optional().nullable(),
   aiProfile: contentAiProfileSchema.optional().default(DEFAULT_CONTENT_AI_PROFILE),
 });
 
+const contentOptimizeBaseSchema = contentRunInputSchema.omit({ sourceUrl: true });
+
+export const contentOptimizeRunInputSchema = z.discriminatedUnion("sourceType", [
+  contentOptimizeBaseSchema.extend({
+    sourceType: z.literal("url"),
+    sourceUrl: z.string().trim().url().max(2_000),
+    sourceText: z.null().optional().default(null),
+  }),
+  contentOptimizeBaseSchema.extend({
+    sourceType: z.literal("direct"),
+    sourceUrl: z.null().optional().default(null),
+    sourceText: z.string().trim().min(200, "최적화할 원문을 200자 이상 입력해 주세요.").max(200_000),
+  }),
+]);
+
+export const contentRepurposeTargetSchema = z.enum(["summary", "newsletter", "social_thread"]);
+const contentRepurposeBaseSchema = contentRunInputSchema.omit({ sourceUrl: true, sourceArticleId: true });
+
+export const contentRepurposeRunInputSchema = z.discriminatedUnion("sourceType", [
+  contentRepurposeBaseSchema.extend({
+    sourceType: z.literal("article"),
+    sourceArticleId: z.string().trim().min(1),
+    sourceText: z.null().optional().default(null),
+    targetFormat: contentRepurposeTargetSchema,
+  }),
+  contentRepurposeBaseSchema.extend({
+    sourceType: z.literal("direct"),
+    sourceArticleId: z.null().optional().default(null),
+    sourceText: z.string().trim().min(200, "재활용할 원문을 200자 이상 입력해 주세요.").max(200_000),
+    targetFormat: contentRepurposeTargetSchema,
+  }),
+]);
+
 export const createContentRunSchema = z.object({
   idempotencyKey: z.string().trim().min(8).max(120),
-  input: contentRunInputSchema,
+  input: z.union([contentOptimizeRunInputSchema, contentRepurposeRunInputSchema, contentRunInputSchema]),
 });
 
 export const generatedArticleSchema = z.object({
@@ -286,6 +322,10 @@ export const cancelContentPackageSchema = z.object({
 export type ContentIntent = z.infer<typeof contentIntentSchema>;
 export type ContentAiProfile = z.infer<typeof contentAiProfileSchema>;
 export type ContentRunInput = z.infer<typeof contentRunInputSchema>;
+export type ContentOptimizeRunInput = z.infer<typeof contentOptimizeRunInputSchema>;
+export type ContentRepurposeRunInput = z.infer<typeof contentRepurposeRunInputSchema>;
+export type ContentRepurposeTarget = z.infer<typeof contentRepurposeTargetSchema>;
+export type ContentWorkflowRunInput = ContentRunInput | ContentOptimizeRunInput | ContentRepurposeRunInput;
 export type GeneratedArticle = z.infer<typeof generatedArticleSchema>;
 export type ContentVisualStyle = z.infer<typeof contentVisualStyleSchema>;
 export type ContentVisualSpecification = z.infer<typeof contentVisualSpecificationSchema>;
@@ -321,6 +361,7 @@ export interface ContentSeoAnalysis {
   score: number | null;
   unavailableReason: string | null;
   wordCount: number;
+  suggestions: ContentSeoSuggestion[];
   breakdown: {
     serpCoverage: number;
     structure: number;

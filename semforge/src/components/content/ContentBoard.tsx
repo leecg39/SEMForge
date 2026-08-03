@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/client-api";
 import {
   DEFAULT_CONTENT_AI_PROFILE,
@@ -10,6 +10,7 @@ import {
   type ContentAiProfileId,
 } from "@/lib/content-ai";
 import { cn } from "@/lib/utils";
+import type { ContentSeoSuggestion } from "@/lib/content-seo";
 import type {
   ContentBoardView,
   ContentCapabilitiesView,
@@ -17,6 +18,14 @@ import type {
   ContentRunView,
 } from "@/types/content";
 import { MarkdownArticleEditor } from "@/components/content/MarkdownArticleEditor";
+import {
+  ContentOptimizeSetup,
+  type OptimizeRequirements,
+} from "@/components/content/ContentOptimizeSetup";
+import {
+  ContentRepurposeSetup,
+  type RepurposeRequirements,
+} from "@/components/content/ContentRepurposeSetup";
 import { StatusPill, fieldClass } from "@/components/content/ContentUi";
 
 const stages: Array<{ id: ContentRunStage; label: string }> = [
@@ -44,11 +53,18 @@ function sleep(ms: number) {
 
 function RunProgress({ run }: { run: ContentRunView }) {
   const current = stages.findIndex((stage) => stage.id === run.stage);
+  const labels = run.intent === "optimize"
+    ? { research: "Firecrawl 원문·TalorData 연구", completed: "기사 최적화 완료" }
+    : run.intent === "repurpose"
+      ? { research: "원문 버전 스냅샷", completed: "파생 문서 완료" }
+    : run.intent === "brief"
+      ? { research: "TalorData 주제 연구", completed: "SEO 브리프 완료" }
+      : { research: "TalorData 연구", completed: "기사 생성 완료" };
   return (
     <section aria-live="polite" aria-atomic="true" className="rounded-[14px] border border-bebe bg-white p-4">
       <div className="flex items-center gap-2">
         <StatusPill status={run.status} />
-        <span className="text-[12px] font-semibold text-hof">{run.status === "completed" ? "기사 생성 완료" : stages[current]?.label}</span>
+        <span className="text-[12px] font-semibold text-hof">{run.status === "completed" ? labels.completed : run.stage === "research" ? labels.research : stages[current]?.label}</span>
       </div>
       <ol className="mt-4 space-y-2.5">
         {stages.map((stage, index) => {
@@ -59,7 +75,7 @@ function RunProgress({ run }: { run: ContentRunView }) {
               <span className={cn("flex h-5 w-5 items-center justify-center rounded-full border text-[10px]", done && "border-emerald-600 bg-emerald-600 text-white", active && "border-rausch bg-rausch text-white", !done && !active && "border-deco text-grey-500")}>
                 {done ? "✓" : index + 1}
               </span>
-              <span className={active ? "font-semibold text-hof" : "text-foggy"}>{stage.label}</span>
+              <span className={active ? "font-semibold text-hof" : "text-foggy"}>{stage.id === "research" ? labels.research : stage.label}</span>
             </li>
           );
         })}
@@ -175,6 +191,7 @@ function RequirementsWizard({
 }
 
 export function ContentBoard({ boardId }: { boardId: string }) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const folderId = searchParams.get("fid") ?? "";
   const [board, setBoard] = useState<ContentBoardView | null>(null);
@@ -255,18 +272,30 @@ export function ContentBoard({ boardId }: { boardId: string }) {
         ? board.articles.find((item) => item.id === run.articleId) ?? board.articles[0] ?? null
         : board.articles[0] ?? null)
     : null;
+  const initialMessage = board?.messages.find((message) => message.role === "user" && message.kind === "text");
+  const initialPayload = initialMessage?.payload && typeof initialMessage.payload === "object"
+    ? initialMessage.payload as Record<string, unknown>
+    : null;
 
-  const startRun = async (requirements: Requirements) => {
+  const startRun = async (requirements: Requirements | OptimizeRequirements | RepurposeRequirements) => {
     setSubmitting(true);
     setError(null);
     try {
       const { data } = await api.post<ContentRunView>(`/api/content/boards/${boardId}/runs/`, {
         idempotencyKey: crypto.randomUUID(),
-        input: {
-          ...requirements,
-          title: requirements.title || null,
-          sourceUrl: null,
-        },
+        input: "sourceType" in requirements
+          ? {
+              ...requirements,
+              title: requirements.title || null,
+              sourceUrl: requirements.sourceType === "url" ? requirements.sourceUrl : null,
+              sourceText: requirements.sourceType === "direct" ? requirements.sourceText : null,
+            }
+          : {
+              ...requirements,
+              title: requirements.title || null,
+              sourceUrl: null,
+              sourceArticleId: typeof initialPayload?.sourceArticleId === "string" ? initialPayload.sourceArticleId : null,
+            },
       });
       setRun(data);
       await refreshBoard();
@@ -299,15 +328,31 @@ export function ContentBoard({ boardId }: { boardId: string }) {
     }
   };
 
+  const startArticleFromBrief = async () => {
+    if (!article || !board || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const { data } = await api.post<{ id: string }>("/api/content/boards/", {
+        prompt: `${article.title} 브리프를 바탕으로 기사를 작성해 주세요.`,
+        folderId: board.folderId,
+        intent: "create",
+        aiProfile: defaultAiProfile,
+        sourceArticleId: article.id,
+      });
+      router.push(`/content/workspaces/${data.id}/${folderId ? `?fid=${encodeURIComponent(folderId)}` : ""}`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "브리프에서 기사 작업판을 만들지 못했습니다.");
+      setSubmitting(false);
+    }
+  };
+
   if (loading) return <div className="flex min-h-[calc(100dvh-64px)] items-center justify-center text-[13px] text-foggy">작업판을 복원하는 중…</div>;
   if (!board) return <div role="alert" className="p-8 text-red-700">{error ?? "작업판을 찾을 수 없습니다."}</div>;
 
   const research = run?.provenance?.research as { provider?: string; capturedAt?: string; fromCache?: boolean } | undefined;
-  const analysis = run?.output?.analysis as { score?: number | null; unavailableReason?: string | null } | undefined;
-  const initialMessage = board.messages.find((message) => message.role === "user" && message.kind === "text");
-  const initialPayload = initialMessage?.payload && typeof initialMessage.payload === "object"
-    ? initialMessage.payload as Record<string, unknown>
-    : null;
+  const source = run?.provenance?.source as { provider?: string; capturedAt?: string; status?: number | null; finalUrl?: string | null; sourceVersion?: number | null } | undefined;
+  const analysis = run?.output?.analysis as { score?: number | null; unavailableReason?: string | null; suggestions?: ContentSeoSuggestion[] } | undefined;
   const configuredProfile = run?.input?.aiProfile ?? initialPayload?.aiProfile;
   const defaultAiProfile = isContentAiProfileId(configuredProfile)
     ? configuredProfile
@@ -329,7 +374,11 @@ export function ContentBoard({ boardId }: { boardId: string }) {
               {initialMessage.body}
             </div>
           )}
-          {!run && <RequirementsWizard submitting={submitting} capabilities={capabilities} defaultAiProfile={defaultAiProfile} onSubmit={startRun} />}
+          {!run && (board.intent === "optimize"
+            ? <ContentOptimizeSetup submitting={submitting} capabilities={capabilities} aiProfile={defaultAiProfile} onSubmit={startRun} />
+            : board.intent === "repurpose"
+              ? <ContentRepurposeSetup submitting={submitting} capabilities={capabilities} aiProfile={defaultAiProfile} defaultSourceArticleId={typeof initialPayload?.sourceArticleId === "string" ? initialPayload.sourceArticleId : ""} onSubmit={startRun} />
+            : <RequirementsWizard submitting={submitting} capabilities={capabilities} defaultAiProfile={defaultAiProfile} onSubmit={startRun} />)}
           {run && <RunProgress run={run} />}
           {run?.status === "failed" && (
             <div role="alert" className="rounded-[14px] border border-red-100 bg-red-50 p-4 text-[12px] leading-5 text-red-800">
@@ -338,7 +387,13 @@ export function ContentBoard({ boardId }: { boardId: string }) {
               <button type="button" onClick={retry} className="mt-3 rounded-full bg-red-700 px-4 py-2 font-semibold text-white">같은 단계 재시도</button>
             </div>
           )}
-          {run?.status === "cancelled" && <RequirementsWizard submitting={submitting} capabilities={capabilities} defaultAiProfile={defaultAiProfile} onSubmit={startRun} />}
+          {run?.status === "failed" && board.intent === "optimize" && <ContentOptimizeSetup submitting={submitting} capabilities={capabilities} aiProfile={defaultAiProfile} onSubmit={startRun} />}
+          {run?.status === "failed" && board.intent === "repurpose" && <ContentRepurposeSetup submitting={submitting} capabilities={capabilities} aiProfile={defaultAiProfile} defaultSourceArticleId={typeof initialPayload?.sourceArticleId === "string" ? initialPayload.sourceArticleId : ""} onSubmit={startRun} />}
+          {run?.status === "cancelled" && (board.intent === "optimize"
+            ? <ContentOptimizeSetup submitting={submitting} capabilities={capabilities} aiProfile={defaultAiProfile} onSubmit={startRun} />
+            : board.intent === "repurpose"
+              ? <ContentRepurposeSetup submitting={submitting} capabilities={capabilities} aiProfile={defaultAiProfile} defaultSourceArticleId={typeof initialPayload?.sourceArticleId === "string" ? initialPayload.sourceArticleId : ""} onSubmit={startRun} />
+            : <RequirementsWizard submitting={submitting} capabilities={capabilities} defaultAiProfile={defaultAiProfile} onSubmit={startRun} />)}
           {run && ["queued", "running"].includes(run.status) && <button type="button" onClick={cancel} className="w-full rounded-full border border-deco bg-white px-4 py-2.5 text-[12px] font-semibold text-foggy hover:bg-faint">실행 취소</button>}
           {board.messages.filter((message) => ["progress", "error"].includes(message.kind)).length > 0 && (
             <div>
@@ -361,11 +416,15 @@ export function ContentBoard({ boardId }: { boardId: string }) {
               <span className="font-semibold text-hof">SEO {analysis?.score === null || analysis?.score === undefined ? "이용 불가" : `${analysis.score}/100`}</span>
               {analysis?.unavailableReason && <span>{analysis.unavailableReason}</span>}
               {research && <span className="sm:ml-auto">{research.provider} · {research.fromCache ? "캐시 연구" : "신규 연구"} · {research.capturedAt ? new Date(research.capturedAt).toLocaleString("ko-KR") : ""}</span>}
-              <Link href={`/content/?mode=linked&sourceArticleId=${encodeURIComponent(article.id)}${folderId ? `&fid=${encodeURIComponent(folderId)}` : ""}`} className="rounded-full bg-rausch px-3 py-1.5 text-[10px] font-semibold text-white">연계 제작으로 확장</Link>
+              {source && <span>{source.provider === "firecrawl" ? `Firecrawl${source.status ? ` HTTP ${source.status}` : ""}` : source.provider === "content_library" ? `Library 원문 v${source.sourceVersion ?? "?"}` : "직접 입력"} · {source.capturedAt ? new Date(source.capturedAt).toLocaleString("ko-KR") : ""}</span>}
+              {board.intent === "brief"
+                ? <button type="button" onClick={() => void startArticleFromBrief()} disabled={submitting} className="rounded-full bg-rausch px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-45">{submitting ? "작업판 생성 중…" : "이 브리프로 기사 작성"}</button>
+                : <Link href={`/content/?mode=linked&sourceArticleId=${encodeURIComponent(article.id)}${folderId ? `&fid=${encodeURIComponent(folderId)}` : ""}`} className="rounded-full bg-rausch px-3 py-1.5 text-[10px] font-semibold text-white">연계 제작으로 확장</Link>}
             </div>
             <MarkdownArticleEditor
               key={article.id}
               article={article}
+              seoSuggestions={analysis?.suggestions ?? []}
               onSaved={(saved) => setBoard((current) => current ? { ...current, articles: current.articles.map((item) => item.id === saved.id ? saved : item) } : current)}
             />
           </div>

@@ -4,9 +4,17 @@ import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api, ClientApiError } from "@/lib/client-api";
+import {
+  applyContentSeoSuggestion,
+  undoContentSeoSuggestion,
+  type ContentSeoDocument,
+  type ContentSeoSuggestion,
+  type ContentSeoUndo,
+} from "@/lib/content-seo";
 import { cn } from "@/lib/utils";
 import type { ContentArticleView } from "@/types/content";
 import { StatusPill, fieldClass } from "@/components/content/ContentUi";
+import { ContentSeoSuggestions } from "@/components/content/ContentSeoSuggestions";
 
 function wordCount(markdown: string): number {
   return markdown.trim().split(/\s+/u).filter(Boolean).length;
@@ -22,12 +30,14 @@ export function MarkdownArticleEditor({
   controlledTab,
   onTabChange,
   showTabs = true,
+  seoSuggestions = [],
 }: {
   article: ContentArticleView;
   onSaved?: (article: ContentArticleView) => void;
   controlledTab?: "write" | "preview";
   onTabChange?: (tab: "write" | "preview") => void;
   showTabs?: boolean;
+  seoSuggestions?: ContentSeoSuggestion[];
 }) {
   const [title, setTitle] = useState(article.title);
   const [metaDescription, setMetaDescription] = useState(article.metaDescription ?? "");
@@ -42,6 +52,12 @@ export function MarkdownArticleEditor({
   };
   const [saveState, setSaveState] = useState<"saved" | "saving" | "error" | "conflict">("saved");
   const [error, setError] = useState<string | null>(null);
+  const [seoHistory, setSeoHistory] = useState<Partial<Record<ContentSeoSuggestion["id"], ContentSeoUndo>>>({});
+  const [seoNotice, setSeoNotice] = useState<string | null>(null);
+  const [visibleSeoSuggestions] = useState(() => seoSuggestions.filter((suggestion) => {
+    const initial = { title: article.title, metaDescription: article.metaDescription ?? "", body: article.body ?? "" };
+    return initial[suggestion.field] === suggestion.expectedValue;
+  }));
   const initialSignature = signature({ title: article.title, metaDescription: article.metaDescription ?? "", body: article.body ?? "" });
   const savedSignature = useRef(initialSignature);
   const latestSignature = useRef(initialSignature);
@@ -121,6 +137,33 @@ export function MarkdownArticleEditor({
     }
   };
 
+  const currentDocument = (): ContentSeoDocument => ({ title, metaDescription, body });
+  const replaceDocument = (document: ContentSeoDocument) => {
+    setTitle(document.title);
+    setMetaDescription(document.metaDescription);
+    setBody(document.body);
+  };
+  const applySuggestion = (suggestion: ContentSeoSuggestion) => {
+    const applied = applyContentSeoSuggestion(currentDocument(), suggestion);
+    if (!applied.undo) {
+      setSeoNotice("제안 생성 후 해당 필드가 수정되어 적용하지 않았습니다.");
+      return;
+    }
+    replaceDocument(applied.document);
+    setSeoHistory((current) => ({ ...current, [suggestion.id]: applied.undo! }));
+    setSeoNotice("제안을 적용했습니다. 자동 저장 후에도 되돌릴 수 있습니다.");
+  };
+  const undoSuggestion = (undo: ContentSeoUndo) => {
+    const result = undoContentSeoSuggestion(currentDocument(), undo);
+    if (!result.restored) {
+      setSeoNotice("적용 후 해당 필드가 다시 수정되어 자동으로 되돌리지 않았습니다.");
+      return;
+    }
+    replaceDocument(result.document);
+    setSeoHistory((current) => ({ ...current, [undo.suggestionId]: undefined }));
+    setSeoNotice("제안 적용 전 내용으로 되돌렸습니다.");
+  };
+
   const saveLabel = {
     saved: "모든 변경사항 저장됨",
     saving: "저장 중…",
@@ -151,6 +194,8 @@ export function MarkdownArticleEditor({
         <StatusPill status={status} />
         <span aria-live="polite" className={cn("ml-auto text-[12px]", saveState === "error" || saveState === "conflict" ? "text-red-700" : "text-foggy")}>{saveLabel}</span>
       </div>
+
+      {visibleSeoSuggestions.length > 0 && <ContentSeoSuggestions suggestions={visibleSeoSuggestions} history={seoHistory} notice={seoNotice} onApply={applySuggestion} onUndo={undoSuggestion} />}
 
       <div className="border-b border-bebe p-5">
         <label className="text-[12px] font-semibold text-foggy" htmlFor={`article-title-${article.id}`}>제목</label>

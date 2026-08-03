@@ -4,6 +4,7 @@ import type {
   ContentSeoAnalysis,
   GeneratedArticle,
 } from "@/server/content/contracts";
+import { buildContentSeoSuggestions } from "@/lib/content-seo";
 
 function normalized(value: string): string {
   return value.toLocaleLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, " ").replace(/\s+/g, " ").trim();
@@ -49,12 +50,18 @@ export function scoreContentArticle(input: {
   research: ContentResearchSnapshot | null;
 }): ContentSeoAnalysis {
   const wordCount = countContentWords(input.article.markdown);
+  const suggestions = buildContentSeoSuggestions({
+    title: input.article.title,
+    metaDescription: input.article.metaDescription,
+    body: input.article.markdown,
+  }, input.requirements.keyword);
   if (!input.research || input.research.results.length === 0) {
     return {
       model: "semforge-content-v1",
       score: null,
       unavailableReason: "TalorData SERP 근거가 없어 SEO 점수를 계산하지 않았습니다.",
       wordCount,
+      suggestions,
       breakdown: null,
     };
   }
@@ -125,6 +132,7 @@ export function scoreContentArticle(input: {
     score: Object.values(breakdown).reduce((sum, value) => sum + value, 0),
     unavailableReason: null,
     wordCount,
+    suggestions,
     breakdown,
   };
 }

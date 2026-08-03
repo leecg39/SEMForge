@@ -1,8 +1,27 @@
+import { z } from "zod";
 import type { AuthContext } from "@/lib/session";
 import type {
   SocialPlatform,
   SocialProviderCapabilities,
 } from "@/types/social";
+
+export const socialPostSchema = z.object({
+  text: z.string().max(2200).optional().default(""),
+  linkUrl: z.string().url().nullable().optional(),
+  utm: z.record(z.string(), z.string()).optional(),
+  publishMode: z.enum(["draft", "now", "scheduled", "recurring"]),
+  scheduledAt: z.string().datetime().nullable().optional(),
+  recurrence: z.object({
+    frequency: z.literal("weekly").optional(),
+    weekday: z.number().int().min(0).max(6).optional(),
+    time: z.string().optional(),
+  }).optional(),
+  recurrenceEndAt: z.string().datetime().nullable().optional(),
+  profileIds: z.array(z.string()).min(1),
+  tagIds: z.array(z.string()).optional(),
+  mediaAssetId: z.string().nullable().optional(),
+  idempotencyKey: z.string().max(120).optional(),
+});
 
 export interface SocialPublishInput {
   auth: AuthContext;

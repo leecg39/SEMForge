@@ -31,7 +31,8 @@ export function ContentArticlePage({ articleId }: { articleId: string }) {
     <div className="mx-auto w-full max-w-[1180px] p-4 sm:p-8">
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <Link href={`/content/library/${folderId ? `?fid=${encodeURIComponent(folderId)}` : ""}`} className="text-[12px] font-semibold text-foggy">← 라이브러리</Link>
-        <Link href={`/content/?mode=linked&sourceArticleId=${encodeURIComponent(article.id)}${folderId ? `&fid=${encodeURIComponent(folderId)}` : ""}`} className="ml-auto rounded-full bg-rausch px-4 py-2 text-[11px] font-semibold text-white">연계 제작으로 확장</Link>
+        <Link href={`/content/?mode=individual&intent=repurpose&sourceArticleId=${encodeURIComponent(article.id)}${folderId ? `&fid=${encodeURIComponent(folderId)}` : ""}`} className="ml-auto rounded-full border border-deco bg-white px-4 py-2 text-[11px] font-semibold text-hof">재활용</Link>
+        <Link href={`/content/?mode=linked&sourceArticleId=${encodeURIComponent(article.id)}${folderId ? `&fid=${encodeURIComponent(folderId)}` : ""}`} className="rounded-full bg-rausch px-4 py-2 text-[11px] font-semibold text-white">연계 제작으로 확장</Link>
         <span className="text-[12px] text-foggy">Markdown</span>
       </div>
       <div className="mb-4 flex w-fit rounded-full bg-faint p-1" role="tablist" aria-label="콘텐츠 문서 작업 영역">

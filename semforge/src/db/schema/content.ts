@@ -98,6 +98,29 @@ export const contentRuns = sqliteTable(
   ],
 );
 
+/** 브리프·원문에서 생성된 파생 문서의 계보와 원본 버전을 보존한다. */
+export const contentArticleRelations = sqliteTable(
+  "content_article_relations",
+  {
+    id: text("id").primaryKey(),
+    ...workspaceScope,
+    sourceArticleId: text("source_article_id")
+      .notNull()
+      .references(() => contentArticles.id, { onDelete: "cascade" }),
+    derivedArticleId: text("derived_article_id")
+      .notNull()
+      .references(() => contentArticles.id, { onDelete: "cascade" }),
+    relationType: text("relation_type", { enum: ["brief_to_article", "repurpose"] }).notNull(),
+    sourceVersion: integer("source_version").notNull(),
+    ...auditColumns,
+  },
+  (t) => [
+    uniqueIndex("content_article_relations_derived_unique").on(t.derivedArticleId),
+    index("content_article_relations_source_idx").on(t.sourceArticleId, t.createdAt),
+    index("content_article_relations_workspace_idx").on(t.workspaceId, t.createdAt),
+  ],
+);
+
 /** 워크스페이스에서 모든 기사 비주얼에 재사용하는 단일 브랜드 키트. */
 export const contentBrandKits = sqliteTable(
   "content_brand_kits",
@@ -475,6 +498,7 @@ export const contentPackageItems = sqliteTable(
 export type ContentBoard = typeof contentBoards.$inferSelect;
 export type ContentMessage = typeof contentMessages.$inferSelect;
 export type ContentRun = typeof contentRuns.$inferSelect;
+export type ContentArticleRelation = typeof contentArticleRelations.$inferSelect;
 export type ContentBrandKit = typeof contentBrandKits.$inferSelect;
 export type ContentVisual = typeof contentVisuals.$inferSelect;
 export type ContentAsset = typeof contentAssets.$inferSelect;
