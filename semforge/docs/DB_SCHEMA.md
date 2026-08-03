@@ -85,8 +85,10 @@ erDiagram
 | serp_snapshots | 키워드별 SERP 순위 스냅샷 (append-only) | `talordata` | 90일(db_retention) |
 | clickstream_events | 패널 클릭스트림 | 라이브 소스 없음 (demo 전용, 기본 비어 있음) | — |
 | link_graph_edges | 링크 그래프 엣지 | `site-audit-crawler` (자사 크롤 아웃링크) | — |
+| backlink_report_caches | 외부 수신 백링크 개요·12개월 추이·점수 분포 | `semrush-v4` | fresh 24시간, 최대 30일 |
+| backlink_list_caches | 백링크/추천 도메인/앵커/페이지 쿼리 캐시 | `semrush-v4` | fresh 24시간, 최대 30일 |
 
-리포트 계산(`src/server/analytics.ts`)은 라이브 소스만 읽는다. clickstream/링크 그래프 기반 지표(패널 트래픽·백링크·AS)는 소스가 생길 때까지 미제공으로 표시한다.
+리포트 계산(`src/server/analytics.ts`)은 라이브 소스만 읽는다. 사이트 진단의 `link_graph_edges`와 외부 수신 백링크 캐시는 의미가 달라 섞지 않는다. 범용 도메인 개요의 패널 트래픽은 소스가 생길 때까지 미제공이며, 전용 백링크 분석 화면만 Semrush 캐시를 읽는다.
 
 ### AI 가시성 (schema/ai-visibility.ts)
 

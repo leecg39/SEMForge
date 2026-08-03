@@ -180,6 +180,7 @@ export const backlinkReportCaches = sqliteTable(
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),
     target: text("target").notNull(),
+    effectiveTarget: text("effective_target"),
     scope: text("scope", {
       enum: ["root_domain", "subdomain", "page"],
     }).notNull(),

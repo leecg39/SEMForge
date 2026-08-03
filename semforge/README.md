@@ -21,6 +21,7 @@ SEMForge — SEO & AI 가시성 플랫폼. Semrush의 UI/UX를 관찰 기반으�
 | 소스 | 용도 | 환경 변수 | 비고 |
 |---|---|---|---|
 | **TalorData SERP** | 키워드 순위, SERP 피처(AI 개요·로컬팩 등), 도메인 실시간 수집 | `TALORDATA_API_TOKEN` | google/bing, gl/hl 지원 |
+| **Semrush Backlinks v4** | 임의 도메인·URL의 수신 백링크, 추천 도메인, 앵커, Authority Score | `SEMRUSH_API_V4_KEY` | SEO Business + API 유닛 필요, 24시간 캐시 |
 | **Firecrawl** | 사이트 진단 크롤 (없으면 자체 BFS 크롤러로 폴백) | `FIRECRAWL_API_KEY` | 선택 |
 | **PageSpeed Insights** | 사이트 성능, Core Web Vitals (사이트 진단 테마 카드) | `PAGESPEED_API_KEY` | 선택, 없어도 저쿼터 동작 |
 | **ChatMock** | 광고 문구·Markdown 기사와 대표 이미지의 구조화된 시각 명세 생성 | `CHATMOCK_BASE_URL` / `CHATMOCK_ADVERTISING_MODEL` / `CHATMOCK_CONTENT_MODEL` | OpenAI API 키 불필요, 로컬 프록시 실행 필요 |
@@ -29,7 +30,7 @@ SEMForge — SEO & AI 가시성 플랫폼. Semrush의 UI/UX를 관찰 기반으�
 | **Google Search Console** | 소유 사이트의 클릭·노출·CTR·평균 포지션 (포지션 추적, 트래픽 개요) | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GSC_REDIRECT_URI` | OAuth 연결 필요 |
 | **Google Business Profile** | 리스팅 위치, 리뷰 조회·답글 (지역 툴킷) | 위와 동일 + `GBP_REDIRECT_URI` | 별도 scope(`business.manage`) |
 
-> 검색량·KD%·Authority Score·경쟁사 트래픽 추정처럼 현재 소스가 없는 지표는
+> 검색량·KD%·경쟁사 트래픽 추정처럼 현재 소스가 없는 지표는
 > 가짜 값 대신 **미제공**으로 표시합니다. providers 레이어에 새 소스를 붙이면 바로 채워집니다.
 
 ## 실행
@@ -71,6 +72,7 @@ npm run chatmock:serve  # 기본 http://127.0.0.1:8000/v1
 
 ```bash
 TALORDATA_API_TOKEN=     # TalorData 대시보드에서 발급
+SEMRUSH_API_V4_KEY=      # Semrush v4 Backlinks API 키 (SEO Business + API 유닛)
 CHATMOCK_BASE_URL=       # 기본값 http://127.0.0.1:8000/v1
 CHATMOCK_ADVERTISING_MODEL=gpt-5.4
 CHATMOCK_CONTENT_MODEL=gpt-5.6-luna
@@ -100,6 +102,7 @@ SNAPSHOT_RETENTION_DAYS= # 스냅샷 보존 일수 (기본 90, db_retention job)
 | 홈 | `/home/` | 폴더 CRUD, 폴더별 실측 지표 |
 | SEO 대시보드 | `/seo/` | 위젯 대시보드 (GSC 연결, AI 가시성 요약, 실측 배지만) |
 | 도메인 개요 | `/analytics/overview/` | TalorData 실시간 수집 리포트 (무소스 지표는 미제공) |
+| 백링크 분석 | `/analytics/backlinks/overview/` | Semrush v4 실데이터 개요·추이·백링크·추천 도메인·앵커·페이지, 24시간 캐시·CSV |
 | 포지션 추적 | `/position-tracking/` | 실시간 순위 수집, 순위 분포, 경쟁자 발견, GSC 컬럼, 주기 수집 |
 | 사이트 진단 | `/siteaudit/` | 탭 5종(개요/문제/페이지/통계/테마), 테마 카드 9종(robots.txt AI 봇 판정 포함), PSI CWV, 스케줄 크롤 |
 | AI 가시성 | `/ai-seo/overview/` | Google AI 개요 출현·자사 도메인 인용 여부 추적 (TalorData 실측) |
@@ -150,6 +153,7 @@ npm run lint            # ESLint
 npm run test:talordata  # TalorData 클라이언트/수집
 npm run test:analytics  # 분석 지표 순수 함수
 npm run test:siteaudit  # 사이트 진단 링크 그래프
+npm run test:backlinks  # Semrush 어댑터·캐시·필터 계약
 npm run test:content    # 글·이미지·영상 콘텐츠 계약과 실행
 npx tsx --test src/server/position-tracking/*.test.ts  # 순위 분포/스케줄
 ```

@@ -14,7 +14,6 @@ const params: string[][] = [
   ["comparedomains"],
   ["gap", "backlinks"],
   ["keywordmagic"],
-  ["backlinks", "overview"],
   ["refdomains", "report"],
   ["ranks", "rank"],
   ["keywordmanager"],
