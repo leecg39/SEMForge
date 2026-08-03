@@ -22,6 +22,7 @@ import { ContentPageHeader, StatusPill, fieldClass, textareaClass } from "@/comp
 import { ContentLinkedHome } from "@/components/content/ContentLinkedHome";
 
 type Category = "article" | "image" | "video";
+type ArticleIntent = "create" | "optimize" | "repurpose" | "brief";
 
 function withFolder(path: string, folderId: string): string {
   if (!folderId) return path;
@@ -40,8 +41,11 @@ export function ContentHome() {
   const searchParams = useSearchParams();
   const folderId = searchParams.get("fid") ?? "";
   const defaultSourceArticleId = searchParams.get("sourceArticleId") ?? "";
-  const [mode, setMode] = useState<"linked" | "individual">(searchParams.get("mode") === "individual" ? "individual" : "linked");
+  const requestedIntent = searchParams.get("intent");
+  const isArticleIntent = requestedIntent === "optimize" || requestedIntent === "repurpose" || requestedIntent === "brief" || requestedIntent === "topic";
+  const [mode, setMode] = useState<"linked" | "individual">(searchParams.get("mode") === "individual" || isArticleIntent ? "individual" : "linked");
   const [category, setCategory] = useState<Category>("article");
+  const [articleIntent, setArticleIntent] = useState<ArticleIntent>(requestedIntent === "optimize" ? "optimize" : requestedIntent === "repurpose" ? "repurpose" : requestedIntent === "brief" || requestedIntent === "topic" ? "brief" : "create");
   const [prompt, setPrompt] = useState("");
   const [mediaTitle, setMediaTitle] = useState("");
   const [sourceArticleId, setSourceArticleId] = useState("");
@@ -105,8 +109,9 @@ export function ContentHome() {
         const { data } = await api.post<{ id: string }>("/api/content/boards/", {
           prompt,
           folderId: folderId || null,
-          intent: "create",
+          intent: articleIntent,
           aiProfile,
+          sourceArticleId: articleIntent === "repurpose" ? defaultSourceArticleId || null : null,
         });
         router.push(withFolder(`/content/workspaces/${data.id}/`, folderId));
         return;
@@ -218,12 +223,13 @@ export function ContentHome() {
       </div>
 
       <section className="rounded-[20px] border border-bebe bg-white p-5 shadow-sm sm:p-7">
+        {category === "article" && <div className="mb-5 grid grid-cols-2 rounded-[11px] bg-faint p-1 sm:grid-cols-4" role="radiogroup" aria-label="글 작업 유형">{(["create", "optimize", "repurpose", "brief"] as const).map((intent) => <button key={intent} type="button" role="radio" aria-checked={articleIntent === intent} onClick={() => setArticleIntent(intent)} className={`rounded-[9px] px-2 py-2.5 text-[11px] font-semibold ${articleIntent === intent ? "bg-white text-hof shadow-sm" : "text-foggy"}`}>{intent === "create" ? "새 글 작성" : intent === "optimize" ? "기존 글 개선" : intent === "repurpose" ? "문서 재활용" : "주제·SEO 브리프"}</button>)}</div>}
         <h2 className="text-[20px] font-semibold tracking-[-0.02em] text-hof">
-          {category === "article" ? "무엇을 작성할까요?" : category === "image" ? "어떤 이미지를 만들까요?" : "어떤 영상을 만들까요?"}
+          {category === "article" ? articleIntent === "optimize" ? "어떤 글을 개선할까요?" : articleIntent === "repurpose" ? "어떤 문서를 재활용할까요?" : articleIntent === "brief" ? "어떤 주제를 조사할까요?" : "무엇을 작성할까요?" : category === "image" ? "어떤 이미지를 만들까요?" : "어떤 영상을 만들까요?"}
         </h2>
         <p className="mt-1 text-[13px] text-foggy">
           {category === "article"
-            ? "주제, 목표 독자, 꼭 다룰 내용을 자연스럽게 적어 주세요."
+            ? articleIntent === "optimize" ? "개선 목표를 적고 작업판에서 URL 가져오기 또는 직접 입력을 선택하세요." : articleIntent === "repurpose" ? "재활용 목표를 적고 작업판에서 Library 문서 또는 직접 입력 원문과 대상 형식을 선택하세요." : articleIntent === "brief" ? "TalorData 검색 결과에서 주제 기회와 검색 의도를 찾고 SEO 브리프로 정리합니다." : "주제, 목표 독자, 꼭 다룰 내용을 자연스럽게 적어 주세요."
             : "독립 프롬프트로 시작하거나 저장된 기사를 제작 문맥으로 연결할 수 있습니다."}
         </p>
 
@@ -253,7 +259,7 @@ export function ContentHome() {
           onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") void submit(); }}
           rows={5}
           placeholder={category === "article"
-            ? "예: 처음 자사몰을 여는 소상공인을 위한 SEO 체크리스트 기사"
+            ? articleIntent === "optimize" ? "예: 검색 의도에 맞게 구조와 메타 설명을 개선해 줘" : articleIntent === "repurpose" ? "예: 기존 가이드의 핵심 내용을 주간 뉴스레터로 바꿔 줘" : articleIntent === "brief" ? "예: 소상공인 자사몰 SEO에서 경쟁이 낮은 실전 주제를 찾아 줘" : "예: 처음 자사몰을 여는 소상공인을 위한 SEO 체크리스트 기사"
             : category === "image"
               ? "예: 신뢰감 있는 에디토리얼 그래픽, 중앙에 핵심 오브젝트, 차분한 분위기"
               : "예: 소상공인이 검색 유입을 성장시키는 과정을 역동적인 장면으로 구성"}
@@ -308,7 +314,7 @@ export function ContentHome() {
 
         <div className="mt-5 flex flex-wrap items-center gap-3">
           <button type="button" onClick={() => void submit()} disabled={!canSubmit || submitting} className="inline-flex h-11 items-center rounded-full bg-rausch px-5 text-[14px] font-semibold text-white transition hover:bg-rausch-600 disabled:cursor-not-allowed disabled:opacity-40">
-            {submitting ? "작업판 만드는 중…" : category === "article" ? "새 글 작성" : category === "image" ? "이미지 작업 시작" : "영상 콘티 시작"}
+            {submitting ? "작업판 만드는 중…" : category === "article" ? articleIntent === "optimize" ? "개선 작업 시작" : articleIntent === "repurpose" ? "재활용 작업 시작" : articleIntent === "brief" ? "주제 조사 시작" : "새 글 작성" : category === "image" ? "이미지 작업 시작" : "영상 콘티 시작"}
           </button>
           <span className="text-[11px] text-grey-500">⌘/Ctrl + Enter</span>
           {category === "article" && (
