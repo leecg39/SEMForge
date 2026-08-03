@@ -1,6 +1,7 @@
 import { AppShell } from "@/components/app/AppShell";
 import { BacklinkAnalytics } from "@/components/analytics/backlinks/BacklinkAnalytics";
 import type { BacklinkScope } from "@/server/backlinks/contracts";
+import { pageSession } from "@/server/page-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,7 @@ export default async function BacklinkAnalyticsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await pageSession();
   const params = await searchParams;
   const target = single(params.target)?.trim() ?? "";
   const rawScope = single(params.scope);
