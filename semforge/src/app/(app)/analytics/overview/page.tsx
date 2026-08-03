@@ -2,7 +2,7 @@ import { AppShell } from "@/components/app/AppShell";
 import { DomainIntelligenceDashboard } from "@/components/analytics/DomainIntelligenceDashboard";
 import { DomainOverviewLanding } from "@/components/analytics/domain-overview/Landing";
 import { normalizeDomain } from "@/lib/analytics/metrics";
-import { getDomainAnalytics } from "@/server/analytics";
+import { getAvailableDomains, getDomainAnalytics } from "@/server/analytics";
 
 export const dynamic = "force-dynamic";
 
@@ -18,9 +18,10 @@ export default async function DomainOverviewPage({
 
   // 도메인 없이 진입하면 검색 랜딩을 보여준다 (기본 도메인 폴백 없음).
   if (!domain.includes(".")) {
+    const availableDomains = await getAvailableDomains();
     return (
       <AppShell activeToolkit="seo" activeHref="/analytics/overview/">
-        <DomainOverviewLanding />
+        <DomainOverviewLanding availableDomains={availableDomains} />
       </AppShell>
     );
   }

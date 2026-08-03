@@ -10,11 +10,18 @@ import {
   subscribeRecentDomains,
 } from "./recent";
 
+const MAX_AVAILABLE_DOMAINS = 12;
+
 /**
  * 도메인 개요 랜딩 — domain 파라미터 없이 진입했을 때의 검색 화면.
  * 네이티브 GET 폼으로 /analytics/overview/?domain=… 에 제출해 SSR 리포트로 이동한다.
+ * availableDomains 는 서버가 라이브 원천 스토어에서 집계한 데이터 보유 도메인 목록이다.
  */
-export function DomainOverviewLanding() {
+export function DomainOverviewLanding({
+  availableDomains,
+}: {
+  availableDomains: string[];
+}) {
   const { locale } = useLocale();
   const copy = COPY[locale];
   const recent = useSyncExternalStore(
@@ -22,6 +29,7 @@ export function DomainOverviewLanding() {
     getRecentDomainsSnapshot,
     getRecentDomainsServerSnapshot,
   );
+  const shownDomains = availableDomains.slice(0, MAX_AVAILABLE_DOMAINS);
 
   return (
     <div className="mx-auto w-full max-w-[1100px] p-4 sm:p-6">
@@ -97,6 +105,34 @@ export function DomainOverviewLanding() {
           <p className="mt-3 text-[13px] leading-[19px] text-[#3c6860]">{copy.landingPrincipleBody}</p>
         </section>
       </div>
+
+      {shownDomains.length > 0 && (
+        <section className="mt-4 rounded-[10px] border border-app-border bg-a2-card p-5 shadow-[var(--a2-card-shadow)]">
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 className="text-[15px] font-semibold text-a2-text">{copy.availableDomainsTitle}</h2>
+            <span className="text-[12px] tabular-nums text-a2-text-muted">
+              {availableDomains.length}
+            </span>
+          </div>
+          <ul className="mt-3 flex flex-wrap gap-2">
+            {shownDomains.map((item) => (
+              <li key={item}>
+                <Link
+                  href={`${OVERVIEW_HREF}?domain=${encodeURIComponent(item)}`}
+                  className="inline-flex h-8 items-center rounded-full border border-app-border bg-white px-3 text-[12px] font-medium text-a2-text transition-colors hover:border-app-blue hover:text-app-blue"
+                >
+                  {item}
+                </Link>
+              </li>
+            ))}
+            {availableDomains.length > shownDomains.length && (
+              <li className="inline-flex h-8 items-center px-1 text-[12px] text-a2-text-muted">
+                {copy.availableDomainsMore} {availableDomains.length - shownDomains.length}
+              </li>
+            )}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

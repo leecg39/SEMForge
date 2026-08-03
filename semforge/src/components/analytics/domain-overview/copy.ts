@@ -81,6 +81,8 @@ export const COPY = {
     landingPrincipleTitle: "Data principles",
     landingPrincipleBody:
       "Every metric is computed only from data this workspace actually collected (TalorData SERP, site-audit crawls). Metrics without a connected source are honestly marked as unavailable instead of showing made-up numbers.",
+    availableDomainsTitle: "Domains with collected data",
+    availableDomainsMore: "+",
     // 리포트 헤더
     breadcrumbSeo: "SEO",
     domain: "Domain",
@@ -212,6 +214,8 @@ export const COPY = {
     landingPrincipleTitle: "데이터 원칙",
     landingPrincipleBody:
       "모든 지표는 이 워크스페이스가 실제로 수집한 데이터(TalorData SERP, 사이트 진단 크롤)로만 계산합니다. 소스가 없는 지표는 가짜 숫자 대신 미제공으로 정직하게 표시합니다.",
+    availableDomainsTitle: "데이터 보유 도메인",
+    availableDomainsMore: "+",
     // 리포트 헤더
     breadcrumbSeo: "SEO",
     domain: "도메인",
