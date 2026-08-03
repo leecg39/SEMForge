@@ -10,7 +10,7 @@ import { useLocale } from "@/i18n/LocaleProvider";
  * ko.semrush.com/home/ 의 "추천 툴킷 및 앱" 섹션 실측 기준:
  *   - 한 줄 카드 레일: 데스크톱 6장이 균등 분할, 좁은 폭에서는 가로 스크롤
  *   - 카드 = 툴킷 아이콘(인라인 SVG) + 제목 + 한 줄 설명
- *   - 보유 툴킷(AI 가시성 / 트래픽 & 시장 / 지역)은 카드 우상단에 초록 체크 배지
+ *   - 보유 툴킷(AI 가시성 / 트래픽 & 시장)은 카드 우상단에 초록 체크 배지
  *     (실제 Semrush 의 구매한 제품 카드와 동일한 위치/색)
  *   - 보유 판정은 프론트 상수(owned)로 고정 — DB 접근 없음
  */
@@ -71,6 +71,16 @@ function ShareNodesIcon(props: IconProps) {
   );
 }
 
+/** 콘텐츠 — 문서 */
+function ContentIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M6 3.5h8l4 4V20.5H6z" />
+      <path d="M14 3.5v4h4M9 12h6M9 15.5h6" />
+    </IconBase>
+  );
+}
+
 /** AI 가시성 — 스파크 */
 function SparkIcon(props: IconProps) {
   return (
@@ -89,16 +99,6 @@ function ChartIcon(props: IconProps) {
       <path d="M7.5 20v-5" />
       <path d="M12 20v-9" />
       <path d="M16.5 20v-13" />
-    </IconBase>
-  );
-}
-
-/** 지역 — 핀 */
-function PinIcon(props: IconProps) {
-  return (
-    <IconBase {...props}>
-      <path d="M18.5 10.5c0 4.6-6.5 10-6.5 10s-6.5-5.4-6.5-10a6.5 6.5 0 0 1 13 0z" />
-      <circle cx="12" cy="10.5" r="2.2" />
     </IconBase>
   );
 }
@@ -137,6 +137,14 @@ const CARDS: Array<{
     owned: false,
   },
   {
+    icon: ContentIcon,
+    accent: "var(--app-yellow)",
+    title: "콘텐츠",
+    body: "AI와 경쟁 데이터를 활용해 SEO 친화적인 콘텐츠를 만들어 보세요.",
+    href: "/content/",
+    owned: false,
+  },
+  {
     icon: ShareNodesIcon,
     accent: "var(--app-blue)",
     title: "소셜",
@@ -158,14 +166,6 @@ const CARDS: Array<{
     title: "트래픽 & 시장",
     body: "경쟁자를 추적하고, 시장을 분석하고, 성장 기회를 발굴하세요.",
     href: "/analytics/traffic/",
-    owned: true,
-  },
-  {
-    icon: PinIcon,
-    accent: "var(--app-green)",
-    title: "지역",
-    body: "리뷰를 관리하고, 로컬 검색 가시성을 높이고, 로컬 경쟁자를 추적하세요.",
-    href: "/local-business/",
     owned: true,
   },
 ];

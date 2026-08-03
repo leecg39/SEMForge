@@ -8,180 +8,147 @@ import { SM, WidgetCard, WidgetTitle } from "@/components/seo-dash/tokens";
 import { cn } from "@/lib/utils";
 
 export interface SiteAuditWidgetSummary {
-  campaignId: string;
+  campaignId: string | null;
+  state: "unconfigured" | "idle" | "queued" | "running" | "completed" | "failed";
   siteHealth: number | null;
   lastRunAt: string | null;
   crawledPages: number;
-  errors: number;
-  warnings: number;
-  notices: number;
+  errors: number | null;
+  warnings: number | null;
+  notices: number | null;
+  runProgress: { crawledPages: number; pageLimit: number } | null;
+  errorMessage: string | null;
 }
 
-const GAUGE_COLORS = ["#625ee8", "#d5d7df"];
-
-function InfoHint({ label }: { label: string }) {
-  return (
-    <span title={label} aria-label={label} className="inline-flex text-[#9a9da6]">
-      <InfoCircledIcon className="h-[13px] w-[13px]" aria-hidden="true" />
-    </span>
-  );
-}
-
-function formatUpdatedAt(value: string | null, locale: "ko" | "en") {
-  if (!value) return locale === "ko" ? "아직 진단하지 않음" : "Not audited yet";
-  return new Intl.DateTimeFormat(locale === "ko" ? "ko-KR" : "en-US", {
+function formatDate(value: string | null, ko: boolean) {
+  if (!value) return ko ? "아직 진단하지 않음" : "Not audited yet";
+  return new Intl.DateTimeFormat(ko ? "ko-KR" : "en-US", {
     year: "numeric",
     month: "long",
     day: "numeric",
   }).format(new Date(value));
 }
 
-function HealthGauge({ value, ko }: { value: number | null; ko: boolean }) {
-  const score = value === null ? 0 : Math.max(0, Math.min(100, value));
-  const data = [
-    { name: ko ? "사이트 상태" : "Site Health", value: score },
-    { name: ko ? "남은 점수" : "Remaining", value: Math.max(0, 100 - score) },
+function statusCopy(state: SiteAuditWidgetSummary["state"], ko: boolean) {
+  const copy = {
+    unconfigured: ko ? "설정 필요" : "Set up",
+    idle: ko ? "실행 전" : "Not run",
+    queued: ko ? "대기 중" : "Queued",
+    running: ko ? "수집 중" : "Crawling",
+    completed: ko ? "실측" : "Live",
+    failed: ko ? "실패" : "Failed",
+  } as const;
+  return copy[state];
+}
+
+function statusClass(state: SiteAuditWidgetSummary["state"], measured: boolean) {
+  if (state === "failed") return "bg-[#fdecef] text-[#a4002a]";
+  if (state === "queued" || state === "running") return "bg-[#e8f2ff] text-[#1f64c8]";
+  if (state === "unconfigured") return "bg-[#fff3d6] text-[#7a5100]";
+  if (state === "completed" && measured) return "bg-[#eef7ee] text-[#1c6b3c]";
+  return "bg-[#eef0f3] text-a2-text-muted";
+}
+
+export function WidgetSiteAudit({
+  summary,
+  canManage,
+  onSetup,
+}: {
+  summary: SiteAuditWidgetSummary;
+  canManage: boolean;
+  onSetup: () => void;
+}) {
+  const { locale } = useLocale();
+  const ko = locale === "ko";
+  const score = summary.siteHealth === null ? 0 : Math.max(0, Math.min(100, summary.siteHealth));
+  const measured = summary.siteHealth !== null;
+  const active = summary.state === "queued" || summary.state === "running";
+  const progress = summary.runProgress;
+  const progressPercent = progress && progress.pageLimit > 0
+    ? Math.min(100, Math.round((progress.crawledPages / progress.pageLimit) * 100))
+    : 0;
+  const gauge = [
+    { key: "score", value: score || 0.001, color: "#625ee8" },
+    { key: "remaining", value: Math.max(0.001, 100 - score), color: "#d8dbe2" },
   ];
 
   return (
-    <div
-      className="relative h-[110px] w-full max-w-[190px]"
-      role="img"
-      aria-label={`${ko ? "사이트 상태" : "Site Health"}: ${value === null ? "-" : `${score}%`}`}
-    >
-      <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
-          <Pie
-            data={data}
-            dataKey="value"
-            startAngle={180}
-            endAngle={0}
-            cx="50%"
-            cy="92%"
-            innerRadius={46}
-            outerRadius={66}
-            stroke="none"
-            isAnimationActive={false}
-          >
-            {data.map((entry, index) => (
-              <Cell key={entry.name} fill={GAUGE_COLORS[index]} />
-            ))}
-          </Pie>
-        </PieChart>
-      </ResponsiveContainer>
-      <div className="pointer-events-none absolute inset-x-0 bottom-[2px] text-center">
-        <strong className="block text-[24px] font-bold leading-[25px] text-[#5753c9]">
-          {value === null ? "–" : `${score}%`}
-        </strong>
-        <span className={cn("block text-[11px] leading-[15px]", SM.caption)}>
-          {ko ? "최근 진단 결과" : "Latest audit"}
+    <WidgetCard ariaLabel={ko ? "사이트 진단" : "Site Audit"} className="flex h-full min-h-[224px] flex-col">
+      <div className="flex items-start justify-between gap-3 pt-2">
+        <div>
+          <div className="flex items-center gap-1.5">
+            <WidgetTitle>{ko ? "사이트 진단" : "Site Audit"}</WidgetTitle>
+            <InfoCircledIcon className="h-3.5 w-3.5 text-a2-text-muted" aria-hidden="true" />
+          </div>
+          <p className={cn("mt-1 text-[11px]", SM.caption)}>
+            {summary.state === "unconfigured"
+              ? (ko ? "이 프로젝트에 연결된 진단이 없습니다." : "No audit is connected to this project.")
+              : <>{ko ? "마지막 업데이트" : "Last update"}: {formatDate(summary.lastRunAt, ko)}</>}
+          </p>
+        </div>
+        <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", statusClass(summary.state, measured))}>
+          {summary.state === "completed" && !measured
+            ? (ko ? "측정 없음" : "No measurement")
+            : statusCopy(summary.state, ko)}
         </span>
       </div>
-    </div>
-  );
-}
 
-function AuditDistribution({ summary, ko }: { summary: SiteAuditWidgetSummary; ko: boolean }) {
-  const issueTotal = summary.errors + summary.warnings + summary.notices;
-  const clear = Math.max(0, summary.crawledPages - issueTotal);
-  const total = Math.max(1, clear + issueTotal);
-  const segments = [
-    { key: "clear", label: ko ? "발견된 문제 없음" : "No detected issues", value: clear, color: "#45d6ad" },
-    { key: "warning", label: ko ? "경고" : "Warnings", value: summary.warnings, color: "#f7b500" },
-    { key: "notice", label: ko ? "알림" : "Notices", value: summary.notices, color: "#aeb9f6" },
-    { key: "error", label: ko ? "오류" : "Errors", value: summary.errors, color: "#e01b4b" },
-  ].filter((segment) => segment.value > 0);
-
-  if (segments.length === 0) {
-    return <div className="h-[28px] rounded-[2px] bg-[#e3e5ea]" aria-label={ko ? "크롤 데이터 없음" : "No crawl data"} />;
-  }
-
-  return (
-    <div
-      className="flex h-[28px] overflow-hidden rounded-[2px] bg-[#e3e5ea]"
-      aria-label={ko ? "진단 상태 분포" : "Audit status distribution"}
-    >
-      {segments.map((segment) => (
-        <span
-          key={segment.key}
-          title={`${segment.label}: ${segment.value}`}
-          className="h-full min-w-[3px]"
-          style={{ width: `${(segment.value / total) * 100}%`, backgroundColor: segment.color }}
-        />
-      ))}
-    </div>
-  );
-}
-
-/** 설정된 도메인의 최신 사이트 진단 결과를 요약하는 대시보드 위젯. */
-export function WidgetSiteAudit({ summary }: { summary: SiteAuditWidgetSummary }) {
-  const { locale } = useLocale();
-  const ko = locale === "ko";
-
-  return (
-    <WidgetCard ariaLabel={ko ? "사이트 진단" : "Site Audit"} className="flex min-h-[380px] flex-col">
-      <div className="flex items-center gap-1.5 pt-2">
-        <WidgetTitle>{ko ? "사이트 진단" : "Site Audit"}</WidgetTitle>
-        <InfoHint label={ko ? "최근 사이트 진단 결과 요약" : "Latest site audit summary"} />
-      </div>
-      <p className={cn("mt-2 text-[13px] leading-[18px]", SM.caption)} suppressHydrationWarning>
-        {ko ? "마지막 업데이트" : "Last update"}: {formatUpdatedAt(summary.lastRunAt, locale)}
-      </p>
-
-      <div className="-mx-5 mt-3 border-t border-app-border" />
-
-      <div className="mt-4 grid grid-cols-[minmax(0,1fr)_88px] gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5 text-[14px] leading-[20px] text-app-text">
-            <span>Site Health</span>
-            <InfoHint label={ko ? "사이트의 기술적 상태 점수" : "Technical health score"} />
+      <div className="mt-2 grid flex-1 grid-cols-[minmax(135px,1.2fr)_minmax(110px,0.8fr)] items-center gap-3">
+        <div>
+          <div className="relative h-[108px]" role="img" aria-label={`${ko ? "사이트 상태" : "Site health"}: ${summary.siteHealth === null ? "-" : `${score}%`}`}>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={gauge} dataKey="value" startAngle={180} endAngle={0} cx="50%" cy="88%" innerRadius={39} outerRadius={54} stroke="none" isAnimationActive={false}>
+                  {gauge.map((item) => <Cell key={item.key} fill={item.color} />)}
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="absolute inset-x-0 bottom-0 text-center">
+              <strong className="text-[22px] font-semibold text-[#5753c9]">{summary.siteHealth === null ? "—" : `${score}%`}</strong>
+              <p className={cn("text-[10px]", SM.caption)}>{ko ? "사이트 상태" : "Site Health"}</p>
+            </div>
           </div>
-          <HealthGauge value={summary.siteHealth} ko={ko} />
+          <p className={cn("mt-1 text-center text-[11px]", SM.caption)}>{ko ? "크롤링된 페이지" : "Crawled pages"} {measured ? summary.crawledPages.toLocaleString() : "—"}</p>
         </div>
-
-        <dl className="space-y-5 pt-0.5">
-          <div>
-            <dt className="flex items-center gap-1.5 text-[14px] leading-[20px] text-app-text">
-              {ko ? "오류" : "Errors"}
-              <InfoHint label={ko ? "우선 해결이 필요한 문제" : "Issues requiring attention"} />
-            </dt>
-            <dd className="mt-0.5 text-[22px] font-semibold leading-[26px] text-[#d3133a]">
-              {summary.errors.toLocaleString()}
-            </dd>
-          </div>
-          <div>
-            <dt className="flex items-center gap-1.5 text-[14px] leading-[20px] text-app-text">
-              {ko ? "경고" : "Warnings"}
-              <InfoHint label={ko ? "검토가 필요한 개선 항목" : "Items to review"} />
-            </dt>
-            <dd className="mt-0.5 text-[22px] font-semibold leading-[26px] text-[#e65b00]">
-              {summary.warnings.toLocaleString()}
-            </dd>
-          </div>
+        <dl className="space-y-2 text-[12px]">
+          <div className="flex items-center justify-between gap-3"><dt className={SM.caption}>{ko ? "오류" : "Errors"}</dt><dd className="font-semibold text-[#d3133a]">{summary.errors ?? "—"}</dd></div>
+          <div className="flex items-center justify-between gap-3"><dt className={SM.caption}>{ko ? "경고" : "Warnings"}</dt><dd className="font-semibold text-[#d47b00]">{summary.warnings ?? "—"}</dd></div>
+          <div className="flex items-center justify-between gap-3"><dt className={SM.caption}>{ko ? "알림" : "Notices"}</dt><dd className="font-semibold text-[#235fe2]">{summary.notices ?? "—"}</dd></div>
         </dl>
       </div>
-
-      <div className="mt-4">
-        <div className="flex items-center gap-1.5 text-[14px] leading-[20px] text-app-text">
-          <span>{ko ? "크롤링된 페이지" : "Crawled pages"}</span>
-          <InfoHint label={ko ? "최근 진단에서 확인한 페이지 수" : "Pages checked in the latest audit"} />
+      {active && (
+        <div className="mt-2" role="status" aria-live="polite">
+          <div className="flex items-center justify-between text-[10px] text-a2-text-muted">
+            <span>{summary.state === "queued" ? (ko ? "크롤 대기 중" : "Waiting to crawl") : (ko ? "페이지 수집 중" : "Crawling pages")}</span>
+            <span>{progress ? `${progress.crawledPages}/${progress.pageLimit}` : "—"}</span>
+          </div>
+          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[#e4e8ee]">
+            <div className="h-full rounded-full bg-[#235fe2] transition-[width]" style={{ width: `${progressPercent}%` }} />
+          </div>
         </div>
-        <p className="mt-0.5 text-[22px] font-semibold leading-[28px] text-[#5753c9]">
-          {summary.crawledPages.toLocaleString()}
-        </p>
-        <div className="mt-3">
-          <AuditDistribution summary={summary} ko={ko} />
-        </div>
-      </div>
-
-      <div className="mt-auto pt-6">
-        <Link
-          href={`/siteaudit/?campaign=${encodeURIComponent(summary.campaignId)}`}
-          className="inline-flex h-[30px] items-center justify-center rounded-[6px] border border-[#cfd1d6] bg-white px-3 text-[13px] font-medium text-app-text transition-colors hover:bg-[#f6f7f8] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#235fe2]"
-        >
-          {ko ? "전체 보기" : "View all"}
+      )}
+      {summary.state === "failed" && summary.errorMessage && (
+        <p className="mt-2 truncate text-[10px] text-[#a4002a]" title={summary.errorMessage}>{summary.errorMessage}</p>
+      )}
+      {summary.state === "unconfigured" ? (
+        canManage ? (
+          <button type="button" onClick={onSetup} className={cn(SM.darkCta, "mt-2 h-8 self-start")}>
+            {ko ? "진단 설정 및 실행" : "Set up and run audit"}
+          </button>
+        ) : (
+          <p className={cn("mt-2 text-[11px]", SM.caption)}>{ko ? "프로젝트 관리자에게 진단 설정을 요청하세요." : "Ask a project manager to set up the audit."}</p>
+        )
+      ) : summary.campaignId ? (
+        <Link href={`/siteaudit/?campaign=${encodeURIComponent(summary.campaignId)}`} className={cn("mt-2 text-[12px] font-medium hover:underline", SM.link)}>
+          {active
+            ? (ko ? "진행 상황 보기" : "View progress")
+            : measured
+              ? (ko ? "전체 보고서 보기" : "View full report")
+              : summary.state === "failed"
+                ? (ko ? "오류 확인 및 재실행" : "Review error and retry")
+                : (ko ? "진단 실행" : "Run audit")}
         </Link>
-      </div>
+      ) : null}
     </WidgetCard>
   );
 }

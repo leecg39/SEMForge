@@ -1,0 +1,20 @@
+{
+  "hiddenRestoreButtons": 0,
+  "innerWidth": 1904,
+  "scrollWidth": 1889,
+  "visualWidth": 1889,
+  "widgets": [
+    "aiSearch",
+    "seoMetrics",
+    "positionTracking",
+    "siteAudit",
+    "onPageSeo",
+    "backlinkAudit",
+    "organicTrafficInsights",
+    "trafficAnalytics",
+    "topSearchPages",
+    "googleConnect",
+    "organicRank",
+    "backlinks"
+  ]
+}

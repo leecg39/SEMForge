@@ -18,17 +18,32 @@ export const railGroups: RailItem[][] = [
     { key: "home", label: "홈페이지", href: "/home/", icon: "home" },
     { key: "seo", label: "SEO", href: "/seo/", icon: "seo" },
     { key: "ai", label: "AI", href: "/ai-seo/overview/", icon: "ai" },
-    { key: "traffic", label: "트래픽 & 시장", href: "/analytics/traffic/", icon: "traffic" },
+    {
+      key: "traffic",
+      label: "트래픽 & 시장",
+      href: "/analytics/traffic/",
+      icon: "traffic",
+    },
   ],
   [
     { key: "local", label: "지역", href: "/local-business/", icon: "local" },
     { key: "content", label: "콘텐츠", href: "/content/", icon: "content" },
-    { key: "advertising", label: "광고", href: "/advertising/", icon: "advertising" },
+    {
+      key: "advertising",
+      label: "광고",
+      href: "/advertising/",
+      icon: "advertising",
+    },
     { key: "pr", label: "AI PR", href: "/pr-toolkit/", icon: "pr" },
     { key: "social", label: "소셜", href: "/social-media/", icon: "social" },
   ],
   [
-    { key: "reports", label: "보고서", href: "/my_reports/grid/", icon: "reports" },
+    {
+      key: "reports",
+      label: "보고서",
+      href: "/my_reports/grid/",
+      icon: "reports",
+    },
     { key: "apps", label: "App Center", href: "/apps/", icon: "apps" },
   ],
 ];
@@ -99,7 +114,10 @@ export const railFlyouts: Record<string, RailFlyoutGroup[]> = {
         { label: "Sensor", href: "/sensor/" },
         { label: "SEMForge Rank", href: "/analytics/ranks/rank/" },
         { label: "온페이지 SEO 체커", href: "/on-page-seo-checker/" },
-        { label: "자연검색 트래픽 인사이트", href: "/organic_traffic_insights/" },
+        {
+          label: "자연검색 트래픽 인사이트",
+          href: "/organic_traffic_insights/",
+        },
       ],
     },
   ],
@@ -132,14 +150,20 @@ export const railFlyouts: Record<string, RailFlyoutGroup[]> = {
     },
   ],
   traffic: [
-    { heading: "시작", links: [{ label: "대시보드", href: "/analytics/traffic/" }] },
+    {
+      heading: "시작",
+      links: [{ label: "대시보드", href: "/analytics/traffic/" }],
+    },
     {
       heading: "개요",
       links: [
         { label: "트래픽 분석", href: "/analytics/traffic/traffic-overview/" },
         { label: "시장 개요", href: "/analytics/traffic/market-overview/" },
         { label: "인기 페이지", href: "/analytics/traffic/top-pages/" },
-        { label: "경쟁사 모니터링", href: "/analytics/traffic/competitor-monitoring/" },
+        {
+          label: "경쟁사 모니터링",
+          href: "/analytics/traffic/competitor-monitoring/",
+        },
       ],
     },
     {
@@ -153,13 +177,19 @@ export const railFlyouts: Record<string, RailFlyoutGroup[]> = {
         { label: "유료 소셜", href: "/analytics/traffic/paid-social/" },
         { label: "이메일", href: "/analytics/traffic/email/" },
         { label: "디스플레이 광고", href: "/analytics/traffic/display-ads/" },
-        { label: "유입·이탈 경로", href: "/analytics/traffic/sources-destinations/" },
+        {
+          label: "유입·이탈 경로",
+          href: "/analytics/traffic/sources-destinations/",
+        },
       ],
     },
     {
       heading: "페이지 및 카테고리",
       links: [
-        { label: "하위 폴더·서브도메인", href: "/analytics/traffic/subfolders-subdomains/" },
+        {
+          label: "하위 폴더·서브도메인",
+          href: "/analytics/traffic/subfolders-subdomains/",
+        },
         { label: "페이지 그룹", href: "/analytics/traffic/page-groups/" },
       ],
     },
@@ -168,15 +198,24 @@ export const railFlyouts: Record<string, RailFlyoutGroup[]> = {
       links: [
         { label: "미국", href: "/analytics/traffic/usa/" },
         { label: "국가", href: "/analytics/traffic/countries/" },
-        { label: "비즈니스 지역", href: "/analytics/traffic/business-regions/" },
-        { label: "지리적 지역", href: "/analytics/traffic/geographical-regions/" },
+        {
+          label: "비즈니스 지역",
+          href: "/analytics/traffic/business-regions/",
+        },
+        {
+          label: "지리적 지역",
+          href: "/analytics/traffic/geographical-regions/",
+        },
       ],
     },
     {
       heading: "오디언스",
       links: [
         { label: "인구통계", href: "/analytics/traffic/demographics/" },
-        { label: "오디언스 중복", href: "/analytics/traffic/audience-overlap/" },
+        {
+          label: "오디언스 중복",
+          href: "/analytics/traffic/audience-overlap/",
+        },
         { label: "사회경제", href: "/analytics/traffic/socioeconomics/" },
         { label: "행동", href: "/analytics/traffic/behavior/" },
       ],
@@ -185,14 +224,20 @@ export const railFlyouts: Record<string, RailFlyoutGroup[]> = {
       heading: "고급",
       links: [
         { label: "일별 추세", href: "/analytics/traffic/daily-trends/" },
-        { label: "산업·일괄 분석", href: "/analytics/traffic/industry-and-bulk-analysis/" },
+        {
+          label: "산업·일괄 분석",
+          href: "/analytics/traffic/industry-and-bulk-analysis/",
+        },
         { label: "Trends API", href: "/analytics/traffic/trends-api" },
         { label: "인기 웹사이트", href: "/trending-websites/global/all/" },
       ],
     },
   ],
   local: [
-    { heading: "대시보드", links: [{ label: "로컬 대시보드", href: "/local-business/" }] },
+    {
+      heading: "대시보드",
+      links: [{ label: "로컬 대시보드", href: "/local-business/" }],
+    },
     {
       heading: "관리",
       links: [
@@ -201,11 +246,20 @@ export const railFlyouts: Record<string, RailFlyoutGroup[]> = {
         { label: "GBP 최적화", href: "/gbp-optimization/" },
       ],
     },
-    { heading: "자동화", links: [{ label: "GBP AI 에이전트", href: "/gbp-ai-agent/" }] },
-    { heading: "경쟁 분석", links: [{ label: "맵 순위 추적", href: "/map-rank-tracker/" }] },
+    {
+      heading: "자동화",
+      links: [{ label: "GBP AI 에이전트", href: "/gbp-ai-agent/" }],
+    },
+    {
+      heading: "경쟁 분석",
+      links: [{ label: "맵 순위 추적", href: "/map-rank-tracker/" }],
+    },
   ],
   content: [
-    { heading: "대시보드", links: [{ label: "콘텐츠 대시보드", href: "/content/" }] },
+    {
+      heading: "대시보드",
+      links: [{ label: "콘텐츠 대시보드", href: "/content/" }],
+    },
     {
       heading: "만들기",
       links: [
@@ -224,11 +278,17 @@ export const railFlyouts: Record<string, RailFlyoutGroup[]> = {
     },
   ],
   advertising: [
-    { heading: "대시보드", links: [{ label: "광고 대시보드", href: "/advertising/" }] },
+    {
+      heading: "대시보드",
+      links: [{ label: "광고 대시보드", href: "/advertising/" }],
+    },
     {
       heading: "만들기·실행",
       links: [
-        { label: "광고 실행 도우미", href: "/advertising/ads-launch-assistant" },
+        {
+          label: "광고 실행 도우미",
+          href: "/advertising/ads-launch-assistant",
+        },
         { label: "광고 AI 에이전트", href: "/advertising/ads-ai-agent" },
       ],
     },
@@ -237,7 +297,10 @@ export const railFlyouts: Record<string, RailFlyoutGroup[]> = {
       links: [
         { label: "광고 리서치", href: "/analytics/adwords/positions/" },
         { label: "PLA 리서치", href: "/analytics/pla/positions/" },
-        { label: "AdClarity", href: "/apps/adclarity-advertising-intelligence/" },
+        {
+          label: "AdClarity",
+          href: "/apps/adclarity-advertising-intelligence/",
+        },
       ],
     },
   ],
@@ -260,7 +323,10 @@ export const railFlyouts: Record<string, RailFlyoutGroup[]> = {
       heading: "이메일",
       links: [
         { label: "내 이메일", href: "/pr-toolkit/emails" },
-        { label: "발신자·도메인", href: "/pr-toolkit/emails/settings/senders/" },
+        {
+          label: "발신자·도메인",
+          href: "/pr-toolkit/emails/settings/senders/",
+        },
       ],
     },
     {
@@ -272,35 +338,50 @@ export const railFlyouts: Record<string, RailFlyoutGroup[]> = {
     },
   ],
   social: [
-    { heading: "대시보드", links: [{ label: "소셜 대시보드", href: "/social-media/" }] },
+    {
+      heading: "대시보드",
+      links: [{ label: "소셜 대시보드", href: "/social-media/" }],
+    },
     {
       heading: "핵심",
       links: [
-        { label: "소셜 포스터", href: "/social-media/?tool=poster" },
-        { label: "소셜 트래커", href: "/social-media/?tool=tracker" },
-        { label: "콘텐츠 인사이트", href: "/social-media/?tool=content-insights" },
-        { label: "소셜 분석", href: "/social-media/?tool=analytics" },
+        { label: "소셜 포스터", href: "/social-media/poster/" },
+        { label: "소셜 트래커", href: "/social-media/tracker/" },
+        { label: "콘텐츠 인사이트", href: "/social-media/content-insights/" },
+        { label: "소셜 분석", href: "/social-media/analytics/" },
       ],
     },
     {
       heading: "고급",
       links: [
-        { label: "인플루언서 분석", href: "/apps/influencer-marketing-platform/" },
+        {
+          label: "인플루언서 분석",
+          href: "/apps/influencer-marketing-platform/",
+        },
         { label: "미디어 모니터링", href: "/media-monitoring/" },
       ],
     },
   ],
   reports: [
-    { heading: "홈", links: [{ label: "내 보고서", href: "/my_reports/grid/" }] },
+    {
+      heading: "홈",
+      links: [{ label: "내 보고서", href: "/my_reports/grid/" }],
+    },
     {
       heading: "빌더",
       links: [
         { label: "보고서 만들기", href: "/my_reports/constructor" },
-        { label: "템플릿", href: "/my_reports/constructor?accordionTab=integrations" },
+        {
+          label: "템플릿",
+          href: "/my_reports/constructor?accordionTab=integrations",
+        },
         { label: "테마", href: "/my_reports/constructor?accordionTab=themes" },
       ],
     },
-    { heading: "정보", links: [{ label: "보고서 스위트", href: "/my_reports/suite" }] },
+    {
+      heading: "정보",
+      links: [{ label: "보고서 스위트", href: "/my_reports/suite" }],
+    },
   ],
   apps: [
     {

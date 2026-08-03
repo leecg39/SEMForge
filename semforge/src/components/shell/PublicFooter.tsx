@@ -81,19 +81,19 @@ export default function PublicFooter() {
     );
 
   return (
-    <footer className="bg-white">
+    <footer className="bg-faint">
       {/* CTA 밴드 */}
-      <section className="pb-12 pt-24">
+      <section className="border-b border-bebe bg-white py-20">
         <div className="mp-container text-center">
-          <h2 className="font-lazzer text-[32px] font-semibold uppercase leading-none tracking-[-1.92px] text-mp-off-black md:text-[48px] md:leading-[48px]">
+          <h2 className="font-lazzer text-[28px] font-semibold leading-9 tracking-[-0.8px] text-hof md:text-[36px] md:leading-[44px]">
             {cta.heading}
           </h2>
-          <p className="mb-6 mt-4 font-lazzer text-[16px] text-mp-off-black">
+          <p className="mb-7 mt-3 font-lazzer text-[15px] text-foggy">
             {cta.subtext}
           </p>
           <Link
             href={cta.href}
-            className="inline-block rounded-pill bg-mp-lavendar px-[30px] py-[21px] font-lazzer text-[16px] font-semibold leading-none text-mp-off-black transition-colors duration-200 ease-in-out hover:bg-mp-lavendar-hover"
+            className="inline-flex min-h-11 items-center rounded-[8px] bg-rausch px-6 py-3 font-lazzer text-[14px] font-semibold leading-5 text-white transition-colors duration-200 ease-in-out hover:bg-rausch-600"
           >
             {cta.buttonLabel}
           </Link>
@@ -106,10 +106,10 @@ export default function PublicFooter() {
           {groups.map((group) => {
             const isOpen = openGroups.includes(group.heading);
             return (
-              <div key={group.heading} className="border-b border-mp-light-grey md:border-0">
+              <div key={group.heading} className="border-b border-bebe md:border-0">
                 <button
                   type="button"
-                  className="flex w-full items-center justify-between py-4 font-lazzer text-[16px] font-semibold text-mp-off-black md:hidden"
+                  className="flex w-full items-center justify-between py-4 font-lazzer text-[14px] font-semibold text-hof md:hidden"
                   aria-expanded={isOpen}
                   onClick={() => toggleGroup(group.heading)}
                 >
@@ -121,7 +121,7 @@ export default function PublicFooter() {
                     )}
                   />
                 </button>
-                <h3 className="hidden font-lazzer text-[16px] font-semibold text-mp-off-black md:mb-6 md:block">
+                <h3 className="hidden font-lazzer text-[14px] font-semibold text-hof md:mb-5 md:block">
                   {group.heading}
                 </h3>
                 <ul className={cn(isOpen ? "block pb-4" : "hidden", "md:block md:pb-0")}>
@@ -129,7 +129,7 @@ export default function PublicFooter() {
                     <li key={link.label}>
                       <FooterLink
                         link={link}
-                        className="block py-1.5 font-lazzer text-[14px] font-medium text-mp-off-black transition-colors duration-200 ease-in-out hover:text-mp-dark-grey"
+                        className="block py-1.5 font-lazzer text-[14px] font-medium text-foggy transition-colors duration-200 ease-in-out hover:text-hof"
                       />
                     </li>
                   ))}
@@ -167,10 +167,10 @@ export default function PublicFooter() {
       </nav>
 
       {/* 하단 바 */}
-      <div className="border-t border-mp-light-grey">
+      <div className="border-t border-bebe bg-white">
         <div className="mp-container flex flex-wrap items-center gap-x-6 gap-y-3 py-6">
           <img src={adobeLogoDataUri} alt="Adobe" width={62} height={15} />
-          <p className="font-lazzer text-[14px] text-mp-dark-grey">
+          <p className="font-lazzer text-[13px] text-foggy">
             {legal.copyright} {legal.rights}
           </p>
           <ul className="flex flex-wrap items-center gap-x-6 gap-y-2 md:ml-auto">
@@ -178,7 +178,7 @@ export default function PublicFooter() {
               <li key={link.label}>
                 <FooterLink
                   link={link}
-                  className="font-lazzer text-[14px] text-mp-dark-grey transition-colors duration-200 ease-in-out hover:text-mp-off-black"
+                  className="font-lazzer text-[13px] text-foggy transition-colors duration-200 ease-in-out hover:text-hof"
                 />
               </li>
             ))}

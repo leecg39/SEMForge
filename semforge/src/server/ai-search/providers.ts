@@ -1,6 +1,10 @@
 import { ApiError } from "@/lib/api";
 import { normalizeDomain } from "@/lib/analytics/metrics";
 import type { TrackingLocation } from "@/lib/position-tracking/locations";
+import {
+  getContentChatMockModel,
+  requestChatMockText,
+} from "@/server/chatmock/client";
 import { collectKeywordSerp } from "@/server/talordata/collect";
 
 export const AI_SEARCH_PROVIDERS = [
@@ -24,6 +28,8 @@ export interface AiSearchProviderInput {
   brandNames: string[];
   targetDomain: string;
   location: TrackingLocation;
+  /** 수동 실행에서는 SERP 캐시를 우회해 현재 결과를 다시 측정한다. */
+  forceRefresh?: boolean;
 }
 
 export interface AiSearchProviderResult {
@@ -33,7 +39,7 @@ export interface AiSearchProviderResult {
   citationsAvailable: boolean;
   citations: AiSearchCitation[];
   responseText: string | null;
-  source: "talordata" | "openai" | "gemini";
+  source: "talordata" | "openai" | "gemini" | "chatmock";
   fromCache: boolean;
   capturedAt: Date;
 }
@@ -45,12 +51,14 @@ export interface AiSearchCapabilities {
 export interface AiSearchProviderDependencies {
   fetch?: typeof fetch;
   collectKeywordSerp?: typeof collectKeywordSerp;
+  requestChatMockText?: typeof requestChatMockText;
   timeoutMs?: number;
 }
 
 export function getAiSearchCapabilities(): AiSearchCapabilities {
   const hasTalordata = Boolean(process.env.TALORDATA_API_TOKEN?.trim());
   const hasOpenAi = Boolean(process.env.OPENAI_API_KEY?.trim());
+  const hasChatMock = process.env.CHATMOCK_AI_SEARCH_ENABLED?.trim().toLowerCase() === "true";
   const hasGemini = Boolean(process.env.GEMINI_API_KEY?.trim());
   return {
     providers: {
@@ -59,8 +67,10 @@ export function getAiSearchCapabilities(): AiSearchCapabilities {
         reason: hasTalordata ? null : "TALORDATA_API_TOKEN이 필요합니다.",
       },
       chatgpt_web: {
-        enabled: hasOpenAi,
-        reason: hasOpenAi ? null : "OPENAI_API_KEY가 필요합니다.",
+        enabled: hasOpenAi || hasChatMock,
+        reason: hasOpenAi || hasChatMock
+          ? null
+          : "OPENAI_API_KEY 또는 ChatMock ChatGPT 연결이 필요합니다.",
       },
       gemini_grounded: {
         enabled: hasGemini,
@@ -245,6 +255,7 @@ async function collectGoogleAio(
     keyword: input.prompt,
     countryCode: input.location.countryCode,
     device: "desktop",
+    forceRefresh: input.forceRefresh ?? false,
   });
   const aioPresent =
     collection.aiOverview?.present ?? collection.features.includes("ai_overview");
@@ -283,7 +294,26 @@ async function collectChatGpt(
   dependencies?: AiSearchProviderDependencies,
 ): Promise<AiSearchProviderResult> {
   const token = process.env.OPENAI_API_KEY?.trim();
-  if (!token) throw new ApiError("INTERNAL", "OPENAI_API_KEY가 설정되지 않았습니다.");
+  if (!token) {
+    const local = await (dependencies?.requestChatMockText ?? requestChatMockText)(
+      aiPrompt(input),
+      {
+        model: process.env.CHATMOCK_AI_SEARCH_MODEL?.trim() || getContentChatMockModel(),
+        reasoningEffort: "medium",
+      },
+    );
+    const visibility = visibilityFrom(input, local.text, []);
+    return {
+      provider: "chatgpt_web",
+      ...visibility,
+      citationsAvailable: false,
+      citations: [],
+      responseText: local.text.slice(0, 30_000),
+      source: "chatmock",
+      fromCache: false,
+      capturedAt: new Date(),
+    };
+  }
   const payload = await providerJson(
     "https://api.openai.com/v1/responses",
     {

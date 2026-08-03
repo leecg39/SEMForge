@@ -6,6 +6,8 @@ import { ensureDbRetentionJob } from "@/server/providers/retention";
 import { ensureSiteAuditDueJob } from "@/server/siteaudit/due";
 import { registerPositionTrackingDueJob } from "@/server/position-tracking/schedule";
 import { registerAiVisibilityDueJob } from "@/server/ai-visibility/schedule";
+import { registerContentMediaDueJob } from "@/server/content/media-due";
+import { registerSocialDueJob } from "@/server/social/schedule";
 
 /**
  * 주기 수집 트리거. 외부 cron/launchd 가 이 엔드포인트를 주기 호출한다.
@@ -27,8 +29,8 @@ export const GET = route(async (request: Request) => {
     return jsonError(
       new ApiError(
         cronAuth.code === "not-configured" ? "FORBIDDEN" : "UNAUTHENTICATED",
-        cronAuth.message
-      )
+        cronAuth.message,
+      ),
     );
   }
 
@@ -38,13 +40,18 @@ export const GET = route(async (request: Request) => {
   ensureDbRetentionJob();
   await registerPositionTrackingDueJob();
   registerAiVisibilityDueJob();
+  registerContentMediaDueJob();
+  registerSocialDueJob();
 
   const { searchParams } = new URL(request.url);
   const onlyParam = searchParams.get("only")?.trim();
   const limitParam = Number(searchParams.get("limit"));
   const jobs = await runDueJobs({
-    only: onlyParam ? onlyParam.split(",").map((name) => name.trim()) : undefined,
-    limit: Number.isFinite(limitParam) && limitParam > 0 ? limitParam : undefined,
+    only: onlyParam
+      ? onlyParam.split(",").map((name) => name.trim())
+      : undefined,
+    limit:
+      Number.isFinite(limitParam) && limitParam > 0 ? limitParam : undefined,
   });
 
   return jsonOk(
@@ -55,6 +62,6 @@ export const GET = route(async (request: Request) => {
         registeredJobs: listDueJobs(),
         ranAt: new Date().toISOString(),
       },
-    }
+    },
   );
 });

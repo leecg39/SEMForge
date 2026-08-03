@@ -925,6 +925,8 @@ export const contentArticles = sqliteTable(
   {
     id: text("id").primaryKey(),
     ...folderScoped,
+    /** 생성 작업판과의 연결. 레거시 문서는 null일 수 있다. */
+    boardId: text("board_id"),
     title: text("title").notNull(),
     mode: text("mode", { enum: ["create", "optimize", "repurpose", "brief"] })
       .notNull()
@@ -933,16 +935,21 @@ export const contentArticles = sqliteTable(
       .notNull()
       .default("draft"),
     keyword: text("keyword"),
+    sourceUrl: text("source_url"),
+    metaDescription: text("meta_description"),
+    bodyFormat: text("body_format", { enum: ["markdown"] })
+      .notNull()
+      .default("markdown"),
     wordCount: integer("word_count").notNull().default(0),
     seoScore: integer("seo_score"),
     body: text("body"),
+    publishedAt: timestampMs("published_at"),
     ...auditColumns,
   },
   (t) => [
-    uniqueIndex("content_articles_workspace_title_unique")
-      .on(t.workspaceId, t.title)
-      .where(sql`deleted_at IS NULL`),
+    index("content_articles_workspace_title_idx").on(t.workspaceId, t.title, t.deletedAt),
     index("content_articles_workspace_idx").on(t.workspaceId, t.deletedAt),
+    index("content_articles_board_idx").on(t.boardId, t.deletedAt),
   ]
 );
 
@@ -959,3 +966,4 @@ export type PositionTrackingRun = typeof positionTrackingRuns.$inferSelect;
 export type PositionTrackingRunItem = typeof positionTrackingRunItems.$inferSelect;
 export type PositionTrackingObservation = typeof positionTrackingObservations.$inferSelect;
 export type AppNotification = typeof appNotifications.$inferSelect;
+export type ContentArticle = typeof contentArticles.$inferSelect;

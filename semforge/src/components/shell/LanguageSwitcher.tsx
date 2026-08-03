@@ -84,7 +84,7 @@ export function LanguageSwitcher({
           variant === "app" &&
             "text-[14px] leading-[24px] text-a2-footer-text hover:underline",
           isHeader &&
-            "h-[32px] rounded-[6px] px-2 text-[13px] text-app-text transition-colors hover:bg-app-bg",
+            "h-10 rounded-full bg-faint px-3 text-[13px] text-hof transition-colors hover:bg-bebe",
         )}
       >
         {(variant === "app" || isHeader) && <GlobeIcon />}

@@ -111,7 +111,7 @@ export function CrudShell({
   return (
     // 원본은 레일이 y=0 부터 전체 높이를 차지하고, 헤더는 그 오른쪽 열에 놓인다.
     // 그래서 헤더 검색이 x=110 (레일 77 + 패딩 32) 에서 시작한다.
-    <div className="flex min-h-screen flex-row bg-a2-surface text-a2-text">
+    <div className="flex min-h-screen flex-row bg-faint text-hof">
       {/* 좌측 레일 — 실측 77px, 항목 64×64, y=0 부터 */}
       {/* sticky가 스태킹 컨텍스트를 만들어 플라이아웃이 본문 positioned 요소 아래로
           깔리는 것을 막기 위해 aside 자체에 z-index를 준다 */}
@@ -119,7 +119,7 @@ export function CrudShell({
         aria-label={tx("툴킷")}
         onScroll={closeFlyoutNow}
         onMouseLeave={scheduleFlyoutClose}
-        className="sticky top-0 z-40 hidden h-dvh w-[var(--a2-rail-width)] shrink-0 flex-col overflow-y-auto pt-[6px] lg:flex"
+        className="sticky top-0 z-40 hidden h-dvh w-[var(--a2-rail-width)] shrink-0 flex-col overflow-y-auto border-r border-bebe bg-white pt-[6px] lg:flex"
       >
         {railGroups.map((group, groupIndex) => (
           <div
@@ -163,11 +163,11 @@ export function CrudShell({
                     aria-haspopup={groups ? "menu" : undefined}
                     aria-expanded={groups ? open : undefined}
                     className={cn(
-                      "mx-[6px] flex min-h-[64px] flex-col items-center justify-center gap-[4px] rounded-[6px] px-[4px] py-[10px] text-center",
+                      "mx-[6px] flex min-h-[64px] flex-col items-center justify-center gap-[4px] rounded-[12px] px-[4px] py-[10px] text-center transition-colors",
                       active
-                        ? "bg-a2-rail-active text-a2-text"
-                        : "text-a2-text-muted hover:bg-black/[0.04]",
-                      open && !active && "bg-black/[0.04]"
+                        ? "bg-faint text-hof shadow-[inset_3px_0_0_var(--color-rausch)]"
+                        : "text-foggy hover:bg-faint hover:text-hof",
+                      open && !active && "bg-faint"
                     )}
                   >
                     {Icon && (
@@ -179,7 +179,7 @@ export function CrudShell({
                     <span
                       className={cn(
                         "text-[12px] font-medium leading-[16px]",
-                        active ? "text-a2-text-muted" : "text-a2-text-faint"
+                        active ? "text-hof" : "text-foggy"
                       )}
                     >
                       {tx(item.label)}
@@ -195,7 +195,7 @@ export function CrudShell({
                       <div
                         role="menu"
                         aria-label={tx(item.label)}
-                        className="w-[240px] overflow-y-auto rounded-lg border border-black/[0.06] bg-a2-card py-2 shadow-[var(--a2-card-shadow)]"
+                        className="w-[240px] overflow-y-auto rounded-[12px] border border-bebe bg-white py-2 shadow-[var(--shadow-dropdown)]"
                         style={{ maxHeight: `calc(100dvh - ${flyout.top + 8}px)` }}
                       >
                         {groups.map((flyoutGroup, flyoutGroupIndex) => (
@@ -221,8 +221,8 @@ export function CrudShell({
                                       className={cn(
                                         "mx-2 flex h-[32px] items-center rounded-[6px] px-2 text-[13px]",
                                         subActive
-                                          ? "bg-a2-rail-active font-medium text-a2-text"
-                                          : "text-a2-text-muted hover:bg-black/[0.04] hover:text-a2-text"
+                                          ? "bg-faint font-medium text-hof"
+                                          : "text-foggy hover:bg-faint hover:text-hof"
                                       )}
                                     >
                                       <span className="truncate">{tx(link.label)}</span>
@@ -244,11 +244,10 @@ export function CrudShell({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-      {/* 헤더 — 실측 53px */}
-      <header className="flex h-[53px] shrink-0 items-center bg-a2-surface px-[16px] lg:px-[32px]">
-        {/* 원본 실측: 검색 폭 515px, 높이 30px */}
+      {/* 헤더 — 64px, 흰 캔버스 + 캡슐 검색 */}
+      <header className="flex h-[64px] shrink-0 items-center border-b border-bebe bg-white px-[16px] lg:px-[32px]">
         <form
-          className="flex h-[30px] w-full min-w-0 items-center rounded-[6px] bg-white lg:w-[515px] lg:shrink-0"
+          className="flex h-[44px] w-full min-w-0 items-center rounded-full border border-bebe bg-white py-1 pl-4 pr-1 shadow-[var(--shadow-subtle)] lg:w-[560px] lg:shrink-0"
           onSubmit={(e) => {
             e.preventDefault();
             const q = String(new FormData(e.currentTarget).get("q") ?? "").trim();
@@ -260,12 +259,12 @@ export function CrudShell({
             name="q"
             placeholder={tx("작업, 웹사이트 또는 키워드를 입력하세요")}
             aria-label={tx("전역 검색")}
-            className="h-full min-w-0 flex-1 bg-transparent pl-[12px] pr-[8px] text-[14px] text-a2-text outline-none placeholder:text-a2-text-muted"
+            className="h-full min-w-0 flex-1 bg-transparent pr-[8px] text-[14px] text-hof outline-none placeholder:text-foggy"
           />
           <button
             type="submit"
             aria-label={tx("검색")}
-            className="flex h-[30px] w-[32px] shrink-0 items-center justify-center rounded-r-[6px] bg-[#1a1e1a] text-white"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-rausch text-white transition-colors hover:bg-rausch-600"
           >
             <appIcons.search width={16} height={16} />
           </button>
@@ -274,13 +273,13 @@ export function CrudShell({
         <div className="ml-auto flex shrink-0 items-center">
           <Link
             href="/pricing/"
-            className="hidden rounded-[6px] px-[12px] py-[9px] text-[14px] text-a2-text hover:bg-black/5 lg:block"
+            className="hidden rounded-full px-[12px] py-[9px] text-[14px] font-medium text-hof hover:bg-faint lg:block"
           >
             {tx("가격 책정")}
           </Link>
           <Link
             href="/enterprise/"
-            className="hidden rounded-[6px] px-[12px] py-[9px] text-[14px] text-a2-text hover:bg-black/5 lg:block"
+            className="hidden rounded-full px-[12px] py-[9px] text-[14px] font-medium text-hof hover:bg-faint lg:block"
           >
             {tx("엔터프라이즈")}
           </Link>
@@ -290,7 +289,7 @@ export function CrudShell({
               aria-label={tx("내 프로필")}
               aria-expanded={menuOpen}
               onClick={() => setMenuOpen((v) => !v)}
-              className="ml-[4px] flex h-[32px] w-[32px] items-center justify-center rounded-full bg-[#7b5cf0] text-[14px] font-medium text-white"
+              className="ml-[4px] flex h-10 w-10 items-center justify-center rounded-full bg-rausch text-[14px] font-medium text-white transition-colors hover:bg-rausch-600"
             >
               {session.user.name.slice(0, 1)}
             </button>
@@ -298,7 +297,7 @@ export function CrudShell({
               <div
                 role="menu"
                 aria-label={tx("프로필")}
-                className="absolute right-0 top-[40px] z-50 w-[260px] overflow-hidden rounded-[8px] border border-black/10 bg-white py-1 shadow-lg"
+                className="absolute right-0 top-[48px] z-50 w-[260px] overflow-hidden rounded-[12px] border border-bebe bg-white py-1 shadow-[var(--shadow-dropdown)]"
               >
                 <div className="border-b border-black/10 px-[9px] py-[7px]">
                   <p className="truncate text-[14px] text-a2-text">{session.user.name}</p>
@@ -356,7 +355,7 @@ export function CrudShell({
       {/* 모바일: 레일이 숨는 구간의 대체 내비 (원본은 햄버거 드로어 — 다른 점) */}
       <nav
         aria-label={tx("툴킷")}
-        className="flex gap-1 overflow-x-auto bg-a2-surface px-[16px] pb-2 lg:hidden"
+        className="flex gap-1 overflow-x-auto border-b border-bebe bg-white px-[16px] py-2 lg:hidden"
       >
         {railItems.map((item) => {
           const Icon = appIcons[item.icon];
@@ -367,8 +366,8 @@ export function CrudShell({
               href={item.href}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "flex h-[32px] shrink-0 items-center gap-1.5 rounded-[6px] px-3 text-[12px] font-medium",
-                active ? "bg-a2-rail-active text-a2-text" : "text-a2-text-faint"
+                "flex h-[32px] shrink-0 items-center gap-1.5 rounded-full px-3 text-[12px] font-medium",
+                active ? "bg-faint text-hof" : "text-foggy"
               )}
             >
               {Icon && <Icon width={16} height={16} />}
@@ -378,7 +377,7 @@ export function CrudShell({
         })}
       </nav>
 
-        <main className="flex-1 px-[16px] pt-[24px] lg:px-[32px]">{children}</main>
+        <main className="flex-1 px-[16px] pt-[24px] lg:px-[40px]">{children}</main>
         <AppFooter />
       </div>
     </div>

@@ -1,23 +1,16 @@
-import { notFound } from "next/navigation";
-import { AppShell } from "@/components/app/AppShell";
-import { AppEditorTemplate } from "@/components/app/AppEditorTemplate";
-import { editors } from "@/data/app-pages";
+import { notFound, redirect } from "next/navigation";
+import { contentRedirectHref, type RouteSearchParams } from "@/lib/content-routes";
 
-export function generateStaticParams() {
-  return [{ action: "create" }, { action: "optimize" }, { action: "repurpose" }];
-}
+const intents = new Set(["create", "optimize", "repurpose"]);
 
-export default async function ArticleEditorPage({
+export default async function LegacyArticleActionPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ action: string }>;
+  searchParams: Promise<RouteSearchParams>;
 }) {
   const { action } = await params;
-  const data = editors[`/content/articles/${action}/`];
-  if (!data) notFound();
-  return (
-    <AppShell activeToolkit="content" activeHref={`/content/articles/${action}/`}>
-      <AppEditorTemplate data={data} />
-    </AppShell>
-  );
+  if (!intents.has(action)) notFound();
+  redirect(contentRedirectHref("/content/", await searchParams, { intent: action }));
 }

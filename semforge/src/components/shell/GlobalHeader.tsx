@@ -25,7 +25,7 @@ const navItems: HeaderNavItem[] = [
 ];
 
 const navItemClass =
-  "rounded-[10px] px-2 py-1 font-lazzer text-[16px] font-semibold leading-normal tracking-[-0.32px] text-mp-off-black transition-colors duration-200 ease-in-out hover:bg-[rgba(0,0,0,0.06)]";
+  "rounded-full px-3 py-2 font-lazzer text-[14px] font-medium leading-normal text-hof transition-colors duration-200 ease-in-out hover:bg-faint";
 
 function isExternal(link: NavLink) {
   return Boolean(link.external) || link.href.startsWith("http");
@@ -124,7 +124,7 @@ function MegaPanel({
       )}
     >
       <div className="mx-8">
-        <div className="mx-auto max-w-[1376px] rounded-3xl bg-white p-10 shadow-[0_2px_12px_rgba(0,0,0,0.05),0_12px_40px_rgba(0,0,0,0.08)]">
+        <div className="mx-auto max-w-[1376px] rounded-[14px] border border-bebe bg-white p-10 shadow-[var(--shadow-dropdown)]">
           <div
             className="grid items-start gap-8"
             style={{
@@ -162,11 +162,11 @@ function MegaPanel({
             {menu.promo ? (
               <NavAnchor
                 link={{ label: menu.promo.title, href: menu.promo.href }}
-                className="block w-[280px] rounded-2xl bg-[linear-gradient(180deg,#eef7ee_0%,#dceeeb_100%)] p-6"
+                className="block w-[280px] rounded-[12px] bg-faint p-6"
                 onClick={onNavigate}
               >
                 {menu.promo.eyebrow ? (
-                  <p className="font-lazzer text-[12px] font-semibold uppercase tracking-[0.12em] text-[#5a6b62]">
+                  <p className="font-lazzer text-[12px] font-semibold uppercase tracking-[0.12em] text-rausch">
                     {menu.promo.eyebrow}
                   </p>
                 ) : null}
@@ -184,7 +184,7 @@ function MegaPanel({
                   </p>
                 ) : null}
                 {menu.promo.buttonLabel ? (
-                  <span className="mt-5 inline-flex items-center gap-2 rounded-pill bg-mp-off-black px-5 py-2.5 font-lazzer text-[14px] font-semibold text-app-orange">
+                  <span className="mt-5 inline-flex items-center gap-2 rounded-[8px] bg-hof px-5 py-2.5 font-lazzer text-[14px] font-medium text-white">
                     {menu.promo.buttonLabel}
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                       <path
@@ -259,8 +259,8 @@ export default function GlobalHeader({ dict }: { dict: Dictionary }) {
     <header
       ref={headerRef}
       className={cn(
-        "sticky top-0 z-[500] transition-all duration-200 ease-in-out",
-        scrolled ? "bg-[#eaf4f2]" : "bg-mp-mint",
+        "sticky top-0 z-[500] border-b border-bebe bg-white transition-shadow duration-200 ease-in-out",
+        scrolled && "shadow-[0_2px_8px_rgba(0,0,0,0.04)]",
       )}
       onMouseLeave={() => setOpenMenu(null)}
     >
@@ -269,11 +269,11 @@ export default function GlobalHeader({ dict }: { dict: Dictionary }) {
         aria-hidden="true"
         onClick={() => setOpenMenu(null)}
         className={cn(
-          "fixed inset-x-0 bottom-0 top-[84px] -z-10 hidden bg-black/30 transition-opacity duration-300 ease-in-out lg:block",
+          "fixed inset-x-0 bottom-0 top-[80px] -z-10 hidden bg-black/30 transition-opacity duration-300 ease-in-out lg:block",
           openMenu ? "opacity-100" : "pointer-events-none opacity-0",
         )}
       />
-      <div className="mx-auto flex h-[84px] max-w-[1440px] items-center px-8">
+      <div className="mx-auto flex h-[80px] max-w-[1440px] items-center px-6 lg:px-10">
         <Link href="/" className="shrink-0" aria-label={tx("SEMForge homepage")}>
           <img src={logoDataUri} alt="SEMForge" width={150} height={36} />
         </Link>
@@ -287,7 +287,7 @@ export default function GlobalHeader({ dict }: { dict: Dictionary }) {
                 type="button"
                 className={cn(
                   navItemClass,
-                  openMenu === item.menu.label && "bg-[rgba(0,0,0,0.06)]",
+                  openMenu === item.menu.label && "bg-faint text-hof",
                 )}
                 aria-expanded={openMenu === item.menu.label}
                 onMouseEnter={() => {
@@ -317,13 +317,13 @@ export default function GlobalHeader({ dict }: { dict: Dictionary }) {
         <div className="hidden shrink-0 items-center gap-2 lg:flex">
           <Link
             href="/login/"
-            className="rounded-pill border border-mp-off-black px-6 py-3 font-lazzer text-[16px] font-semibold leading-none tracking-[-0.32px] text-mp-off-black transition-colors duration-200 ease-in-out hover:bg-[rgba(0,0,0,0.05)]"
+            className="rounded-[8px] border border-hof px-5 py-3 font-lazzer text-[14px] font-medium leading-none text-hof transition-colors duration-200 ease-in-out hover:bg-faint"
           >
             {dict.header.logIn}
           </Link>
           <Link
             href="/signup/"
-            className="rounded-pill bg-mp-off-black px-6 py-3 font-lazzer text-[16px] font-semibold leading-none tracking-[-0.32px] text-white transition-colors duration-200 ease-in-out hover:bg-[#2a2f27]"
+            className="rounded-[8px] bg-hof px-5 py-3 font-lazzer text-[14px] font-medium leading-none text-white transition-colors duration-200 ease-in-out hover:bg-black"
           >
             {dict.header.signUp}
           </Link>
@@ -332,7 +332,7 @@ export default function GlobalHeader({ dict }: { dict: Dictionary }) {
         {/* 모바일 버거 */}
         <button
           type="button"
-          className="ml-auto flex h-10 w-10 items-center justify-center lg:hidden"
+          className="ml-auto flex h-10 w-10 items-center justify-center rounded-full bg-faint transition-colors hover:bg-bebe lg:hidden"
           aria-label={dict.header.openMenu}
           onClick={() => setDrawerOpen(true)}
         >
@@ -358,7 +358,7 @@ export default function GlobalHeader({ dict }: { dict: Dictionary }) {
               {drawerSubmenu ? (
                 <button
                   type="button"
-                  className="flex h-10 w-10 items-center justify-center text-mp-off-black"
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-faint text-hof"
                   aria-label={dict.header.back}
                   onClick={() => setDrawerSubmenu(null)}
                 >
@@ -371,7 +371,7 @@ export default function GlobalHeader({ dict }: { dict: Dictionary }) {
             </Link>
             <button
               type="button"
-              className="flex h-10 w-10 items-center justify-center text-mp-off-black"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-faint text-hof"
               aria-label={dict.header.closeMenu}
               onClick={closeDrawer}
             >
@@ -436,14 +436,14 @@ export default function GlobalHeader({ dict }: { dict: Dictionary }) {
               <div className="flex shrink-0 flex-col gap-3 border-t border-mp-light-grey p-4">
                 <Link
                   href="/login/"
-                  className="flex h-12 w-full items-center justify-center rounded-pill border border-mp-off-black font-lazzer text-[16px] font-semibold text-mp-off-black transition-colors duration-200 ease-in-out hover:bg-[rgba(0,0,0,0.05)]"
+                  className="flex h-12 w-full items-center justify-center rounded-[8px] border border-hof font-lazzer text-[14px] font-medium text-hof transition-colors duration-200 ease-in-out hover:bg-faint"
                   onClick={closeDrawer}
                 >
                   {dict.header.logIn}
                 </Link>
                 <Link
                   href="/signup/"
-                  className="flex h-12 w-full items-center justify-center rounded-pill bg-mp-off-black font-lazzer text-[16px] font-semibold text-white transition-colors duration-200 ease-in-out hover:bg-[#2a2f27]"
+                  className="flex h-12 w-full items-center justify-center rounded-[8px] bg-hof font-lazzer text-[14px] font-medium text-white transition-colors duration-200 ease-in-out hover:bg-black"
                   onClick={closeDrawer}
                 >
                   {dict.header.signUp}

@@ -1,11 +1,10 @@
 import { AppShell } from "@/components/app/AppShell";
-import { AppLandingTemplate } from "@/components/app/AppLandingTemplate";
-import { landings } from "@/data/app-pages";
+import { ContentHome } from "@/components/content/ContentHome";
 
-export default function ContentDashboardPage() {
+export default function ContentHomePage() {
   return (
     <AppShell activeToolkit="content" activeHref="/content/">
-      <AppLandingTemplate data={landings.content} />
+      <ContentHome />
     </AppShell>
   );
 }

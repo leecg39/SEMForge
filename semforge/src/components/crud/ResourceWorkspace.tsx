@@ -2,12 +2,30 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ClientApiError, api, buildListQuery, type ListMetaShape } from "@/lib/client-api";
+import {
+  DotsVerticalIcon,
+  GlobeIcon,
+  MagnifyingGlassIcon,
+  PlusIcon,
+  Share2Icon,
+} from "@radix-ui/react-icons";
+import { Cell, Pie, PieChart } from "recharts";
+import {
+  ClientApiError,
+  api,
+  buildListQuery,
+  type ListMetaShape,
+} from "@/lib/client-api";
 import { cn } from "@/lib/utils";
 import { localizeResourceSpec, translateAppText } from "@/i18n/app";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { WebsiteDomainPicker } from "@/components/crud/WebsiteDomainPicker";
-import type { BadgeTone, ColumnSpec, FieldSpec, ResourceSpec } from "@/types/crud";
+import type {
+  BadgeTone,
+  ColumnSpec,
+  FieldSpec,
+  ResourceSpec,
+} from "@/types/crud";
 
 type Row = Record<string, unknown>;
 
@@ -30,25 +48,6 @@ const TONE_CLASS: Record<BadgeTone, string> = {
   blue: "bg-app-link-soft text-app-link",
   purple: "bg-[#f2ebfd] text-[#5b32a8]",
 };
-
-function SearchGlyph() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      aria-hidden="true"
-      className="shrink-0 text-app-text-secondary"
-    >
-      <circle cx="11" cy="11" r="7" />
-      <path d="m20 20-3.5-3.5" />
-    </svg>
-  );
-}
 
 /** 폴더 생성 다이얼로그 마스코트 — 거미와 거미줄 (원본 로봇 캐릭터 대체, 사용자 요청). */
 function FolderCreateMascot() {
@@ -73,7 +72,12 @@ function FolderCreateMascot() {
         <path d="M66 4q24 20 22 48" />
       </g>
       {/* 거미가 매달린 줄 */}
-      <path d="M56 26v22" stroke="#c9ccd4" strokeWidth="1.4" strokeLinecap="round" />
+      <path
+        d="M56 26v22"
+        stroke="#c9ccd4"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
       {/* 거미: 다리 8개 */}
       <g stroke="#3f3f46" strokeWidth="2" strokeLinecap="round">
         <path d="M52 52 40 44" />
@@ -88,7 +92,13 @@ function FolderCreateMascot() {
       {/* 거미: 몸통 (브랜드 오렌지 배꼽 무늬) */}
       <ellipse cx="56" cy="60" rx="8.5" ry="9.5" fill="#3f3f46" />
       <circle cx="56" cy="49" r="4.5" fill="#3f3f46" />
-      <path d="M53 57q3 4 6 0" stroke="#ff5a1f" strokeWidth="2" strokeLinecap="round" fill="none" />
+      <path
+        d="M53 57q3 4 6 0"
+        stroke="#ff5a1f"
+        strokeWidth="2"
+        strokeLinecap="round"
+        fill="none"
+      />
       {/* 눈 */}
       <circle cx="54" cy="48" r="1" fill="#fff" />
       <circle cx="58" cy="48" r="1" fill="#fff" />
@@ -96,38 +106,29 @@ function FolderCreateMascot() {
   );
 }
 
-/** 폴더 행 아이콘. 원본은 도메인 파비콘/핀 아이콘을 쓰므로 이모지 대신 SVG 를 사용한다. */
+/** 폴더 행 아이콘. 제품 아이콘 라이브러리의 Globe를 사용해 스타일을 통일한다. */
 function FolderGlyph({ pinned }: { pinned: boolean }) {
   return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+    <GlobeIcon
+      width={17}
+      height={17}
       aria-hidden="true"
-      className={pinned ? "shrink-0 text-app-orange" : "shrink-0 text-app-text-secondary"}
-    >
-      {pinned ? (
-        <>
-          <path d="M12 17v5" />
-          <path d="M9 10.5V4h6v6.5l2.5 3.5h-11L9 10.5Z" />
-        </>
-      ) : (
-        <>
-          <circle cx="12" cy="12" r="9" />
-          <path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18M12 3c-2.5 2.6-2.5 15.4 0 18" />
-        </>
-      )}
-    </svg>
+      className={
+        pinned ? "shrink-0 text-app-orange" : "shrink-0 text-app-text-secondary"
+      }
+    />
   );
 }
 
 /** 원본 폴더 생성 다이얼로그의 색상 팔레트 6색 (O). */
-const FOLDER_COLOR_PALETTE = ["#3b82f6", "#22c55e", "#14b8a6", "#eab308", "#ec4899", "#6b7280"];
+const FOLDER_COLOR_PALETTE = [
+  "#3b82f6",
+  "#22c55e",
+  "#14b8a6",
+  "#eab308",
+  "#ec4899",
+  "#6b7280",
+];
 
 /** `/api/home/folder-metrics` 응답 행. */
 interface FolderMetricStrip {
@@ -135,6 +136,9 @@ interface FolderMetricStrip {
   domain: string;
   aiVisibility: number | null;
   mentions: number;
+  aiObserved: number;
+  aiMeasured: number;
+  aiUpdatedAt: string | null;
   siteHealth: number | null;
   visibility: number | null;
   organicTraffic: number | null;
@@ -149,6 +153,55 @@ interface FolderMetricCell {
   hint?: string;
   accent?: boolean;
   href?: string;
+  showGauge?: boolean;
+  gaugeValue?: number | null;
+}
+
+function AiVisibilityGauge({ value }: { value: number | null }) {
+  const score = value === null ? 0 : Math.min(100, Math.max(0, value));
+  const chartData = [
+    { name: "visible", value: score },
+    { name: "remaining", value: Math.max(0, 100 - score) },
+  ];
+  return (
+    <div
+      role="img"
+      aria-label={value === null ? "AI 가시성 수집 전" : `AI 가시성 ${score}%`}
+      className="h-[30px] w-[52px] shrink-0 overflow-hidden"
+    >
+      <PieChart width={52} height={30}>
+        <Pie
+          data={chartData}
+          dataKey="value"
+          cx={26}
+          cy={27}
+          innerRadius={9}
+          outerRadius={15}
+          startAngle={180}
+          endAngle={0}
+          stroke="none"
+          isAnimationActive={false}
+        >
+          <Cell fill={value === null ? "#dfe1e8" : "#6666d8"} />
+          <Cell fill="#dfe1e8" />
+        </Pie>
+      </PieChart>
+    </div>
+  );
+}
+
+function metricFreshness(value: string | null, locale: "en" | "ko") {
+  if (!value) return null;
+  const elapsed = Math.max(0, Date.now() - new Date(value).getTime());
+  const hours = Math.floor(elapsed / 3_600_000);
+  if (locale === "en") {
+    if (hours < 1) return "less than an hour ago";
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
+  }
+  if (hours < 1) return "1시간 이내";
+  if (hours < 24) return `${hours}시간 전`;
+  return `${Math.floor(hours / 24)}일 전`;
 }
 
 /**
@@ -160,16 +213,49 @@ interface FolderMetricCell {
 function buildFolderMetricCells(
   strip: FolderMetricStrip | undefined,
   format: (value: number) => string,
-  domain: string,
+  folderId: string,
+  locale: "en" | "ko",
 ): FolderMetricCell[] {
-  const metric = (value: number | null) => (value === null ? "n/a" : format(value));
+  const metric = (value: number | null) =>
+    value === null ? "n/a" : format(value);
+  const aiObserved = strip?.aiObserved ?? 0;
+  const aiMeasured = strip?.aiMeasured ?? 0;
+  const aiValue = strip?.aiVisibility ?? null;
+  const freshness = metricFreshness(strip?.aiUpdatedAt ?? null, locale);
+  const aiHint =
+    aiObserved > 0
+      ? `${locale === "ko" ? "측정" : "Measured"} ${format(aiMeasured)}/${format(aiObserved)}${freshness ? ` · ${freshness}` : ""}`
+      : locale === "ko"
+        ? "첫 수집을 실행하세요"
+        : "Run the first collection";
   return [
     {
       label: "AI 가시성",
-      value: strip?.aiVisibility == null ? "n/a" : `${format(strip.aiVisibility)}%`,
-      href: `/ai-seo/overview/?domain=${encodeURIComponent(domain)}`,
+      value:
+        aiObserved === 0
+          ? locale === "ko"
+            ? "수집 전"
+            : "Not collected"
+          : aiValue === null
+            ? locale === "ko"
+              ? "측정 없음"
+              : "Not measurable"
+            : format(aiValue),
+      hint: aiHint,
+      href: `/ai-seo/overview/?fid=${encodeURIComponent(folderId)}&range=1m&tab=top_topics&page=1`,
+      showGauge: true,
+      gaugeValue: aiValue,
     },
-    { label: "언급", value: format(strip?.mentions ?? 0), accent: true },
+    {
+      label: "언급",
+      value:
+        aiObserved > 0
+          ? format(strip?.mentions ?? 0)
+          : locale === "ko"
+            ? "수집 전"
+            : "Not collected",
+      accent: true,
+    },
     strip?.siteHealth == null
       ? { label: "Site Health", hint: "웹사이트 문제를 확인하세요" }
       : { label: "Site Health", value: format(strip.siteHealth) },
@@ -182,10 +268,16 @@ function buildFolderMetricCells(
   ];
 }
 
-function formatCell(row: Row, column: ColumnSpec, locale: "en" | "ko"): React.ReactNode {
+function formatCell(
+  row: Row,
+  column: ColumnSpec,
+  locale: "en" | "ko",
+): React.ReactNode {
   const value = row[column.key];
   if (value === null || value === undefined || value === "") {
-    return <span className="text-app-text-secondary">{column.emptyText ?? "—"}</span>;
+    return (
+      <span className="text-app-text-secondary">{column.emptyText ?? "—"}</span>
+    );
   }
   if (column.type === "badge") {
     const entry = column.badgeMap?.[String(value)];
@@ -194,7 +286,7 @@ function formatCell(row: Row, column: ColumnSpec, locale: "en" | "ko"): React.Re
       <span
         className={cn(
           "inline-flex items-center rounded-[4px] px-2 py-[2px] text-[12px] font-medium",
-          TONE_CLASS[entry.tone]
+          TONE_CLASS[entry.tone],
         )}
       >
         {entry.label}
@@ -221,17 +313,25 @@ function formatCell(row: Row, column: ColumnSpec, locale: "en" | "ko"): React.Re
   return String(value);
 }
 
-function initialFormValues(spec: ResourceSpec, row?: Row): Record<string, unknown> {
+function initialFormValues(
+  spec: ResourceSpec,
+  row?: Row,
+): Record<string, unknown> {
   const values: Record<string, unknown> = {};
   for (const field of spec.fields) {
     const current = row?.[field.key];
     if (field.type === "checkbox") values[field.key] = Boolean(current);
     else if (field.type === "color")
       values[field.key] =
-        typeof current === "string" && current ? current : FOLDER_COLOR_PALETTE[0];
+        typeof current === "string" && current
+          ? current
+          : FOLDER_COLOR_PALETTE[0];
     else if (field.type === "number")
-      values[field.key] = current === null || current === undefined ? "" : String(current);
-    else values[field.key] = current === null || current === undefined ? "" : String(current);
+      values[field.key] =
+        current === null || current === undefined ? "" : String(current);
+    else
+      values[field.key] =
+        current === null || current === undefined ? "" : String(current);
   }
   return values;
 }
@@ -314,7 +414,7 @@ function FieldInput({
   const invalid = Boolean(error);
   const inputClass = cn(
     "h-[38px] w-full rounded-[6px] border px-3 text-[14px] outline-none",
-    invalid ? "border-app-red" : "border-app-border focus:border-app-link"
+    invalid ? "border-app-red" : "border-app-border focus:border-app-link",
   );
 
   if (field.type === "checkbox") {
@@ -343,7 +443,11 @@ function FieldInput({
     return (
       <div className="flex flex-col gap-1.5">
         <span className="text-[13px] font-medium">{field.label}</span>
-        <div role="radiogroup" aria-label={field.label} className="flex items-center gap-2">
+        <div
+          role="radiogroup"
+          aria-label={field.label}
+          className="flex items-center gap-2"
+        >
           {FOLDER_COLOR_PALETTE.map((color) => (
             <button
               key={color}
@@ -356,7 +460,7 @@ function FieldInput({
                 "h-[22px] w-[22px] rounded-full transition-transform",
                 selected === color
                   ? "ring-2 ring-app-text ring-offset-2"
-                  : "hover:scale-110"
+                  : "hover:scale-110",
               )}
               style={{ backgroundColor: color }}
             />
@@ -392,7 +496,9 @@ function FieldInput({
           onChange={(e) => onChange(e.target.value)}
           className={cn(
             "w-full rounded-[6px] border px-3 py-2 text-[14px] outline-none",
-            invalid ? "border-app-red" : "border-app-border focus:border-app-link"
+            invalid
+              ? "border-app-red"
+              : "border-app-border focus:border-app-link",
           )}
         />
       ) : field.type === "select" ? (
@@ -442,7 +548,10 @@ export interface ResourceWorkspaceProps {
   capabilities: Record<string, boolean>;
 }
 
-export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWorkspaceProps) {
+export function ResourceWorkspace({
+  spec: sourceSpec,
+  capabilities,
+}: ResourceWorkspaceProps) {
   const { locale } = useLocale();
   const tx = useCallback(
     (text: string) => translateAppText(locale, text) ?? text,
@@ -454,7 +563,10 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
   );
   const [rows, setRows] = useState<Row[]>([]);
   const [meta, setMeta] = useState<ListMetaShape | null>(null);
-  const [loadError, setLoadError] = useState<{ code: string; message: string } | null>(null);
+  const [loadError, setLoadError] = useState<{
+    code: string;
+    message: string;
+  } | null>(null);
   const [status, setStatus] = useState("");
   /**
    * 로딩 상태는 별도 state 로 두지 않고 "요청 키 != 마지막으로 반영된 키"로 파생한다.
@@ -487,22 +599,31 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
   } | null>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<Row | null>(null);
-  const [purgeTarget, setPurgeTarget] = useState<{ row: Row; code: string } | null>(null);
+  const [purgeTarget, setPurgeTarget] = useState<{
+    row: Row;
+    code: string;
+  } | null>(null);
   const [codeInput, setCodeInput] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
 
   const [menuRowId, setMenuRowId] = useState<string | null>(null);
   // 원본 폴더 목록은 카드 보기가 기본이고 "테이블 보기(SEO 전용)" 스위치로 전환한다 (증거 O)
   const [tableView, setTableView] = useState(spec.view !== "folder");
+  const [filtersVisible, setFiltersVisible] = useState(true);
   // 폴더 지표 스트립 (/api/home/folder-metrics). 폴더 화면에서만 채운다.
-  const [folderMetrics, setFolderMetrics] = useState<Record<string, FolderMetricStrip>>({});
+  const [folderMetrics, setFolderMetrics] = useState<
+    Record<string, FolderMetricStrip>
+  >({});
 
   // 원본은 4.5K 처럼 축약 표기한다.
   const formatMetric = useMemo(() => {
-    const formatter = new Intl.NumberFormat(locale === "ko" ? "ko-KR" : "en-US", {
-      notation: "compact",
-      maximumFractionDigits: 1,
-    });
+    const formatter = new Intl.NumberFormat(
+      locale === "ko" ? "ko-KR" : "en-US",
+      {
+        notation: "compact",
+        maximumFractionDigits: 1,
+      },
+    );
     return (value: number) => formatter.format(value);
   }, [locale]);
 
@@ -521,7 +642,7 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
 
   const query = useMemo(
     () => buildListQuery({ q, page, sort, scope, filters }),
-    [q, page, sort, scope, filters]
+    [q, page, sort, scope, filters],
   );
 
   const requestKey = `${query}#${retryToken}`;
@@ -539,10 +660,12 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
         const ids = response.data.map((row) => String(row.id)).join(",");
         try {
           const metricsResponse = await api.get<FolderMetricStrip[]>(
-            `/api/home/folder-metrics/?folderIds=${encodeURIComponent(ids)}`
+            `/api/home/folder-metrics/?folderIds=${encodeURIComponent(ids)}`,
           );
           setFolderMetrics(
-            Object.fromEntries(metricsResponse.data.map((strip) => [strip.folderId, strip]))
+            Object.fromEntries(
+              metricsResponse.data.map((strip) => [strip.folderId, strip]),
+            ),
           );
         } catch {
           // 지표 스트립은 보조 정보이므로 실패해도 목록은 유지하고 n/a 로 표시한다.
@@ -555,7 +678,10 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
       if (caught instanceof ClientApiError) {
         setLoadError({ code: caught.code, message: caught.message });
       } else {
-        setLoadError({ code: "INTERNAL", message: "목록을 불러오지 못했습니다." });
+        setLoadError({
+          code: "INTERNAL",
+          message: "목록을 불러오지 못했습니다.",
+        });
       }
     } finally {
       setLoadedKey(requestKey);
@@ -625,7 +751,10 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
     const isCreate = creating;
     try {
       if (isCreate) {
-        const response = await api.post<{ id?: string }>(`/api/${spec.key}/`, buildPayload(true));
+        const response = await api.post<{ id?: string }>(
+          `/api/${spec.key}/`,
+          buildPayload(true),
+        );
         setStatus(`${spec.label}을(를) 만들었습니다.`);
         // 폴더 생성 + 후속 옵션(공유/AI 추적)이 켜져 있으면 완료 패널을 띄운다.
         if (spec.key === "folders" && (shareAfterSave || aiTrack)) {
@@ -637,7 +766,9 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
           };
           if (shareAfterSave && typeof window !== "undefined") {
             const shareUrl = `${window.location.origin}/home/?folder=${encodeURIComponent(folder.id)}`;
-            void navigator.clipboard?.writeText(shareUrl).catch(() => undefined);
+            void navigator.clipboard
+              ?.writeText(shareUrl)
+              .catch(() => undefined);
           }
           setCreatedFolder(folder);
           setCreating(false);
@@ -675,7 +806,9 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
       await load();
     } catch (caught) {
       setActionError(
-        caught instanceof ClientApiError ? caught.message : "삭제하지 못했습니다."
+        caught instanceof ClientApiError
+          ? caught.message
+          : "삭제하지 못했습니다.",
       );
     }
   }
@@ -686,12 +819,14 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
     setMenuRowId(null);
     try {
       const response = await api.post<{ code: string }>(
-        `/api/${spec.key}/${String(row.id)}/confirm-code/`
+        `/api/${spec.key}/${String(row.id)}/confirm-code/`,
       );
       setPurgeTarget({ row, code: response.data.code });
     } catch (caught) {
       setActionError(
-        caught instanceof ClientApiError ? caught.message : "확인 코드를 발급하지 못했습니다."
+        caught instanceof ClientApiError
+          ? caught.message
+          : "확인 코드를 발급하지 못했습니다.",
       );
     }
   }
@@ -701,14 +836,16 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
     setActionError(null);
     try {
       await api.delete(
-        `/api/${spec.key}/${String(purgeTarget.row.id)}/?purge=1&code=${encodeURIComponent(codeInput)}`
+        `/api/${spec.key}/${String(purgeTarget.row.id)}/?purge=1&code=${encodeURIComponent(codeInput)}`,
       );
       setStatus(`${spec.label}을(를) 영구 삭제했습니다.`);
       setPurgeTarget(null);
       await load();
     } catch (caught) {
       setActionError(
-        caught instanceof ClientApiError ? caught.message : "영구 삭제하지 못했습니다."
+        caught instanceof ClientApiError
+          ? caught.message
+          : "영구 삭제하지 못했습니다.",
       );
     }
   }
@@ -721,7 +858,9 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
       await load();
     } catch (caught) {
       setActionError(
-        caught instanceof ClientApiError ? caught.message : "복구하지 못했습니다."
+        caught instanceof ClientApiError
+          ? caught.message
+          : "복구하지 못했습니다.",
       );
     }
   }
@@ -729,20 +868,40 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
   async function bulk(action: "delete" | "restore") {
     setActionError(null);
     try {
-      const response = await api.post<{ succeeded: string[]; failed: { id: string; message: string }[] }>(
-        `/api/${spec.key}/bulk/`,
-        { action, ids: Array.from(selected) }
-      );
+      const response = await api.post<{
+        succeeded: string[];
+        failed: { id: string; message: string }[];
+      }>(`/api/${spec.key}/bulk/`, { action, ids: Array.from(selected) });
       const { succeeded, failed } = response.data;
       setStatus(
-        `${succeeded.length}건 처리 완료${failed.length ? `, ${failed.length}건 실패` : ""}.`
+        `${succeeded.length}건 처리 완료${failed.length ? `, ${failed.length}건 실패` : ""}.`,
       );
       if (failed.length) setActionError(failed[0].message);
       await load();
     } catch (caught) {
       setActionError(
-        caught instanceof ClientApiError ? caught.message : "일괄 작업에 실패했습니다."
+        caught instanceof ClientApiError
+          ? caught.message
+          : "일괄 작업에 실패했습니다.",
       );
+    }
+  }
+
+  async function shareWorkspace() {
+    if (typeof window === "undefined") return;
+    const title = `${spec.title} · SEMForge`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title, url: window.location.href });
+        setStatus(tx("공유 메뉴를 열었습니다."));
+      } else {
+        await navigator.clipboard.writeText(window.location.href);
+        setStatus(tx("공유 링크를 복사했습니다."));
+      }
+    } catch (caught) {
+      if (caught instanceof DOMException && caught.name === "AbortError")
+        return;
+      setActionError(tx("공유 링크를 만들지 못했습니다."));
     }
   }
 
@@ -759,8 +918,17 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
 
   const isTrash = scope === "trashed";
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
-  const showEmptyFirstRun = !loading && !loadError && rows.length === 0 && !q && activeFilterCount === 0;
-  const showNoResults = !loading && !loadError && rows.length === 0 && (Boolean(q) || activeFilterCount > 0);
+  const showEmptyFirstRun =
+    !loading &&
+    !loadError &&
+    rows.length === 0 &&
+    !q &&
+    activeFilterCount === 0;
+  const showNoResults =
+    !loading &&
+    !loadError &&
+    rows.length === 0 &&
+    (Boolean(q) || activeFilterCount > 0);
 
   return (
     // 폴더 화면은 원본처럼 제목·버튼·목록이 하나의 흰 카드 안에 들어간다 (내부 패딩 20px).
@@ -768,47 +936,83 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
       className={cn(
         "flex flex-col gap-4",
         spec.view === "folder" &&
-          "rounded-[8px] bg-a2-card px-[20px] py-[14px] shadow-[var(--a2-card-shadow)]"
+          "gap-0 overflow-hidden rounded-[10px] bg-[#f5f6f7] shadow-[var(--a2-card-shadow)]",
       )}
     >
       {/* 헤더 */}
-      <div className="flex flex-wrap items-start gap-3">
-        <div className="min-w-0">
+      <div
+        className={cn(
+          "flex flex-wrap items-start gap-3",
+          spec.view === "folder" && "bg-white px-[20px] pb-[4px] pt-[12px]",
+        )}
+      >
+        <div
+          className={cn(
+            "min-w-0",
+            spec.view === "folder" &&
+              "flex flex-wrap items-center gap-x-[12px] gap-y-1",
+          )}
+        >
           <h1
             className={cn(
               "leading-[1.3]",
               // 원본 폴더 제목: 16px / 700 / line-height 24px
               spec.view === "folder"
                 ? "text-[16px] font-bold leading-[24px]"
-                : "text-[20px] font-semibold"
+                : "text-[20px] font-semibold",
             )}
           >
-            {RESOURCE_EMOJI[spec.key] && (
+            {spec.view !== "folder" && RESOURCE_EMOJI[spec.key] && (
               <span aria-hidden="true" className="mr-2">
                 {RESOURCE_EMOJI[spec.key]}
               </span>
             )}
             {spec.title}
           </h1>
-          <p className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-app-text-secondary">
-            <span
-              className={cn(
-                "inline-flex items-center rounded-[4px] px-1.5 py-[1px] font-semibold",
-                spec.evidence === "O"
-                  ? "bg-[#e6f5f0] text-[#0a6b57]"
-                  : spec.evidence === "I1"
-                    ? "bg-[#fff0e6] text-[#a34c12]"
-                    : "bg-app-link-soft text-app-link"
-              )}
+          {spec.view === "folder" ? (
+            <button
+              type="button"
+              aria-expanded={filtersVisible}
+              onClick={() => setFiltersVisible((visible) => !visible)}
+              className="text-[12px] text-app-text-secondary underline decoration-[#b6b8bd] underline-offset-2 hover:text-app-text"
             >
-              {tx("증거")} {spec.evidence}
-            </span>
-            {spec.evidenceNote}
-          </p>
+              {tx(
+                filtersVisible
+                  ? "필터 숨기기 및 보기 전환"
+                  : "필터 표시 및 보기 전환",
+              )}
+            </button>
+          ) : (
+            <p className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-app-text-secondary">
+              <span
+                className={cn(
+                  "inline-flex items-center rounded-[4px] px-1.5 py-[1px] font-semibold",
+                  spec.evidence === "O"
+                    ? "bg-[#e6f5f0] text-[#0a6b57]"
+                    : spec.evidence === "I1"
+                      ? "bg-[#fff0e6] text-[#a34c12]"
+                      : "bg-app-link-soft text-app-link",
+                )}
+              >
+                {tx("증거")} {spec.evidence}
+              </span>
+              {spec.evidenceNote}
+            </p>
+          )}
         </div>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          {capabilities.export && (
+          {spec.view === "folder" && capabilities.export && (
+            <button
+              type="button"
+              onClick={() => void shareWorkspace()}
+              className="flex h-[30px] items-center gap-1.5 rounded-[6px] border border-app-border bg-white px-2.5 text-[12px] font-medium hover:bg-app-bg"
+            >
+              <Share2Icon aria-hidden="true" />
+              {tx("공유")}
+            </button>
+          )}
+          {spec.view !== "folder" && capabilities.export && (
             <a
               href={`/api/${spec.key}/export/${query}`}
               className="flex h-[32px] items-center rounded-[6px] border border-app-border bg-white px-3 text-[13px] font-medium hover:bg-app-bg"
@@ -820,104 +1024,135 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
             <button
               type="button"
               onClick={openCreate}
-              className="flex h-[32px] items-center rounded-[6px] bg-[#1b1f23] px-3 text-[13px] font-medium text-white"
+              className={cn(
+                "flex h-[32px] items-center gap-1 rounded-[6px] px-3 text-[13px] font-medium",
+                spec.view === "folder"
+                  ? "h-[30px] border border-app-border bg-white text-app-text hover:bg-app-bg"
+                  : "bg-[#1b1f23] text-white",
+              )}
             >
-              + {locale === "ko" ? `${spec.label} 만들기` : `Create ${spec.label}`}
+              <PlusIcon aria-hidden="true" />
+              {locale === "ko"
+                ? `${spec.label} 만들기`
+                : `Create ${spec.label}`}
             </button>
           )}
         </div>
       </div>
 
       {/* 필터 행 — 원본 폴더 목록의 필터 바 구성을 따른다 */}
-      <div className="flex flex-wrap items-center gap-2 rounded-[8px] bg-a2-card px-3 py-2.5 shadow-[var(--a2-card-shadow)]">
-        {/* 원본 필터 바의 검색 입력은 전체 폭이 아니라 260px 내외의 고정 폭이다 (증거 O) */}
-        <div className="flex h-[32px] w-full max-w-[260px] items-center gap-2 rounded-[6px] border border-app-border px-2.5">
-          <SearchGlyph />
-          
-          <input
-            type="search"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder={spec.searchPlaceholder}
-            aria-label={locale === "ko" ? `${spec.title} 검색` : `Search ${spec.title}`}
-            className="h-full w-full min-w-0 bg-transparent text-[13px] outline-none placeholder:text-app-text-secondary"
-          />
-        </div>
+      {(spec.view !== "folder" || filtersVisible) && (
+        <div
+          className={cn(
+            "flex flex-wrap items-center gap-2 rounded-[8px] bg-a2-card px-3 py-2.5 shadow-[var(--a2-card-shadow)]",
+            spec.view === "folder" &&
+              "rounded-none border-b border-[#eceef1] bg-white px-[20px] pb-[13px] pt-[7px] shadow-none",
+          )}
+        >
+          {/* 원본 필터 바의 검색 입력은 전체 폭이 아니라 260px 내외의 고정 폭이다 (증거 O) */}
+          <div className="flex h-[32px] w-full max-w-[260px] items-center gap-2 rounded-[6px] border border-app-border px-2.5">
+            <MagnifyingGlassIcon
+              aria-hidden="true"
+              className="shrink-0 text-app-text-secondary"
+            />
 
-        {spec.filters?.map((filter) => (
-          <label key={filter.key} className="flex items-center gap-1.5 text-[13px]">
-            <span className="text-app-text-secondary">{filter.label}</span>
+            <input
+              type="search"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder={spec.searchPlaceholder}
+              aria-label={
+                locale === "ko" ? `${spec.title} 검색` : `Search ${spec.title}`
+              }
+              className="h-full w-full min-w-0 bg-transparent text-[13px] outline-none placeholder:text-app-text-secondary"
+            />
+          </div>
+
+          {spec.filters?.map((filter) => (
+            <label
+              key={filter.key}
+              className="flex items-center gap-1.5 text-[13px]"
+            >
+              <span className="text-app-text-secondary">{filter.label}</span>
+              <select
+                value={filters[filter.key] ?? ""}
+                onChange={(e) => {
+                  setFilters((prev) => ({
+                    ...prev,
+                    [filter.key]: e.target.value,
+                  }));
+                  setPage(1);
+                }}
+                className="h-[32px] rounded-[6px] border border-app-border bg-white px-2 text-[13px] outline-none"
+              >
+                {filter.options.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+
+          <label className="flex items-center gap-1.5 text-[13px]">
+            <span className="text-app-text-secondary">{tx("정렬")}</span>
             <select
-              value={filters[filter.key] ?? ""}
+              value={sort}
               onChange={(e) => {
-                setFilters((prev) => ({ ...prev, [filter.key]: e.target.value }));
+                setSort(e.target.value);
                 setPage(1);
               }}
               className="h-[32px] rounded-[6px] border border-app-border bg-white px-2 text-[13px] outline-none"
             >
-              {filter.options.map((option) => (
+              {spec.sortOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
             </select>
           </label>
-        ))}
 
-        <label className="flex items-center gap-1.5 text-[13px]">
-          <span className="text-app-text-secondary">{tx("정렬")}</span>
-          <select
-            value={sort}
-            onChange={(e) => {
-              setSort(e.target.value);
-              setPage(1);
-            }}
-            className="h-[32px] rounded-[6px] border border-app-border bg-white px-2 text-[13px] outline-none"
-          >
-            {spec.sortOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
+          {spec.view === "folder" && (
+            <label className="flex items-center gap-1.5 text-[13px]">
+              <input
+                type="checkbox"
+                checked={tableView}
+                onChange={(e) => setTableView(e.target.checked)}
+                className="h-[16px] w-[16px]"
+              />
+              <span className="text-app-text-secondary">
+                {tx("테이블 보기(SEO 전용)")}
+              </span>
+            </label>
+          )}
+
+          <div className="flex h-[32px] items-center rounded-[6px] border border-app-border p-[2px]">
+            {(
+              [
+                ["active", "활성"],
+                ["trashed", "휴지통"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => {
+                  setScope(value);
+                  setPage(1);
+                }}
+                className={cn(
+                  "h-full rounded-[4px] px-2.5 text-[12px] font-medium",
+                  scope === value
+                    ? "bg-[#1b1f23] text-white"
+                    : "text-app-text-secondary",
+                )}
+              >
+                {tx(label)}
+              </button>
             ))}
-          </select>
-        </label>
-
-        {spec.view === "folder" && (
-          <label className="flex items-center gap-1.5 text-[13px]">
-            <input
-              type="checkbox"
-              checked={tableView}
-              onChange={(e) => setTableView(e.target.checked)}
-              className="h-[16px] w-[16px]"
-            />
-            <span className="text-app-text-secondary">{tx("테이블 보기(SEO 전용)")}</span>
-          </label>
-        )}
-
-        <div className="flex h-[32px] items-center rounded-[6px] border border-app-border p-[2px]">
-          {(
-            [
-              ["active", "활성"],
-              ["trashed", "휴지통"],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => {
-                setScope(value);
-                setPage(1);
-              }}
-              className={cn(
-                "h-full rounded-[4px] px-2.5 text-[12px] font-medium",
-                scope === value ? "bg-[#1b1f23] text-white" : "text-app-text-secondary"
-              )}
-            >
-              {tx(label)}
-            </button>
-          ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 상태 메시지 (원본에는 없는 접근성 보강 — 제안) */}
       <p aria-live="polite" role="status" className="sr-only">
@@ -929,7 +1164,10 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
         </div>
       )}
       {actionError && (
-        <div role="alert" className="rounded-[6px] bg-[#fdecef] px-3 py-2 text-[13px] text-app-red">
+        <div
+          role="alert"
+          className="rounded-[6px] bg-[#fdecef] px-3 py-2 text-[13px] text-app-red"
+        >
           {actionError}
         </div>
       )}
@@ -937,7 +1175,9 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
       {/* 일괄 작업 바 (제안) */}
       {selected.size > 0 && capabilities.bulk && (
         <div className="flex flex-wrap items-center gap-3 rounded-[8px] border border-app-link bg-app-link-soft px-3 py-2 text-[13px]">
-          <span className="font-medium text-app-link">{selected.size}건 선택됨</span>
+          <span className="font-medium text-app-link">
+            {selected.size}건 선택됨
+          </span>
           {isTrash ? (
             <button
               type="button"
@@ -970,15 +1210,20 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
         className={cn(
           "overflow-hidden rounded-[8px]",
           spec.view === "folder"
-            ? "border-t border-black/[0.06]"
-            : "bg-a2-card shadow-[var(--a2-card-shadow)]"
+            ? "rounded-none border-0 bg-[#f5f6f7] px-[20px] py-[18px]"
+            : "bg-a2-card shadow-[var(--a2-card-shadow)]",
         )}
       >
         {loading && (
           <div className="flex flex-col gap-2 p-4">
-            <p className="text-[13px] text-app-text-secondary">{tx("데이터 로드 중")}</p>
+            <p className="text-[13px] text-app-text-secondary">
+              {tx("데이터 로드 중")}
+            </p>
             {[0, 1, 2].map((i) => (
-              <div key={i} className="h-[44px] animate-pulse rounded-[6px] bg-app-bg" />
+              <div
+                key={i}
+                className="h-[44px] animate-pulse rounded-[6px] bg-app-bg"
+              />
             ))}
           </div>
         )}
@@ -990,7 +1235,9 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                 ? tx("이 목록을 볼 권한이 없습니다.")
                 : tx("목록을 불러오지 못했습니다.")}
             </p>
-            <p className="text-[13px] text-app-text-secondary">{tx(loadError.message)}</p>
+            <p className="text-[13px] text-app-text-secondary">
+              {tx(loadError.message)}
+            </p>
             {loadError.code !== "FORBIDDEN" && (
               <button
                 type="button"
@@ -1025,7 +1272,10 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                 onClick={openCreate}
                 className="rounded-[6px] bg-[#1b1f23] px-3 py-1.5 text-[13px] font-medium text-white"
               >
-                + {locale === "ko" ? `${spec.label} 만들기` : `Create ${spec.label}`}
+                +{" "}
+                {locale === "ko"
+                  ? `${spec.label} 만들기`
+                  : `Create ${spec.label}`}
               </button>
             )}
           </div>
@@ -1033,7 +1283,9 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
 
         {showNoResults && (
           <div className="flex flex-col items-start gap-3 p-8">
-            <p className="text-[14px] font-semibold">{tx("검색 결과가 없습니다.")}</p>
+            <p className="text-[14px] font-semibold">
+              {tx("검색 결과가 없습니다.")}
+            </p>
             <p className="text-[13px] text-app-text-secondary">
               {tx("다른 검색어를 쓰거나 필터를 해제해 보세요.")}
             </p>
@@ -1052,13 +1304,21 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
 
         {/* 카드 보기 — 원본 폴더 행 레이아웃(이름+도메인+kebab / 하단 지표 스트립)을 재현 */}
         {!loading && !loadError && rows.length > 0 && !tableView && (
-          <ul>
+          <ul
+            className={cn(spec.view === "folder" && "flex flex-col gap-[10px]")}
+          >
             {rows.map((row) => {
               const id = String(row.id);
-              const metricColumns = spec.columns.slice(2);
               return (
-                <li key={id} className="border-b border-app-border last:border-b-0">
-                  <div className="flex items-center gap-2 px-4 py-3">
+                <li
+                  key={id}
+                  className={cn(
+                    "group border-b border-app-border last:border-b-0",
+                    spec.view === "folder" &&
+                      "overflow-hidden rounded-[8px] border border-[#e7e8eb] bg-white shadow-[0_1px_2px_rgba(17,24,39,0.04)] last:border-b",
+                  )}
+                >
+                  <div className="flex min-h-[42px] items-center gap-2 border-b border-[#eceef1] px-[14px] py-[8px]">
                     {capabilities.bulk && !isTrash && (
                       <input
                         type="checkbox"
@@ -1070,17 +1330,19 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                           else next.delete(id);
                           setSelected(next);
                         }}
+                        className="opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
                       />
                     )}
                     <span className="relative inline-flex shrink-0 items-center">
                       <FolderGlyph pinned={Boolean(row.pinned)} />
-                      {spec.key === "folders" && typeof row.color === "string" && (
-                        <span
-                          aria-hidden="true"
-                          className="absolute -bottom-0.5 -right-0.5 h-[7px] w-[7px] rounded-full ring-1 ring-white"
-                          style={{ backgroundColor: String(row.color) }}
-                        />
-                      )}
+                      {spec.key === "folders" &&
+                        typeof row.color === "string" && (
+                          <span
+                            aria-hidden="true"
+                            className="absolute -bottom-0.5 -right-0.5 h-[7px] w-[7px] rounded-full ring-1 ring-white"
+                            style={{ backgroundColor: String(row.color) }}
+                          />
+                        )}
                     </span>
                     {spec.view === "folder" ? (
                       <Link
@@ -1125,10 +1387,12 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                             type="button"
                             aria-label={tx("설정")}
                             aria-haspopup="menu"
-                            onClick={() => setMenuRowId(menuRowId === id ? null : id)}
-                            className="h-[28px] w-[28px] rounded-[6px] text-app-text-secondary hover:bg-app-bg"
+                            onClick={() =>
+                              setMenuRowId(menuRowId === id ? null : id)
+                            }
+                            className="inline-flex h-[28px] w-[28px] items-center justify-center rounded-[6px] text-app-text-secondary hover:bg-app-bg"
                           >
-                            ⋮
+                            <DotsVerticalIcon aria-hidden="true" />
                           </button>
                           {menuRowId === id && (
                             <div
@@ -1165,9 +1429,14 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                   </div>
                   {/* 지표 스트립 — AI 가시성을 첫 지표로 표시한다.
                       값은 /api/home/folder-metrics 의 워크스페이스 실측 데이터다. */}
-                  <div className="grid grid-cols-[repeat(7,minmax(0,1fr))] gap-x-[8px] px-[20px] pb-[20px] pt-[8px] max-lg:flex max-lg:overflow-x-auto">
-                    {buildFolderMetricCells(folderMetrics[id], formatMetric, String(row.domain)).map((metric) => (
-                      <div key={metric.label} className="min-w-[110px]">
+                  <div className="grid grid-cols-[repeat(7,minmax(128px,1fr))] gap-x-[12px] overflow-x-auto px-[14px] pb-[13px] pt-[12px] max-lg:flex">
+                    {buildFolderMetricCells(
+                      folderMetrics[id],
+                      formatMetric,
+                      id,
+                      locale,
+                    ).map((metric) => (
+                      <div key={metric.label} className="min-w-[128px]">
                         {metric.href ? (
                           <Link
                             href={metric.href}
@@ -1176,9 +1445,34 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                             {tx(metric.label)}
                           </Link>
                         ) : (
-                          <p className="text-[14px] leading-[20px] text-a2-text">{tx(metric.label)}</p>
+                          <p className="text-[14px] leading-[20px] text-a2-text">
+                            {tx(metric.label)}
+                          </p>
                         )}
-                        {metric.hint ? (
+                        {metric.showGauge ? (
+                          <>
+                            <div className="mt-[3px] flex min-h-[30px] items-end gap-[7px]">
+                              <p
+                                className={cn(
+                                  "font-semibold text-[#5d5bd4]",
+                                  metric.gaugeValue === null
+                                    ? "pb-[3px] text-[13px]"
+                                    : "text-[20px] leading-[27px]",
+                                )}
+                              >
+                                {metric.value}
+                              </p>
+                              <AiVisibilityGauge
+                                value={metric.gaugeValue ?? null}
+                              />
+                            </div>
+                            {metric.hint && (
+                              <p className="mt-[2px] truncate text-[11px] leading-[15px] text-a2-value-muted">
+                                {tx(metric.hint)}
+                              </p>
+                            )}
+                          </>
+                        ) : metric.hint ? (
                           <p className="mt-[4px] text-[12px] leading-[16px] text-a2-value-muted">
                             {tx(metric.hint)}
                           </p>
@@ -1187,8 +1481,8 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                             className={cn(
                               "mt-[4px] text-[20px] leading-[26px]",
                               metric.accent
-                                ? "font-bold text-a2-accent-purple"
-                                : "font-semibold text-a2-value-muted"
+                                ? "font-bold text-[#5d5bd4]"
+                                : "font-semibold text-[#5d5bd4]",
                             )}
                           >
                             {metric.value}
@@ -1197,16 +1491,6 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                       </div>
                     ))}
                   </div>
-                  {metricColumns.length > 0 && (
-                    <div className="flex flex-wrap items-start gap-x-10 gap-y-2 border-t border-[#eef0f2] px-[20px] py-[10px]">
-                      {metricColumns.map((column) => (
-                        <div key={column.key} className="min-w-[110px]">
-                          <p className="text-[12px] text-app-text-secondary">{column.label}</p>
-                          <p className="mt-0.5 text-[13px]">{formatCell(row, column, locale)}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </li>
               );
             })}
@@ -1223,12 +1507,14 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                       <input
                         type="checkbox"
                         aria-label={tx("전체 선택")}
-                        checked={selected.size === rows.length && rows.length > 0}
+                        checked={
+                          selected.size === rows.length && rows.length > 0
+                        }
                         onChange={(e) =>
                           setSelected(
                             e.target.checked
                               ? new Set(rows.map((r) => String(r.id)))
-                              : new Set()
+                              : new Set(),
                           )
                         }
                       />
@@ -1239,7 +1525,7 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                       key={column.key}
                       className={cn(
                         "whitespace-nowrap px-4 py-2.5 text-[12px] font-semibold uppercase tracking-[0.04em] text-app-text-secondary",
-                        column.align === "right" && "text-right"
+                        column.align === "right" && "text-right",
                       )}
                     >
                       {column.label}
@@ -1275,7 +1561,8 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                           key={column.key}
                           className={cn(
                             "border-b border-[#eef0f2] px-4 py-3 text-[13px]",
-                            column.align === "right" && "text-right tabular-nums"
+                            column.align === "right" &&
+                              "text-right tabular-nums",
                           )}
                         >
                           {formatCell(row, column, locale)}
@@ -1309,7 +1596,9 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                               type="button"
                               aria-label={tx("설정")}
                               aria-haspopup="menu"
-                              onClick={() => setMenuRowId(menuRowId === id ? null : id)}
+                              onClick={() =>
+                                setMenuRowId(menuRowId === id ? null : id)
+                              }
                               className="h-[28px] w-[28px] rounded-[6px] text-app-text-secondary hover:bg-app-bg"
                             >
                               ⋮
@@ -1409,7 +1698,9 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                   }}
                   className="mr-auto rounded-[6px] border border-app-border px-3 py-1.5 text-[13px] font-medium text-app-red"
                 >
-                  {locale === "ko" ? `${spec.label} 삭제` : `Delete ${spec.label}`}
+                  {locale === "ko"
+                    ? `${spec.label} 삭제`
+                    : `Delete ${spec.label}`}
                 </button>
               )}
               <button
@@ -1425,11 +1716,7 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                 disabled={saving}
                 className="rounded-[6px] bg-[#1b1f23] px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-60"
               >
-                {saving
-                  ? tx("저장 중…")
-                  : creating
-                    ? tx("저장")
-                    : tx("저장")}
+                {saving ? tx("저장 중…") : creating ? tx("저장") : tx("저장")}
               </button>
             </>
           }
@@ -1437,7 +1724,10 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
           <div className="relative flex flex-col gap-4">
             {creating && spec.key === "folders" && <FolderCreateMascot />}
             {formError && (
-              <p role="alert" className="rounded-[6px] bg-[#fdecef] px-3 py-2 text-[13px] text-app-red">
+              <p
+                role="alert"
+                className="rounded-[6px] bg-[#fdecef] px-3 py-2 text-[13px] text-app-red"
+              >
                 {tx(formError)}
               </p>
             )}
@@ -1450,7 +1740,9 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                   value={form[field.key]}
                   error={formErrors[field.key]}
                   readOnly={!creating && field.createOnly}
-                  onChange={(value) => setForm((prev) => ({ ...prev, [field.key]: value }))}
+                  onChange={(value) =>
+                    setForm((prev) => ({ ...prev, [field.key]: value }))
+                  }
                 />
               ))}
 
@@ -1458,7 +1750,9 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
             {creating && spec.key === "folders" && (
               <>
                 <div className="flex items-center justify-between border-t border-app-border pt-3">
-                  <span className="text-[13px] font-medium">{tx("저장 후 공유하기")}</span>
+                  <span className="text-[13px] font-medium">
+                    {tx("저장 후 공유하기")}
+                  </span>
                   <button
                     type="button"
                     role="switch"
@@ -1466,13 +1760,13 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                     onClick={() => setShareAfterSave((v) => !v)}
                     className={cn(
                       "relative h-[20px] w-[36px] rounded-full transition-colors",
-                      shareAfterSave ? "bg-app-link" : "bg-app-border"
+                      shareAfterSave ? "bg-app-link" : "bg-app-border",
                     )}
                   >
                     <span
                       className={cn(
                         "absolute top-[2px] h-[16px] w-[16px] rounded-full bg-white transition-all",
-                        shareAfterSave ? "left-[18px]" : "left-[2px]"
+                        shareAfterSave ? "left-[18px]" : "left-[2px]",
                       )}
                     />
                   </button>
@@ -1490,7 +1784,7 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
                   </label>
                   <p className="mt-1 pl-6 text-[12px] leading-[16px] text-app-text-secondary">
                     {tx(
-                      "Google AI 개요에서 내 도메인의 노출·인용 여부를 추적합니다. 저장 후 AI 가시성 화면에서 쿼리를 추가할 수 있습니다."
+                      "Google AI 개요에서 내 도메인의 노출·인용 여부를 추적합니다. 저장 후 AI 가시성 화면에서 쿼리를 추가할 수 있습니다.",
                     )}{" "}
                     <a
                       href="/ai-seo/overview/"
@@ -1529,7 +1823,9 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
             </p>
             {shareAfterSave && (
               <p className="rounded-[6px] bg-app-bg px-3 py-2 text-[13px] text-app-text-secondary">
-                {tx("폴더 링크가 클립보드에 복사되었습니다. 같은 워크스페이스 멤버에게 전달해 공유할 수 있습니다.")}
+                {tx(
+                  "폴더 링크가 클립보드에 복사되었습니다. 같은 워크스페이스 멤버에게 전달해 공유할 수 있습니다.",
+                )}
               </p>
             )}
             {aiTrack && (
@@ -1547,7 +1843,11 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
       {/* 소프트 삭제 확인 (제안: 원본은 즉시 영구 삭제) */}
       {deleteTarget && (
         <Dialog
-          title={locale === "ko" ? `${spec.label}을(를) 휴지통으로 이동` : `Move ${spec.label} to trash`}
+          title={
+            locale === "ko"
+              ? `${spec.label}을(를) 휴지통으로 이동`
+              : `Move ${spec.label} to trash`
+          }
           onClose={() => setDeleteTarget(null)}
           footer={
             <>
@@ -1570,9 +1870,16 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
         >
           <p className="text-[14px]">
             {locale === "ko" ? (
-              <><strong>{String(deleteTarget[spec.columns[0].key])}</strong>을(를) 휴지통으로 옮깁니다.</>
+              <>
+                <strong>{String(deleteTarget[spec.columns[0].key])}</strong>
+                을(를) 휴지통으로 옮깁니다.
+              </>
             ) : (
-              <>Move <strong>{String(deleteTarget[spec.columns[0].key])}</strong> to trash.</>
+              <>
+                Move{" "}
+                <strong>{String(deleteTarget[spec.columns[0].key])}</strong> to
+                trash.
+              </>
             )}
           </p>
           <p className="mt-2 text-[13px] text-app-text-secondary">
@@ -1586,7 +1893,11 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
       {/* 영구 삭제 확인 — 원본 폴더 삭제의 코드 입력 UX를 재현 (증거 O) */}
       {purgeTarget && (
         <Dialog
-          title={locale === "ko" ? `${spec.label} 영구 삭제` : `Delete ${spec.label} permanently`}
+          title={
+            locale === "ko"
+              ? `${spec.label} 영구 삭제`
+              : `Delete ${spec.label} permanently`
+          }
           onClose={() => setPurgeTarget(null)}
           footer={
             <>
@@ -1610,9 +1921,15 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
         >
           <p className="text-[14px]">
             {locale === "ko" ? (
-              <><strong>{String(purgeTarget.row[spec.columns[0].key])}</strong> 및 연결된 모든 데이터가 삭제됩니다.</>
+              <>
+                <strong>{String(purgeTarget.row[spec.columns[0].key])}</strong>{" "}
+                및 연결된 모든 데이터가 삭제됩니다.
+              </>
             ) : (
-              <><strong>{String(purgeTarget.row[spec.columns[0].key])}</strong> and all related data will be deleted.</>
+              <>
+                <strong>{String(purgeTarget.row[spec.columns[0].key])}</strong>{" "}
+                and all related data will be deleted.
+              </>
             )}
           </p>
           <p className="mt-3 text-[13px] text-app-text-secondary">
@@ -1628,8 +1945,12 @@ export function ResourceWorkspace({ spec: sourceSpec, capabilities }: ResourceWo
             <li>{tx("광고")}</li>
           </ul>
           <label className="mt-4 block text-[13px] font-medium">
-            {locale === "ko" ? "삭제를 계속 진행하려면 이 코드 입력: " : "Enter this code to continue: "}
-            <span className="font-mono text-[15px] tracking-[0.1em]">{purgeTarget.code}</span>
+            {locale === "ko"
+              ? "삭제를 계속 진행하려면 이 코드 입력: "
+              : "Enter this code to continue: "}
+            <span className="font-mono text-[15px] tracking-[0.1em]">
+              {purgeTarget.code}
+            </span>
             <input
               type="text"
               value={codeInput}

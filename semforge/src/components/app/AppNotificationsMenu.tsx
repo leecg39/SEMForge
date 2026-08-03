@@ -102,7 +102,7 @@ export function AppNotificationsMenu() {
         <button
           type="button"
           aria-label={`앱 알림${unread > 0 ? `, 읽지 않음 ${unread}개` : ""}`}
-          className="relative flex h-8 w-8 items-center justify-center rounded-[6px] text-app-text-secondary hover:bg-app-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-blue"
+          className="relative flex h-10 w-10 items-center justify-center rounded-full bg-faint text-hof hover:bg-bebe focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rausch"
         >
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
             <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
@@ -116,7 +116,7 @@ export function AppNotificationsMenu() {
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content align="end" sideOffset={8} className="z-[600] w-[min(390px,calc(100vw-24px))] overflow-hidden rounded-[9px] border border-app-border bg-white shadow-[0_16px_44px_rgba(0,0,0,0.18)]">
+        <DropdownMenu.Content align="end" sideOffset={8} className="z-[600] w-[min(390px,calc(100vw-24px))] overflow-hidden rounded-[12px] border border-bebe bg-white shadow-[var(--shadow-dropdown)]">
           <div className="flex items-center justify-between border-b border-app-border px-4 py-3">
             <p className="text-[14px] font-semibold text-app-text">알림</p>
             {unread > 0 && <button type="button" onClick={() => void markRead()} className="text-[11px] font-medium text-app-blue hover:underline">모두 읽음</button>}

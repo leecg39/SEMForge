@@ -9,7 +9,7 @@ const CARD_GAP = 12;
 const STEP = CARD_WIDTH + CARD_GAP;
 
 const navButtonClass =
-  "flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#d1d2d5] text-[#181e15] transition-colors duration-200 ease-in-out hover:bg-black/5 disabled:pointer-events-none disabled:opacity-30";
+  "flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-faint text-hof transition-colors duration-200 ease-in-out hover:bg-bebe disabled:pointer-events-none disabled:text-grey-500 disabled:opacity-60";
 
 export default function ToolkitsSlider() {
   const slides = useLocalizedValue(toolkitSlides);
@@ -36,14 +36,14 @@ export default function ToolkitsSlider() {
   const current = Math.min(index, maxIndex);
 
   return (
-    <section className="py-[120px]">
+    <section className="bg-white py-[96px]">
       <div className="mp-container">
         <div className="flex flex-wrap items-end justify-between gap-6">
           <div>
-            <h2 className="text-[12px] font-semibold uppercase tracking-[0.24px] text-[#181e15]">
+            <h2 className="text-[12px] font-semibold uppercase tracking-[0.24px] text-foggy">
               {section.label}
             </h2>
-            <h3 className="mt-6 max-w-[980px] font-lazzer text-[36px] font-semibold uppercase leading-none tracking-[-0.04em] text-[#181e15] md:text-[64px] md:leading-[64px]">
+            <h3 className="mt-3 max-w-[980px] font-lazzer text-[28px] font-semibold leading-[1.2] tracking-[-0.56px] text-hof md:text-[36px]">
               {section.heading}
             </h3>
           </div>
@@ -93,21 +93,21 @@ export default function ToolkitsSlider() {
             {slides.map((slide) => (
               <li
                 key={slide.tag}
-                className="mr-3 grid h-[500px] w-[430px] shrink-0 grid-rows-[auto_1fr] rounded-[5px] bg-[#dceeeb] bg-[url('/images/pattern-toolkit-card.svg')] bg-[position:right_bottom] bg-no-repeat p-6"
+                className="mr-3 grid h-[500px] w-[430px] shrink-0 grid-rows-[auto_1fr] rounded-[12px] bg-faint p-6"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <h3 className="text-[12px] font-semibold uppercase tracking-[0.24px] text-[#181e15]">
+                    <h3 className="text-[12px] font-semibold uppercase tracking-[0.24px] text-foggy">
                       {slide.tag}
                     </h3>
-                    <h4 className="mt-2 font-lazzer text-[24px] font-semibold leading-[28.8px] tracking-[-0.48px] text-[#181e15]">
+                    <h4 className="mt-2 font-lazzer text-[22px] font-medium leading-[1.18] tracking-[-0.44px] text-hof">
                       {slide.title}
                     </h4>
                   </div>
                   <button
                     type="button"
                     aria-label={tx("Expand item").replace("{item}", slide.title)}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-[#181e15] transition-colors duration-200 ease-in-out hover:bg-[#f3f6f6]"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-hof transition-colors duration-200 ease-in-out hover:bg-bebe"
                   >
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                       <path

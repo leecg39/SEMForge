@@ -23,7 +23,9 @@ SEMForge — SEO & AI 가시성 플랫폼. Semrush의 UI/UX를 관찰 기반으�
 | **TalorData SERP** | 키워드 순위, SERP 피처(AI 개요·로컬팩 등), 도메인 실시간 수집 | `TALORDATA_API_TOKEN` | google/bing, gl/hl 지원 |
 | **Firecrawl** | 사이트 진단 크롤 (없으면 자체 BFS 크롤러로 폴백) | `FIRECRAWL_API_KEY` | 선택 |
 | **PageSpeed Insights** | 사이트 성능, Core Web Vitals (사이트 진단 테마 카드) | `PAGESPEED_API_KEY` | 선택, 없어도 저쿼터 동작 |
-| **ChatMock** | ChatGPT 계정 인증 기반 광고 문구·키워드 제안 | `CHATMOCK_BASE_URL` / `CHATMOCK_ADVERTISING_MODEL` | OpenAI API 키 불필요, 로컬 프록시 실행 필요 |
+| **ChatMock** | 광고 문구·Markdown 기사와 대표 이미지의 구조화된 시각 명세 생성 | `CHATMOCK_BASE_URL` / `CHATMOCK_ADVERTISING_MODEL` / `CHATMOCK_CONTENT_MODEL` | OpenAI API 키 불필요, 로컬 프록시 실행 필요 |
+| **xAI** | Grok 4.5 기사·영상 콘티와 Grok Imagine 영상 장면 생성 | `XAI_API_KEY` / `XAI_CONTENT_MODEL` / `XAI_VIDEO_MODEL` | 영상에는 필요 |
+| **Gemini API** | 콘텐츠 작업판의 Gemini 3.5 Flash 기사 생성 | `GEMINI_API_KEY` | 선택 |
 | **Google Search Console** | 소유 사이트의 클릭·노출·CTR·평균 포지션 (포지션 추적, 트래픽 개요) | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GSC_REDIRECT_URI` | OAuth 연결 필요 |
 | **Google Business Profile** | 리스팅 위치, 리뷰 조회·답글 (지역 툴킷) | 위와 동일 + `GBP_REDIRECT_URI` | 별도 scope(`business.manage`) |
 
@@ -43,7 +45,8 @@ npm run db:seed      # 구조 시드 (데모 지표 없음. SEED_DEMO_DATA=1 시
 npm run dev          # http://localhost:3000
 ```
 
-광고 AI는 [ChatMock](https://github.com/RayBytes/chatmock)으로 인증된 ChatGPT 계정을 사용합니다.
+광고 AI와 콘텐츠의 기본 GPT-5.6 Luna 모델은 [ChatMock](https://github.com/RayBytes/chatmock)으로 인증된 ChatGPT 계정을 사용합니다.
+콘텐츠 작업판에서는 `XAI_API_KEY` 또는 `GEMINI_API_KEY`를 설정하면 Grok 4.5와 Gemini 3.5 Flash도 선택할 수 있습니다.
 최초 한 번 로그인한 뒤 SEMForge와 별도 터미널에서 프록시를 실행하세요.
 
 ```bash
@@ -52,6 +55,10 @@ brew install chatmock
 npm run chatmock:login
 npm run chatmock:serve  # 기본 http://127.0.0.1:8000/v1
 ```
+
+기사 비주얼은 ChatMock이 기사 문맥에서 구조화된 색상·구도 명세를 만들고, 서버의 Sharp 렌더러가 원본 WebP와 썸네일(1280×720)·OG(1200×630)를 생성합니다. ChatMock 자체가 이미지 출력을 제공하지 않으므로 한글 제목과 브랜드 로고는 서버가 정확하게 합성하며, 파일은 `CONTENT_ASSET_ROOT`(기본 `data/content-assets/`)에 저장됩니다. `npm run db:backup`은 SQLite와 이 자산 디렉터리를 함께 백업합니다.
+
+영상 제작은 `Grok 4.5 콘티 → 사용자 승인 → Grok 시각 명세 + Sharp 키프레임 → 사용자 비용 승인 → Grok Imagine 장면 생성 → FFmpeg MP4 조립` 순서입니다. 영상 경로는 하나의 `XAI_API_KEY`만 사용하며, 키프레임은 서버의 결정적 렌더러가 만들고 xAI 결과 URL은 완료 즉시 로컬 자산 저장소로 내려받습니다. FFmpeg와 FFprobe가 PATH에 없으면 `FFMPEG_PATH`와 `FFPROBE_PATH`를 지정해야 합니다.
 
 - **Node.js는 Homebrew v25(`/opt/homebrew/bin/node`)를 사용하세요.** 시스템 Node 22로 실행하면
   better-sqlite3 버전 불일치로 500 오류가 발생합니다. Node 버전을 바꾸면 `npm rebuild better-sqlite3`가 필요합니다.
@@ -64,8 +71,17 @@ npm run chatmock:serve  # 기본 http://127.0.0.1:8000/v1
 
 ```bash
 TALORDATA_API_TOKEN=     # TalorData 대시보드에서 발급
-CHATMOCK_BASE_URL=       # 기본값 http://127.0.0.1:8000/v1 (광고 AI)
+CHATMOCK_BASE_URL=       # 기본값 http://127.0.0.1:8000/v1
 CHATMOCK_ADVERTISING_MODEL=gpt-5.4
+CHATMOCK_CONTENT_MODEL=gpt-5.6-luna
+CHATMOCK_CONTENT_TIMEOUT_MS=270000 # xHigh 장문 생성 제한(30~300초)
+XAI_API_KEY=             # (선택) Grok 4.5 콘텐츠 생성
+XAI_CONTENT_MODEL=grok-4.5
+XAI_VIDEO_MODEL=grok-imagine-video-1.5
+GEMINI_API_KEY=          # (선택) Gemini 3.5 Flash 콘텐츠 생성
+CONTENT_ASSET_ROOT=      # 기본값 data/content-assets/
+FFMPEG_PATH=             # 미설정 시 PATH의 ffmpeg
+FFPROBE_PATH=            # 미설정 시 PATH의 ffprobe
 FIRECRAWL_API_KEY=       # Firecrawl 대시보드에서 발급
 PAGESPEED_API_KEY=       # (선택) Google Cloud 콘솔에서 발급
 GOOGLE_CLIENT_ID=        # Google Cloud "웹 애플리케이션" OAuth 클라이언트
@@ -87,6 +103,7 @@ SNAPSHOT_RETENTION_DAYS= # 스냅샷 보존 일수 (기본 90, db_retention job)
 | 포지션 추적 | `/position-tracking/` | 실시간 순위 수집, 순위 분포, 경쟁자 발견, GSC 컬럼, 주기 수집 |
 | 사이트 진단 | `/siteaudit/` | 탭 5종(개요/문제/페이지/통계/테마), 테마 카드 9종(robots.txt AI 봇 판정 포함), PSI CWV, 스케줄 크롤 |
 | AI 가시성 | `/ai-seo/overview/` | Google AI 개요 출현·자사 도메인 인용 여부 추적 (TalorData 실측) |
+| 콘텐츠 | `/content/` | 글·이미지·영상 제작, ChatMock 시각 명세, Grok 콘티·영상 장면, 자동 저장·재개 |
 | 지역 | `/local-business/` | GBP 리스팅·리뷰·답글, 로컬팩 기반 지도 순위 추적 |
 | 트래픽&시장 | `/analytics/traffic/` | GSC 기반 자사 검색 유입 (경쟁사 추정은 소스 없음으로 미제공) |
 
@@ -95,9 +112,10 @@ SNAPSHOT_RETENTION_DAYS= # 스냅샷 보존 일수 (기본 90, db_retention job)
 서버 안에 상시 타이머를 두지 않고, 외부 cron/launchd가 엔드포인트를 주기 호출하는 구조입니다.
 
 ```bash
-# 등록된 due 잡(사이트 진단 site_audit, 포지션 추적 position_tracking)을 실행
+# 등록된 due 잡(사이트 진단, 포지션 추적, 콘텐츠 미디어)을 실행
 curl -H "x-cron-secret: $CRON_SECRET" "http://localhost:3000/api/cron/run-due"
 curl -H "x-cron-secret: $CRON_SECRET" "http://localhost:3000/api/cron/run-due?only=site_audit&limit=10"
+curl -H "x-cron-secret: $CRON_SECRET" "http://localhost:3000/api/cron/run-due?only=content_media_due&limit=10"
 ```
 
 캠페인별 스케줄(없음/매일/매주)은 각 도구의 설정 화면에서 지정합니다.
@@ -132,6 +150,7 @@ npm run lint            # ESLint
 npm run test:talordata  # TalorData 클라이언트/수집
 npm run test:analytics  # 분석 지표 순수 함수
 npm run test:siteaudit  # 사이트 진단 링크 그래프
+npm run test:content    # 글·이미지·영상 콘텐츠 계약과 실행
 npx tsx --test src/server/position-tracking/*.test.ts  # 순위 분포/스케줄
 ```
 

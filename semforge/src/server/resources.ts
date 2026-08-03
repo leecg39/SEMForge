@@ -1,8 +1,10 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db/client";
 import {
   contentArticles,
+  contentAssets,
+  contentVisuals,
   folders,
   keywordListItems,
   keywordLists,
@@ -25,6 +27,7 @@ import {
   versionField,
 } from "@/lib/validators";
 import type { ResourceConfig } from "@/server/resource";
+import { deleteContentAsset } from "@/server/content/visual-storage";
 
 /**
  * 리소스 레지스트리.
@@ -386,24 +389,62 @@ const contentResource: ResourceConfig = {
   searchFields: ["title", "keyword"],
   sortableFields: ["createdAt", "updatedAt", "title", "seoScore", "wordCount"],
   defaultSort: "updatedAt:desc",
-  filterableFields: ["mode", "status", "folderId"],
+  filterableFields: ["mode", "status", "folderId", "updatedFrom", "updatedTo"],
   createSchema: z.object({
     folderId: z.string().min(1).optional().nullable(),
     title: titleSchema("제목", 150),
     // 원본 Content 좌측 메뉴의 생성/최적화/재활용/브리프 (O)
     mode: z.enum(["create", "optimize", "repurpose", "brief"]).optional().default("create"),
     keyword: optionalText(120),
-    body: optionalText(20000),
+    sourceUrl: optionalText(2000),
+    metaDescription: optionalText(320),
+    body: optionalText(200000),
   }),
   updateSchema: z.object({
     title: titleSchema("제목", 150).optional(),
     mode: z.enum(["create", "optimize", "repurpose", "brief"]).optional(),
     status: z.enum(["draft", "in_review", "published"]).optional(),
     keyword: optionalText(120),
-    body: optionalText(20000),
+    sourceUrl: optionalText(2000),
+    metaDescription: optionalText(320),
+    body: optionalText(200000),
+    wordCount: z.coerce.number().int().min(0).optional(),
+    seoScore: z.coerce.number().int().min(0).max(100).optional().nullable(),
+    publishedAt: z
+      .union([z.string().datetime().transform((value) => new Date(value)), z.null()])
+      .optional(),
     version: versionField,
   }),
-  uniqueRules: [{ fields: ["title"], message: "같은 제목의 문서가 이미 있습니다." }],
+  extraWhere: (_auth, query, cols) => {
+    const conditions = [];
+    const from = query.filters.updatedFrom?.[0];
+    const to = query.filters.updatedTo?.[0];
+    if (from) {
+      const date = new Date(`${from}T00:00:00.000Z`);
+      if (!Number.isNaN(date.getTime())) conditions.push(gte(cols.updatedAt, date));
+    }
+    if (to) {
+      const date = new Date(`${to}T23:59:59.999Z`);
+      if (!Number.isNaN(date.getTime())) conditions.push(lte(cols.updatedAt, date));
+    }
+    return conditions.length ? and(...conditions) : undefined;
+  },
+  cascade: [
+    { table: contentVisuals, foreignKey: "articleId" },
+    { table: contentAssets, foreignKey: "articleId" },
+  ],
+  beforePurge: async (auth, article) => {
+    const assets = await db
+      .select({ storageKey: contentAssets.storageKey })
+      .from(contentAssets)
+      .where(
+        and(
+          eq(contentAssets.articleId, String(article.id)),
+          eq(contentAssets.workspaceId, auth.workspaceId),
+        ),
+      );
+    await Promise.all(assets.map((asset) => deleteContentAsset(asset.storageKey)));
+  },
 };
 
 /* --------------------------- 레지스트리 ------------------------------ */

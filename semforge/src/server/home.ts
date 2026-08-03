@@ -4,6 +4,7 @@ import {
   aiVisibilityQueries,
   aiVisibilitySnapshots,
   aiVisibilityProjects,
+  aiVisibilityRuns,
   aiVisibilityObservations,
   aiVisibilityCitations,
   aiVisibilityPrompts,
@@ -17,7 +18,7 @@ import type { AuthContext } from "@/lib/session";
 import { getAnalyticsDataset } from "@/server/analytics";
 import {
   computeAiVisibilityMetric,
-  latestObservationPairs,
+  selectRunObservationSets,
   type DashboardObservation,
 } from "@/server/ai-visibility/dashboard";
 
@@ -43,6 +44,11 @@ export interface FolderMetricStrip {
   aiVisibility: number | null;
   /** 최신 스냅샷에서 자사 도메인이 인용된 쿼리 수. */
   mentions: number;
+  /** 최신 실행이 반환한 전체 셀과 unknown 제외 측정 가능 셀. */
+  aiObserved: number;
+  aiMeasured: number;
+  /** 홈 카드에 표시할 최신 AI 관측 시각. */
+  aiUpdatedAt: string | null;
   /** 캠페인 미설정 시 null → UI는 CTA 힌트 표시 */
   siteHealth: number | null;
   visibility: number | null;
@@ -71,7 +77,10 @@ export interface MonitoredDomain {
 const HOME_ANALYTICS_COUNTRY = "US";
 const HOME_ANALYTICS_DEVICE: AnalyticsDevice = "desktop";
 
-export function calculateAiVisibility(collected: number, cited: number): number | null {
+export function calculateAiVisibility(
+  collected: number,
+  cited: number,
+): number | null {
   if (collected <= 0) return null;
   const boundedCited = Math.min(collected, Math.max(0, cited));
   return Math.round((boundedCited / collected) * 100);
@@ -79,7 +88,7 @@ export function calculateAiVisibility(collected: number, cited: number): number 
 
 export async function getFolderMetricStrips(
   auth: AuthContext,
-  folderIds?: string[]
+  folderIds?: string[],
 ): Promise<FolderMetricStrip[]> {
   const folderConds = [
     eq(folders.workspaceId, auth.workspaceId),
@@ -95,9 +104,11 @@ export async function getFolderMetricStrips(
   if (folderRows.length === 0) return [];
 
   const ids = folderRows.map((row) => row.id);
-  const normalizedDomains = [...new Set(
-    folderRows.map((row) => normalizeDomain(row.domain)).filter(Boolean),
-  )];
+  const normalizedDomains = [
+    ...new Set(
+      folderRows.map((row) => normalizeDomain(row.domain)).filter(Boolean),
+    ),
+  ];
 
   const [dataset, auditRows, trackingRows, aiQueryRows] = await Promise.all([
     getAnalyticsDataset({
@@ -115,8 +126,8 @@ export async function getFolderMetricStrips(
         and(
           eq(siteAuditCampaigns.workspaceId, auth.workspaceId),
           isNull(siteAuditCampaigns.deletedAt),
-          inArray(siteAuditCampaigns.folderId, ids)
-        )
+          inArray(siteAuditCampaigns.folderId, ids),
+        ),
       )
       .orderBy(desc(siteAuditCampaigns.updatedAt)),
     db
@@ -130,12 +141,15 @@ export async function getFolderMetricStrips(
           eq(positionTrackingCampaigns.workspaceId, auth.workspaceId),
           isNull(positionTrackingCampaigns.deletedAt),
           eq(positionTrackingCampaigns.status, "active"),
-          inArray(positionTrackingCampaigns.folderId, ids)
-        )
+          inArray(positionTrackingCampaigns.folderId, ids),
+        ),
       ),
     normalizedDomains.length > 0
       ? db
-          .select({ id: aiVisibilityQueries.id, domain: aiVisibilityQueries.domain })
+          .select({
+            id: aiVisibilityQueries.id,
+            domain: aiVisibilityQueries.domain,
+          })
           .from(aiVisibilityQueries)
           .where(
             and(
@@ -148,16 +162,17 @@ export async function getFolderMetricStrips(
   ]);
 
   const aiQueryIds = aiQueryRows.map((row) => row.id);
-  const latestAiRows = aiQueryIds.length > 0
-    ? await db
-        .select({
-          queryId: aiVisibilitySnapshots.queryId,
-          latest: max(aiVisibilitySnapshots.capturedAt),
-        })
-        .from(aiVisibilitySnapshots)
-        .where(inArray(aiVisibilitySnapshots.queryId, aiQueryIds))
-        .groupBy(aiVisibilitySnapshots.queryId)
-    : [];
+  const latestAiRows =
+    aiQueryIds.length > 0
+      ? await db
+          .select({
+            queryId: aiVisibilitySnapshots.queryId,
+            latest: max(aiVisibilitySnapshots.capturedAt),
+          })
+          .from(aiVisibilitySnapshots)
+          .where(inArray(aiVisibilitySnapshots.queryId, aiQueryIds))
+          .groupBy(aiVisibilitySnapshots.queryId)
+      : [];
   const aiSnapshotRows = (
     await Promise.all(
       latestAiRows.map(async (row) => {
@@ -166,6 +181,7 @@ export async function getFolderMetricStrips(
           .select({
             queryId: aiVisibilitySnapshots.queryId,
             cited: aiVisibilitySnapshots.cited,
+            capturedAt: aiVisibilitySnapshots.capturedAt,
           })
           .from(aiVisibilitySnapshots)
           .where(
@@ -183,7 +199,10 @@ export async function getFolderMetricStrips(
 
   // 새 프로젝트 기반 스토어는 대시보드와 동일한 최신 셀·unknown 제외 공식을 공유한다.
   const aiProjectRows = await db
-    .select({ id: aiVisibilityProjects.id, folderId: aiVisibilityProjects.folderId })
+    .select({
+      id: aiVisibilityProjects.id,
+      folderId: aiVisibilityProjects.folderId,
+    })
     .from(aiVisibilityProjects)
     .where(
       and(
@@ -193,38 +212,79 @@ export async function getFolderMetricStrips(
       ),
     );
   const aiProjectIds = aiProjectRows.map((row) => row.id);
-  const newObservationRows = aiProjectIds.length > 0
-    ? await db
-        .select({
-          id: aiVisibilityObservations.id,
-          projectId: aiVisibilityObservations.projectId,
-          runId: aiVisibilityObservations.runId,
-          promptId: aiVisibilityObservations.promptId,
-          prompt: aiVisibilityPrompts.prompt,
-          topic: aiVisibilityPrompts.topic,
-          provider: aiVisibilityObservations.provider,
-          countryCode: aiVisibilityObservations.countryCode,
-          locationKey: aiVisibilityObservations.locationKey,
-          visibilityStatus: aiVisibilityObservations.visibilityStatus,
-          brandMentioned: aiVisibilityObservations.brandMentioned,
-          citationsAvailable: aiVisibilityObservations.citationsAvailable,
-          responseText: aiVisibilityObservations.responseText,
-          source: aiVisibilityObservations.source,
-          fromCache: aiVisibilityObservations.fromCache,
-          capturedAt: aiVisibilityObservations.capturedAt,
-        })
-        .from(aiVisibilityObservations)
-        .innerJoin(aiVisibilityPrompts, eq(aiVisibilityPrompts.id, aiVisibilityObservations.promptId))
-        .where(inArray(aiVisibilityObservations.projectId, aiProjectIds))
-    : [];
+  const [newObservationRows, terminalAiRuns] =
+    aiProjectIds.length > 0
+      ? await Promise.all([
+          db
+            .select({
+              id: aiVisibilityObservations.id,
+              projectId: aiVisibilityObservations.projectId,
+              runId: aiVisibilityObservations.runId,
+              promptId: aiVisibilityObservations.promptId,
+              prompt: aiVisibilityPrompts.prompt,
+              topic: aiVisibilityPrompts.topic,
+              provider: aiVisibilityObservations.provider,
+              countryCode: aiVisibilityObservations.countryCode,
+              locationKey: aiVisibilityObservations.locationKey,
+              visibilityStatus: aiVisibilityObservations.visibilityStatus,
+              brandMentioned: aiVisibilityObservations.brandMentioned,
+              citationsAvailable: aiVisibilityObservations.citationsAvailable,
+              responseText: aiVisibilityObservations.responseText,
+              source: aiVisibilityObservations.source,
+              fromCache: aiVisibilityObservations.fromCache,
+              capturedAt: aiVisibilityObservations.capturedAt,
+            })
+            .from(aiVisibilityObservations)
+            .innerJoin(
+              aiVisibilityPrompts,
+              eq(aiVisibilityPrompts.id, aiVisibilityObservations.promptId),
+            )
+            .where(inArray(aiVisibilityObservations.projectId, aiProjectIds)),
+          db
+            .select({
+              id: aiVisibilityRuns.id,
+              projectId: aiVisibilityRuns.projectId,
+              createdAt: aiVisibilityRuns.createdAt,
+              completedAt: aiVisibilityRuns.completedAt,
+            })
+            .from(aiVisibilityRuns)
+            .where(
+              and(
+                inArray(aiVisibilityRuns.projectId, aiProjectIds),
+                inArray(aiVisibilityRuns.status, ["completed", "partial"]),
+              ),
+            ),
+        ])
+      : [[], []];
   const newObservationIds = newObservationRows.map((row) => row.id);
-  const newCitationRows = newObservationIds.length > 0
-    ? await db.select().from(aiVisibilityCitations).where(inArray(aiVisibilityCitations.observationId, newObservationIds))
-    : [];
-  const newAiStatsByFolder = new Map<string, { visibility: number | null; mentions: number }>();
+  const newCitationRows =
+    newObservationIds.length > 0
+      ? await db
+          .select()
+          .from(aiVisibilityCitations)
+          .where(
+            inArray(aiVisibilityCitations.observationId, newObservationIds),
+          )
+      : [];
+  const newAiStatsByFolder = new Map<
+    string,
+    {
+      visibility: number | null;
+      mentions: number;
+      observed: number;
+      measured: number;
+      updatedAt: string | null;
+    }
+  >();
   for (const project of aiProjectRows) {
-    const rows = newObservationRows.filter((row) => row.projectId === project.id);
-    const latest = latestObservationPairs(rows as DashboardObservation[]).latest;
+    const rows = newObservationRows.filter(
+      (row) => row.projectId === project.id,
+    );
+    const runSets = selectRunObservationSets(
+      rows as DashboardObservation[],
+      terminalAiRuns.filter((run) => run.projectId === project.id),
+    );
+    const latest = runSets.latest;
     const latestIds = new Set(latest.map((row) => row.id));
     const metric = computeAiVisibilityMetric(
       latest,
@@ -233,6 +293,14 @@ export async function getFolderMetricStrips(
     newAiStatsByFolder.set(project.folderId, {
       visibility: metric.visibility,
       mentions: metric.mentions,
+      observed: metric.observed,
+      measured: metric.measured,
+      updatedAt:
+        latest.length > 0
+          ? new Date(
+              Math.max(...latest.map((row) => row.capturedAt.getTime())),
+            ).toISOString()
+          : null,
     });
   }
 
@@ -240,7 +308,8 @@ export async function getFolderMetricStrips(
   const siteHealthByFolder = new Map<string, number>();
   for (const row of auditRows) {
     if (!row.folderId || siteHealthByFolder.has(row.folderId)) continue;
-    if (row.siteHealth !== null) siteHealthByFolder.set(row.folderId, row.siteHealth);
+    if (row.siteHealth !== null)
+      siteHealthByFolder.set(row.folderId, row.siteHealth);
   }
 
   // 여러 추적 캠페인(검색엔진·기기별)이 있으면 가장 높은 가시성을 대표값으로 쓴다.
@@ -254,17 +323,35 @@ export async function getFolderMetricStrips(
   }
 
   // 쿼리별 최신 스냅샷만 사용한다. 동일 시각 중복 행은 첫 행만 집계한다.
-  const aiDomainByQuery = new Map(aiQueryRows.map((row) => [row.id, row.domain]));
+  const aiDomainByQuery = new Map(
+    aiQueryRows.map((row) => [row.id, row.domain]),
+  );
   const seenAiQueries = new Set<string>();
-  const aiStatsByDomain = new Map<string, { collected: number; cited: number }>();
+  const aiStatsByDomain = new Map<
+    string,
+    {
+      observed: number;
+      measured: number;
+      cited: number;
+      updatedAt: Date | null;
+    }
+  >();
   for (const row of aiSnapshotRows) {
     if (seenAiQueries.has(row.queryId)) continue;
     seenAiQueries.add(row.queryId);
     const domain = aiDomainByQuery.get(row.queryId);
     if (!domain) continue;
-    const stats = aiStatsByDomain.get(domain) ?? { collected: 0, cited: 0 };
-    stats.collected += 1;
+    const stats = aiStatsByDomain.get(domain) ?? {
+      observed: 0,
+      measured: 0,
+      cited: 0,
+      updatedAt: null,
+    };
+    stats.observed += 1;
+    if (row.cited !== null) stats.measured += 1;
     if (row.cited === true) stats.cited += 1;
+    if (!stats.updatedAt || row.capturedAt > stats.updatedAt)
+      stats.updatedAt = row.capturedAt;
     aiStatsByDomain.set(domain, stats);
   }
 
@@ -282,8 +369,14 @@ export async function getFolderMetricStrips(
       domain: folder.domain,
       aiVisibility: projectAiStats
         ? projectAiStats.visibility
-        : calculateAiVisibility(aiStats?.collected ?? 0, aiStats?.cited ?? 0),
-      mentions: projectAiStats ? projectAiStats.mentions : aiStats?.cited ?? 0,
+        : calculateAiVisibility(aiStats?.measured ?? 0, aiStats?.cited ?? 0),
+      mentions: projectAiStats
+        ? projectAiStats.mentions
+        : (aiStats?.cited ?? 0),
+      aiObserved: projectAiStats?.observed ?? aiStats?.observed ?? 0,
+      aiMeasured: projectAiStats?.measured ?? aiStats?.measured ?? 0,
+      aiUpdatedAt:
+        projectAiStats?.updatedAt ?? aiStats?.updatedAt?.toISOString() ?? null,
       siteHealth: siteHealthByFolder.get(folder.id) ?? null,
       visibility: visibilityByFolder.get(folder.id) ?? null,
       organicTraffic: report?.metrics.organicTrafficEstimate.value ?? null,
@@ -295,7 +388,7 @@ export async function getFolderMetricStrips(
 }
 
 export async function getMonitoredDomains(
-  auth: AuthContext
+  auth: AuthContext,
 ): Promise<MonitoredDomain[]> {
   const [auditRows, trackingRows, folderRows] = await Promise.all([
     db
@@ -311,8 +404,8 @@ export async function getMonitoredDomains(
       .where(
         and(
           eq(siteAuditCampaigns.workspaceId, auth.workspaceId),
-          isNull(siteAuditCampaigns.deletedAt)
-        )
+          isNull(siteAuditCampaigns.deletedAt),
+        ),
       )
       .orderBy(desc(siteAuditCampaigns.updatedAt)),
     db
@@ -329,13 +422,18 @@ export async function getMonitoredDomains(
         and(
           eq(positionTrackingCampaigns.workspaceId, auth.workspaceId),
           isNull(positionTrackingCampaigns.deletedAt),
-          eq(positionTrackingCampaigns.status, "active")
-        )
+          eq(positionTrackingCampaigns.status, "active"),
+        ),
       ),
     db
       .select({ id: folders.id, name: folders.name })
       .from(folders)
-      .where(and(eq(folders.workspaceId, auth.workspaceId), isNull(folders.deletedAt))),
+      .where(
+        and(
+          eq(folders.workspaceId, auth.workspaceId),
+          isNull(folders.deletedAt),
+        ),
+      ),
   ]);
 
   const folderNameById = new Map(folderRows.map((row) => [row.id, row.name]));
@@ -371,7 +469,9 @@ export async function getMonitoredDomains(
   return [...byDomain.values()]
     .map((entry) => ({
       ...entry,
-      folderName: entry.folderId ? folderNameById.get(entry.folderId) ?? null : null,
+      folderName: entry.folderId
+        ? (folderNameById.get(entry.folderId) ?? null)
+        : null,
     }))
     .sort((a, b) => a.domain.localeCompare(b.domain));
 }

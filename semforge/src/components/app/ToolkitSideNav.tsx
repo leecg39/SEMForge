@@ -15,6 +15,19 @@ interface ToolkitSideNavProps {
   activeHref?: string;
 }
 
+function ToolIcon({ name }: { name?: "home" | "workspaces" | "library" }) {
+  if (name === "home") {
+    return <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2.5 7.1 8 2.6l5.5 4.5v6.1H9.8V9.5H6.2v3.7H2.5V7.1Z" stroke="currentColor" strokeWidth="1.35" strokeLinejoin="round" /></svg>;
+  }
+  if (name === "workspaces") {
+    return <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2.2" y="2.4" width="4.7" height="4.7" rx="1" stroke="currentColor" strokeWidth="1.3"/><rect x="9.1" y="2.4" width="4.7" height="4.7" rx="1" stroke="currentColor" strokeWidth="1.3"/><rect x="2.2" y="9.1" width="4.7" height="4.7" rx="1" stroke="currentColor" strokeWidth="1.3"/><rect x="9.1" y="9.1" width="4.7" height="4.7" rx="1" stroke="currentColor" strokeWidth="1.3"/></svg>;
+  }
+  if (name === "library") {
+    return <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 2.4h7.1a2 2 0 0 1 2 2v9.2H5a2 2 0 0 1-2-2V2.4Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/><path d="M5 4.8h4.8M5 7.2h4.8M5 9.6h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>;
+  }
+  return <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 2.5h7l3 3v8H3v-11Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/><path d="M10 2.5v3h3M5.2 8h5.6M5.2 10.5h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>;
+}
+
 /** 데스크톱 사이드바를 사용할 수 없는 화면에서 현재 툴킷 도구를 가로 탭으로 제공한다. */
 export function ToolkitMobileNav({ toolkitKey, activeHref }: ToolkitSideNavProps) {
   const sourceToolkit = appToolkits[toolkitKey];
@@ -27,7 +40,7 @@ export function ToolkitMobileNav({ toolkitKey, activeHref }: ToolkitSideNavProps
   return (
     <nav
       aria-label={`${toolkit.label} 도구`}
-      className="sticky top-[101px] z-30 flex max-w-full gap-1 overflow-x-auto border-b border-app-border bg-white px-2 py-[6px] min-[1025px]:hidden"
+      className="sticky top-[109px] z-30 flex max-w-full gap-1 overflow-x-auto border-b border-bebe bg-white px-2 py-[6px] min-[1025px]:hidden"
     >
       {tools.map((tool) => {
         const active = tool.href === activeHref;
@@ -38,10 +51,10 @@ export function ToolkitMobileNav({ toolkitKey, activeHref }: ToolkitSideNavProps
             href={href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "flex h-[32px] shrink-0 items-center gap-1.5 rounded-[6px] px-3 text-[12px]",
+              "flex h-[32px] shrink-0 items-center gap-1.5 rounded-full px-3 text-[12px]",
               active
-                ? "bg-[#eaf3ff] font-semibold text-app-blue"
-                : "text-app-text-secondary hover:bg-app-bg",
+                ? "bg-faint font-semibold text-hof"
+                : "text-foggy hover:bg-faint",
             )}
           >
             <span className="whitespace-nowrap">{tool.label}</span>
@@ -114,7 +127,7 @@ export function ToolkitSideNav({ toolkitKey, activeHref }: ToolkitSideNavProps) 
     <aside
       aria-label={tx("Toolkit tools").replace("{toolkit}", toolkit.label)}
       className={cn(
-        "sticky top-[56px] z-20 hidden h-[calc(100dvh-56px)] shrink-0 flex-col overflow-y-auto border-r border-app-border bg-white transition-[width] min-[1025px]:flex",
+        "sticky top-[64px] z-20 hidden h-[calc(100dvh-64px)] shrink-0 flex-col overflow-y-auto border-r border-bebe bg-white transition-[width] min-[1025px]:flex",
         collapsed ? "w-[44px]" : "w-[240px]",
       )}
     >
@@ -145,7 +158,7 @@ export function ToolkitSideNav({ toolkitKey, activeHref }: ToolkitSideNavProps) 
             else params.delete("fid");
             router.push(`${pathname}${params.size ? `?${params}` : ""}`);
           }}
-          className="h-[36px] w-full rounded-[6px] bg-app-bg px-3 text-[13px] text-app-text outline-none transition-colors hover:bg-[#eceef4] focus:ring-2 focus:ring-app-blue/30"
+          className="h-[40px] w-full rounded-[8px] border border-bebe bg-white px-3 text-[13px] text-hof outline-none transition-colors hover:bg-faint focus:border-rausch focus:ring-2 focus:ring-rausch/20"
         >
           <option value="">내 프로젝트</option>
           {folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name} · {folder.domain}</option>)}
@@ -169,19 +182,19 @@ export function ToolkitSideNav({ toolkitKey, activeHref }: ToolkitSideNavProps) 
                     <Link
                       href={folderHref(tool.href)}
                       aria-current={active ? "page" : undefined}
+                      aria-label={collapsed ? tool.label : undefined}
                       title={collapsed ? tool.label : undefined}
                       className={cn(
-                        "flex h-[32px] items-center rounded-[6px] text-[13px] transition-colors",
+                        "flex h-[34px] items-center rounded-[8px] text-[13px] transition-colors",
                         collapsed ? "justify-center px-1" : "px-3",
                         active
-                          ? "bg-[#eaf3ff] font-medium text-app-blue"
-                          : "text-app-text hover:bg-app-bg"
+                          ? "bg-faint font-semibold text-hof"
+                          : "text-hof hover:bg-faint"
                       )}
                     >
-                      {collapsed ? (
-                        <span aria-hidden="true" className="text-[11px] font-semibold">{tool.label.slice(0, 1)}</span>
-                      ) : (
+                      {collapsed ? <ToolIcon name={tool.icon} /> : (
                         <>
+                          <span className="mr-2 shrink-0 text-foggy"><ToolIcon name={tool.icon} /></span>
                           <span className="truncate">{tool.label}</span>
                           {tool.badge && <span className="ml-auto rounded-full bg-[#ff642d] px-1.5 py-0.5 text-[9px] font-semibold uppercase text-white">{tool.badge}</span>}
                         </>

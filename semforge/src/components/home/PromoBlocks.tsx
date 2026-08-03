@@ -19,7 +19,7 @@ export default function PromoBlocks() {
             <article
               key={block.id}
               className={cn(
-                "grid grid-cols-1 overflow-hidden rounded-[24px] p-8 lg:grid-cols-[40%_60%] lg:p-[56px]",
+                "grid grid-cols-1 overflow-hidden rounded-[14px] p-8 lg:grid-cols-[40%_60%] lg:p-[48px]",
                 block.id === "enterprise" ? "lg:h-[620px]" : "lg:h-[569px]",
                 isImageBg ? "text-mp-white" : "text-mp-off-black",
               )}
@@ -30,7 +30,7 @@ export default function PromoBlocks() {
                       backgroundSize: "cover",
                       backgroundPosition: "center",
                     }
-                  : { backgroundColor: block.bg }
+                  : { backgroundColor: "var(--color-white)" }
               }
             >
               <div className="flex flex-col items-start justify-center lg:pr-12">
@@ -44,7 +44,7 @@ export default function PromoBlocks() {
                 <Link
                   href={block.href}
                   className={cn(
-                    "mt-8 inline-flex items-center rounded-[100px] px-[30px] py-4 font-lazzer text-[16px] font-semibold transition-colors duration-200 ease-in-out",
+                    "mt-8 inline-flex items-center rounded-[8px] px-[24px] py-3 font-lazzer text-[14px] font-medium transition-colors duration-200 ease-in-out",
                     isImageBg
                       ? "bg-mp-white text-mp-off-black hover:bg-white/90"
                       : block.id === "semforge-mcp"
@@ -60,7 +60,7 @@ export default function PromoBlocks() {
                   src={block.media}
                   alt=""
                   loading="lazy"
-                  className="h-full w-full rounded-[16px] object-cover"
+                  className="h-full w-full rounded-[12px] object-cover"
                 />
               </div>
             </article>

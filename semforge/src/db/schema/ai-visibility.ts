@@ -344,9 +344,86 @@ export const aiVisibilityCitations = sqliteTable(
   ],
 );
 
+/** 브랜드 성과에서 비교할 자사/경쟁 브랜드. 자동 탐지 행도 사용자가 끌 수 있다. */
+export const aiVisibilityTrackedBrands = sqliteTable(
+  "ai_visibility_tracked_brands",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => aiVisibilityProjects.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    normalizedName: text("normalized_name").notNull(),
+    aliases: text("aliases").notNull().default("[]"),
+    domain: text("domain"),
+    kind: text("kind", { enum: ["own", "competitor"] }).notNull(),
+    source: text("source", {
+      enum: ["project", "manual", "detected", "position_tracking"],
+    }).notNull(),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+    ...auditColumns,
+  },
+  (t) => [
+    uniqueIndex("ai_visibility_tracked_brands_unique")
+      .on(t.projectId, t.normalizedName)
+      .where(sql`deleted_at IS NULL`),
+    uniqueIndex("ai_visibility_tracked_brands_own_unique")
+      .on(t.projectId, t.kind)
+      .where(sql`kind = 'own' AND deleted_at IS NULL`),
+    index("ai_visibility_tracked_brands_project_idx")
+      .on(t.projectId, t.enabled, t.deletedAt),
+  ],
+);
+
+/** 실행·플랫폼·위치별 검증된 브랜드 성과 분석 스냅샷. */
+export const aiVisibilityBrandReports = sqliteTable(
+  "ai_visibility_brand_reports",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => aiVisibilityProjects.id, { onDelete: "cascade" }),
+    runId: text("run_id")
+      .notNull()
+      .references(() => aiVisibilityRuns.id, { onDelete: "cascade" }),
+    provider: text("provider", { enum: AI_VISIBILITY_PROVIDERS }).notNull(),
+    countryCode: text("country_code").notNull(),
+    locationKey: text("location_key").notNull(),
+    inputHash: text("input_hash").notNull(),
+    status: text("status", {
+      enum: ["pending", "running", "completed", "partial", "failed"],
+    }).notNull().default("pending"),
+    reportJson: text("report_json"),
+    observationCount: integer("observation_count").notNull().default(0),
+    analyzedCount: integer("analyzed_count").notNull().default(0),
+    errorMessage: text("error_message"),
+    analyzerProvider: text("analyzer_provider"),
+    analyzerModel: text("analyzer_model"),
+    analyzerReasoning: text("analyzer_reasoning"),
+    generatedAt: timestampMs("generated_at"),
+    createdAt: timestampMs("created_at")
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: timestampMs("updated_at")
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    createdBy: text("created_by"),
+  },
+  (t) => [
+    uniqueIndex("ai_visibility_brand_reports_cell_unique")
+      .on(t.runId, t.provider, t.locationKey),
+    index("ai_visibility_brand_reports_project_idx")
+      .on(t.projectId, t.generatedAt),
+    index("ai_visibility_brand_reports_status_idx")
+      .on(t.status, t.updatedAt),
+  ],
+);
+
 export type AiVisibilityQuery = typeof aiVisibilityQueries.$inferSelect;
 export type AiVisibilitySnapshot = typeof aiVisibilitySnapshots.$inferSelect;
 export type AiVisibilityProject = typeof aiVisibilityProjects.$inferSelect;
 export type AiVisibilityPrompt = typeof aiVisibilityPrompts.$inferSelect;
 export type AiVisibilityRun = typeof aiVisibilityRuns.$inferSelect;
 export type AiVisibilityObservation = typeof aiVisibilityObservations.$inferSelect;
+export type AiVisibilityTrackedBrand = typeof aiVisibilityTrackedBrands.$inferSelect;
+export type AiVisibilityBrandReport = typeof aiVisibilityBrandReports.$inferSelect;

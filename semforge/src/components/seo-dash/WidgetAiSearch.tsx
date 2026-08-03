@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ArrowRightIcon } from "@radix-ui/react-icons";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { SM, SelectLink, WidgetCard } from "@/components/seo-dash/tokens";
 import { cn } from "@/lib/utils";
@@ -134,9 +135,9 @@ export function WidgetAiSearch({
             </span>
             <Link
               href={folderId ? `/ai-seo/overview/?fid=${encodeURIComponent(folderId)}` : domain ? `/ai-seo/overview/?domain=${encodeURIComponent(domain)}` : "/ai-seo/overview/"}
-              className={cn("text-[13px] font-medium hover:underline", SM.stub)}
+              className={cn("inline-flex items-center gap-1 text-[13px] font-medium hover:underline", SM.stub)}
             >
-              {ko ? "전체 보고서 보기 →" : "View full report →"}
+              {ko ? "전체 보고서 보기" : "View full report"} <ArrowRightIcon className="h-3.5 w-3.5" aria-hidden="true" />
             </Link>
           </div>
         </>

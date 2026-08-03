@@ -162,6 +162,55 @@
       "when": 1785574395894,
       "tag": "0022_lowly_taskmaster",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1785633631347,
+      "tag": "0023_magical_exodus",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1785644837498,
+      "tag": "0024_happy_celestials",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1785648095432,
+      "tag": "0025_swift_firestar",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1785650689726,
+      "tag": "0026_burly_junta",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1785712527858,
+      "tag": "0027_bouncy_night_thrasher",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1785761216075,
+      "tag": "0028_deep_microbe",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1785761868189,
+      "tag": "0029_worried_eddie_brock",
+      "breakpoints": true
     }
   ]
 }

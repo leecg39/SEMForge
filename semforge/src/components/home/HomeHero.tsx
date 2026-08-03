@@ -16,37 +16,29 @@ export default function HomeHero() {
   }
 
   return (
-    <section
-      className="pt-16 text-center"
-      style={{
-        backgroundImage:
-          "url(/images/pattern-hero.svg), linear-gradient(180deg, #dceeeb 0%, #e8e1ff 75%, #fff 100%)",
-        backgroundRepeat: "repeat-x, no-repeat",
-        backgroundPosition: "left bottom, center",
-      }}
-    >
-      <div className="mx-auto max-w-[1440px] px-4 pb-16 md:px-8">
-        <h1 className="mx-auto max-w-[1050px] font-lazzer text-[44px] font-semibold leading-[48px] tracking-[-1.8px] text-mp-off-black lg:text-[84px] lg:leading-[92.4px] lg:tracking-[-3.36px]">
+    <section className="bg-white pt-20 text-center">
+      <div className="mx-auto max-w-[1440px] px-4 pb-20 md:px-10">
+        <h1 className="mx-auto max-w-[980px] font-lazzer text-[40px] font-semibold leading-[1.08] tracking-[-1.2px] text-hof lg:text-[64px] lg:tracking-[-2px]">
           {data.title}
         </h1>
-        <p className="mx-auto my-6 max-w-[540px] text-[18px] font-medium leading-[27px]">
+        <p className="mx-auto my-6 max-w-[600px] text-[16px] font-normal leading-[1.43] text-foggy">
           {data.subtitle}
         </p>
 
         <form
           onSubmit={handleSubmit}
-          className="mx-auto flex w-full max-w-[600px] flex-col gap-2 rounded-[24px] bg-mp-white p-2 shadow-glass md:h-[76px] md:flex-row md:items-center md:gap-0 md:rounded-[100px]"
+          className="mx-auto flex w-full max-w-[760px] flex-col gap-2 rounded-[14px] border border-bebe bg-white p-2 shadow-[var(--shadow-subtle)] md:h-[72px] md:flex-row md:items-center md:gap-0 md:rounded-full"
         >
           <input
             type="text"
             aria-label={data.inputPlaceholder}
             placeholder={data.inputPlaceholder}
-            className="h-[56px] flex-1 border-0 bg-transparent pl-6 text-left text-[16px] text-mp-off-black outline-none placeholder:text-mp-dark-grey md:h-[60px]"
+            className="h-[52px] flex-1 border-0 bg-transparent pl-5 text-left text-[14px] text-hof outline-none placeholder:text-foggy md:h-[56px]"
           />
           <button
             type="button"
             aria-label={tx("Select country")}
-            className="flex h-[56px] shrink-0 items-center justify-center gap-1.5 px-4 text-[14px] font-semibold text-mp-off-black md:h-[60px]"
+            className="flex h-[48px] shrink-0 items-center justify-center gap-1.5 px-4 text-[14px] font-medium text-hof md:h-[56px]"
           >
             {data.country}
             <svg
@@ -67,13 +59,13 @@ export default function HomeHero() {
           </button>
           <button
             type="submit"
-            className="h-[60px] w-full shrink-0 rounded-[100px] bg-mp-lavendar px-[30px] font-lazzer text-[16px] font-semibold text-mp-off-black transition-colors duration-200 ease-in-out hover:bg-mp-lavendar-hover md:w-auto"
+            className="h-[52px] w-full shrink-0 rounded-full bg-rausch px-[28px] font-lazzer text-[14px] font-medium text-white transition-colors duration-200 ease-in-out hover:bg-rausch-600 md:w-auto"
           >
             {data.cta}
           </button>
         </form>
 
-        <div className="mx-auto mt-16 max-w-[1114px] overflow-hidden rounded-[16px] shadow-[0_24px_80px_rgba(0,0,0,0.12)]">
+        <div className="mx-auto mt-16 max-w-[1114px] overflow-hidden rounded-[14px] bg-faint">
           {data.demoVideo ? (
             <video
               src={data.demoVideo}

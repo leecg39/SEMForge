@@ -1,11 +1,6 @@
-import { AppShell } from "@/components/app/AppShell";
-import { AppAnalysisTemplate } from "@/components/app/AppAnalysisTemplate";
-import { otherAnalysis } from "@/data/app-pages";
+import { redirect } from "next/navigation";
+import { contentRedirectHref, type RouteSearchParams } from "@/lib/content-routes";
 
-export default function TopicFinderPage() {
-  return (
-    <AppShell activeToolkit="content" activeHref="/content/topic-finder/">
-      <AppAnalysisTemplate data={otherAnalysis["/content/topic-finder/"]} />
-    </AppShell>
-  );
+export default async function LegacyTopicFinderPage({ searchParams }: { searchParams: Promise<RouteSearchParams> }) {
+  redirect(contentRedirectHref("/content/", await searchParams, { intent: "topic" }));
 }

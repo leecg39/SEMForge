@@ -1,11 +1,6 @@
-import { AppShell } from "@/components/app/AppShell";
-import { AppEditorTemplate } from "@/components/app/AppEditorTemplate";
-import { editors } from "@/data/app-pages";
+import { redirect } from "next/navigation";
+import { contentRedirectHref, type RouteSearchParams } from "@/lib/content-routes";
 
-export default function BriefCreatePage() {
-  return (
-    <AppShell activeToolkit="content" activeHref="/content/briefs/create/">
-      <AppEditorTemplate data={editors["/content/briefs/create/"]} />
-    </AppShell>
-  );
+export default async function LegacyBriefCreatePage({ searchParams }: { searchParams: Promise<RouteSearchParams> }) {
+  redirect(contentRedirectHref("/content/", await searchParams, { intent: "brief" }));
 }

@@ -8,13 +8,13 @@ export default function AiVisibilityIndex() {
   const data = useLocalizedValue(aiVisibilityIndex);
 
   return (
-    <section className="bg-[#181e15] bg-[url('/images/pattern-ai-vis-index.svg')] bg-[position:right_top] bg-no-repeat py-[120px] text-white">
+    <section className="bg-hof py-[96px] text-white">
       <div className="mp-container grid grid-cols-1 gap-12 lg:grid-cols-2 lg:items-center lg:gap-16">
         <div>
-          <h2 className="text-[12px] font-semibold uppercase tracking-[0.24px] text-[#89ff75]">
+          <h2 className="text-[12px] font-semibold uppercase tracking-[0.24px] text-rausch">
             {data.label}
           </h2>
-          <h3 className="mt-6 font-lazzer text-[36px] font-semibold uppercase leading-none tracking-[-0.04em] text-white md:text-[64px] md:leading-[64px]">
+          <h3 className="mt-3 font-lazzer text-[28px] font-semibold leading-[1.2] tracking-[-0.56px] text-white md:text-[36px]">
             {data.label}
           </h3>
           <p className="mt-6 max-w-[480px] text-[16px] leading-6 text-[#d1d2d5]">
@@ -22,7 +22,7 @@ export default function AiVisibilityIndex() {
           </p>
           <Link
             href={data.cta.href}
-            className="mt-10 inline-flex items-center justify-center rounded-[100px] bg-[#89ff75] px-[30px] py-4 text-[16px] font-semibold text-[#181e15] transition-colors duration-200 ease-in-out hover:bg-[#a0ff8f]"
+            className="mt-10 inline-flex items-center justify-center rounded-[8px] bg-rausch px-[24px] py-3 text-[14px] font-medium text-white transition-colors duration-200 ease-in-out hover:bg-rausch-600"
           >
             {data.cta.label}
           </Link>
@@ -43,7 +43,7 @@ export default function AiVisibilityIndex() {
                   <span className="w-8 shrink-0 tabular-nums">{i + 1}</span>
                   {row.brand}
                 </span>
-                <span className="text-[16px] font-semibold text-[#89ff75]">
+                <span className="text-[16px] font-semibold text-rausch">
                   {row.mentions}
                 </span>
               </li>

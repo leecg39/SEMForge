@@ -18,6 +18,7 @@ import {
   domainMatches,
   getAiSearchCapabilities,
 } from "@/server/ai-search/providers";
+import { generateBrandPerformanceReportsForRun } from "./brand-performance";
 import { getAiVisibilityProjectBundle, requireAiVisibilityProject } from "./projects";
 
 export type AiVisibilityRunTrigger = "initial" | "manual" | "scheduled" | "migration";
@@ -293,6 +294,7 @@ export async function processNextAiVisibilityItem(
       brandNames: [bundle.project.brandName, ...bundle.brandAliases],
       targetDomain: bundle.project.domain,
       location,
+      forceRefresh: owned.run.trigger === "manual",
     });
     if ((await requireOwnedRun(auth, runId)).run.status === "cancelled") {
       return getAiVisibilityRun(auth, runId);
@@ -358,6 +360,9 @@ export async function drainAiVisibilityRun(
   while ((view.status === "queued" || view.status === "running") && remaining > 0) {
     view = await processNextAiVisibilityItem(auth, runId);
     remaining -= 1;
+  }
+  if (view.status === "completed" || view.status === "partial") {
+    await generateBrandPerformanceReportsForRun(auth, runId);
   }
   return view;
 }

@@ -1,6 +1,10 @@
 import { notFound, redirect } from "next/navigation";
 import { AppShell } from "@/components/app/AppShell";
 import { AiVisibilityDashboard } from "@/components/ai-visibility/AiVisibilityDashboard";
+import { BrandPerformanceDashboard } from "@/components/ai-visibility/BrandPerformanceDashboard";
+import { CompetitorResearchDashboard } from "@/components/ai-visibility/CompetitorResearchDashboard";
+import { PromptResearchDashboard } from "@/components/ai-visibility/PromptResearchDashboard";
+import { getAuth } from "@/lib/session";
 import { pageSession } from "@/server/page-auth";
 import {
   findOwnedAiFolder,
@@ -188,6 +192,67 @@ export default async function AiSeoPage({
     return (
       <AppShell activeToolkit="ai" activeHref={href}>
         <AiVisibilityDashboard key={canonical?.toString() ?? "empty"} initialFolderId={resolvedFid} />
+      </AppShell>
+    );
+  }
+
+  if (slug === "brand-performance") {
+    const initialFolderId = typeof fid === "string" ? fid : "";
+    let auth = null;
+    if (!initialFolderId && typeof domain === "string") {
+      auth = await getAuth();
+      const resolved = auth ? await resolveAiVisibilityFolderByDomain(auth, domain) : null;
+      if (resolved) {
+        const next = new URLSearchParams();
+        for (const [key, value] of Object.entries(search)) {
+          if (key === "domain" || value === undefined) continue;
+          if (Array.isArray(value)) value.forEach((item) => next.append(key, item));
+          else next.set(key, value);
+        }
+        next.set("fid", resolved);
+        redirect(`/ai-seo/${slug}/?${next.toString()}`);
+      }
+    }
+    return (
+      <AppShell activeToolkit="ai" activeHref={href}>
+        <BrandPerformanceDashboard initialFolderId={initialFolderId} />
+      </AppShell>
+    );
+  }
+
+  if (slug === "competitor-research") {
+    const initialFolderId = typeof fid === "string" ? fid : "";
+    if (!initialFolderId && typeof domain === "string") {
+      const auth = await getAuth();
+      const resolved = auth ? await resolveAiVisibilityFolderByDomain(auth, domain) : null;
+      if (resolved) {
+        const next = new URLSearchParams();
+        for (const [key, value] of Object.entries(search)) {
+          if (key === "domain" || value === undefined) continue;
+          if (Array.isArray(value)) value.forEach((item) => next.append(key, item));
+          else next.set(key, value);
+        }
+        next.set("fid", resolved);
+        redirect(`/ai-seo/${slug}/?${next.toString()}`);
+      }
+    }
+    return (
+      <AppShell activeToolkit="ai" activeHref={href}>
+        <CompetitorResearchDashboard initialFolderId={initialFolderId} />
+      </AppShell>
+    );
+  }
+
+  if (slug === "prompt-research") {
+    const initialFolderId = typeof fid === "string" ? fid : "";
+    if (!initialFolderId && typeof domain === "string") {
+      const auth = await getAuth();
+      const resolved = auth ? await resolveAiVisibilityFolderByDomain(auth, domain) : null;
+      if (resolved) redirect(`/ai-seo/${slug}/?fid=${encodeURIComponent(resolved)}`);
+    }
+    return (
+      <AppShell activeToolkit="ai" activeHref={href}>
+        <PromptResearchDashboard initialFolderId={initialFolderId} />
       </AppShell>
     );
   }

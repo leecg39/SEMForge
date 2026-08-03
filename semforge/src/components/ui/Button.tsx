@@ -4,12 +4,11 @@ import { cn } from "@/lib/utils";
 type Variant = "primary" | "accent" | "outline" | "dark" | "light";
 
 const variants: Record<Variant, string> = {
-  // 마케팅 pill 버튼 스타일
-  primary: "bg-[#181e15] text-white hover:bg-[#2a2f27]",
-  dark: "bg-[#181e15] text-white hover:bg-[#2a2f27]",
-  accent: "bg-[#c190ff] text-[#181e15] hover:bg-[#b072ff]",
-  outline: "border border-[#181e15] text-[#181e15] hover:bg-black/5",
-  light: "bg-white text-[#181e15] hover:bg-white/90",
+  primary: "bg-hof text-white hover:bg-black",
+  dark: "bg-hof text-white hover:bg-black",
+  accent: "bg-rausch text-white hover:bg-rausch-600",
+  outline: "border border-hof text-hof hover:bg-faint",
+  light: "bg-white text-hof hover:bg-faint",
 };
 
 interface Props {
@@ -30,8 +29,8 @@ export function Button({
   children,
 }: Props) {
   const cls = cn(
-    "inline-flex items-center justify-center rounded-full font-[family-name:var(--font-lazzer)] font-semibold transition-colors duration-200 ease-in-out",
-    size === "lg" ? "h-[60px] px-[30px] text-[16px]" : "h-[48px] px-6 text-[15px]",
+    "inline-flex items-center justify-center rounded-[8px] font-[family-name:var(--font-lazzer)] font-medium transition-colors duration-200 ease-in-out",
+    size === "lg" ? "h-[52px] px-[28px] text-[16px]" : "h-[44px] px-5 text-[14px]",
     variants[variant],
     className,
   );

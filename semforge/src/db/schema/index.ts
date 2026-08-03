@@ -6,3 +6,5 @@ export * from "./local";
 export * from "./connections";
 export * from "./onpage";
 export * from "./advertising";
+export * from "./content";
+export * from "./social";

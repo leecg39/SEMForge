@@ -34,3 +34,22 @@ test("프로젝트 범위를 사용하지 않는 툴킷 링크는 변경하지 �
     "/siteaudit/",
   );
 });
+
+test("소셜 대시보드와 하위 도구 링크는 현재 fid를 유지한다", () => {
+  assert.equal(
+    buildToolkitToolHref({
+      toolkitKey: "social",
+      href: "/social-media/",
+      selectedFolderId: "folder-social",
+    }),
+    "/social-media/?fid=folder-social",
+  );
+  assert.equal(
+    buildToolkitToolHref({
+      toolkitKey: "social",
+      href: "/social-media/poster/",
+      selectedFolderId: "folder-social",
+    }),
+    "/social-media/poster/?fid=folder-social",
+  );
+});

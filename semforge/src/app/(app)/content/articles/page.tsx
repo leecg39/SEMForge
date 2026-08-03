@@ -1,11 +1,6 @@
-import { AppShell } from "@/components/app/AppShell";
-import { AppWorkspaceTemplate } from "@/components/app/AppWorkspaceTemplate";
-import { workspaces } from "@/data/app-pages";
+import { redirect } from "next/navigation";
+import { contentRedirectHref, type RouteSearchParams } from "@/lib/content-routes";
 
-export default function MyContentPage() {
-  return (
-    <AppShell activeToolkit="content" activeHref="/content/articles/">
-      <AppWorkspaceTemplate data={workspaces["/content/articles/"]} />
-    </AppShell>
-  );
+export default async function LegacyContentArticlesPage({ searchParams }: { searchParams: Promise<RouteSearchParams> }) {
+  redirect(contentRedirectHref("/content/library/", await searchParams));
 }

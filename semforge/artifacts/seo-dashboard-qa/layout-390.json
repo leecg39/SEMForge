@@ -1,0 +1,91 @@
+{
+  "innerWidth": 390,
+  "scrollWidth": 375,
+  "slots": [
+    {
+      "height": 242,
+      "id": "aiSearch",
+      "width": 343,
+      "x": 16,
+      "y": 351
+    },
+    {
+      "height": 351,
+      "id": "seoMetrics",
+      "width": 343,
+      "x": 16,
+      "y": 617
+    },
+    {
+      "height": 224,
+      "id": "positionTracking",
+      "width": 343,
+      "x": 16,
+      "y": 992
+    },
+    {
+      "height": 237,
+      "id": "siteAudit",
+      "width": 343,
+      "x": 16,
+      "y": 1240
+    },
+    {
+      "height": 224,
+      "id": "onPageSeo",
+      "width": 343,
+      "x": 16,
+      "y": 1501
+    },
+    {
+      "height": 224,
+      "id": "backlinkAudit",
+      "width": 343,
+      "x": 16,
+      "y": 1749
+    },
+    {
+      "height": 224,
+      "id": "organicTrafficInsights",
+      "width": 343,
+      "x": 16,
+      "y": 1997
+    },
+    {
+      "height": 591,
+      "id": "trafficAnalytics",
+      "width": 343,
+      "x": 16,
+      "y": 2245
+    },
+    {
+      "height": 370,
+      "id": "topSearchPages",
+      "width": 343,
+      "x": 16,
+      "y": 2860
+    },
+    {
+      "height": 420,
+      "id": "googleConnect",
+      "width": 343,
+      "x": 16,
+      "y": 3254
+    },
+    {
+      "height": 580,
+      "id": "organicRank",
+      "width": 343,
+      "x": 16,
+      "y": 3698
+    },
+    {
+      "height": 630,
+      "id": "backlinks",
+      "width": 343,
+      "x": 16,
+      "y": 4302
+    }
+  ],
+  "visualWidth": 375
+}

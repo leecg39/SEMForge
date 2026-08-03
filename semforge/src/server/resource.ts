@@ -62,6 +62,8 @@ export interface ResourceConfig {
   extraWhere?: (auth: AuthContext, query: ListQuery, cols: Columns) => SQL | undefined;
   /** 생성 직후 파생 데이터 삽입 등 */
   afterCreate?: (auth: AuthContext, row: Record<string, unknown>) => Promise<void>;
+  /** 파일 저장소 등 DB 외부 자산을 영구 삭제 전에 정리한다. */
+  beforePurge?: (auth: AuthContext, row: Record<string, unknown>) => Promise<void>;
   /** 소프트 삭제·복구 시 함께 처리할 하위 테이블 */
   cascade?: { table: SQLiteTable; foreignKey: string }[];
 }
@@ -461,6 +463,7 @@ export async function purgeResource(
     .where(eq(deleteConfirmations.id, confirmation.id));
 
   const cols = columnsOf(cfg.table);
+  await cfg.beforePurge?.(auth, before);
   await db.delete(cfg.table).where(eq(requireColumn(cols, "id", cfg.key), id));
 
   writeAudit(auth, {

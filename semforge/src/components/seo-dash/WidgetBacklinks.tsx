@@ -12,6 +12,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { ArrowRightIcon, ChevronDownIcon } from "@radix-ui/react-icons";
 import { useLocale } from "@/i18n/LocaleProvider";
 import type { DomainAnalyticsReport } from "@/lib/analytics/types";
 import { SM, WidgetCard, WidgetTitle } from "@/components/seo-dash/tokens";
@@ -77,7 +78,7 @@ export function WidgetBacklinks({
       <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
         <WidgetTitle>{ko ? "백링크" : "Backlinks"}</WidgetTitle>
         <span className={cn("flex items-center gap-1 text-[14px] leading-[20px]", SM.stub)}>
-          {ko ? "범위: 루트 도메인" : "Scope: root domain"} <span aria-hidden="true" className="text-[10px]">⌄</span>
+          {ko ? "범위: 루트 도메인" : "Scope: root domain"} <ChevronDownIcon className="h-3.5 w-3.5" aria-hidden="true" />
         </span>
       </div>
 
@@ -151,7 +152,7 @@ export function WidgetBacklinks({
 
       <div className="mt-3 text-right">
         <Link href="/analytics/backlinks/overview/" className={cn("text-[14px] font-medium leading-[20px] hover:underline", SM.stub)}>
-          {ko ? "전체 보고서 보기 →" : "View full report →"}
+          {ko ? "전체 보고서 보기" : "View full report"} <ArrowRightIcon className="h-3.5 w-3.5" aria-hidden="true" />
         </Link>
       </div>
     </WidgetCard>

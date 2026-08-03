@@ -1,32 +1,65 @@
 @import "tailwindcss";
 
 /* ============================================================
-   아우레아 디자인 토큰 (DESIGN.md 명세)
-   content-first 토큰 기반 디자인 시스템 — WCAG 2.2 AA
+   SEMForge × Airbnb-inspired design tokens (DESIGN (bnb).md)
+   quiet white canvas, image/data-first surfaces, one coral accent
    ============================================================ */
 :root {
-  /* 아우레아 시맨틱 팔레트 */
-  --aurea-text-primary: #09090b;
-  --aurea-text-secondary: #52525b;
-  --aurea-text-tertiary: #71717a;
-  --aurea-surface-muted: #ffffff;
-  --aurea-surface-base: #000000;
-  --aurea-surface-strong: #f4f4f5;
-  --aurea-border-default: #ececee;
-  --aurea-border-muted: #2c2e34;
-  --aurea-focus-ring: oklab(0.140764 0.00120224 -0.00421676 / 0.5);
+  /* Source palette */
+  --bnb-rausch: #ff385c;
+  --bnb-rausch-600: #e00b41;
+  --bnb-hof: #222222;
+  --bnb-foggy: #6a6a6a;
+  --bnb-grey-500: #c1c1c1;
+  --bnb-bebe: #ebebeb;
+  --bnb-deco: #dddddd;
+  --bnb-faint: #f7f7f7;
+  --bnb-white: #ffffff;
+  --color-rausch: var(--bnb-rausch);
+  --color-rausch-600: var(--bnb-rausch-600);
+  --color-hof: var(--bnb-hof);
+  --color-foggy: var(--bnb-foggy);
+  --color-grey-500: var(--bnb-grey-500);
+  --color-bebe: var(--bnb-bebe);
+  --color-deco: var(--bnb-deco);
+  --color-faint: var(--bnb-faint);
+  --color-white: var(--bnb-white);
+
+  /* Semantic compatibility layer */
+  --aurea-text-primary: var(--color-hof);
+  --aurea-text-secondary: var(--color-foggy);
+  --aurea-text-tertiary: var(--color-grey-500);
+  --aurea-surface-muted: var(--color-white);
+  --aurea-surface-base: var(--color-hof);
+  --aurea-surface-strong: var(--color-faint);
+  --aurea-border-default: var(--color-bebe);
+  --aurea-border-muted: var(--color-hof);
+  --aurea-focus-ring: rgba(255, 56, 92, 0.42);
 
   /* 아우레아 타이포 (base 16px/400/24px) */
-  --aurea-font-stack: pretendard, "pretendard Fallback", Cosmica, "DM Sans",
-    "Pretendard Variable", Pretendard, ui-sans-serif, system-ui, sans-serif;
-  --aurea-text-xs: 13px;
+  --aurea-font-stack: var(--font-inter), "DM Sans", "Pretendard Variable", Pretendard,
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --aurea-text-xs: 12px;
   --aurea-text-sm: 14px;
-  --aurea-text-md: 15px;
+  --aurea-text-md: 14px;
   --aurea-text-lg: 16px;
-  --aurea-text-xl: 18px;
+  --aurea-text-xl: 20px;
   --aurea-text-2xl: 20px;
-  --aurea-text-3xl: 32px;
-  --aurea-text-4xl: 40px;
+  --aurea-text-3xl: 28px;
+  --aurea-text-4xl: 36px;
+
+  --text-caption: 11px;
+  --leading-caption: 1.18;
+  --text-ui: 16px;
+  --leading-ui: 1.25;
+  --text-subheading: 20px;
+  --leading-subheading: 1.2;
+  --tracking-subheading: -0.18px;
+  --text-heading-sm: 22px;
+  --leading-heading-sm: 1.18;
+  --tracking-heading-sm: -0.44px;
+  --text-heading: 28px;
+  --leading-heading: 1.43;
 
   /* 아우레아 간격 스케일 */
   --aurea-space-1: 4px;
@@ -34,23 +67,36 @@
   --aurea-space-3: 12px;
   --aurea-space-4: 16px;
   --aurea-space-5: 20px;
-  --aurea-space-6: 28px;
+  --aurea-space-6: 24px;
+  --spacing-28: 28px;
+  --spacing-32: 32px;
+  --spacing-40: 40px;
+  --spacing-44: 44px;
+  --spacing-48: 48px;
 
   /* 아우레아 반경 스케일 (xl = pill, 명세 추출값 37282700px) */
-  --aurea-radius-xs: 12px;
-  --aurea-radius-sm: 14px;
-  --aurea-radius-md: 24px;
-  --aurea-radius-lg: 36px;
+  --aurea-radius-xs: 8px;
+  --aurea-radius-sm: 12px;
+  --aurea-radius-md: 14px;
+  --aurea-radius-lg: 14px;
   --aurea-radius-xl: 9999px;
+
+  --radius-cards: 12px;
+  --radius-badges: 9999px;
+  --radius-inputs: 8px;
+  --radius-avatars: 9999px;
+  --radius-buttons: 9999px;
+  --radius-search-bar: 9999px;
 
   /* 아우레아 그림자 (shadow.1 = 없음, shadow.2 = 어두운 테두리 카드, shadow.3 = 소프트 드롭) */
   --aurea-shadow-1: 0 0 0 0 rgba(0, 0, 0, 0);
-  --aurea-shadow-2:
-    rgba(255, 255, 255, 0.5) 0px 0.5px 0px 0px inset,
-    rgba(117, 123, 133, 0.4) 0px 9px 14px -5px inset,
-    rgb(44, 46, 52) 0px 0px 0px 1.5px,
-    rgba(0, 0, 0, 0.14) 0px 4px 6px 0px;
-  --aurea-shadow-3: rgba(0, 0, 0, 0.12) 0px 4px 12px 0px;
+  --shadow-subtle:
+    rgba(0, 0, 0, 0.02) 0 0 0 1px,
+    rgba(0, 0, 0, 0.04) 0 2px 6px,
+    rgba(0, 0, 0, 0.1) 0 4px 8px;
+  --aurea-shadow-2: var(--shadow-subtle);
+  --aurea-shadow-3: 0 8px 28px rgba(0, 0, 0, 0.18);
+  --shadow-dropdown: 0 6px 20px rgba(0, 0, 0, 0.2);
 
   /* 아우레아 모션 */
   --aurea-motion-instant: 150ms;
@@ -63,18 +109,18 @@
      ============================================================ */
   --mp-white: var(--aurea-surface-muted);
   --mp-off-black: var(--aurea-text-primary);
-  --mp-lavendar: #c190ff;
-  --mp-lavendar-hover: #b072ff;
-  --mp-mint: #dceeeb;
-  --mp-light-mint: #f7fbfa;
+  --mp-lavendar: var(--color-rausch);
+  --mp-lavendar-hover: var(--color-rausch-600);
+  --mp-mint: var(--color-white);
+  --mp-light-mint: var(--color-faint);
   --mp-dark-grey: var(--aurea-text-secondary);
   --mp-medium-grey: var(--aurea-border-default);
   --mp-light-grey: var(--aurea-surface-strong);
   --mp-off-white: var(--aurea-surface-strong);
-  --mp-aqua: #18f0bf;
-  --mp-lime: #89ff75;
-  --mp-product-gradient: linear-gradient(180deg, #dceeeb 0%, #eee9ff 100%);
-  --mp-hero-gradient: linear-gradient(180deg, #dceeeb 0%, #e8e1ff 75%, #fff 100%);
+  --mp-aqua: var(--color-rausch);
+  --mp-lime: var(--color-bebe);
+  --mp-product-gradient: linear-gradient(180deg, var(--color-white) 0%, var(--color-faint) 100%);
+  --mp-hero-gradient: linear-gradient(180deg, var(--color-white) 0%, var(--color-faint) 78%, var(--color-white) 100%);
   --mp-focus-color: var(--aurea-focus-ring);
   --mp-focus-color-invert: rgba(255, 255, 255, 0.7);
   --mp-focus-border: var(--aurea-border-muted);
@@ -85,23 +131,23 @@
   --mp-border-radius: var(--aurea-radius-xl);
   --mp-shadow-glass: var(--aurea-shadow-3);
   --mp-section-margin-top: 60px;
-  --mp-button-height: 60px;
+  --mp-button-height: 48px;
   --mp-max-container-width: 1440px;
 
   /* 로그인 앱(Intergalactic 계열) 기본 토큰 — 아우레아 뉴트럴로 재매핑 */
-  --app-blue: #008ff8;
-  --app-blue-dark: #006dca;
+  --app-blue: var(--color-rausch);
+  --app-blue-dark: var(--color-rausch-600);
   --app-text: var(--aurea-text-primary);
   --app-text-secondary: var(--aurea-text-secondary);
   --app-border: var(--aurea-border-default);
   --app-bg: var(--aurea-surface-strong);
   --app-green: #009f81;
-  --app-red: #d1002f;
-  --app-orange: #ff642d;
-  --app-purple: #8649e1;
+  --app-red: var(--color-rausch-600);
+  --app-orange: var(--color-rausch);
+  --app-purple: var(--color-rausch);
   --app-yellow: #fdc23c;
-  --app-link: #235fe2;
-  --app-link-soft: #eaf0fd;
+  --app-link: var(--color-hof);
+  --app-link-soft: var(--color-faint);
 
   /* ko.semforge.com/home/ 계열 토큰 — 아우레아 뉴트럴로 재매핑 */
   --a2-surface: var(--aurea-surface-strong);
@@ -110,19 +156,19 @@
   --a2-text-muted: var(--aurea-text-secondary);
   --a2-text-faint: var(--aurea-text-tertiary);
   --a2-value-muted: var(--aurea-text-tertiary);
-  --a2-accent-purple: oklch(0.53 0.157 279.2);
-  --a2-rail-active: var(--aurea-border-default);
-  --a2-btn-bg: rgba(0, 22, 16, 0.027);
-  --a2-btn-border: rgba(0, 12, 8, 0.16);
+  --a2-accent-purple: var(--color-rausch);
+  --a2-rail-active: var(--color-white);
+  --a2-btn-bg: var(--color-white);
+  --a2-btn-border: var(--color-bebe);
   --a2-card-shadow: var(--aurea-shadow-2);
   --a2-tooltip-bg: var(--aurea-border-muted);
   --a2-tooltip-fg: rgba(254, 255, 255, 0.95);
   --a2-footer-text: var(--aurea-text-tertiary);
-  --a2-cta-green: rgb(0, 170, 125);
-  --a2-cta-outline-bg: rgba(138, 142, 155, 0.1);
-  --a2-cta-outline-border: rgb(196, 199, 207);
-  --a2-rail-width: 77px;
-  --a2-header-height: 53px;
+  --a2-cta-green: var(--color-hof);
+  --a2-cta-outline-bg: var(--color-white);
+  --a2-cta-outline-border: var(--color-hof);
+  --a2-rail-width: 72px;
+  --a2-header-height: 64px;
 }
 
 @theme inline {
@@ -168,6 +214,16 @@
   --color-a2-cta-green: var(--a2-cta-green);
   --color-a2-cta-outline-bg: var(--a2-cta-outline-bg);
   --color-a2-cta-outline-border: var(--a2-cta-outline-border);
+
+  /* Airbnb-inspired source utilities */
+  --color-rausch: var(--bnb-rausch);
+  --color-rausch-600: var(--bnb-rausch-600);
+  --color-hof: var(--bnb-hof);
+  --color-foggy: var(--bnb-foggy);
+  --color-grey-500: var(--bnb-grey-500);
+  --color-bebe: var(--bnb-bebe);
+  --color-deco: var(--bnb-deco);
+  --color-faint: var(--bnb-faint);
 
   /* 아우레아 시맨틱 컬러 유틸리티 (text-aurea-primary, bg-aurea-strong 등) */
   --color-aurea-primary: var(--aurea-text-primary);
@@ -215,13 +271,19 @@
 }
 
 body {
-  background: var(--aurea-surface-muted);
+  background: var(--aurea-surface-strong);
   color: var(--aurea-text-primary);
   font-family: var(--aurea-font-stack);
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 400;
-  line-height: 24px;
+  line-height: 1.43;
+  font-feature-settings: "salt" 1;
   -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(255, 56, 92, 0.18);
+  color: var(--color-hof);
 }
 
 /* 아우레아 포커스 링 — WCAG 2.2 AA focus-visible 필수 */
@@ -254,3 +316,39 @@ body {
   white-space: nowrap;
   border-width: 0;
 }
+
+/* Content Workspace Markdown 미리보기. 원시 HTML은 ReactMarkdown에서 해석하지 않는다. */
+.content-markdown {
+  color: var(--color-hof);
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.content-markdown h1,
+.content-markdown h2,
+.content-markdown h3 {
+  margin-block: 1.6em 0.65em;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+}
+
+.content-markdown h1 { font-size: 30px; }
+.content-markdown h2 { font-size: 23px; }
+.content-markdown h3 { font-size: 18px; }
+.content-markdown p,
+.content-markdown ul,
+.content-markdown ol,
+.content-markdown blockquote { margin-block: 0.9em; }
+.content-markdown ul,
+.content-markdown ol { padding-left: 1.5em; }
+.content-markdown ul { list-style: disc; }
+.content-markdown ol { list-style: decimal; }
+.content-markdown a { color: var(--color-rausch-600); text-decoration: underline; }
+.content-markdown blockquote { border-left: 3px solid var(--color-deco); padding-left: 1em; color: var(--color-foggy); }
+.content-markdown code { border-radius: 5px; background: var(--color-faint); padding: 0.12em 0.35em; font-size: 0.9em; }
+.content-markdown pre { overflow-x: auto; border-radius: 10px; background: var(--color-hof); padding: 1em; color: white; }
+.content-markdown pre code { background: transparent; padding: 0; }
+.content-markdown table { width: 100%; border-collapse: collapse; margin-block: 1em; }
+.content-markdown th,
+.content-markdown td { border: 1px solid var(--color-deco); padding: 0.55em 0.7em; text-align: left; }

@@ -47,7 +47,7 @@ export function WidgetSeoMetrics({
   monthly,
 }: {
   report: DomainAnalyticsReport | null;
-  dateLabel: string;
+  dateLabel: string | null;
   countryCode: string;
   monthly: RefDomainMonth[];
 }) {
@@ -110,7 +110,9 @@ export function WidgetSeoMetrics({
           <SelectLink>{ko ? "루트 도메인" : "Root domain"}</SelectLink>
           <SelectLink>{COUNTRY_LABELS[countryCode] ?? countryCode}</SelectLink>
           <SelectLink>{ko ? "데스크톱" : "Desktop"}</SelectLink>
-          <span className={cn("text-[14px] leading-[20px]", SM.caption)}>{dateLabel}</span>
+          <span className={cn("text-[14px] leading-[20px]", SM.caption)}>
+            {dateLabel ?? (ko ? "분석 전" : "Not analyzed")}
+          </span>
         </div>
       </div>
 

@@ -27,7 +27,7 @@ export interface TrackingObservationResult {
   localPackPosition: number | null;
   features: string[];
   citations: { position: number; url: string; title: string | null }[];
-  source: "talordata" | "openai" | "gemini";
+  source: "talordata" | "openai" | "gemini" | "chatmock";
   capturedAt: Date;
 }
 

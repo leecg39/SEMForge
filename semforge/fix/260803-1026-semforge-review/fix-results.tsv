@@ -1,0 +1,7 @@
+id	area	finding	resolution	verification	status
+FIX-001	SEO dashboard	Project navigation pending state did not reset after the server snapshot changed	Synchronize the selected domain from the snapshot and clear navigationPending	SEO dashboard tests and production build	fixed
+FIX-002	GSC state	Changing or clearing a domain could retain the previous domain's live GSC data	Reset to checking/disconnected for every domain revision and cancel stale requests	SEO dashboard tests	fixed
+FIX-003	Content packages	Approval, regeneration, and cancellation checked versions outside the write transaction	Claim package and item versions atomically inside the transaction	Content concurrency tests	fixed
+FIX-004	Content scheduler	Due media work failed permanently when its original creator lost edit permission	Resolve an eligible owner/admin/editor from the same workspace	Content media-due authorization tests	fixed
+FIX-005	SEO snapshot	Missing freshness was rendered as today's date	Keep the date nullable and render an explicit not-analyzed state	SEO dashboard tests and production build	fixed
+FIX-006	Workspace isolation	Content synchronization lookups and writes omitted workspace filters	Apply workspace ownership filters to package dependencies and updates	Content tests and production build	fixed

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ArrowRightIcon } from "@radix-ui/react-icons";
 import {
   Area,
   AreaChart,
@@ -147,8 +148,8 @@ export function WidgetOrganicRank({
       </ul>
 
       <div className="mt-3 text-right">
-        <Link href="/analytics/organic/overview/" className={cn("text-[14px] font-medium leading-[20px] hover:underline", SM.stub)}>
-          {ko ? "전체 보고서 보기 →" : "View full report →"}
+        <Link href="/analytics/organic/overview/" className={cn("inline-flex items-center gap-1 text-[14px] font-medium leading-[20px] hover:underline", SM.stub)}>
+          {ko ? "전체 보고서 보기" : "View full report"} <ArrowRightIcon className="h-3.5 w-3.5" aria-hidden="true" />
         </Link>
       </div>
     </WidgetCard>

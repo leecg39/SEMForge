@@ -11,14 +11,14 @@ import { useLocale } from "@/i18n/LocaleProvider";
  * 근거: docs/research/components/promo-carousel-and-footer.spec.md
  */
 
-const linkClass = "text-[14px] leading-[24px] text-a2-footer-text hover:underline";
+const linkClass = "text-[14px] leading-[24px] text-foggy transition-colors hover:text-hof";
 
 export function AppFooter() {
   const { locale } = useLocale();
   const tx = (text: string) => translateAppText(locale, text) ?? text;
 
   return (
-    <footer className="flex flex-col gap-[12px] bg-a2-surface px-[16px] py-[24px] lg:px-[32px]">
+    <footer className="mt-12 flex flex-col gap-[12px] border-t border-bebe bg-faint px-[16px] py-[32px] lg:px-[40px]">
       <div className="flex flex-wrap items-center gap-x-[24px] gap-y-[8px]">
         <Link href="/company/contacts/" className={linkClass}>
           {tx("문의하기")}
@@ -34,13 +34,13 @@ export function AppFooter() {
         <div className="ml-auto flex items-center gap-[8px]">
           <Link
             href="/pricing/"
-            className="flex h-[32px] items-center rounded-[6px] border border-a2-cta-outline-border bg-a2-cta-outline-bg px-[12px] text-[14px] text-a2-footer-text"
+            className="flex h-[36px] items-center rounded-[8px] border border-hof bg-white px-[14px] text-[14px] font-medium text-hof hover:bg-faint"
           >
             {tx("요금제 및 가격 보기")}
           </Link>
           <Link
             href="/signup/"
-            className="flex h-[32px] items-center rounded-[6px] border border-a2-cta-green bg-a2-cta-green px-[12px] text-[14px] text-white"
+            className="flex h-[36px] items-center rounded-[8px] bg-hof px-[14px] text-[14px] font-medium text-white hover:bg-black"
           >
             {tx("SEMForge 시작하기")}
           </Link>

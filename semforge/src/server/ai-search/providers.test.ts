@@ -12,6 +12,7 @@ import {
 const originalOpenAi = process.env.OPENAI_API_KEY;
 const originalGemini = process.env.GEMINI_API_KEY;
 const originalTalordata = process.env.TALORDATA_API_TOKEN;
+const originalChatMockSearch = process.env.CHATMOCK_AI_SEARCH_ENABLED;
 
 before(() => {
   process.env.OPENAI_API_KEY = "test-openai";
@@ -26,6 +27,8 @@ after(() => {
   else process.env.GEMINI_API_KEY = originalGemini;
   if (originalTalordata === undefined) delete process.env.TALORDATA_API_TOKEN;
   else process.env.TALORDATA_API_TOKEN = originalTalordata;
+  if (originalChatMockSearch === undefined) delete process.env.CHATMOCK_AI_SEARCH_ENABLED;
+  else process.env.CHATMOCK_AI_SEARCH_ENABLED = originalChatMockSearch;
 });
 
 function input(provider: AiSearchProviderInput["provider"]): AiSearchProviderInput {
@@ -75,6 +78,20 @@ test("Google AIO 있음·없음·인용 미제공 상태를 구분한다", async
   assert.equal(unknown.citationsAvailable, false);
 });
 
+test("수동 Google AIO 수집은 SERP 캐시 우회 옵션을 전달한다", async () => {
+  let forceRefresh: boolean | undefined;
+  await collectAiSearchObservation(
+    { ...input("google_aio"), forceRefresh: true },
+    {
+      collectKeywordSerp: async (request) => {
+        forceRefresh = request.forceRefresh;
+        return serp({ present: false, citationsAvailable: true, citations: [] });
+      },
+    },
+  );
+  assert.equal(forceRefresh, true);
+});
+
 test("OpenAI 웹 검색 응답에서 브랜드 언급과 URL 인용을 정규화한다", async () => {
   const result = await collectAiSearchObservation(input("chatgpt_web"), {
     fetch: async () => Response.json({
@@ -89,6 +106,35 @@ test("OpenAI 웹 검색 응답에서 브랜드 언급과 URL 인용을 정규화
   assert.equal(result.brandMentioned, true);
   assert.equal(result.visibilityStatus, "visible");
   assert.equal(result.citations[0]?.domain, "example.com");
+});
+
+test("OpenAI 키가 없으면 명시적으로 연결된 ChatMock ChatGPT 응답 본문을 수집한다", async () => {
+  const previousOpenAi = process.env.OPENAI_API_KEY;
+  const previousChatMock = process.env.CHATMOCK_AI_SEARCH_ENABLED;
+  delete process.env.OPENAI_API_KEY;
+  process.env.CHATMOCK_AI_SEARCH_ENABLED = "true";
+  try {
+    const result = await collectAiSearchObservation(input("chatgpt_web"), {
+      requestChatMockText: async () => ({
+        text: "Acme는 협업 도구 선택지입니다.",
+        provenance: {
+          provider: "chatmock",
+          model: "gpt-test",
+          reasoningEffort: "medium",
+          requestedAt: new Date().toISOString(),
+        },
+      }),
+    });
+    assert.equal(result.source, "chatmock");
+    assert.equal(result.brandMentioned, true);
+    assert.equal(result.responseText, "Acme는 협업 도구 선택지입니다.");
+    assert.equal(result.citationsAvailable, false);
+  } finally {
+    if (previousOpenAi === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousOpenAi;
+    if (previousChatMock === undefined) delete process.env.CHATMOCK_AI_SEARCH_ENABLED;
+    else process.env.CHATMOCK_AI_SEARCH_ENABLED = previousChatMock;
+  }
 });
 
 test("Gemini grounding chunk를 실제 인용 URL로 저장할 수 있는 형태로 반환한다", async () => {

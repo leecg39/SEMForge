@@ -1,6 +1,13 @@
 "use client";
 
-import { ReloadIcon } from "@radix-ui/react-icons";
+import {
+  ChatBubbleIcon,
+  ChevronDownIcon,
+  GearIcon,
+  PlusIcon,
+  ReloadIcon,
+  Share1Icon,
+} from "@radix-ui/react-icons";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { SM } from "@/components/seo-dash/tokens";
 import { cn } from "@/lib/utils";
@@ -11,22 +18,28 @@ export interface SeoDashProject {
   domain: string;
 }
 
-/**
- * SEO 대시보드 헤더 (spec: docs/research/components/seo-dash-header.spec.md).
- * breadcrumb + H1 + 프로젝트 pill + 액션 버튼.
- */
 export function SeoDashHeader({
   projectName,
   projects,
   currentDomain,
   onSelectProject,
+  onCreateProject,
+  onShare,
+  onOpenSettings,
+  onFeedback,
   loading = false,
+  statusMessage,
 }: {
   projectName: string;
   projects: SeoDashProject[];
   currentDomain: string;
   onSelectProject?: (domain: string) => void;
+  onCreateProject: () => void;
+  onShare: () => void;
+  onOpenSettings: () => void;
+  onFeedback: () => void;
   loading?: boolean;
+  statusMessage?: string | null;
 }) {
   const { locale } = useLocale();
   const ko = locale === "ko";
@@ -34,30 +47,33 @@ export function SeoDashHeader({
   return (
     <section
       aria-label={ko ? "SEO 대시보드 헤더" : "SEO dashboard header"}
-      className="max-w-[max(100%-14px,1030px)] px-[18px] pb-4 pl-8 pt-4"
+      className="px-4 pb-4 pt-4 sm:px-6 xl:px-8"
     >
-      {/* 행1: breadcrumb + 피드백 */}
-      <div className="mb-2 flex items-baseline justify-between gap-1">
-        <nav aria-label="breadcrumb">
-          <ol className={cn("flex items-center text-[14px] leading-[20px]", SM.body)}>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <nav aria-label={ko ? "현재 위치" : "Breadcrumb"}>
+          <ol className={cn("flex items-center text-[13px] leading-5", SM.body)}>
             <li>{ko ? "프로젝트" : "Projects"}</li>
-            <li aria-hidden="true" className="mx-2 text-[#9ba0ab]">›</li>
-            <li>SEO</li>
+            <li aria-hidden="true" className="mx-2 text-[#9ba0ab]">/</li>
+            <li aria-current="page">SEO</li>
           </ol>
         </nav>
-        <button type="button" className={cn("flex items-center gap-1 text-[14px] leading-[19.88px]", SM.link)}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
-            <path d="M21 12a8 8 0 0 1-8 8H5l-2 2V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
-          </svg>
+        <button
+          type="button"
+          onClick={onFeedback}
+          className={cn(
+            "inline-flex min-h-8 items-center gap-1.5 rounded-[6px] px-2 text-[13px] hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-blue",
+            SM.link,
+          )}
+        >
+          <ChatBubbleIcon aria-hidden="true" />
           {ko ? "피드백 보내기" : "Send feedback"}
         </button>
       </div>
 
-      {/* 행2: H1 + 프로젝트 pill + 액션 */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <h1 className="truncate text-[20px] font-semibold leading-[24px] text-[oklch(0.1_0.03_137_/_0.899)]">
-            {ko ? `SEO 대시보드: ${projectName}` : `SEO Dashboard: ${projectName}`}
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
+          <h1 className="max-w-full truncate text-[20px] font-semibold leading-7 text-a2-text">
+            {ko ? `SEO 대시보드${projectName ? `: ${projectName}` : ""}` : `SEO Dashboard${projectName ? `: ${projectName}` : ""}`}
           </h1>
           {projects.length > 0 && (
             <div className="relative">
@@ -67,8 +83,8 @@ export function SeoDashHeader({
                 onChange={(event) => onSelectProject?.(event.target.value)}
                 disabled={loading}
                 className={cn(
-                  "h-[25px] cursor-pointer appearance-none rounded-[6px] bg-transparent pl-1 pr-4 text-[14px] leading-[20px] outline-none disabled:cursor-wait disabled:opacity-70",
-                  SM.link
+                  "h-8 max-w-[220px] cursor-pointer appearance-none rounded-[6px] bg-transparent py-1 pl-2 pr-7 text-[13px] outline-none hover:bg-white focus-visible:ring-2 focus-visible:ring-app-blue disabled:cursor-wait disabled:opacity-70",
+                  SM.link,
                 )}
               >
                 {projects.map((project) => (
@@ -77,34 +93,46 @@ export function SeoDashHeader({
                   </option>
                 ))}
               </select>
-              <span aria-hidden="true" className={cn("pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 text-[10px]", SM.link)}>
-                {loading ? <ReloadIcon className="h-3 w-3 animate-spin" /> : "⌄"}
-              </span>
+              {loading ? (
+                <ReloadIcon className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-app-blue" />
+              ) : (
+                <ChevronDownIcon className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-app-blue" />
+              )}
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2 max-md:hidden">
-          <button type="button" className={cn(SM.darkCta, "h-[28px]")}>
-            {ko ? "SEO 프로젝트 만들기" : "Create SEO project"}
+
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCreateProject}
+            className={cn(SM.darkCta, "h-8 gap-1.5 px-3 text-[13px]")}
+          >
+            <PlusIcon aria-hidden="true" />
+            <span className="max-sm:hidden">{ko ? "SEO 프로젝트 만들기" : "Create SEO project"}</span>
+            <span className="sm:hidden">{ko ? "프로젝트" : "Project"}</span>
           </button>
           <button
             type="button"
-            className="inline-flex h-[28px] items-center justify-center rounded-[6px] border border-app-border bg-white px-3 text-[14px] font-medium text-a2-text transition-colors hover:bg-app-bg"
+            onClick={onShare}
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-[6px] border border-app-border bg-white px-3 text-[13px] font-medium text-a2-text hover:bg-app-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-blue"
           >
+            <Share1Icon aria-hidden="true" />
             {ko ? "공유" : "Share"}
           </button>
           <button
             type="button"
-            aria-label={ko ? "설정 열기" : "Open settings"}
-            className="inline-flex h-[28px] w-[28px] items-center justify-center rounded-[6px] text-a2-text-muted transition-colors hover:bg-app-bg"
+            onClick={onOpenSettings}
+            aria-label={ko ? "위젯 설정 열기" : "Open widget settings"}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] border border-app-border bg-white text-a2-text-muted hover:bg-app-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-blue"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.09a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
-            </svg>
+            <GearIcon aria-hidden="true" />
           </button>
         </div>
       </div>
+      <p className="sr-only" role="status" aria-live="polite">
+        {statusMessage}
+      </p>
     </section>
   );
 }

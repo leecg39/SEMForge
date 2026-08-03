@@ -1,4 +1,9 @@
-const FOLDER_SCOPED_TOOLKITS = new Set(["advertising", "ai", "content"]);
+const FOLDER_SCOPED_TOOLKITS = new Set([
+  "advertising",
+  "ai",
+  "content",
+  "social",
+]);
 
 interface ToolkitToolHrefInput {
   toolkitKey: string;

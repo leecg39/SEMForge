@@ -8,35 +8,32 @@ import { LanguageSwitcher } from "@/components/shell/LanguageSwitcher";
 import { useLocale } from "@/i18n/LocaleProvider";
 
 const headerLinkClass =
-  "hidden rounded-[6px] px-2.5 py-1.5 text-[13px] text-app-text transition-colors hover:bg-app-bg md:block";
+  "hidden rounded-full px-3 py-2 text-[14px] font-medium text-app-text transition-colors hover:bg-faint md:block";
 
-/** 로그인 앱 상단 헤더 (56px, 흰 배경, 하단 보더) */
+/** 로그인 앱 상단 헤더 — 흰 캔버스와 캡슐형 검색을 사용하는 공용 내비게이션. */
 export function AppHeader() {
   const { locale } = useLocale();
   const router = useRouter();
 
   return (
-    <header className="sticky top-0 z-50 flex h-[56px] shrink-0 items-center gap-3 border-b border-app-border bg-white px-4">
+    <header className="sticky top-0 z-50 flex h-[64px] shrink-0 items-center gap-3 border-b border-bebe bg-white px-4 md:px-6">
       {/* 좌: 워드마크 */}
       <Link href="/home/" className="flex shrink-0 flex-col justify-center leading-none">
-        <span className="font-lazzer text-[18px] font-semibold leading-[20px] tracking-[-0.36px] text-app-text">
+        <span className="font-lazzer text-[20px] font-semibold leading-[22px] tracking-[-0.4px] text-rausch">
           SEMForge
-        </span>
-        <span className="text-[9px] leading-[11px] text-app-text-secondary">
-          {locale === "ko" ? "Adobe 계열사" : "An Adobe Company"}
         </span>
       </Link>
 
       {/* 중앙: 전역 검색 (모바일에서는 아이콘 버튼으로 축소) */}
       <form
-        className="mx-auto hidden h-[36px] w-full max-w-[480px] flex-1 items-center gap-2 rounded-[8px] bg-app-bg px-3 sm:flex"
+        className="mx-auto hidden h-[44px] w-full max-w-[560px] flex-1 items-center gap-2 rounded-full border border-bebe bg-white py-1 pl-4 pr-1 shadow-[var(--shadow-subtle)] sm:flex"
         onSubmit={(e) => {
           e.preventDefault();
           const q = String(new FormData(e.currentTarget).get("q") ?? "").trim();
           if (q) router.push(`/analytics/overview/?domain=${encodeURIComponent(q)}`);
         }}
       >
-        <SearchIcon width={16} height={16} className="shrink-0 text-app-text-secondary" />
+        <SearchIcon width={16} height={16} className="shrink-0 text-foggy" />
         <input
           type="text"
           name="q"
@@ -45,13 +42,20 @@ export function AppHeader() {
               ? "도구, 도메인 또는 키워드 검색"
               : "Search for a tool, domain, or keyword"
           }
-          className="h-full w-full min-w-0 bg-transparent text-[13px] text-app-text outline-none placeholder:text-app-text-secondary"
+          className="h-full w-full min-w-0 bg-transparent text-[14px] text-hof outline-none placeholder:text-foggy"
         />
+        <button
+          type="submit"
+          aria-label={locale === "ko" ? "검색" : "Search"}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-rausch text-white transition-colors hover:bg-rausch-600"
+        >
+          <SearchIcon width={16} height={16} />
+        </button>
       </form>
       <button
         type="button"
         aria-label={locale === "ko" ? "검색" : "Search"}
-        className="ml-auto flex h-[32px] w-[32px] items-center justify-center rounded-[6px] text-app-text-secondary hover:bg-app-bg sm:hidden"
+        className="ml-auto flex h-10 w-10 items-center justify-center rounded-full bg-faint text-hof hover:bg-bebe sm:hidden"
       >
         <SearchIcon width={18} height={18} />
       </button>
@@ -66,7 +70,7 @@ export function AppHeader() {
         </Link>
         <button
           type="button"
-          className="hidden items-center gap-1 rounded-[6px] px-2.5 py-1.5 text-[13px] text-app-text transition-colors hover:bg-app-bg md:flex"
+          className="hidden items-center gap-1 rounded-full px-3 py-2 text-[14px] font-medium text-app-text transition-colors hover:bg-faint md:flex"
         >
           {locale === "ko" ? "더보기" : "More"}
           <ChevronDownIcon width={14} height={14} className="text-app-text-secondary" />
@@ -76,7 +80,7 @@ export function AppHeader() {
         <button
           type="button"
           aria-label={locale === "ko" ? "계정 메뉴" : "Account menu"}
-          className="ml-2 flex h-[32px] w-[32px] items-center justify-center rounded-full bg-app-blue text-[13px] font-semibold text-white"
+          className="ml-2 flex h-10 w-10 items-center justify-center rounded-full bg-rausch text-[13px] font-semibold text-white transition-colors hover:bg-rausch-600"
         >
           U
         </button>

@@ -1,0 +1,147 @@
+.dashboard {
+  container-type: inline-size;
+  min-width: 0;
+}
+
+.topGrid,
+.analysisGrid,
+.analysisLeft,
+.analysisRight {
+  display: grid;
+  min-width: 0;
+  gap: 24px;
+}
+
+.topGrid,
+.analysisGrid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.analysisLeft,
+.analysisRight {
+  align-content: start;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.widgetSlot {
+  position: relative;
+  min-width: 0;
+}
+
+.widgetSlot > section {
+  height: 100%;
+  padding-right: 44px;
+}
+
+.hideButton {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: #989ca5;
+}
+
+.hideButton:hover {
+  background: #f1f3f4;
+  color: #555a64;
+}
+
+.hideButton:focus-visible {
+  outline: 2px solid #235fe2;
+  outline-offset: 2px;
+}
+
+@container (min-width: 720px) {
+  .topGrid,
+  .analysisGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .aiSearch,
+  .seoMetrics,
+  .analysisLeft,
+  .analysisRight {
+    grid-column: span 2;
+  }
+
+  .organicTrafficInsights {
+    grid-column: span 2;
+  }
+}
+
+@container (min-width: 1050px) {
+  .topGrid,
+  .analysisGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .aiSearch,
+  .seoMetrics {
+    grid-column: span 2;
+  }
+
+  .positionTracking {
+    grid-column: span 3;
+  }
+
+  .siteAudit {
+    grid-column: span 1;
+  }
+
+  .organicTrafficInsights {
+    grid-column: span 2;
+  }
+
+  .analysisLeft,
+  .analysisRight {
+    grid-column: span 4;
+  }
+
+  .analysisRight {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (min-width: 1500px) {
+  .topGrid,
+  .analysisGrid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .aiSearch,
+  .seoMetrics {
+    grid-column: span 3;
+  }
+
+  .positionTracking,
+  .onPageSeo,
+  .backlinkAudit,
+  .organicTrafficInsights {
+    grid-column: span 1;
+  }
+
+  .siteAudit {
+    grid-column: span 2;
+  }
+
+  .analysisLeft {
+    grid-column: span 4;
+  }
+
+  .analysisRight {
+    grid-column: span 2;
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hideButton {
+    transition: none;
+  }
+}

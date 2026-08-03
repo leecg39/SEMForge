@@ -24,6 +24,7 @@ const auth: AuthContext = {
 
 let projects: typeof import("./projects");
 let runs: typeof import("./runs");
+let brandPerformance: typeof import("./brand-performance");
 
 before(async () => {
   const { default: Database } = await import("better-sqlite3");
@@ -39,6 +40,7 @@ before(async () => {
   sqlite.close();
   projects = await import("./projects");
   runs = await import("./runs");
+  brandPerformance = await import("./brand-performance");
   await projects.saveAiVisibilitySettings(auth, "f1", {
     brandName: "Acme",
     brandAliases: ["에크미", "ACME Korea"],
@@ -134,5 +136,38 @@ test("런타임에서 비활성인 공급자는 직접 API 저장도 거부한�
       schedule: "weekly",
     }),
     /선택할 수 없습니다/,
+  );
+});
+
+test("브랜드 성과는 본문 공급자가 없을 때 가짜 리포트 대신 준비 상태를 반환한다", async () => {
+  const dashboard = await brandPerformance.getBrandPerformanceDashboard(auth, "f1");
+  assert.equal(dashboard.state, "provider_unavailable");
+  assert.equal(dashboard.report, null);
+  assert.equal(dashboard.scope.promptCount, 2);
+  await assert.rejects(
+    brandPerformance.getBrandPerformanceDashboard(auth, "f2"),
+    /프로젝트를 찾을 수 없습니다/,
+  );
+});
+
+test("경쟁 브랜드 저장은 워크스페이스 소유권과 4개 상한·중복을 검증한다", async () => {
+  const saved = await brandPerformance.saveBrandPerformanceBrands(auth, "f1", [
+    { name: "Beta", aliases: ["Beta Korea"], domain: "beta.test" },
+    { name: "Gamma" },
+  ]);
+  assert.equal(saved.filter((brand) => brand.kind === "own").length, 1);
+  assert.deepEqual(
+    saved.filter((brand) => brand.kind === "competitor" && brand.enabled).map((brand) => brand.name),
+    ["Beta", "Gamma"],
+  );
+  await assert.rejects(
+    brandPerformance.saveBrandPerformanceBrands(auth, "f1", [{ name: "Beta" }, { name: " beta " }]),
+    /중복해서 선택할 수 없습니다/,
+  );
+  await assert.rejects(
+    brandPerformance.saveBrandPerformanceBrands(auth, "f1", [
+      { name: "A1" }, { name: "A2" }, { name: "A3" }, { name: "A4" }, { name: "A5" },
+    ]),
+    /최대 4개/,
   );
 });

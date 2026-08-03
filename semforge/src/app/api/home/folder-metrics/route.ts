@@ -17,7 +17,7 @@ const querySchema = z.object({
       raw
         .split(",")
         .map((id) => id.trim())
-        .filter(Boolean)
+        .filter(Boolean),
     )
     .pipe(z.array(z.string().min(1).max(64)).max(MAX_FOLDER_IDS))
     .optional(),
@@ -42,6 +42,9 @@ export const GET = route(async (request: Request) => {
       sources: [
         "ai_visibility_queries",
         "ai_visibility_snapshots",
+        "ai_visibility_runs",
+        "ai_visibility_observations",
+        "ai_visibility_citations",
         "site_audit_campaigns",
         "position_tracking_campaigns",
         "keyword_metrics",

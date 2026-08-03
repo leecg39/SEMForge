@@ -35,7 +35,7 @@ export function AppShell({ activeToolkit, activeHref, children, hideSideNav }: A
       {/* 모바일: 툴킷 가로 스크롤 탭 */}
       <nav
         aria-label={tx("Toolkits")}
-        className="sticky top-[56px] z-40 flex gap-1 overflow-x-auto border-b border-app-border bg-white px-2 py-[6px] min-[1025px]:hidden"
+        className="sticky top-[64px] z-40 flex gap-1 overflow-x-auto border-b border-bebe bg-white px-2 py-[6px] min-[1025px]:hidden"
       >
         {globalNav.map((item) => {
           const Icon = appIcons[item.icon];
@@ -46,10 +46,10 @@ export function AppShell({ activeToolkit, activeHref, children, hideSideNav }: A
               href={item.href}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "flex h-[32px] shrink-0 items-center gap-1.5 rounded-[6px] px-3 text-[13px]",
+                "flex h-[34px] shrink-0 items-center gap-1.5 rounded-full px-3 text-[13px]",
                 active
-                  ? "bg-[#eaf3ff] font-medium text-app-blue"
-                  : "text-app-text-secondary hover:bg-app-bg"
+                  ? "bg-faint font-semibold text-hof"
+                  : "text-foggy hover:bg-faint"
               )}
             >
               <Icon width={16} height={16} />

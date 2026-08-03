@@ -26,18 +26,18 @@ export default function StatsSection() {
   const [first, ...rest] = section.stats;
 
   return (
-    <section className="py-[120px]">
+    <section className="bg-faint py-[96px]">
       <div className="mp-container">
-        <h2 className="text-[12px] font-semibold uppercase tracking-[0.24px] text-[#181e15]">
+        <h2 className="text-[12px] font-semibold uppercase tracking-[0.24px] text-foggy">
           {section.label}
         </h2>
-        <h3 className="mt-6 max-w-[980px] font-lazzer text-[36px] font-semibold uppercase leading-none tracking-[-0.04em] text-[#181e15] md:text-[64px] md:leading-[64px]">
+        <h3 className="mt-3 max-w-[980px] font-lazzer text-[28px] font-semibold leading-[1.2] tracking-[-0.56px] text-hof md:text-[36px]">
           {section.heading}
         </h3>
 
         <div className="mt-[60px]">
           <div
-            className={`${rowGridClass} rounded-2xl bg-[#181e15] px-6 py-8 text-white md:px-10`}
+            className={`${rowGridClass} rounded-[14px] bg-hof px-6 py-8 text-white md:px-10`}
           >
             <p className="flex items-start font-lazzer text-[72px] font-medium leading-none tracking-[-0.06em] md:text-[180px] md:leading-[162px]">
               <ArrowUp className="mt-[0.1em] h-[0.36em] w-[0.36em] shrink-0" />
@@ -50,21 +50,21 @@ export default function StatsSection() {
           {rest.map((stat) => (
             <div
               key={stat.unit}
-              className={`${rowGridClass} group mt-4 border-t border-[#d1d2d5] px-6 pt-6 pb-2 md:px-10`}
+              className={`${rowGridClass} group mt-4 border-t border-bebe px-6 pt-6 pb-2 md:px-10`}
             >
-              <p className="flex items-start font-lazzer text-[56px] font-medium leading-none tracking-[-0.06em] text-[#d1d2d5] transition-colors duration-200 ease-in-out group-hover:text-[#181e15] md:text-[100px]">
+              <p className="flex items-start font-lazzer text-[56px] font-medium leading-none tracking-[-0.06em] text-grey-500 transition-colors duration-200 ease-in-out group-hover:text-hof md:text-[100px]">
                 <ArrowUp className="mt-[0.1em] h-[0.36em] w-[0.36em] shrink-0" />
                 <span>{stat.value}</span>
               </p>
-              <p className="text-[24px] font-semibold text-[#181e15]">{stat.unit}</p>
-              <p className="text-[16px] leading-6 text-[#6c6e79]">{stat.note}</p>
+              <p className="text-[24px] font-semibold text-hof">{stat.unit}</p>
+              <p className="text-[16px] leading-6 text-foggy">{stat.note}</p>
             </div>
           ))}
         </div>
 
         <Link
           href={section.cta.href}
-          className="mt-[60px] inline-flex items-center justify-center rounded-[100px] border border-[#181e15] px-[30px] py-4 text-[16px] font-semibold text-[#181e15] transition-colors duration-200 ease-in-out hover:bg-[#181e15] hover:text-white"
+          className="mt-[60px] inline-flex items-center justify-center rounded-[8px] border border-hof px-[24px] py-3 text-[14px] font-medium text-hof transition-colors duration-200 ease-in-out hover:bg-hof hover:text-white"
         >
           {section.cta.label}
         </Link>

@@ -89,3 +89,59 @@
 - [x] G5.1 `app/(app)/analytics/keywordgap/page.tsx` 신설 + 캐치올 params에서 keywordgap 제거
 - [x] G5.2 `docs/research/CLONE_TRACKER.md` SEO-008 갱신 (Q 표기 — QA 미수행이므로 재개 시 재검토)
 - [ ] G5.3 lint/빌드/테스트 + 화면 QA(ego-browser) + 키워드 갭 파일 선별 커밋 — 미수행
+
+---
+
+# 프로젝트 C — Content Workspace 단순화·고도화
+
+> 계획 문서: `semforge/docs/plans/content-workspace-simplification.md`
+
+## 프로젝트 목표 (Project Goal)
+> `/content/`를 홈·작업판·라이브러리 3개 화면으로 단순화하고, 실제 TalorData·Firecrawl·ChatMock 데이터로 기사 생성부터 저장·재개·실패 복구까지 완성한다.
+
+## 마일스톤 (Milestones)
+- MC1: C0–C1 완료 — 계약·영구 작업판·라이브러리 골격
+- MC2: C2 완료 — 실제 기사 생성 세로 슬라이스
+- MC3: C3–C4 완료 — 최적화·브리프·재활용·편집 검토
+- MC4: C5 완료 — 호환 전환·반응형·접근성·최종 QA
+
+## 완료 조건 (공통)
+- 모의/하드코딩 결과 없이 공급자·실행 시각·실패 상태를 표시
+- 워크스페이스/폴더 데이터 격리 및 감사 로그 유지
+- lint, TypeScript, build, 관련 단위·통합·E2E 테스트 통과
+- 1904×947과 390×844 핵심 흐름 검증
+
+## Phase C0: 계약과 상태 모델
+- [x] C0.1 board/message/run 계약과 Zod 입력·출력 정의
+- [x] C0.2 상태 전이·워크스페이스 격리·중복 실행 방지 테스트
+- [x] C0.3 `content_boards`, `content_messages`, `content_runs` 스키마와 제목 유니크 제약 완화 마이그레이션
+
+## Phase C1: 홈·작업판·라이브러리
+- [x] C1.1 Content 사이드바를 Home/Workspaces/Library 3항목으로 축소
+- [x] C1.2 명령 입력 + 실제 최근 작업판 구현(후속 intent는 준비 안내만 표시)
+- [x] C1.3 Workspaces 목록 + 대화 패널 + 결과 캔버스 + 실제 진행 상태 골격 구현
+- [x] C1.4 기존 `/api/content`를 연결한 라이브러리 구현
+- [x] C1.5 이전 도구 URL의 intent 리다이렉트와 `fid` 문맥 보존
+
+## Phase C2: 기사 생성 세로 슬라이스
+- [x] C2.1 TalorData 연구와 추천 설정 생성
+- [x] C2.2 공용 ChatMock Responses 클라이언트 + Zod 검증 기사 생성
+- [x] C2.3 실제 단계 기록·취소·실패·재시도·출처 UI
+- [x] C2.4 `content_articles` 저장·Markdown 편집·새로고침 복원
+
+## Phase C3: 후속 워크플로
+- [ ] C3.1 Firecrawl URL 가져오기 + 직접 입력 최적화
+- [x] C3.2 `semforge-content-v1` 규칙 기반 SEO 점수와 근거 부족 게이팅
+- [ ] C3.3 Topic Finder → SEO 브리프 → 기사 생성 문맥 연결
+- [ ] C3.4 기존 문서 재활용과 파생 문서 관계 저장
+
+## Phase C4: 편집·검토
+- [x] C4.1 자동 저장과 version 충돌 처리
+- [ ] C4.2 SEO 검사 제안 적용/되돌리기
+- [x] C4.3 draft/in_review/published 상태와 권한·감사 로그
+
+## Phase C5: 전환·품질 게이트
+- [x] C5.1 단위·통합·브라우저 E2E 테스트
+- [x] C5.2 1904×947·390×844 반응형 및 접근 가능한 레이블·`aria-live` QA
+- [x] C5.3 lint, TypeScript, build 및 기존 URL 회귀 확인
+- [x] C5.4 준비된 Content URL의 기존 정적 템플릿 제거·서버 리다이렉트

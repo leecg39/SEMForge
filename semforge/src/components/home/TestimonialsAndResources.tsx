@@ -10,18 +10,18 @@ const CARD_GAP = 12;
 const STEP = CARD_WIDTH + CARD_GAP;
 
 const navButtonClass =
-  "flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#d1d2d5] text-[#181e15] transition-colors duration-200 ease-in-out hover:bg-black/5 disabled:pointer-events-none disabled:opacity-30";
+  "flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-faint text-hof transition-colors duration-200 ease-in-out hover:bg-bebe disabled:pointer-events-none disabled:text-grey-500 disabled:opacity-60";
 
 const resourceTitleClass =
-  "font-lazzer text-[20px] font-semibold leading-[26px] text-[#181e15] transition-colors duration-200 ease-in-out hover:underline";
+  "font-lazzer text-[20px] font-semibold leading-[26px] text-hof transition-colors duration-200 ease-in-out hover:underline";
 
 function SectionHeader({ label, heading }: { label: string; heading: string }) {
   return (
     <div>
-      <h2 className="text-[12px] font-semibold uppercase tracking-[0.24px] text-[#181e15]">
+      <h2 className="text-[12px] font-semibold uppercase tracking-[0.24px] text-foggy">
         {label}
       </h2>
-      <h3 className="mt-6 max-w-[980px] font-lazzer text-[36px] font-semibold uppercase leading-none tracking-[-0.04em] text-[#181e15] md:text-[64px] md:leading-[64px]">
+      <h3 className="mt-3 max-w-[980px] font-lazzer text-[28px] font-semibold leading-[1.2] tracking-[-0.56px] text-hof md:text-[36px]">
         {heading}
       </h3>
     </div>
@@ -54,21 +54,21 @@ export default function TestimonialsAndResources() {
 
   return (
     <>
-      <section className="pb-8 pt-[120px]">
+      <section className="bg-white pb-8 pt-[96px]">
         <div className="mp-container">
           <SectionHeader
             label={testimonial.label}
             heading={testimonial.heading}
           />
           <div className="mt-[60px] grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <figure className="flex flex-col rounded-3xl bg-[#f3f6f6] p-8 md:p-12">
+            <figure className="flex flex-col rounded-[14px] bg-faint p-8 md:p-12">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={testimonial.logo}
                 alt="ZoomInfo"
                 className="h-7 w-auto self-start"
               />
-              <blockquote className="mt-8 flex-1 font-lazzer text-[24px] font-medium leading-[33.6px] text-[#181e15]">
+              <blockquote className="mt-8 flex-1 font-lazzer text-[22px] font-medium leading-[1.35] tracking-[-0.44px] text-hof">
                 {testimonial.quote}
               </blockquote>
               <figcaption className="mt-10 flex items-center gap-4">
@@ -79,20 +79,20 @@ export default function TestimonialsAndResources() {
                   className="h-12 w-12 rounded-full object-cover"
                 />
                 <div>
-                  <p className="text-[16px] font-semibold text-[#181e15]">
+                  <p className="text-[16px] font-semibold text-hof">
                     {testimonial.author}
                   </p>
-                  <p className="text-[14px] text-[#6c6e79]">
+                  <p className="text-[14px] text-foggy">
                     {testimonial.role}
                   </p>
                 </div>
               </figcaption>
             </figure>
-            <div className="flex flex-col items-center justify-center rounded-3xl bg-[#dceeeb] bg-[url('/images/pattern-testimonials-card.svg')] bg-[position:right_bottom] bg-no-repeat p-8 text-center md:p-12">
-              <p className="font-lazzer text-[96px] font-semibold leading-none tracking-[-0.04em] text-[#181e15]">
+            <div className="flex flex-col items-center justify-center rounded-[14px] bg-faint p-8 text-center md:p-12">
+              <p className="font-lazzer text-[96px] font-semibold leading-none tracking-[-0.04em] text-hof">
                 {testimonial.stat.value}
               </p>
-              <p className="mt-4 text-[16px] text-[#181e15]">
+              <p className="mt-4 text-[16px] text-foggy">
                 {testimonial.stat.note}
               </p>
             </div>
@@ -100,7 +100,7 @@ export default function TestimonialsAndResources() {
         </div>
       </section>
 
-      <section className="py-[120px]">
+      <section className="bg-white py-[96px]">
         <div className="mp-container">
           <div className="flex flex-wrap items-end justify-between gap-6">
             <SectionHeader
@@ -155,9 +155,9 @@ export default function TestimonialsAndResources() {
                 return (
                   <li
                     key={card.title}
-                    className="mr-3 flex w-[430px] shrink-0 flex-col overflow-hidden rounded-2xl border border-[#f0f1f2]"
+                    className="mr-3 flex w-[430px] shrink-0 flex-col overflow-hidden rounded-[12px] bg-white"
                   >
-                    <div className="h-[240px] bg-[#f3f6f6]">
+                    <div className="h-[240px] bg-faint">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={card.image}
@@ -181,14 +181,14 @@ export default function TestimonialsAndResources() {
                           {card.title}
                         </Link>
                       )}
-                      <p className="mt-3 line-clamp-3 text-[14px] leading-[21px] text-[#6c6e79]">
+                      <p className="mt-3 line-clamp-3 text-[14px] leading-[21px] text-foggy">
                         {card.body}
                       </p>
                       <div className="mt-auto flex flex-wrap gap-2 pt-6">
                         {card.tags.map((tag) => (
                           <span
                             key={tag}
-                            className="rounded-[100px] border border-[#d1d2d5] px-3 py-1 text-[12px] text-[#181e15]"
+                            className="rounded-full border border-bebe px-3 py-1 text-[12px] text-hof"
                           >
                             {tag}
                           </span>

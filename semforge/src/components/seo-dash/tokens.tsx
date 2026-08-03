@@ -1,4 +1,8 @@
+"use client";
+
 import type { ReactNode } from "react";
+import { ChevronDownIcon } from "@radix-ui/react-icons";
+import { Line, LineChart, ResponsiveContainer, YAxis } from "recharts";
 import { cn } from "@/lib/utils";
 
 /**
@@ -69,7 +73,7 @@ export function SelectLink({ children }: { children: ReactNode }) {
       className={cn("flex items-center gap-1 text-[14px] leading-[20px]", SM.link)}
     >
       {children}
-      <span aria-hidden="true" className="text-[10px]">⌄</span>
+      <ChevronDownIcon className="h-3.5 w-3.5" aria-hidden="true" />
     </button>
   );
 }
@@ -89,21 +93,23 @@ export function DeltaBadge({ value, invert }: { value: number; invert?: boolean 
 /** 간이 스파크라인 (실측 130×30, polyline) */
 export function Sparkline({ points, color = "#235FE2" }: { points: number[]; color?: string }) {
   if (points.length < 2) return null;
-  const w = 130;
-  const h = 30;
   const min = Math.min(...points);
   const max = Math.max(...points);
-  const span = max - min || 1;
-  const path = points
-    .map((p, i) => {
-      const x = (i / (points.length - 1)) * w;
-      const y = h - 3 - ((p - min) / span) * (h - 6);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
   return (
-    <svg width={w} height={h} aria-hidden="true" className="overflow-hidden">
-      <polyline points={path} fill="none" stroke={color} strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
+    <div className="h-[30px] w-[130px]" aria-hidden="true">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={points.map((value, index) => ({ index, value }))}>
+          <YAxis domain={[min, max === min ? min + 1 : max]} hide />
+          <Line
+            type="monotone"
+            dataKey="value"
+            stroke={color}
+            strokeWidth={1.6}
+            dot={false}
+            isAnimationActive={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
   );
 }

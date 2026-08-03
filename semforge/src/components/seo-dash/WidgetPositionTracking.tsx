@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import {
+  ArrowRightIcon,
   ChevronDownIcon,
   Cross2Icon,
   DesktopIcon,
@@ -32,6 +33,8 @@ export interface PositionTrackingWidgetKeyword {
   keyword: string;
   position: number | null;
   previousPosition: number | null;
+  /** 포지션 추적 상세 화면과 같은 CTR 곡선 기반 가시성 기여율. */
+  visibilityShare: number | null;
 }
 
 /** 수집 실행별 가시성 이력 한 점 (position_tracking_visibility_history 실측). */
@@ -46,7 +49,14 @@ export interface PositionTrackingWidgetSummary {
   device: "desktop" | "mobile" | "tablet";
   searchEngine: "google" | "bing" | "chatgpt" | "gemini";
   visibility: number | null;
-  updatedAt: string | null;
+  visibilityDiff: number | null;
+  avgPosition: number | null;
+  rankedCount: number;
+  lastCollectedAt: string | null;
+  keywordCount: number;
+  topBuckets: { key: "top3" | "top10" | "top20" | "top100"; count: number }[];
+  improvedCount: number;
+  declinedCount: number;
   keywords: PositionTrackingWidgetKeyword[];
   history: PositionTrackingVisibilityPoint[];
 }
@@ -157,11 +167,6 @@ function RankMetric({
   );
 }
 
-function keywordVisibility(position: number | null) {
-  if (position === null) return 0;
-  return Math.max(0, Math.min(100, 101 - position));
-}
-
 function searchEngineLabel(value: PositionTrackingWidgetSummary["searchEngine"]) {
   if (value === "google") return "Google";
   if (value === "bing") return "Bing";
@@ -190,7 +195,7 @@ export function WidgetPositionTracking({
   if (hidden) return null;
 
   const campaignId = summary?.campaignId;
-  const hasKeywords = (summary?.keywords.length ?? 0) > 0;
+  const hasKeywords = (summary?.keywordCount ?? 0) > 0;
 
   if (!summary || !hasKeywords) {
     return (
@@ -285,46 +290,32 @@ export function WidgetPositionTracking({
           <span>{ko ? "성공" : "Succeeded"} {activeRun.succeeded} · {ko ? "실패" : "Failed"} {activeRun.failed}</span>
           <Link
             href={`/position-tracking/?campaign=${encodeURIComponent(summary.campaignId)}&run=${encodeURIComponent(activeRun.runId)}`}
-            className="font-medium text-[#235fe2] hover:underline"
+            className="inline-flex items-center gap-1 font-medium text-[#235fe2] hover:underline"
           >
-            {ko ? "상세 진행률 보기" : "View progress"} →
+            {ko ? "상세 진행률 보기" : "View progress"}
+            <ArrowRightIcon className="h-3.5 w-3.5" aria-hidden="true" />
           </Link>
         </div>
       </WidgetCard>
     );
   }
 
-  const keywords = summary.keywords;
-  const total = Math.max(1, keywords.length);
+  const total = Math.max(1, summary.keywordCount);
   const counts = {
-    top3: keywords.filter((item) => item.position !== null && item.position <= 3).length,
-    top10: keywords.filter((item) => item.position !== null && item.position <= 10).length,
-    top20: keywords.filter((item) => item.position !== null && item.position <= 20).length,
-    top100: keywords.filter((item) => item.position !== null && item.position <= 100).length,
+    top3: summary.topBuckets.find((bucket) => bucket.key === "top3")?.count ?? 0,
+    top10: summary.topBuckets.find((bucket) => bucket.key === "top10")?.count ?? 0,
+    top20: summary.topBuckets.find((bucket) => bucket.key === "top20")?.count ?? 0,
+    top100: summary.topBuckets.find((bucket) => bucket.key === "top100")?.count ?? 0,
   };
-  // 실적 개선/하락: 직전 수집 대비 순위 변화 실측 (previous_position 비교).
-  const improvedCount = keywords.filter(
-    (item) =>
-      item.position !== null && item.previousPosition !== null && item.position < item.previousPosition
-  ).length;
-  const declinedCount = keywords.filter(
-    (item) =>
-      item.position !== null && item.previousPosition !== null && item.position > item.previousPosition
-  ).length;
-  const tableRows = [...keywords]
-    .sort((a, b) => {
-      // 코드포인트 비교로 서버/클라이언트 정렬을 결정적으로 유지한다.
-      // localeCompare 는 런타임 기본 콜레이션(en vs ko)에 따라 순서가 달라져
-      // SSR 하이드레이션 불일치를 일으킨다 (QA ISSUE-001).
-      if (a.position === null && b.position === null) {
-        return a.keyword < b.keyword ? -1 : a.keyword > b.keyword ? 1 : 0;
-      }
-      if (a.position === null) return 1;
-      if (b.position === null) return -1;
-      return a.position - b.position;
-    })
-    .slice(0, 3);
-  const history = summary.history;
+  const tableRows = summary.keywords.slice(0, 3);
+  const rangeEnd = summary.lastCollectedAt
+    ? new Date(summary.lastCollectedAt).getTime()
+    : Number.POSITIVE_INFINITY;
+  const rangeStart = rangeEnd - (range - 1) * 24 * 60 * 60 * 1000;
+  const history = summary.history.filter((point) => {
+    const capturedAt = new Date(point.capturedAt).getTime();
+    return capturedAt >= rangeStart && capturedAt <= rangeEnd;
+  });
   const historyData = history.map((point) => ({
     label: new Intl.DateTimeFormat(ko ? "ko-KR" : "en-US", {
       month: "short",
@@ -351,7 +342,7 @@ export function WidgetPositionTracking({
             <InfoHint label={ko ? "추적 키워드의 검색 순위 요약" : "Search ranking summary for tracked keywords"} />
           </div>
           <Link
-            href="/position-tracking/"
+            href={`/position-tracking/?campaign=${encodeURIComponent(summary.campaignId)}`}
             className={cn("mt-3 inline-flex items-center gap-1.5 text-[14px] leading-[20px] hover:underline", SM.link)}
           >
             <DeviceIcon className="h-[15px] w-[15px]" aria-hidden="true" />
@@ -364,10 +355,10 @@ export function WidgetPositionTracking({
 
         <div className="flex items-center gap-3 text-[13px] leading-[20px] text-[#696c75]">
           <span suppressHydrationWarning>
-            {ko ? "마지막 업데이트" : "Last update"}: {formatRelativeTime(summary?.updatedAt ?? null, ko)}
+            {ko ? "마지막 업데이트" : "Last update"}: {formatRelativeTime(summary.lastCollectedAt, ko)}
           </span>
           <span className="h-4 w-px bg-[#d9dade]" aria-hidden="true" />
-          <span suppressHydrationWarning>{formatRange(summary?.updatedAt ?? null, range, ko)}</span>
+          <span suppressHydrationWarning>{formatRange(summary.lastCollectedAt, range, ko)}</span>
           <span className="relative inline-flex items-center">
             <select
               aria-label={ko ? "조회 기간" : "Date range"}
@@ -402,7 +393,17 @@ export function WidgetPositionTracking({
             <span>{ko ? "가시성" : "Visibility"}</span>
             <InfoHint label={ko ? "추적 키워드의 검색 결과 가시성" : "Search visibility across tracked keywords"} />
           </div>
-          <p className="mt-1 text-[22px] font-semibold leading-[28px] text-[#5753c9]">{visibility}%</p>
+          <div className="mt-1 flex items-baseline gap-2">
+            <p className="text-[22px] font-semibold leading-[28px] text-[#5753c9]">{visibility}%</p>
+            {summary.visibilityDiff !== null && (
+              <span className={`text-[12px] font-semibold ${summary.visibilityDiff > 0 ? "text-[#0a6b57]" : summary.visibilityDiff < 0 ? "text-[#a4002a]" : "text-[#777b84]"}`}>
+                {summary.visibilityDiff > 0 ? "▲" : summary.visibilityDiff < 0 ? "▼" : "–"} {Math.abs(summary.visibilityDiff)}%p
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-[12px] text-[#696c75]">
+            {ko ? "평균 포지션" : "Average position"} {summary.avgPosition ?? "–"} · {ko ? "순위권" : "Ranked"} {summary.rankedCount}/{summary.keywordCount}
+          </p>
           {historyData.length >= 2 ? (
             <div className="mt-3 h-[130px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -478,7 +479,7 @@ export function WidgetPositionTracking({
                 {ko ? "실적 개선 키워드" : "Improved keywords"}
               </p>
               <strong className="mt-1 block text-[21px] font-semibold leading-[26px] text-[#0ba360]">
-                {improvedCount}
+                {summary.improvedCount}
               </strong>
             </div>
             <div>
@@ -486,7 +487,7 @@ export function WidgetPositionTracking({
                 {ko ? "실적 하락 키워드" : "Declined keywords"}
               </p>
               <strong className="mt-1 block text-[21px] font-semibold leading-[26px] text-[#d3133a]">
-                {declinedCount}
+                {summary.declinedCount}
               </strong>
             </div>
           </div>
@@ -502,7 +503,7 @@ export function WidgetPositionTracking({
               <tr>
                 <th className="w-[54%] pb-2 font-normal">{ko ? "키워드" : "Keyword"}</th>
                 <th className="w-[23%] pb-2 text-center font-normal">{ko ? "포지션" : "Position"}</th>
-                <th className="w-[23%] pb-2 text-right font-normal">{ko ? "가시성" : "Visibility"}</th>
+                <th className="w-[23%] pb-2 text-right font-normal">{ko ? "가시성 기여" : "Visibility share"}</th>
               </tr>
             </thead>
             <tbody>
@@ -511,19 +512,15 @@ export function WidgetPositionTracking({
                   <tr key={item.keyword} className="border-b border-[#e8e9eb]">
                     <td className="truncate py-2.5 pr-2 font-medium text-[#235fe2]">{item.keyword}</td>
                     <td className="py-2.5 text-center text-[#282b31]">{item.position ?? "–"}</td>
-                    <td className="py-2.5 text-right text-[#282b31]">{keywordVisibility(item.position)}%</td>
+                    <td className="py-2.5 text-right text-[#282b31]">{item.visibilityShare === null ? "–" : `${item.visibilityShare.toFixed(2)}%`}</td>
                   </tr>
                 ))
               ) : (
                 <tr>
                   <td colSpan={3} className="py-8 text-center text-[12px] leading-[18px] text-[#777b84]">
-                    {summary
-                      ? ko
-                        ? "이 캠페인에 추적 중인 키워드가 없습니다."
-                        : "No keywords tracked in this campaign yet."
-                      : ko
-                        ? "이 사이트에는 포지션 추적 캠페인이 없습니다."
-                        : "No position tracking campaign for this site."}
+                    {ko
+                      ? "현재 100위 안에 진입한 키워드가 없습니다."
+                      : "No tracked keywords currently rank in the top 100."}
                   </td>
                 </tr>
               )}
@@ -534,12 +531,86 @@ export function WidgetPositionTracking({
 
       <div className="mt-auto pt-1">
         <Link
-          href="/position-tracking/"
+          href={`/position-tracking/?campaign=${encodeURIComponent(summary.campaignId)}`}
           className="inline-flex h-[30px] items-center justify-center rounded-[6px] border border-[#cfd1d6] bg-white px-3 text-[13px] font-medium text-[#5c6068] transition-colors hover:bg-[#f6f7f8] hover:text-[#25282d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#235fe2]"
         >
           {ko ? "전체 보고서 보기" : "View full report"}
         </Link>
       </div>
     </WidgetCard>
+  );
+}
+
+/** SEO 대시보드 6열 레이아웃용 실데이터 요약 카드. */
+export function WidgetPositionTrackingCompact({
+  summary,
+  domain,
+  folderId,
+  activeRun,
+}: {
+  summary: PositionTrackingWidgetSummary | null;
+  domain: string;
+  folderId?: string | null;
+  activeRun?: PositionTrackingActiveRunSummary | null;
+}) {
+  const { locale } = useLocale();
+  const ko = locale === "ko";
+  const [setupOpen, setSetupOpen] = useState(false);
+  const hasKeywords = (summary?.keywordCount ?? 0) > 0;
+  const progress = activeRun && activeRun.total > 0
+    ? Math.round((activeRun.processed / activeRun.total) * 100)
+    : 0;
+
+  return (
+    <>
+      <WidgetCard ariaLabel={ko ? "포지션 추적" : "Position Tracking"} className="flex h-full min-h-[224px] flex-col">
+        <div className="flex items-center justify-between gap-2 pt-2">
+          <div className="flex items-center gap-1.5">
+            <WidgetTitle>{ko ? "포지션 추적" : "Position Tracking"}</WidgetTitle>
+            <InfoHint label={ko ? "추적 키워드의 실제 검색 순위" : "Measured rankings for tracked keywords"} />
+          </div>
+          {activeRun ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-[#eef5ff] px-2 py-0.5 text-[10px] font-medium text-[#235fe2]">
+              <ReloadIcon className="h-3 w-3 animate-spin" aria-hidden="true" />
+              {ko ? "수집 중" : "Collecting"}
+            </span>
+          ) : summary?.lastCollectedAt ? (
+            <span className="rounded-full bg-[#eef7ee] px-2 py-0.5 text-[10px] font-medium text-[#1c6b3c]">{ko ? "실측" : "Live"}</span>
+          ) : null}
+        </div>
+
+        {!summary || !hasKeywords ? (
+          <div className="flex flex-1 flex-col justify-between pt-3">
+            <div>
+              <p className={cn("text-[13px] leading-5", SM.body)}>{ko ? "Google·Bing과 AI 검색의 키워드 순위를 추적합니다." : "Track keyword positions across search and AI answers."}</p>
+              <p className={cn("mt-2 text-[11px] leading-[17px]", SM.caption)}>{summary ? (ko ? "추적할 키워드를 추가해 주세요." : "Add keywords to start collecting.") : (ko ? "아직 포지션 추적 캠페인이 없습니다." : "No position tracking campaign yet.")}</p>
+            </div>
+            <button type="button" onClick={() => setSetupOpen(true)} className={cn(SM.darkCta, "h-8 self-start text-[12px]")}>{ko ? "설정" : "Set up"}</button>
+          </div>
+        ) : activeRun ? (
+          <div className="flex flex-1 flex-col justify-center">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className={cn("truncate text-[12px]", SM.caption)}>{activeRun.currentKeyword ?? (ko ? "수집 준비 중" : "Preparing")}</span>
+              <strong className="text-[20px] font-semibold text-[#5753c9]">{activeRun.processed}/{activeRun.total}</strong>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#e6e8ed]" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}>
+              <div className="h-full rounded-full bg-[#625ee8] transition-[width]" style={{ width: `${progress}%` }} />
+            </div>
+            <Link href={`/position-tracking/?campaign=${encodeURIComponent(summary.campaignId)}&run=${encodeURIComponent(activeRun.runId)}`} className={cn("mt-4 text-[12px] font-medium hover:underline", SM.link)}>{ko ? "상세 진행률 보기" : "View progress"}</Link>
+          </div>
+        ) : (
+          <div className="flex flex-1 flex-col">
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <div><p className={cn("text-[11px]", SM.caption)}>{ko ? "가시성" : "Visibility"}</p><strong className="text-[22px] font-semibold text-[#5753c9]">{summary.visibility === null ? "—" : `${summary.visibility}%`}</strong></div>
+              <div><p className={cn("text-[11px]", SM.caption)}>{ko ? "평균 순위" : "Avg. position"}</p><strong className="text-[22px] font-semibold text-a2-text">{summary.avgPosition ?? "—"}</strong></div>
+              <div><p className={cn("text-[11px]", SM.caption)}>{ko ? "순위권 키워드" : "Ranked"}</p><strong className="text-[18px] font-semibold text-a2-text">{summary.rankedCount}/{summary.keywordCount}</strong></div>
+              <div><p className={cn("text-[11px]", SM.caption)}>{ko ? "개선 / 하락" : "Up / down"}</p><strong className="text-[18px] font-semibold"><span className="text-[#0a6b57]">{summary.improvedCount}</span><span className="text-a2-text-muted"> / </span><span className="text-[#a4002a]">{summary.declinedCount}</span></strong></div>
+            </div>
+            <Link href={`/position-tracking/?campaign=${encodeURIComponent(summary.campaignId)}`} className={cn("mt-auto pt-3 text-[12px] font-medium hover:underline", SM.link)}>{ko ? "전체 보고서 보기" : "View full report"}</Link>
+          </div>
+        )}
+      </WidgetCard>
+      <PositionTrackingSetupDialog open={setupOpen} onOpenChange={setSetupOpen} domain={domain} folderId={folderId} campaignId={summary?.campaignId} />
+    </>
   );
 }
