@@ -21,7 +21,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Cursor Cloud specific instructions
 
-이 절은 이미 업데이트 스크립트(`npm install --prefix semforge`)가 실행된 Cloud VM에서 시작하는 향후 에이전트를 위한 것이다.
+이 절은 이미 업데이트 스크립트(`npm install --prefix semforge` + `better-sqlite3`/`sharp` rebuild)가 실행된 Cloud VM에서 시작하는 향후 에이전트를 위한 것이다.
 
 - 앱은 `semforge/` 안에 있다. 모든 명령은 `semforge/`에서 실행한다.
 - **Node 버전:** 이 Linux Cloud VM에서는 기본 Node **v22**를 그대로 쓴다. README/위쪽의 "Homebrew Node v25" 안내는 macOS 전용이며 여기서는 무시한다. `better-sqlite3`·`sharp` 네이티브 모듈은 설치와 실행에 같은 Node를 쓰는 한 v22에서 정상 동작한다. Node 버전을 바꾼 경우에만 `npm rebuild better-sqlite3 sharp`가 필요하다.
