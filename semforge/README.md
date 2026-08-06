@@ -21,7 +21,11 @@ SEMForge — SEO & AI 가시성 플랫폼. Semrush의 UI/UX를 관찰 기반으�
 | 소스 | 용도 | 환경 변수 | 비고 |
 |---|---|---|---|
 | **TalorData SERP** | 키워드 순위, SERP 피처(AI 개요·로컬팩 등), 도메인 실시간 수집 | `TALORDATA_API_TOKEN` | google/bing, gl/hl 지원 |
-| **Semrush Backlinks v4** | 임의 도메인·URL의 수신 백링크, 추천 도메인, 앵커, Authority Score | `SEMRUSH_API_V4_KEY` | SEO Business + API 유닛 필요, 24시간 캐시 |
+| **NAVER Search Ads** | 연관 키워드, PC·모바일 월간 검색수, 광고 클릭·CTR·경쟁도 | `NAVER_SEARCH_AD_ACCESS_LICENSE` / `NAVER_SEARCH_AD_SECRET_KEY` / `NAVER_SEARCH_AD_CUSTOMER_ID` | 서버 전용 공용 계정, 7일 캐시 |
+| **NAVER API HUB** | 최근 12개월 상대 Search Trend, Blog Search 결과 수·응답 예시 | `NAVER_API_HUB_CLIENT_ID` / `NAVER_API_HUB_CLIENT_SECRET` | 서버 전용, Trend 7일·Blog 24시간 캐시 |
+| **Bing Webmaster** | 인증된 소유 사이트의 링크된 페이지·인바운드 링크 | `BING_WEBMASTER_CLIENT_ID` / `BING_WEBMASTER_CLIENT_SECRET` | 읽기 전용 OAuth, 24시간 캐시 |
+| **Common Crawl** | Bing 빈 결과 보완 및 공개 웹 백링크 자동 탐색 | `COMMON_CRAWL_BACKLINK_ENDPOINT` | Web Graph/WARC 역색인 게이트웨이, 30일 캐시 |
+| **Ahrefs 무료 DR** | 인증 사이트의 Domain Rating | `AHREFS_API_KEY` | 서버 전용 Bearer 인증, 출처 링크 필수 표시 |
 | **Firecrawl** | 사이트 진단 크롤 (없으면 자체 BFS 크롤러로 폴백) | `FIRECRAWL_API_KEY` | 선택 |
 | **PageSpeed Insights** | 사이트 성능, Core Web Vitals (사이트 진단 테마 카드) | `PAGESPEED_API_KEY` | 선택, 없어도 저쿼터 동작 |
 | **ChatMock** | 광고 문구·Markdown 기사와 대표 이미지의 구조화된 시각 명세 생성 | `CHATMOCK_BASE_URL` / `CHATMOCK_ADVERTISING_MODEL` / `CHATMOCK_CONTENT_MODEL` | OpenAI API 키 불필요, 로컬 프록시 실행 필요 |
@@ -72,7 +76,22 @@ npm run chatmock:serve  # 기본 http://127.0.0.1:8000/v1
 
 ```bash
 TALORDATA_API_TOKEN=     # TalorData 대시보드에서 발급
-SEMRUSH_API_V4_KEY=      # Semrush v4 Backlinks API 키 (SEO Business + API 유닛)
+NAVER_API_HUB_CLIENT_ID= # NAVER API HUB 신규 키
+NAVER_API_HUB_CLIENT_SECRET=
+NAVER_SEARCH_AD_ACCESS_LICENSE= # NAVER Search Ads 공용 계정
+NAVER_SEARCH_AD_SECRET_KEY=
+NAVER_SEARCH_AD_CUSTOMER_ID=
+PUBLIC_RATE_LIMIT_SECRET= # 공개 미리보기 쿠키/IP-prefix HMAC 키(운영 32자 이상)
+NAVER_KEYWORD_INTELLIGENCE_ENABLED=false
+PUBLIC_NAVER_KEYWORD_PREVIEW_ENABLED=false
+NAVER_SEARCH_AD_DAILY_BUDGET=1000
+NAVER_API_HUB_DAILY_BUDGET=10000
+BING_WEBMASTER_CLIENT_ID=     # Bing Webmaster OAuth 앱
+BING_WEBMASTER_CLIENT_SECRET=
+BING_WEBMASTER_REDIRECT_URI=  # 기본값 http://localhost:3000/api/bing-webmaster/callback
+AHREFS_API_KEY=                # Ahrefs 무료 Domain Rating API 키
+COMMON_CRAWL_BACKLINK_ENDPOINT= # Common Crawl Web Graph/WARC 역색인 게이트웨이(HTTPS)
+COMMON_CRAWL_BACKLINK_TOKEN=    # 선택적 서버 전용 Bearer 토큰
 CHATMOCK_BASE_URL=       # 기본값 http://127.0.0.1:8000/v1
 CHATMOCK_ADVERTISING_MODEL=gpt-5.4
 CHATMOCK_CONTENT_MODEL=gpt-5.6-luna
@@ -95,6 +114,46 @@ APP_SECRET=              # OAuth 토큰 at-rest 암호화 키 재료 (미설정 
 SNAPSHOT_RETENTION_DAYS= # 스냅샷 보존 일수 (기본 90, db_retention job)
 ```
 
+### Common Crawl 백링크 게이트웨이 계약
+
+Common Crawl의 공개 URL Index는 URL별 캡처 위치를 찾는 API이며, 대상 도메인의 인바운드 링크를
+역방향으로 바로 조회하는 API는 아닙니다. 따라서 `COMMON_CRAWL_BACKLINK_ENDPOINT`에는 공식
+Web Graph/WARC를 미리 역색인한 서버 엔드포인트를 연결해야 합니다. 애플리케이션은 이 엔드포인트에
+다음 JSON을 `POST`하고, 반환된 실제 링크만 정규화·중복 제거해 저장합니다.
+
+```json
+{
+  "siteUrl": "https://example.com/",
+  "targetUrl": null,
+  "scope": "site",
+  "limit": 500,
+  "recentCrawls": 3,
+  "verifyWarcLinks": true
+}
+```
+
+```json
+{
+  "release": "cc-main-YYYY-release",
+  "rows": [
+    {
+      "sourceUrl": "https://source.example/article",
+      "targetUrl": "https://example.com/page",
+      "anchor": "example",
+      "linkCount": 1
+    }
+  ],
+  "partial": true,
+  "warning": null,
+  "requestId": "optional-request-id"
+}
+```
+
+운영 환경에서는 HTTPS가 필수이며, `COMMON_CRAWL_BACKLINK_TOKEN`을 설정하면 서버가 Bearer 인증을
+사용합니다. 게이트웨이가 설정되지 않은 환경에서는 유료 호출이나 임의 데이터를 만들지 않고
+설정 필요 상태를 표시합니다. Common Crawl 결과는 릴리스와 부분 수집 여부를 함께 보존하며 30일간
+캐시합니다.
+
 ## 주요 기능
 
 | 영역 | 경로 | 실데이터 내용 |
@@ -102,13 +161,17 @@ SNAPSHOT_RETENTION_DAYS= # 스냅샷 보존 일수 (기본 90, db_retention job)
 | 홈 | `/home/` | 폴더 CRUD, 폴더별 실측 지표 |
 | SEO 대시보드 | `/seo/` | 위젯 대시보드 (GSC 연결, AI 가시성 요약, 실측 배지만) |
 | 도메인 개요 | `/analytics/overview/` | TalorData 실시간 수집 리포트 (무소스 지표는 미제공) |
-| 백링크 분석 | `/analytics/backlinks/overview/` | Semrush v4 실데이터 개요·추이·백링크·추천 도메인·앵커·페이지, 24시간 캐시·CSV |
+| NAVER 키워드 개요 | `/analytics/keywordoverview/`의 NAVER 탭 | Search Ads·Search Trend·Blog Search를 섹션별 출처/캐시와 함께 표시 |
+| 한국형 키워드 탐색기 | `/analytics/keywordmagic/` | 최대 5개 seed, 1,000개 연관어, CSV·목록 저장·콘텐츠/광고 handoff |
+| 무료 NAVER 검색량 | `/free-tools/keyword-search-volume-checker/` | 비로그인 서로 다른 키워드 3개/24시간, 실제 공급자 데이터만 표시 |
+| 백링크 분석 | `/analytics/backlinks/overview/` | Bing 우선 조회·Common Crawl 자동 보완·Ahrefs DR·공급자별 캐시 |
+| 백링크 갭 | `/analytics/gap/backlinks/` | Common Crawl/CSV URL 데이터셋 기반 경쟁 추천 도메인 비교 |
 | 포지션 추적 | `/position-tracking/` | 실시간 순위 수집, 순위 분포, 경쟁자 발견, GSC 컬럼, 주기 수집 |
 | 사이트 진단 | `/siteaudit/` | 탭 5종(개요/문제/페이지/통계/테마), 테마 카드 9종(robots.txt AI 봇 판정 포함), PSI CWV, 스케줄 크롤 |
 | AI 가시성 | `/ai-seo/overview/` | Google AI 개요 출현·자사 도메인 인용 여부 추적 (TalorData 실측) |
 | 콘텐츠 | `/content/` | 글·이미지·영상 제작, ChatMock 시각 명세, Grok 콘티·영상 장면, 자동 저장·재개 |
 | 지역 | `/local-business/` | GBP 리스팅·리뷰·답글, 로컬팩 기반 지도 순위 추적 |
-| 트래픽&시장 | `/analytics/traffic/` | GSC 기반 자사 검색 유입 (경쟁사 추정은 소스 없음으로 미제공) |
+| 트래픽&시장 | `/analytics/traffic/` | Airbyte GA4·GSC 통합 성과 + 기존 GSC 실시간 폴백 |
 
 ### 주기 수집 (스케줄 크롤/순위 수집)
 
@@ -151,9 +214,11 @@ GET    /api/{resource}/export/          # CSV
 npx tsc --noEmit        # 타입 검사
 npm run lint            # ESLint
 npm run test:talordata  # TalorData 클라이언트/수집
+npm run test:naver      # NAVER 공급자·캐시·API·UI·handoff 계약
+npm run test:marketing  # Airbyte Adapter·Postgres 마트·귀속·신선도 계약
 npm run test:analytics  # 분석 지표 순수 함수
 npm run test:siteaudit  # 사이트 진단 링크 그래프
-npm run test:backlinks  # Semrush 어댑터·캐시·필터 계약
+npm run test:backlinks  # Bing·Common Crawl·Ahrefs·캐시·URL 범위 계약
 npm run test:content    # 글·이미지·영상 콘텐츠 계약과 실행
 npx tsx --test src/server/position-tracking/*.test.ts  # 순위 분포/스케줄
 ```

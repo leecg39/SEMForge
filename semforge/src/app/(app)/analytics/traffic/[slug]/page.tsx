@@ -7,6 +7,9 @@ import {
 } from "@/components/traffic/TrafficOverviewDashboard";
 import { pageSession } from "@/server/page-auth";
 import { getCampaignListSummary } from "@/server/position-tracking/overview";
+import { listMarketingFolders } from "@/server/marketing/store";
+import { MarketingConnectionsCenter } from "@/components/traffic/MarketingConnectionsCenter";
+import { MarketingPaidPerformanceDashboard } from "@/components/traffic/MarketingPaidPerformanceDashboard";
 
 export const dynamic = "force-dynamic";
 
@@ -94,10 +97,29 @@ export default async function TrafficSlugPage({
 }) {
   const { auth } = await pageSession();
   const { slug } = await params;
-  const { siteUrl, campaign } = await searchParams;
+  const { siteUrl, campaign, fid } = await searchParams;
   const href = `/analytics/traffic/${slug}/`;
 
   if (!slugs.includes(slug as Slug)) notFound();
+
+  const folders = await listMarketingFolders(auth.workspaceId);
+  const requestedFolderId = typeof fid === "string" && folders.some((folder) => folder.id === fid) ? fid : folders[0]?.id ?? "";
+
+  if (slug === "sources-destinations") {
+    return (
+      <AppShell activeToolkit="traffic" activeHref={href}>
+        <MarketingConnectionsCenter folders={folders} initialFolderId={requestedFolderId} />
+      </AppShell>
+    );
+  }
+
+  if (slug === "paid-search" || slug === "paid-social") {
+    return (
+      <AppShell activeToolkit="traffic" activeHref={href}>
+        <MarketingPaidPerformanceDashboard provider={slug === "paid-search" ? "google_ads" : "meta_ads"} folders={folders} initialFolderId={requestedFolderId} />
+      </AppShell>
+    );
+  }
 
   const view = implementedViews[slug as Slug];
   if (view) {
@@ -106,6 +128,8 @@ export default async function TrafficSlugPage({
       <AppShell activeToolkit="traffic" activeHref={href}>
         <TrafficOverviewDashboard
           campaigns={campaigns}
+          folders={folders}
+          initialFolderId={requestedFolderId}
           initialCampaignId={typeof campaign === "string" ? campaign : ""}
           initialSiteUrl={typeof siteUrl === "string" ? siteUrl : ""}
           initialView={view}

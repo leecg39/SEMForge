@@ -49,8 +49,9 @@ test("Library 원문 재활용은 원본 버전 스냅샷과 파생 문서 관�
   sqlite.prepare("UPDATE content_runs SET stage='research', status='queued' WHERE id=?").run(run.id);
   sqlite.close();
   const researched = await processContentRunStage(auth, run.id);
-  assert.equal((researched.provenance.source as { provider?: string }).provider, "content_library");
-  assert.equal((researched.provenance.source as { sourceVersion?: number }).sourceVersion, 3);
+  const provenance = researched.provenance as { source?: { provider?: string; sourceVersion?: number } };
+  assert.equal(provenance.source?.provider, "content_library");
+  assert.equal(provenance.source?.sourceVersion, 3);
   globalThis.fetch = async () => {
     const article = { title: "검색 성장 주간 뉴스레터", metaDescription: "검증된 검색 성장 실행 순서를 정리한 운영자 뉴스레터입니다.", markdown: `# 검색 성장 주간 뉴스레터\n\n${"원본의 실행 절차를 뉴스레터 형식으로 명확하게 전달합니다. ".repeat(25)}` };
     return new Response(`event: response.output_text.delta\ndata: ${JSON.stringify({ type: "response.output_text.delta", delta: JSON.stringify(article) })}\n\nevent: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: { output: [] } })}\n\n`, { headers: { "content-type": "text/event-stream" } });

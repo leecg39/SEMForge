@@ -99,3 +99,109 @@ export interface ApiSuccess<T> {
 export interface ApiFailure {
   error?: { code?: string; message?: string };
 }
+
+// @TASK NAVER-OVERVIEW-MVP - NAVER 공식 데이터의 클라이언트 계약
+// @SPEC 사용자 승인 계획#데이터-모델과-출처-규약
+
+export type NaverProviderStatus = "live" | "unavailable" | "error";
+export type NaverCacheStatus = "fresh" | "stale";
+export type NaverMeasurement = "absolute" | "relative" | "calculated" | "inferred";
+
+/**
+ * 모든 NAVER 섹션이 공유하는 provenance envelope.
+ * `data`가 없을 때도 출처와 사유를 유지해 UI가 가짜 수치를 만들지 않게 한다.
+ */
+export interface NaverProviderEnvelope<T> {
+  status: NaverProviderStatus;
+  cache: NaverCacheStatus;
+  measurement: NaverMeasurement;
+  source: string;
+  fetchedAt: string | null;
+  expiresAt: string | null;
+  reason?: string | null;
+  data: T | null;
+}
+
+/** maxExclusive가 null이면 정확한 min 값, 값이 있으면 [min, maxExclusive) 범위다. */
+export interface NaverCountRange {
+  min: number;
+  maxExclusive: number | null;
+  display: string;
+}
+
+export interface NaverKeywordVolumeData {
+  pc: NaverCountRange | null;
+  mobile: NaverCountRange | null;
+  total: NaverCountRange | null;
+  period: string;
+}
+
+export type NaverAdvertisingCompetition = "low" | "medium" | "high" | "unknown";
+
+export interface NaverAdvertisingData {
+  competition: NaverAdvertisingCompetition;
+  averagePcClicks: number | null;
+  averageMobileClicks: number | null;
+  averagePcCtr: number | null;
+  averageMobileCtr: number | null;
+  pcAdDepth: number | null;
+}
+
+export interface NaverTrendPoint {
+  period: string;
+  ratio: number;
+}
+
+export interface NaverTrendData {
+  points: NaverTrendPoint[];
+  unit: "relative-index";
+}
+
+export interface NaverDemographicPoint {
+  key: string;
+  label: string;
+  ratio: number;
+}
+
+export interface NaverDemographicsData {
+  device: NaverDemographicPoint[];
+  gender: NaverDemographicPoint[];
+  age: NaverDemographicPoint[];
+}
+
+export interface NaverBlogItem {
+  title: string;
+  link: string;
+  bloggerName: string | null;
+  postDate: string | null;
+}
+
+export interface NaverBlogData {
+  total: number | null;
+  items: NaverBlogItem[];
+}
+
+export interface NaverRelatedKeywordItem {
+  keyword: string;
+  pc: NaverCountRange | null;
+  mobile: NaverCountRange | null;
+  total: NaverCountRange | null;
+  competition: NaverAdvertisingCompetition;
+}
+
+export interface NaverRelatedKeywordsData {
+  items: NaverRelatedKeywordItem[];
+}
+
+export interface NaverKeywordOverviewReport {
+  keyword: string;
+  normalizedKeyword: string;
+  locale: "ko-KR";
+  generatedAt: string | null;
+  volume: NaverProviderEnvelope<NaverKeywordVolumeData>;
+  advertising: NaverProviderEnvelope<NaverAdvertisingData>;
+  trend: NaverProviderEnvelope<NaverTrendData>;
+  demographics?: NaverProviderEnvelope<NaverDemographicsData>;
+  blog: NaverProviderEnvelope<NaverBlogData>;
+  related: NaverProviderEnvelope<NaverRelatedKeywordsData>;
+}

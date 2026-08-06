@@ -12,8 +12,6 @@ const analysisAll = { ...seoAnalysis, ...otherAnalysis };
 const params: string[][] = [
   ["toppages"],
   ["comparedomains"],
-  ["gap", "backlinks"],
-  ["keywordmagic"],
   ["refdomains", "report"],
   ["ranks", "rank"],
   ["keywordmanager"],

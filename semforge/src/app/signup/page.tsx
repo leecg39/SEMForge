@@ -4,7 +4,12 @@ import { getServerDictionary } from "@/i18n/server";
 
 export const metadata = { title: "Sign up | SEMForge" };
 
-export default async function SignupPage() {
+export default async function SignupPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ keyword?: string | string[] }>;
+}) {
   const { dict } = await getServerDictionary();
-  return <AuthTemplate data={signupData} dict={dict} />;
+  const { keyword } = await searchParams;
+  return <AuthTemplate data={signupData} dict={dict} restoreKeyword={Array.isArray(keyword) ? keyword[0] : keyword} />;
 }

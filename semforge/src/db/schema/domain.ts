@@ -823,6 +823,14 @@ export const keywordListItems = sqliteTable(
       enum: ["informational", "navigational", "commercial", "transactional"],
     }),
     cluster: text("cluster"),
+    // @TASK NAVER-KI-DB-01 - 공급자 스냅샷 provenance 보존
+    // @SPEC docs/DB_SCHEMA.md#네이버-키워드-인텔리전스-schemanaver-keywordsts
+    provider: text("provider"),
+    /** 공급자별 원천 테이블을 가리키는 다형 참조이므로 FK를 두지 않는다. */
+    sourceSnapshotId: text("source_snapshot_id"),
+    measurement: text("measurement", {
+      enum: ["absolute", "relative", "calculated", "inferred"],
+    }),
     ...auditColumns,
   },
   (t) => [

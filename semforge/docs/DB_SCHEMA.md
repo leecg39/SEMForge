@@ -85,10 +85,24 @@ erDiagram
 | serp_snapshots | 키워드별 SERP 순위 스냅샷 (append-only) | `talordata` | 90일(db_retention) |
 | clickstream_events | 패널 클릭스트림 | 라이브 소스 없음 (demo 전용, 기본 비어 있음) | — |
 | link_graph_edges | 링크 그래프 엣지 | `site-audit-crawler` (자사 크롤 아웃링크) | — |
-| backlink_report_caches | 외부 수신 백링크 개요·12개월 추이·점수 분포 | `semrush-v4` | fresh 24시간, 최대 30일 |
-| backlink_list_caches | 백링크/추천 도메인/앵커/페이지 쿼리 캐시 | `semrush-v4` | fresh 24시간, 최대 30일 |
+| backlink_report_caches | Bing/Common Crawl 수신 백링크 개요와 링크된 페이지 | `bing-webmaster`, `common-crawl`, 레거시 `bing-csv` | Bing 24시간, Common Crawl 30일 |
+| backlink_list_caches | 링크된 페이지·인바운드 링크 쿼리 캐시 | `bing-webmaster`, `common-crawl`, `bing-csv` | fresh 24시간, 최대 30일 |
+| backlink_snapshots | 전환 이후 일별 실제 집계(추이·신규·누락 계산) | Bing/Common Crawl/레거시 CSV | append-only |
+| backlink_import_staging | CSV 열 매핑 미리보기 원문 | 사용자 업로드 | 30분 |
+| backlink_imported_links | 공급자가 반환한 정규화 인바운드 링크의 물질화 저장소 | `common-crawl`, 레거시 `bing-csv` | 보고서 캐시와 함께 삭제 |
 
-리포트 계산(`src/server/analytics.ts`)은 라이브 소스만 읽는다. 사이트 진단의 `link_graph_edges`와 외부 수신 백링크 캐시는 의미가 달라 섞지 않는다. 범용 도메인 개요의 패널 트래픽은 소스가 생길 때까지 미제공이며, 전용 백링크 분석 화면만 Semrush 캐시를 읽는다.
+리포트 계산(`src/server/analytics.ts`)은 라이브 소스만 읽는다. 사이트 진단의 `link_graph_edges`와 외부 수신 백링크 캐시는 의미가 달라 섞지 않는다. 전용 백링크 분석 화면은 Bing 인증 사이트를 우선 조회하고 빈 결과는 Common Crawl Web Graph/WARC 역색인으로 보완한다. 기존 `semrush-v4` 및 `bing-csv` 행은 호환 목적으로만 보존하고 신규 기본 흐름에서는 사용하지 않는다.
+
+### 네이버 키워드 인텔리전스 (schema/naver-keywords.ts)
+
+| 테이블 | 용도 | 보존·무결성 |
+|---|---|---|
+| naver_keyword_snapshots | Search Ads 키워드 검색량·광고 지표 원천 | append-only, fresh 7일·stale 최대 30일 |
+| naver_keyword_insights | Search Trend·인구통계·블로그 검색·쇼핑 트렌드 JSON 원천 | kind/schema_version 분리, JSON 유효성 검사 |
+| public_keyword_usage | 비로그인 조회 rolling-window 사용량 | HMAC 해시만 저장, 원본 IP·키워드 금지, 만료 후 정리 |
+| provider_call_budgets | NAVER 공급자별 전역 일일 호출 카운터 | (provider, budget_date) 유니크 |
+
+검색량의 `<10` 응답은 0으로 치환하지 않는다. 각 기기 값을 `min`, `max_exclusive`, `qualifier`, `display`로 함께 보존하고 합계는 조회 시 범위로 계산한다. `keyword_list_items`의 `provider`, `source_snapshot_id`, `measurement`는 선택 저장 이후에도 원천과 측정 방식(`absolute`, `relative`, `calculated`, `inferred`)을 유지한다. `source_snapshot_id`는 여러 공급자 원천을 가리킬 수 있는 다형 참조라 물리 FK를 두지 않는다.
 
 ### AI 가시성 (schema/ai-visibility.ts)
 
@@ -102,6 +116,8 @@ erDiagram
 | 테이블 | 용도 | 보존 |
 |---|---|---|
 | gbp_connections | Google Business Profile OAuth (워크스페이스당 1) | 토큰 암호화 |
+| bing_webmaster_connections | Bing Webmaster 읽기 전용 OAuth (워크스페이스당 1) | 토큰 암호화 |
+| bing_webmaster_oauth_states | 만료·재사용·워크스페이스 변조 방지 OAuth nonce | 10분, 일회용 |
 | map_rank_keywords | 지도 순위 추적 키워드 (사업체명+검색어) | — |
 | map_rank_snapshots | 로컬팩 관측 스냅샷 | 90일 |
 | gsc_connections | Search Console OAuth (전역 단일 연결) | 토큰 암호화 |
@@ -138,3 +154,8 @@ erDiagram
 1. 다중 인스턴스/서버 배포가 필요할 때 (SQLite 파일 공유 불가)
 2. 동시 쓰기 경합으로 `SQLITE_BUSY`가 빈발할 때
 3. DB가 상시 100MB+ 로 성장하고 분석 쿼리가 느려질 때 (또는 스냅샷 보존 기간을 크게 늘려야 할 때)
+## Marketing Intelligence 제어/분석 분리
+
+Airbyte 연동 이후에도 SQLite는 운영·제어 데이터만 보관한다. `marketing_connections`, `marketing_property_bindings`, `marketing_oauth_states`, `marketing_sync_runs`, `marketing_report_snapshots`, `marketing_entity_bindings`가 워크스페이스 권한과 외부 ID 매핑을 담당한다. OAuth token, Airbyte `secretId`, CRM 원본 PII는 이 DB에 저장하지 않는다.
+
+대용량 사실·마트는 별도 Postgres `marketing` schema에 둔다. `AIRBYTE_DESTINATION_DATABASE_URL`은 raw 전용 writer, `ANALYTICS_TRANSFORM_DATABASE_URL`은 raw 읽기·정리 및 fact/mart 쓰기 전용 transformer, 앱의 `ANALYTICS_DATABASE_URL`은 mart SELECT 전용 reader 자격증명이다. 앱은 `mart_page_funnel_daily`, `mart_channel_roi_daily`, `mart_campaign_performance_daily`, `mart_content_performance`, `mart_attribution`만 읽으며 Airbyte raw schema에는 권한을 갖지 않는다. 일반 raw는 30일, HubSpot PII raw는 7일, sync log는 90일, canonical fact는 25개월 보존을 적용한다.

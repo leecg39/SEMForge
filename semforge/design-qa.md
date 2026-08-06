@@ -51,6 +51,41 @@ final result: passed
 
 ---
 
+# Free Backlink Analytics Design QA
+
+## Evidence
+
+- Source visual truth: `/Users/user01/Desktop/백링크.png` and `/Users/user01/Desktop/화면 기록 2026-08-04 오전 7.09.40.mov`.
+- Browser-rendered desktop implementation: `/Users/user01/Music/SEMForge/semforge/artifacts/backlink-analysis-qa/implementation-1731x861.png`.
+- Browser-rendered mobile implementation: `/Users/user01/Music/SEMForge/semforge/artifacts/backlink-analysis-qa/implementation-390x844.png`.
+- Same-frame comparison: `/Users/user01/Music/SEMForge/semforge/artifacts/backlink-analysis-qa/comparison-reference-vs-implementation.png`.
+- Route and state: `/analytics/backlinks/overview/?siteUrl=https%3A%2F%2Fwww.example.com%2F&scope=site&provider=bing-csv&tab=overview`, authenticated Korean workspace, confirmed five-row QA CSV with one out-of-scope row excluded and four normalized inbound-link rows persisted.
+
+## Findings
+
+- No actionable P0, P1, or P2 visual or interaction differences remain.
+- The result preserves the reference hierarchy: compact report header, source/status badges, KPI strip, report tabs, trend surface, linked-page ranking, and dense detail tables inside the existing SEMForge AppShell.
+- Unsupported Semrush metrics were intentionally removed. Domain Rating, history, and change metrics display `—` until Ahrefs or multiple real snapshots exist; no reference value or demo metric is copied.
+- The narrower vertical density is intentional because the free provider contract has fewer truthful fields than Semrush. The primary analysis journey remains above the fold at the requested desktop viewport.
+
+## Interaction and Responsive Evidence
+
+- CSV preview detected English source URL, target URL, anchor, and link-count columns; mapping confirmation imported only rows inside `https://www.example.com/`.
+- The overview displayed 25 actual imported links across three linked pages. Opening the top linked page lazily showed its two normalized inbound rows; searching `blog` narrowed the table to one matching row while preserving the canonical query string.
+- `390 × 844`: document `scrollWidth` and `clientWidth` both equal `390`; KPI cards, tabs, and overview sections stack without page-level horizontal overflow.
+- Desktop: the linked-page and inbound-link tables remain locally scrollable, external URLs use safe new-tab links, and source badges distinguish `Bing Webmaster API` from `Bing CSV 가져오기`.
+
+## Quality Evidence
+
+- `npm run test:backlinks`: 12/12 passed for Bing/Ahrefs normalization, OAuth state isolation/reuse/expiry, encrypted token storage, workspace isolation, 24-hour cache reuse, URL scope, sorting, CSV parsing/deduplication, and formula-injection defense.
+- Targeted ESLint passed with zero warnings or errors.
+- Next.js production build completed successfully on Homebrew Node 25.
+- Browser QA caught an async SQLite transaction defect in the initial CSV commit; the import transaction is now synchronous and the refresh lease is released into a failed state on every subsequent error.
+
+final result: passed
+
+---
+
 # Home AI Visibility Folder Design QA
 
 ## Evidence

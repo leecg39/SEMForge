@@ -3,78 +3,76 @@ import type { BacklinkScope } from "@/server/backlinks/contracts";
 
 const HOST_LABEL = /^(?!-)[a-z0-9-]{1,63}(?<!-)$/i;
 
-function isIpv4Literal(hostname: string): boolean {
-  const parts = hostname.split(".");
-  return (
-    parts.length === 4 &&
-    parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255)
-  );
+function invalid(message = "유효한 HTTP 또는 HTTPS 주소를 입력해 주세요."): never {
+  throw new ApiError("VALIDATION_ERROR", message, {
+    fields: { siteUrl: "예: https://www.example.com/" },
+  });
 }
 
-export interface ParsedBacklinkTarget {
-  canonical: string;
-  scope: BacklinkScope;
-}
-
-/** 백링크 API 대상은 도메인 범위에서는 host만, page 범위에서는 정확한 URL을 보존한다. */
-export function parseBacklinkTarget(raw: string, scope: BacklinkScope): ParsedBacklinkTarget {
+function normalizedWebUrl(raw: string): URL {
   const input = raw.trim();
-  if (!input || input.length > 2000 || /[\u0000-\u001f\u007f]/.test(input)) {
-    throw new ApiError("VALIDATION_ERROR", "유효한 도메인 또는 URL을 입력해 주세요.", {
-      fields: { target: "예: example.com 또는 https://example.com/page" },
-    });
-  }
-
+  if (!input || input.length > 2000 || /[\u0000-\u001f\u007f]/.test(input)) invalid();
   let url: URL;
   try {
     url = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(input) ? input : `https://${input}`);
   } catch {
-    throw new ApiError("VALIDATION_ERROR", "유효한 도메인 또는 URL을 입력해 주세요.", {
-      fields: { target: "예: example.com 또는 https://example.com/page" },
-    });
+    invalid();
   }
-
-  if (!new Set(["http:", "https:"]).has(url.protocol) || url.username || url.password) {
-    throw new ApiError("VALIDATION_ERROR", "HTTP 또는 HTTPS 웹사이트만 분석할 수 있습니다.", {
-      fields: { target: "사용자 정보가 포함된 URL은 지원하지 않습니다." },
-    });
-  }
-  if (url.port && !((url.protocol === "http:" && url.port === "80") || (url.protocol === "https:" && url.port === "443"))) {
-    throw new ApiError("VALIDATION_ERROR", "포트가 지정된 URL은 지원하지 않습니다.", {
-      fields: { target: "기본 HTTP/HTTPS 주소를 입력해 주세요." },
-    });
-  }
-
+  if (!new Set(["http:", "https:"]).has(url.protocol) || url.username || url.password) invalid();
+  if (url.port) invalid("포트가 지정된 URL은 지원하지 않습니다.");
   const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
   const labels = hostname.split(".");
-  if (
-    isIpv4Literal(hostname) ||
-    hostname.length > 253 ||
-    labels.length < 2 ||
-    labels.some((label) => !HOST_LABEL.test(label))
-  ) {
-    throw new ApiError("VALIDATION_ERROR", "유효한 도메인 또는 URL을 입력해 주세요.", {
-      fields: { target: "예: example.com 또는 https://example.com/page" },
-    });
-  }
-
-  if (scope !== "page") {
-    return {
-      canonical: scope === "root_domain" ? hostname.replace(/^www\./, "") : hostname,
-      scope,
-    };
-  }
-
-  url.hash = "";
+  const ipv4 = labels.length === 4 && labels.every((part) => /^\d{1,3}$/.test(part));
+  if (ipv4 || hostname === "localhost" || hostname.length > 253 || labels.length < 2 || labels.some((label) => !HOST_LABEL.test(label))) invalid();
   url.hostname = hostname;
-  return { canonical: url.toString(), scope };
+  url.hash = "";
+  return url;
 }
 
-export function inferBacklinkScope(raw: string): BacklinkScope {
-  try {
-    const url = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(raw.trim()) ? raw.trim() : `https://${raw.trim()}`);
-    return url.pathname !== "/" || Boolean(url.search) ? "page" : "root_domain";
-  } catch {
-    return "root_domain";
+/** Bing 속성 URL은 origin과 선택적인 경로 prefix를 보존한다. */
+export function normalizeBacklinkSiteUrl(raw: string): string {
+  const url = normalizedWebUrl(raw);
+  url.search = "";
+  url.pathname = url.pathname.replace(/\/{2,}/g, "/");
+  if (!url.pathname.endsWith("/")) url.pathname += "/";
+  return url.toString();
+}
+
+export function normalizeBacklinkPageUrl(raw: string): string {
+  const url = normalizedWebUrl(raw);
+  url.pathname = url.pathname.replace(/\/{2,}/g, "/");
+  return url.toString();
+}
+
+export function targetBelongsToSite(siteUrl: string, targetUrl: string): boolean {
+  const site = new URL(normalizeBacklinkSiteUrl(siteUrl));
+  const target = new URL(normalizeBacklinkPageUrl(targetUrl));
+  if (site.protocol !== target.protocol || site.hostname !== target.hostname) return false;
+  const prefix = site.pathname.endsWith("/") ? site.pathname : `${site.pathname}/`;
+  return target.pathname === site.pathname.replace(/\/$/, "") || target.pathname.startsWith(prefix);
+}
+
+export function parseBacklinkTarget(input: {
+  siteUrl: string;
+  targetUrl?: string | null;
+  scope: BacklinkScope;
+}): { siteUrl: string; targetUrl: string | null; scope: BacklinkScope; cacheTarget: string } {
+  const siteUrl = normalizeBacklinkSiteUrl(input.siteUrl);
+  if (input.scope === "site") return { siteUrl, targetUrl: null, scope: "site", cacheTarget: siteUrl };
+  if (!input.targetUrl) {
+    throw new ApiError("VALIDATION_ERROR", "페이지 범위에는 대상 URL이 필요합니다.", {
+      fields: { targetUrl: "인증 사이트 안의 정확한 URL을 입력해 주세요." },
+    });
   }
+  const targetUrl = normalizeBacklinkPageUrl(input.targetUrl);
+  if (!targetBelongsToSite(siteUrl, targetUrl)) {
+    throw new ApiError("VALIDATION_ERROR", "대상 페이지가 선택한 Bing 인증 사이트에 포함되지 않습니다.", {
+      fields: { targetUrl: "선택한 사이트 내부 URL만 분석할 수 있습니다." },
+    });
+  }
+  return { siteUrl, targetUrl, scope: "page", cacheTarget: targetUrl };
+}
+
+export function normalizeLegacyBacklinkScope(value: string | null | undefined): BacklinkScope {
+  return value === "page" ? "page" : "site";
 }

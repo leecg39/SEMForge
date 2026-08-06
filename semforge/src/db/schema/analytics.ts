@@ -166,7 +166,7 @@ export const linkGraphEdges = sqliteTable(
 );
 
 /**
- * Semrush 같은 외부 백링크 공급자에서 읽은 집계 보고서 캐시.
+ * 외부 백링크 공급자 또는 확인된 CSV에서 읽은 집계 보고서 캐시.
  *
  * 사이트 진단 크롤러의 link_graph_edges 와 의미가 다르므로 별도 저장한다.
  * 외부 응답은 공급자 중립 JSON으로 정규화한 뒤 24시간만 fresh 로 취급하며,
@@ -182,11 +182,11 @@ export const backlinkReportCaches = sqliteTable(
     target: text("target").notNull(),
     effectiveTarget: text("effective_target"),
     scope: text("scope", {
-      enum: ["root_domain", "subdomain", "page"],
+      enum: ["root_domain", "subdomain", "site", "page"],
     }).notNull(),
-    provider: text("provider", { enum: ["semrush-v4"] })
+    provider: text("provider", { enum: ["semrush-v4", "bing-webmaster", "bing-csv", "common-crawl"] })
       .notNull()
-      .default("semrush-v4"),
+      .default("bing-webmaster"),
     status: text("status", { enum: ["ready", "refreshing", "failed"] })
       .notNull()
       .default("refreshing"),
@@ -227,7 +227,7 @@ export const backlinkListCaches = sqliteTable(
       .notNull()
       .references(() => backlinkReportCaches.id, { onDelete: "cascade" }),
     dataset: text("dataset", {
-      enum: ["links", "ref_domains", "anchors", "pages"],
+      enum: ["links", "ref_domains", "anchors", "pages", "target_pages", "inbound_links"],
     }).notNull(),
     queryHash: text("query_hash").notNull(),
     queryPayload: text("query_payload").notNull(),
@@ -244,6 +244,90 @@ export const backlinkListCaches = sqliteTable(
     uniqueIndex("backlink_list_cache_query_unique").on(t.reportId, t.queryHash),
     index("backlink_list_cache_expiry_idx").on(t.expiresAt),
     index("backlink_list_cache_report_idx").on(t.reportId, t.dataset),
+  ],
+);
+
+/** 날짜별 실제 보고서 집계. 전환 이후 추이와 신규·누락 계산에만 사용한다. */
+export const backlinkSnapshots = sqliteTable(
+  "backlink_snapshots",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    siteUrl: text("site_url").notNull(),
+    scope: text("scope", { enum: ["site", "page"] }).notNull(),
+    targetUrl: text("target_url"),
+    provider: text("provider", { enum: ["bing-webmaster", "bing-csv", "common-crawl"] }).notNull(),
+    snapshotDate: text("snapshot_date").notNull(),
+    totalInboundLinks: integer("total_inbound_links"),
+    linkedPages: integer("linked_pages"),
+    capturedAt: timestampMs("captured_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("backlink_snapshots_scope_date_unique").on(
+      t.workspaceId,
+      t.siteUrl,
+      t.scope,
+      t.targetUrl,
+      t.provider,
+      t.snapshotDate,
+    ),
+    index("backlink_snapshots_history_idx").on(t.workspaceId, t.siteUrl, t.capturedAt),
+  ],
+);
+
+/** CSV 미리보기 원문. 커밋하지 않은 파일은 30분 뒤 정리한다. */
+export const backlinkImportStaging = sqliteTable(
+  "backlink_import_staging",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    fileName: text("file_name").notNull(),
+    fileSha256: text("file_sha256").notNull(),
+    rawPayload: text("raw_payload").notNull(),
+    headersPayload: text("headers_payload").notNull(),
+    detectedMappingPayload: text("detected_mapping_payload").notNull(),
+    rowCount: integer("row_count").notNull(),
+    expiresAt: timestampMs("expires_at").notNull(),
+    createdAt: timestampMs("created_at")
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [
+    index("backlink_import_staging_workspace_idx").on(t.workspaceId, t.createdAt),
+    index("backlink_import_staging_expiry_idx").on(t.expiresAt),
+  ],
+);
+
+/** 커밋된 CSV 인바운드 링크. 최대 10만 행을 페이지 단위로 조회한다. */
+export const backlinkImportedLinks = sqliteTable(
+  "backlink_imported_links",
+  {
+    id: text("id").primaryKey(),
+    reportId: text("report_id")
+      .notNull()
+      .references(() => backlinkReportCaches.id, { onDelete: "cascade" }),
+    sourceUrl: text("source_url").notNull(),
+    targetUrl: text("target_url").notNull(),
+    sourceDomain: text("source_domain").notNull(),
+    anchor: text("anchor"),
+    linkCount: integer("link_count").notNull().default(1),
+    createdAt: timestampMs("created_at")
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [
+    uniqueIndex("backlink_imported_links_row_unique").on(
+      t.reportId,
+      t.sourceUrl,
+      t.targetUrl,
+      t.anchor,
+    ),
+    index("backlink_imported_links_target_idx").on(t.reportId, t.targetUrl),
+    index("backlink_imported_links_domain_idx").on(t.reportId, t.sourceDomain),
   ],
 );
 
@@ -292,4 +376,7 @@ export type ClickstreamEvent = typeof clickstreamEvents.$inferSelect;
 export type LinkGraphEdge = typeof linkGraphEdges.$inferSelect;
 export type BacklinkReportCache = typeof backlinkReportCaches.$inferSelect;
 export type BacklinkListCache = typeof backlinkListCaches.$inferSelect;
+export type BacklinkSnapshot = typeof backlinkSnapshots.$inferSelect;
+export type BacklinkImportStage = typeof backlinkImportStaging.$inferSelect;
+export type BacklinkImportedLink = typeof backlinkImportedLinks.$inferSelect;
 export type KeywordInsight = typeof keywordInsights.$inferSelect;

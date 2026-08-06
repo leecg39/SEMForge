@@ -225,6 +225,34 @@
       "when": 1785819600000,
       "tag": "0031_content_article_relations",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1785796372332,
+      "tag": "0032_wild_jackal",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1785819601000,
+      "tag": "0033_overrated_sasquatch",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1785837679843,
+      "tag": "0034_naver_keyword_intelligence",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "6",
+      "when": 1785954160577,
+      "tag": "0035_nosy_snowbird",
+      "breakpoints": true
     }
   ]
 }

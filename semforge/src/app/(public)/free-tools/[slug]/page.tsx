@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { ToolTemplate } from "@/components/templates/ToolTemplate";
 import { HubTemplate } from "@/components/templates/HubTemplate";
+import { NaverKeywordPreview } from "@/components/free-tools/NaverKeywordPreview";
 import { toolsData, toolSlugs } from "@/data/tools";
 import { hubs } from "@/data/hubs";
 
@@ -21,6 +22,7 @@ export default async function FreeToolPage({
 }) {
   const { slug } = await params;
   if (hubSlugs[slug]) return <HubTemplate data={hubs[hubSlugs[slug]]} />;
+  if (slug === "keyword-search-volume-checker") return <NaverKeywordPreview />;
   const data = toolsData[slug];
   if (!data) notFound();
   return <ToolTemplate data={data} />;

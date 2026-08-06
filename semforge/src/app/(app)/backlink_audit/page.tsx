@@ -1,11 +1,24 @@
 import { AppShell } from "@/components/app/AppShell";
-import { AppWorkspaceTemplate } from "@/components/app/AppWorkspaceTemplate";
-import { workspaces } from "@/data/app-pages";
+import { BacklinkAudit, type BacklinkAuditTab } from "@/components/backlink-audit/BacklinkAudit";
+import { pageSession } from "@/server/page-auth";
 
-export default function BacklinkAuditPage() {
+export const dynamic = "force-dynamic";
+
+function single(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
+}
+
+export default async function BacklinkAuditPage({ searchParams }: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  await pageSession();
+  const params = await searchParams;
+  const rawTab = single(params.tab);
+  const tabs: BacklinkAuditTab[] = ["overview", "audit", "removal", "disavow", "changes", "targets", "settings"];
+  const tab = tabs.includes(rawTab as BacklinkAuditTab) ? rawTab as BacklinkAuditTab : "overview";
   return (
     <AppShell activeToolkit="seo" activeHref="/backlink_audit/">
-      <AppWorkspaceTemplate data={workspaces["/backlink_audit/"]} />
+      <BacklinkAudit initialProjectId={single(params.project)} initialTab={tab} />
     </AppShell>
   );
 }

@@ -132,6 +132,20 @@ const KO_TO_EN: Record<string, string> = {
   "목표 분량": "Target word count",
   "패키지 생성 중…": "Creating package…",
   "연계 제작 시작": "Start linked production",
+  "NAVER 공식 데이터에서 전달됨": "Passed from official NAVER data",
+  "대표 키워드": "Primary keyword",
+  "함께 선택": "Also selected",
+  출처: "Source",
+  "측정 방식": "Measurement",
+  "공식 응답 · 추정값 임의 생성 안 함": "Official response · no fabricated estimates",
+  "검색 의도": "Search intent",
+  추론: "inferred",
+  "수집 시각": "Fetched at",
+  "상대 검색 추이": "Relative search trend",
+  "블로그 검색 API 응답 제목 · 통합검색 순위 아님":
+    "Blog Search API response titles · not integrated-search rankings",
+  "아래 브리프 입력에 복사했습니다. 자유롭게 수정한 뒤 버튼을 눌러야 작업판이 생성되며, 자동 게시는 하지 않습니다.":
+    "This information was copied into the brief below. Edit it freely, then press the button to create a workspace. Nothing is published automatically.",
 };
 
 export function translateContentText(locale: Locale, text: string): string {

@@ -3,6 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CapturesCard } from "@/components/analytics/keyword-overview/CapturesCard";
 import { KpiRow } from "@/components/analytics/keyword-overview/KpiRow";
+import {
+  KeywordEngineTabs,
+  NaverKeywordOverview,
+  NaverKeywordSearchForm,
+  normalizeNaverKeyword,
+  parseNaverKeywordOverviewReport,
+  type KeywordOverviewEngine,
+} from "@/components/analytics/keyword-overview/NaverKeywordOverview";
 import { SearchForm } from "@/components/analytics/keyword-overview/SearchForm";
 import { SerpFeaturesCard } from "@/components/analytics/keyword-overview/SerpFeaturesCard";
 import { SerpResultsCard } from "@/components/analytics/keyword-overview/SerpResultsCard";
@@ -12,6 +20,7 @@ import type {
   ApiSuccess,
   KeywordInsightsResponse,
   KeywordOverviewReport,
+  NaverKeywordOverviewReport,
   TrendState,
 } from "@/components/analytics/keyword-overview/types";
 import { useLocale } from "@/i18n/LocaleProvider";
@@ -33,7 +42,11 @@ const COPY = {
     title: "Keyword Overview",
     description:
       "Live Google/Bing SERP plus Google Trends interest for any keyword. Metrics without a connected data source are marked as unavailable.",
+    naverDescription:
+      "Official NAVER Search Ads, Search Trend, and Blog Search data for the Korean market. Each section keeps its own source and availability state.",
     refresh: "Re-collect live",
+    naverRefresh: "Check NAVER data",
+    naverBadge: "NAVER official APIs",
     liveBadge: "Live collected",
     cacheBadge: "24h snapshot cache",
     collectedAt: "Collected",
@@ -53,7 +66,11 @@ const COPY = {
     title: "키워드 개요",
     description:
       "키워드의 실시간 Google/Bing SERP 와 Google Trends 관심도 추이를 확인하세요. 연결된 데이터 소스가 없는 지표는 미제공으로 표시합니다.",
+    naverDescription:
+      "한국 시장의 NAVER Search Ads·Search Trend·블로그 검색 공식 데이터를 확인하세요. 섹션마다 출처와 사용 가능 상태를 구분합니다.",
     refresh: "실시간 재수집",
+    naverRefresh: "NAVER 데이터 확인",
+    naverBadge: "NAVER 공식 API",
     liveBadge: "실시간 수집",
     cacheBadge: "24시간 스냅샷 캐시",
     collectedAt: "수집 시각",
@@ -70,9 +87,18 @@ const COPY = {
   },
 } as const;
 
+function apiErrorMessage(payload: unknown): string | null {
+  if (typeof payload !== "object" || payload === null) return null;
+  const error = "error" in payload ? payload.error : null;
+  if (typeof error === "string" && error.trim()) return error;
+  if (typeof error !== "object" || error === null || !("message" in error)) return null;
+  return typeof error.message === "string" && error.message.trim() ? error.message : null;
+}
+
 export function KeywordOverviewDashboard({ initialKeyword = "" }: { initialKeyword?: string }) {
   const { locale } = useLocale();
   const copy = COPY[locale];
+  const [activeEngine, setActiveEngine] = useState<KeywordOverviewEngine>("serp");
   const [keyword, setKeyword] = useState(initialKeyword);
   const [targetDomain, setTargetDomain] = useState("");
   const [country, setCountry] = useState("KR");
@@ -80,9 +106,13 @@ export function KeywordOverviewDashboard({ initialKeyword = "" }: { initialKeywo
   const [report, setReport] = useState<KeywordOverviewReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [naverReport, setNaverReport] = useState<NaverKeywordOverviewReport | null>(null);
+  const [naverLoading, setNaverLoading] = useState(false);
+  const [naverError, setNaverError] = useState<string | null>(null);
   const [trendState, setTrendState] = useState<TrendState>({ status: "idle" });
   const requestRef = useRef<AbortController | null>(null);
   const trendRequestRef = useRef<AbortController | null>(null);
+  const naverRequestRef = useRef<AbortController | null>(null);
 
   const relativeTime = useCallback(
     (iso: string): string => {
@@ -192,10 +222,52 @@ export function KeywordOverviewDashboard({ initialKeyword = "" }: { initialKeywo
     [copy.loadError, country, device, loadTrend, targetDomain],
   );
 
+  // @TASK NAVER-OVERVIEW-MVP - 인증 사용자 NAVER 개요 수집
+  // @SPEC 사용자 승인 계획#로그인-기능
+  const runNaverQuery = useCallback(
+    async (nextKeyword: string) => {
+      const normalized = normalizeNaverKeyword(nextKeyword);
+      if (!normalized) return;
+      naverRequestRef.current?.abort();
+      const controller = new AbortController();
+      naverRequestRef.current = controller;
+      setNaverLoading(true);
+      setNaverError(null);
+      try {
+        const response = await fetch("/api/analytics/naver-keywords/overview", {
+          method: "POST",
+          signal: controller.signal,
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ keyword: normalized }),
+        });
+        const body = (await response.json()) as unknown;
+        const parsed = parseNaverKeywordOverviewReport(body);
+
+        // 전 섹션 실패(503)여도 서버가 보낸 provenance envelope는 유지해 보여준다.
+        if (parsed) {
+          setNaverReport(parsed);
+          setKeyword(parsed.keyword);
+          if (!response.ok) {
+            setNaverError(apiErrorMessage(body) ?? copy.loadError);
+          }
+          return;
+        }
+        throw new Error(apiErrorMessage(body) ?? `HTTP ${response.status}`);
+      } catch (caught) {
+        if (controller.signal.aborted) return;
+        setNaverError(caught instanceof Error ? caught.message : copy.loadError);
+      } finally {
+        if (!controller.signal.aborted) setNaverLoading(false);
+      }
+    },
+    [copy.loadError],
+  );
+
   useEffect(() => {
     return () => {
       requestRef.current?.abort();
       trendRequestRef.current?.abort();
+      naverRequestRef.current?.abort();
     };
   }, []);
 
@@ -218,9 +290,9 @@ export function KeywordOverviewDashboard({ initialKeyword = "" }: { initialKeywo
             {copy.title}
           </h1>
           <p className="mt-1 max-w-3xl text-[13px] leading-[20px] text-a2-text-muted">
-            {copy.description}
+            {activeEngine === "serp" ? copy.description : copy.naverDescription}
           </p>
-          {report && (
+          {activeEngine === "serp" && report && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
               {report.fromCache ? (
                 <span className="rounded-full bg-[#eaf3ff] px-2.5 py-1 text-[11px] font-medium text-[#0872bf]">
@@ -238,8 +310,21 @@ export function KeywordOverviewDashboard({ initialKeyword = "" }: { initialKeywo
               </span>
             </div>
           )}
+          {activeEngine === "naver" && naverReport && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-[#e6f5f0] px-2.5 py-1 text-[11px] font-medium text-[#0a6b57]">
+                {copy.naverBadge}
+              </span>
+              <span className="text-[11px] text-a2-text-muted">
+                {naverReport.generatedAt
+                  ? `${copy.collectedAt}: ${relativeTime(naverReport.generatedAt)} · `
+                  : null}
+                {naverReport.keyword} · KR
+              </span>
+            </div>
+          )}
         </div>
-        {report && (
+        {activeEngine === "serp" && report && (
           <button
             type="button"
             onClick={() => void runQuery(report.keyword, { forceRefresh: true })}
@@ -249,87 +334,138 @@ export function KeywordOverviewDashboard({ initialKeyword = "" }: { initialKeywo
             {copy.refresh}
           </button>
         )}
+        {activeEngine === "naver" && naverReport && (
+          <button
+            type="button"
+            onClick={() => void runNaverQuery(naverReport.keyword)}
+            disabled={naverLoading}
+            className="flex h-10 items-center rounded-[7px] border border-app-border bg-a2-card px-4 text-[13px] font-medium text-a2-text transition-colors hover:bg-app-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-blue disabled:cursor-wait disabled:opacity-50"
+          >
+            {copy.naverRefresh}
+          </button>
+        )}
       </header>
 
-      <SearchForm
-        keyword={keyword}
-        targetDomain={targetDomain}
-        country={country}
-        device={device}
-        loading={loading}
-        onKeywordChange={setKeyword}
-        onTargetDomainChange={setTargetDomain}
-        onCountryChange={setCountry}
-        onDeviceChange={setDevice}
-        onSubmit={() => void runQuery(keyword)}
-        onExample={(example) => {
-          setKeyword(example);
-          void runQuery(example);
-        }}
+      <KeywordEngineTabs
+        activeEngine={activeEngine}
+        locale={locale}
+        onChange={setActiveEngine}
       />
 
-      <div className="min-h-[24px]" aria-live="polite">
-        {error && (
-          <div
-            role="alert"
-            className="mt-4 rounded-[8px] border border-[#ffc8d4] bg-[#fff4f6] px-4 py-3 text-[13px] text-[#a80028]"
-          >
-            {copy.loadError} {error}
-          </div>
-        )}
-      </div>
-
-      {!report && !loading && !error && (
-        <div className="mt-6 flex flex-col items-center rounded-[10px] border border-dashed border-app-border bg-a2-card px-6 py-14 text-center">
-          <svg
-            width="36"
-            height="36"
-            viewBox="0 0 24 24"
-            fill="none"
-            aria-hidden="true"
-            className="text-a2-text-faint"
-          >
-            <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.6" />
-            <path d="M16.5 16.5 21 21" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-          </svg>
-          <p className="mt-3 text-[15px] font-semibold text-a2-text">{copy.emptyTitle}</p>
-          <p className="mt-1.5 max-w-[420px] text-[12px] leading-[18px] text-a2-text-muted">
-            {copy.emptyBody}
-          </p>
-        </div>
-      )}
-
-      {!report && loading && (
-        <div role="status" className="py-10" aria-live="polite">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-            {Array.from({ length: 4 }, (_, index) => (
-              <div
-                key={index}
-                className="h-[120px] animate-pulse rounded-[10px] border border-app-border bg-a2-card p-4"
-              >
-                <div className="h-3 w-20 rounded bg-[#e9ebf0]" />
-                <div className="mt-5 h-7 w-16 rounded bg-[#e9ebf0]" />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {report && (
-        <div className={cn("transition-opacity", loading && "pointer-events-none opacity-60")}>
-          <KpiRow report={report} targetDomain={targetDomain} />
-
-          <TrendCard
-            state={trendState}
-            onRetry={() => void loadTrend(report.keyword, report.countryCode)}
+      {activeEngine === "serp" && (
+        <div
+          id="keyword-engine-panel-serp"
+          role="tabpanel"
+          aria-labelledby="keyword-engine-serp"
+        >
+          <SearchForm
+            keyword={keyword}
+            targetDomain={targetDomain}
+            country={country}
+            device={device}
+            loading={loading}
+            onKeywordChange={setKeyword}
+            onTargetDomainChange={setTargetDomain}
+            onCountryChange={setCountry}
+            onDeviceChange={setDevice}
+            onSubmit={() => void runQuery(keyword)}
+            onExample={(example) => {
+              setKeyword(example);
+              void runQuery(example);
+            }}
           />
 
-          <SerpFeaturesCard features={report.features} />
-
-          <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
-            <SerpResultsCard report={report} />
-            <CapturesCard report={report} />
+          <div className="min-h-[24px]" aria-live="polite">
+            {error && (
+              <div
+                role="alert"
+                className="mt-4 rounded-[8px] border border-[#ffc8d4] bg-[#fff4f6] px-4 py-3 text-[13px] text-[#a80028]"
+              >
+                {copy.loadError} {error}
+              </div>
+            )}
           </div>
+
+          {!report && !loading && !error && (
+            <div className="mt-6 flex flex-col items-center rounded-[10px] border border-dashed border-app-border bg-a2-card px-6 py-14 text-center">
+              <svg
+                width="36"
+                height="36"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+                className="text-a2-text-faint"
+              >
+                <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.6" />
+                <path d="M16.5 16.5 21 21" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+              </svg>
+              <p className="mt-3 text-[15px] font-semibold text-a2-text">{copy.emptyTitle}</p>
+              <p className="mt-1.5 max-w-[420px] text-[12px] leading-[18px] text-a2-text-muted">
+                {copy.emptyBody}
+              </p>
+            </div>
+          )}
+
+          {!report && loading && (
+            <div role="status" className="py-10" aria-live="polite">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                {Array.from({ length: 4 }, (_, index) => (
+                  <div
+                    key={index}
+                    className="h-[120px] animate-pulse rounded-[10px] border border-app-border bg-a2-card p-4"
+                  >
+                    <div className="h-3 w-20 rounded bg-[#e9ebf0]" />
+                    <div className="mt-5 h-7 w-16 rounded bg-[#e9ebf0]" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {report && (
+            <div className={cn("transition-opacity", loading && "pointer-events-none opacity-60")}>
+              <KpiRow report={report} targetDomain={targetDomain} />
+
+              <TrendCard
+                state={trendState}
+                onRetry={() => void loadTrend(report.keyword, report.countryCode)}
+              />
+
+              <SerpFeaturesCard features={report.features} />
+
+              <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+                <SerpResultsCard report={report} />
+                <CapturesCard report={report} />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeEngine === "naver" && (
+        <div
+          id="keyword-engine-panel-naver"
+          role="tabpanel"
+          aria-labelledby="keyword-engine-naver"
+        >
+          <NaverKeywordSearchForm
+            keyword={keyword}
+            locale={locale}
+            loading={naverLoading}
+            onKeywordChange={setKeyword}
+            onSubmit={() => void runNaverQuery(keyword)}
+            onExample={(example) => {
+              setKeyword(example);
+              void runNaverQuery(example);
+            }}
+          />
+          <NaverKeywordOverview
+            locale={locale}
+            report={naverReport}
+            loading={naverLoading}
+            error={naverError ? `${copy.loadError} ${naverError}` : null}
+            onRetry={() => void runNaverQuery(naverReport?.keyword ?? keyword)}
+          />
         </div>
       )}
     </div>

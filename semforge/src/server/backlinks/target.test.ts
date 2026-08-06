@@ -1,35 +1,23 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ApiError } from "@/lib/api";
-import { inferBacklinkScope, parseBacklinkTarget } from "@/server/backlinks/target";
+import { normalizeBacklinkSiteUrl, parseBacklinkTarget, targetBelongsToSite } from "@/server/backlinks/target";
 
-test("도메인 범위는 host를 정규화하고 page 범위는 경로와 쿼리를 보존한다", () => {
-  assert.deepEqual(parseBacklinkTarget(" HTTPS://WWW.Example.COM/path?x=1#part ", "root_domain"), {
-    canonical: "example.com",
-    scope: "root_domain",
+test("Bing 사이트 URL과 페이지 범위를 정규화한다", () => {
+  assert.equal(normalizeBacklinkSiteUrl(" HTTPS://WWW.Example.COM/docs "), "https://www.example.com/docs/");
+  assert.deepEqual(parseBacklinkTarget({ siteUrl: "example.com", scope: "site" }), {
+    siteUrl: "https://example.com/", targetUrl: null, scope: "site", cacheTarget: "https://example.com/",
   });
-  assert.deepEqual(parseBacklinkTarget("blog.Example.com/path", "subdomain"), {
-    canonical: "blog.example.com",
-    scope: "subdomain",
-  });
-  assert.deepEqual(parseBacklinkTarget("https://Example.com/path?x=1#part", "page"), {
-    canonical: "https://example.com/path?x=1",
-    scope: "page",
-  });
+  const page = parseBacklinkTarget({ siteUrl: "https://example.com/docs/", targetUrl: "https://example.com/docs/a?q=1#x", scope: "page" });
+  assert.equal(page.targetUrl, "https://example.com/docs/a?q=1");
+  assert.equal(targetBelongsToSite(page.siteUrl, page.targetUrl!), true);
 });
 
-test("경로가 있는 입력은 page 범위로 추론한다", () => {
-  assert.equal(inferBacklinkScope("example.com"), "root_domain");
-  assert.equal(inferBacklinkScope("example.com/article"), "page");
-  assert.equal(inferBacklinkScope("https://example.com/?ref=1"), "page");
+test("외부 페이지·IP·자격 증명·포트를 거부한다", () => {
+  for (const input of [
+    { siteUrl: "127.0.0.1", scope: "site" as const },
+    { siteUrl: "https://user:pass@example.com", scope: "site" as const },
+    { siteUrl: "http://example.com:3000", scope: "site" as const },
+    { siteUrl: "https://example.com/", targetUrl: "https://other.example/page", scope: "page" as const },
+  ]) assert.throws(() => parseBacklinkTarget(input), (error: unknown) => error instanceof ApiError && error.code === "VALIDATION_ERROR");
 });
-
-test("자격 증명·비 HTTP URL·로컬 호스트를 거부한다", () => {
-  for (const target of ["https://user:pass@example.com", "ftp://example.com/file", "localhost", "http://example.com:3000"]) {
-    assert.throws(
-      () => parseBacklinkTarget(target, "page"),
-      (error: unknown) => error instanceof ApiError && error.code === "VALIDATION_ERROR",
-    );
-  }
-});
-

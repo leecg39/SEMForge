@@ -8,8 +8,6 @@ export const POST = route(async (request: Request) => {
   const auth = await requireAuth(request);
   assertCan(auth, "read");
   const input = await parseBody(request, backlinkListRequestSchema);
-  return jsonOk(await queryBacklinkList(auth, input), {
-    meta: { source: "semrush-v4", billed: "cache-miss-only" },
-  });
+  const result = await queryBacklinkList(auth, input);
+  return jsonOk(result, { meta: { source: result.provenance.provider, cached: result.provenance.cached } });
 });
-

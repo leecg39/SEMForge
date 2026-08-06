@@ -1,0 +1,26 @@
+id	dimension	severity	classification	result	evidence
+AIR-001	happy_path	Critical	New	verified	postgres.test.ts + service.test.ts
+AIR-002	concurrent	Critical	New	verified	separate GSC/GA4 PGlite regression
+AIR-003	temporal	Critical	New	verified	Airbyte listJobs contract + sync discovery review
+AIR-004	recovery	Critical	Variant	verified	sync.ts success gate
+AIR-005	concurrent	High	New	verified	service active-job 409 path
+AIR-006	error	Medium	New	verified	impossible calendar date test
+AIR-007	temporal	High	New	verified	90m/24h boundary unit test
+AIR-008	integration	High	New	verified	conditional direct GSC fallback implementation
+AIR-009	integration	High	Variant	verified	feature/config unavailable envelope
+AIR-010	data_variation	High	New	verified	unsupported dedup mode contract test
+AIR-011	abuse	Critical	New	verified	raw namespace injection PGlite test
+AIR-012	permission	Critical	New	verified	workspace-domain pseudonym test
+AIR-013	permission	High	New	verified	viewer mutation test
+AIR-014	abuse	Critical	Variant	verified	workspace-scoped control queries
+AIR-015	state_transition	High	New	verified	delete order unit test
+AIR-016	recovery	High	Variant	verified	raw cleanup failure unit test
+AIR-017	state_transition	High	New	verified	state hash/expiry/usedAt code review
+AIR-018	abuse	Critical	New	verified	provider error sanitization test
+AIR-019	temporal	Critical	New	verified	HubSpot 7-day PGlite retention test
+AIR-020	data_variation	High	New	verified	URL normalization unit test
+AIR-021	edge_case	Medium	New	verified	KPI zero-denominator unit test
+AIR-022	scale	High	New	conditional	PoC load gate; live dataset required
+AIR-023	integration	High	Variant	verified	propagate_columns + fail-closed raw discovery
+AIR-024	happy_path	Medium	New	verified	deterministic PDF unit test
+AIR-025	edge_case	Medium	New	verified	390px/1904px browser QA + labels

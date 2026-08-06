@@ -1,5 +1,9 @@
 "use client";
 
+// @TASK NAVER-P0-CONTENT-HANDOFF - NAVER 키워드 탐색→콘텐츠 브리프 연결
+// @SPEC user-approved-plan#3-d-authenticated-features
+// @TEST src/components/content/naver-handoff.test.ts
+
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -20,6 +24,7 @@ import type {
 } from "@/types/content";
 import { ContentPageHeader, StatusPill, fieldClass, textareaClass } from "@/components/content/ContentUi";
 import { ContentLinkedHome } from "@/components/content/ContentLinkedHome";
+import { parseNaverContentHandoff } from "@/components/content/naver-handoff";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { translateContentText } from "@/i18n/content";
 
@@ -38,19 +43,20 @@ const categories: Array<{ id: Category; label: string; description: string }> = 
   { id: "video", label: "영상 제작", description: "Grok 콘티와 Grok Imagine 30~60초 영상" },
 ];
 
-export function ContentHome() {
+function ContentHomeContent({ searchParams }: { searchParams: ReturnType<typeof useSearchParams> }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { locale } = useLocale();
   const tx = (text: string) => translateContentText(locale, text);
   const folderId = searchParams.get("fid") ?? "";
   const defaultSourceArticleId = searchParams.get("sourceArticleId") ?? "";
   const requestedIntent = searchParams.get("intent");
+  const naverHandoff = parseNaverContentHandoff(searchParams, locale);
   const isArticleIntent = requestedIntent === "optimize" || requestedIntent === "repurpose" || requestedIntent === "brief" || requestedIntent === "topic";
   const [mode, setMode] = useState<"linked" | "individual">(searchParams.get("mode") === "individual" || isArticleIntent ? "individual" : "linked");
   const [category, setCategory] = useState<Category>("article");
   const [articleIntent, setArticleIntent] = useState<ArticleIntent>(requestedIntent === "optimize" ? "optimize" : requestedIntent === "repurpose" ? "repurpose" : requestedIntent === "brief" || requestedIntent === "topic" ? "brief" : "create");
-  const [prompt, setPrompt] = useState("");
+  // URL handoff is initial input only. User edits must not be reset by an effect.
+  const [prompt, setPrompt] = useState(() => naverHandoff?.prefill ?? "");
   const [mediaTitle, setMediaTitle] = useState("");
   const [sourceArticleId, setSourceArticleId] = useState("");
   const [stylePreset, setStylePreset] = useState<"editorial_photo" | "illustration" | "minimal_3d" | "abstract_graphic">("editorial_photo");
@@ -255,6 +261,77 @@ export function ContentHome() {
             : tx("독립 프롬프트로 시작하거나 저장된 기사를 제작 문맥으로 연결할 수 있습니다.")}
         </p>
 
+        {category === "article" && naverHandoff && (
+          <aside
+            className="mt-5 rounded-[12px] border border-[#9fd8c8] bg-[#f3fbf8] p-4 sm:p-5"
+            aria-labelledby="naver-content-handoff-title"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex rounded-full bg-[#08765c] px-2.5 py-1 text-[11px] font-semibold text-white">
+                {tx("NAVER 공식 데이터에서 전달됨")}
+              </span>
+              <strong id="naver-content-handoff-title" className="text-[13px] text-hof">
+                {tx("대표 키워드")} · {naverHandoff.primaryKeyword}
+              </strong>
+              {naverHandoff.keywords.length > 1 && (
+                <span className="text-[11px] text-foggy">
+                  {tx("함께 선택")} {naverHandoff.keywords.length - 1}{locale === "ko" ? "개" : ""}
+                </span>
+              )}
+            </div>
+
+            <dl className="mt-3 grid gap-x-5 gap-y-2 text-[11px] leading-5 sm:grid-cols-2">
+              <div>
+                <dt className="font-semibold text-foggy">{tx("출처")}</dt>
+                <dd className="text-hof">{naverHandoff.naverSourceLabel}</dd>
+              </div>
+              <div>
+                <dt className="font-semibold text-foggy">{tx("측정 방식")}</dt>
+                <dd className="text-hof">{tx("공식 응답 · 추정값 임의 생성 안 함")}</dd>
+              </div>
+              {naverHandoff.inferredIntentLabel && (
+                <div>
+                  <dt className="font-semibold text-foggy">{tx("검색 의도")}</dt>
+                  <dd className="text-hof">{naverHandoff.inferredIntentLabel} · clone-intent-v1 {tx("추론")}</dd>
+                </div>
+              )}
+              {naverHandoff.naverFetchedAt && (
+                <div>
+                  <dt className="font-semibold text-foggy">{tx("수집 시각")}</dt>
+                  <dd className="font-mono text-hof">{naverHandoff.naverFetchedAt.replace("T", " ").replace(".000Z", " UTC")}</dd>
+                </div>
+              )}
+            </dl>
+
+            {naverHandoff.keywords.length > 1 && (
+              <p className="mt-3 break-words text-[11px] leading-5 text-foggy">
+                <strong className="text-hof">{tx("함께 선택")}:</strong> {naverHandoff.keywords.slice(1).join(" · ")}
+                {naverHandoff.omittedKeywordCount > 0
+                  ? locale === "ko"
+                    ? ` · 외 ${naverHandoff.omittedKeywordCount}개 미포함`
+                    : ` · ${naverHandoff.omittedKeywordCount} more omitted`
+                  : ""}
+              </p>
+            )}
+            {naverHandoff.naverTrend && (
+              <p className="mt-2 break-words text-[11px] leading-5 text-foggy">
+                <strong className="text-hof">{tx("상대 검색 추이")}:</strong> {naverHandoff.naverTrend}
+              </p>
+            )}
+            {naverHandoff.naverBlogTitles.length > 0 && (
+              <div className="mt-2 text-[11px] leading-5 text-foggy">
+                <strong className="text-hof">{tx("블로그 검색 API 응답 제목 · 통합검색 순위 아님")}</strong>
+                <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                  {naverHandoff.naverBlogTitles.map((title) => <li key={title}>{title}</li>)}
+                </ul>
+              </div>
+            )}
+            <p className="mt-3 border-t border-[#cbe9e0] pt-3 text-[11px] leading-5 text-[#35665a]">
+              {tx("아래 브리프 입력에 복사했습니다. 자유롭게 수정한 뒤 버튼을 눌러야 작업판이 생성되며, 자동 게시는 하지 않습니다.")}
+            </p>
+          </aside>
+        )}
+
         {category !== "article" && (
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <label className="text-[11px] font-semibold text-foggy">
@@ -277,6 +354,7 @@ export function ContentHome() {
 
         <textarea
           value={prompt}
+          aria-label={category === "article" && articleIntent === "brief" ? "콘텐츠 브리프 입력" : "콘텐츠 제작 요청"}
           onChange={(event) => setPrompt(event.target.value)}
           onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") void submit(); }}
           rows={5}
@@ -412,4 +490,9 @@ export function ContentHome() {
       </section>
     </div>
   );
+}
+
+export function ContentHome() {
+  const searchParams = useSearchParams();
+  return <ContentHomeContent key={searchParams.toString()} searchParams={searchParams} />;
 }

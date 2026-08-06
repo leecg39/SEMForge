@@ -8,6 +8,8 @@ import { api, ClientApiError } from "@/lib/client-api";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/i18n/LocaleProvider";
 import type { AdvertisingResearchReport } from "@/server/advertising/contracts";
+import { NaverAdvertisingHandoffNotice } from "./NaverAdvertisingHandoffNotice";
+import { parseNaverAdvertisingHandoff } from "./naver-handoff";
 
 const card = "rounded-[10px] border border-app-border bg-white";
 
@@ -36,8 +38,12 @@ export function AdvertisingResearchDashboard({ mode }: { mode: "search" | "shopp
   const searchParams = useSearchParams();
   const { locale } = useLocale();
   const ko = locale === "ko";
+  const naverHandoff = useMemo(
+    () => parseNaverAdvertisingHandoff(searchParams),
+    [searchParams],
+  );
   const [domain, setDomain] = useState(searchParams.get("domain") ?? "");
-  const [keywords, setKeywords] = useState("");
+  const [keywords, setKeywords] = useState(() => naverHandoff?.keywords.join(", ") ?? "");
   const [report, setReport] = useState<AdvertisingResearchReport | null>(null);
   const [runId, setRunId] = useState(searchParams.get("run") ?? "");
   const [loading, setLoading] = useState(false);
@@ -141,7 +147,9 @@ export function AdvertisingResearchDashboard({ mode }: { mode: "search" | "shopp
           </Link>
         </div>
 
-        <form onSubmit={startResearch} className={cn(card, "mt-5 p-4")}>
+        {naverHandoff && <NaverAdvertisingHandoffNotice handoff={naverHandoff} ko={ko} />}
+
+        <form onSubmit={startResearch} className={cn(card, naverHandoff ? "mt-3 p-4" : "mt-5 p-4")}>
           <div className="grid gap-3 lg:grid-cols-[minmax(240px,.8fr)_minmax(360px,1.5fr)_auto]">
             <label className="block text-[12px] font-medium">
               {ko ? "분석 도메인" : "Domain to analyze"}
@@ -161,6 +169,7 @@ export function AdvertisingResearchDashboard({ mode }: { mode: "search" | "shopp
               <input
                 value={keywords}
                 onChange={(event) => setKeywords(event.target.value)}
+                aria-describedby={naverHandoff ? "naver-ad-handoff-guidance" : undefined}
                 placeholder={ko ? "비워 두면 웹사이트 문맥에서 시작 키워드를 제안합니다." : "Leave blank to suggest starting keywords from website context."}
                 className="mt-1.5 h-10 w-full rounded-[7px] border border-app-border bg-white px-3 text-[13px] outline-none focus:border-app-blue"
               />

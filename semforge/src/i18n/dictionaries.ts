@@ -48,6 +48,8 @@ export interface Dictionary {
     terms: string;
     termsOfService: string;
     privacyPolicy: string;
+    restoreKeyword: string;
+    restoreKeywordHint: string;
   };
 }
 
@@ -90,6 +92,8 @@ const en: Dictionary = {
     terms: "By continuing you agree to the",
     termsOfService: "Terms of Service",
     privacyPolicy: "Privacy Policy",
+    restoreKeyword: "Keyword to restore after sign-up",
+    restoreKeywordHint: "After sign-up, this keyword will open in NAVER Keyword Explorer.",
   },
 };
 
@@ -131,6 +135,8 @@ const ko: Dictionary = {
     terms: "계속하면 다음에 동의하는 것으로 간주됩니다:",
     termsOfService: "서비스 약관",
     privacyPolicy: "개인정보처리방침",
+    restoreKeyword: "가입 후 복원할 키워드",
+    restoreKeywordHint: "가입을 마치면 이 키워드를 NAVER 키워드 탐색기에서 이어서 봅니다.",
   },
 };
 

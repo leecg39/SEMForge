@@ -1,222 +1,201 @@
 import { z } from "zod";
 
-export const BACKLINK_PROVIDER = "semrush-v4" as const;
+export const BACKLINK_PROVIDER = "bing-webmaster" as const;
+export const BACKLINK_CSV_PROVIDER = "bing-csv" as const;
+export const BACKLINK_COMMON_CRAWL_PROVIDER = "common-crawl" as const;
 export const BACKLINK_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+export const COMMON_CRAWL_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const BACKLINK_CACHE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 export const BACKLINK_REFRESH_LEASE_MS = 2 * 60 * 1000;
+export const BACKLINK_IMPORT_TTL_MS = 30 * 60 * 1000;
 export const BACKLINK_PAGE_SIZE = 25;
+export const BACKLINK_MAX_IMPORT_BYTES = 10 * 1024 * 1024;
+export const BACKLINK_MAX_IMPORT_ROWS = 100_000;
 
-export const backlinkScopeSchema = z.enum(["root_domain", "subdomain", "page"]);
+export const backlinkProviderSchema = z.enum([
+  BACKLINK_PROVIDER,
+  BACKLINK_CSV_PROVIDER,
+  BACKLINK_COMMON_CRAWL_PROVIDER,
+]);
+export type BacklinkProvider = z.infer<typeof backlinkProviderSchema>;
+
+export const backlinkCollectionProviderSchema = z.enum([
+  "auto",
+  BACKLINK_PROVIDER,
+  BACKLINK_COMMON_CRAWL_PROVIDER,
+]);
+export type BacklinkCollectionProvider = z.infer<typeof backlinkCollectionProviderSchema>;
+
+export const backlinkScopeSchema = z.enum(["site", "page"]);
 export type BacklinkScope = z.infer<typeof backlinkScopeSchema>;
 
-export const backlinkDatasetSchema = z.enum([
-  "links",
-  "ref_domains",
-  "anchors",
-  "pages",
-]);
+export const backlinkDatasetSchema = z.enum(["target_pages", "inbound_links"]);
 export type BacklinkDataset = z.infer<typeof backlinkDatasetSchema>;
 
-function isCalendarDate(value: string): boolean {
-  const [year, month, day] = value.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return (
-    date.getUTCFullYear() === year &&
-    date.getUTCMonth() === month - 1 &&
-    date.getUTCDate() === day
-  );
-}
-
-const backlinkDateSchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "날짜는 YYYY-MM-DD 형식이어야 합니다.")
-  .refine(isCalendarDate, "실제 달력 날짜를 입력해 주세요.");
-
-export const backlinkFiltersSchema = z
-  .object({
-    status: z.enum(["all", "new", "lost"]).default("all"),
-    attribute: z
-      .enum(["all", "follow", "nofollow", "sponsored", "ugc"])
-      .default("all"),
-    linkType: z.enum(["all", "text", "image", "form", "frame"]).default("all"),
-    search: z.string().trim().max(200).default(""),
-    dateFrom: backlinkDateSchema.nullable().default(null),
-    dateTo: backlinkDateSchema.nullable().default(null),
-  })
-  .superRefine((filters, context) => {
-    if (filters.dateFrom && filters.dateTo && filters.dateFrom > filters.dateTo) {
-      context.addIssue({
-        code: "custom",
-        path: ["dateTo"],
-        message: "종료일은 시작일과 같거나 이후여야 합니다.",
-      });
-    }
-  });
+export const backlinkFiltersSchema = z.object({
+  search: z.string().trim().max(200).default(""),
+});
 export type BacklinkFilters = z.infer<typeof backlinkFiltersSchema>;
 
-export const backlinkReportRequestSchema = z.object({
-  target: z.string().trim().min(1).max(2000),
-  scope: backlinkScopeSchema.default("root_domain"),
-  mode: z.enum(["if-stale", "force"]).default("if-stale"),
-});
+export const backlinkReportRequestSchema = z
+  .object({
+    siteUrl: z.string().trim().min(1).max(2000),
+    targetUrl: z.string().trim().max(2000).nullable().optional(),
+    scope: backlinkScopeSchema.default("site"),
+    mode: z.enum(["if-stale", "force"]).default("if-stale"),
+    provider: backlinkCollectionProviderSchema.default("auto"),
+    limit: z.union([z.literal(100), z.literal(500), z.literal(1000)]).default(100),
+  })
+  .superRefine((input, context) => {
+    if (input.scope === "page" && !input.targetUrl) {
+      context.addIssue({ code: "custom", path: ["targetUrl"], message: "페이지 범위에는 대상 URL이 필요합니다." });
+    }
+  });
+export type BacklinkReportRequest = z.infer<typeof backlinkReportRequestSchema>;
 
-export const backlinkListRequestSchema = z.object({
-  target: z.string().trim().min(1).max(2000),
-  scope: backlinkScopeSchema.default("root_domain"),
-  dataset: backlinkDatasetSchema,
-  page: z.coerce.number().int().min(1).max(4000).default(1),
-  pageSize: z.coerce.number().int().min(1).max(1000).default(BACKLINK_PAGE_SIZE),
-  sort: z.string().trim().max(40).optional(),
-  direction: z.enum(["asc", "desc"]).default("desc"),
-  filters: backlinkFiltersSchema.default({
-    status: "all",
-    attribute: "all",
-    linkType: "all",
-    search: "",
-    dateFrom: null,
-    dateTo: null,
-  }),
-});
+export const backlinkListRequestSchema = z
+  .object({
+    siteUrl: z.string().trim().min(1).max(2000),
+    targetUrl: z.string().trim().max(2000).nullable().optional(),
+    scope: backlinkScopeSchema.default("site"),
+    provider: backlinkProviderSchema,
+    dataset: backlinkDatasetSchema,
+    targetPage: z.string().trim().max(2000).nullable().optional(),
+    page: z.coerce.number().int().min(1).max(32_000).default(1),
+    pageSize: z.coerce.number().int().min(1).max(1000).default(BACKLINK_PAGE_SIZE),
+    sort: z.string().trim().max(40).optional(),
+    direction: z.enum(["asc", "desc"]).default("desc"),
+    filters: backlinkFiltersSchema.default({ search: "" }),
+  })
+  .superRefine((input, context) => {
+    if (input.dataset === "inbound_links" && !input.targetPage) {
+      context.addIssue({ code: "custom", path: ["targetPage"], message: "인바운드 링크를 조회할 대상 페이지를 선택해 주세요." });
+    }
+  });
 export type BacklinkListRequest = z.infer<typeof backlinkListRequestSchema>;
 
 export const backlinkExportRequestSchema = backlinkListRequestSchema.extend({
   limit: z.union([z.literal(100), z.literal(500), z.literal(1000)]).default(100),
 });
 
+export const backlinkImportMappingSchema = z.object({
+  sourceUrl: z.string().min(1),
+  targetUrl: z.string().min(1),
+  anchor: z.string().nullable().optional(),
+  linkCount: z.string().nullable().optional(),
+});
+export type BacklinkImportMapping = z.infer<typeof backlinkImportMappingSchema>;
+
+export const backlinkImportCommitSchema = z.object({
+  importId: z.string().trim().min(1).max(80),
+  siteUrl: z.string().trim().min(1).max(2000),
+  mapping: backlinkImportMappingSchema,
+});
+
 export interface BacklinkOverview {
-  authorityScore: number | null;
-  backlinks: number | null;
-  referringDomains: number | null;
-  referringPages: number | null;
-  newBacklinks: number | null;
-  lostBacklinks: number | null;
-  followBacklinks: number | null;
-  nofollowBacklinks: number | null;
-  sponsoredBacklinks: number | null;
-  ugcBacklinks: number | null;
-  textBacklinks: number | null;
-  imageBacklinks: number | null;
-  formBacklinks: number | null;
-  frameBacklinks: number | null;
+  domainRating: number | null;
+  totalInboundLinks: number | null;
+  linkedPages: number | null;
+  newLinks: number | null;
+  lostLinks: number | null;
 }
 
 export interface BacklinkHistoryPoint {
-  month: string;
-  authorityScore: number | null;
-  backlinks: number | null;
-  referringDomains: number | null;
-  followBacklinks: number | null;
+  date: string;
+  totalInboundLinks: number | null;
+  linkedPages: number | null;
 }
 
-export interface BacklinkScoreBucket {
-  score: number;
-  referringDomains: number;
+export interface BacklinkTargetPageRow {
+  kind: "target_pages";
+  url: string;
+  linkCount: number;
 }
+
+export interface BacklinkInboundLinkRow {
+  kind: "inbound_links";
+  sourceUrl: string;
+  targetUrl: string;
+  sourceDomain: string;
+  anchor: string | null;
+  linkCount: number;
+}
+
+export type BacklinkRow = BacklinkTargetPageRow | BacklinkInboundLinkRow;
 
 export interface BacklinkProvenance {
-  provider: typeof BACKLINK_PROVIDER;
+  provider: BacklinkProvider;
   fetchedAt: string;
   expiresAt: string;
   stale: boolean;
   cached: boolean;
-  requestIds: string[];
+  partial: boolean;
   warning: string | null;
+  requestIds: string[];
+  domainRatingAttribution: "Domain Rating by Ahrefs" | null;
+  domainRatingLicenseUrl: string | null;
+  commonCrawlRelease: string | null;
+  fallbackFromBing: boolean;
 }
 
 export interface BacklinkReport {
-  target: string;
-  effectiveTarget: string;
+  siteUrl: string;
+  targetUrl: string | null;
   scope: BacklinkScope;
   overview: BacklinkOverview;
   history: BacklinkHistoryPoint[];
-  scoreProfile: BacklinkScoreBucket[];
+  topTargetPages: BacklinkTargetPageRow[];
   provenance: BacklinkProvenance;
 }
 
-export interface BacklinkLinkRow {
-  kind: "links";
-  sourceUrl: string;
-  targetUrl: string;
-  sourceDomain: string;
-  sourceTitle: string | null;
-  anchor: string | null;
-  domainScore: number | null;
-  pageScore: number | null;
-  firstSeenAt: string | null;
-  lastSeenAt: string | null;
-  nofollow: boolean;
-  sponsored: boolean;
-  ugc: boolean;
-  image: boolean;
-  form: boolean;
-  frame: boolean;
-  isNew: boolean;
-  isLost: boolean;
-}
-
-export interface BacklinkRefDomainRow {
-  kind: "ref_domains";
-  domain: string;
-  backlinks: number | null;
-  domainScore: number | null;
-  ipAddress: string | null;
-  country: string | null;
-  firstSeenAt: string | null;
-  lastSeenAt: string | null;
-  follow: boolean | null;
-  isNew: boolean;
-  isLost: boolean;
-}
-
-export interface BacklinkAnchorRow {
-  kind: "anchors";
-  anchor: string;
-  backlinks: number | null;
-  referringDomains: number | null;
-  firstSeenAt: string | null;
-  lastSeenAt: string | null;
-}
-
-export interface BacklinkPageRow {
-  kind: "pages";
-  url: string;
-  title: string | null;
-  responseCode: number | null;
-  backlinks: number | null;
-  referringDomains: number | null;
-  firstSeenAt: string | null;
-  lastSeenAt: string | null;
-}
-
-export type BacklinkRow =
-  | BacklinkLinkRow
-  | BacklinkRefDomainRow
-  | BacklinkAnchorRow
-  | BacklinkPageRow;
-
 export interface BacklinkListResult {
-  target: string;
+  siteUrl: string;
+  targetUrl: string | null;
   scope: BacklinkScope;
+  provider: BacklinkProvider;
   dataset: BacklinkDataset;
+  targetPage: string | null;
   rows: BacklinkRow[];
-  total: number;
+  total: number | null;
   page: number;
   pageSize: number;
   totalPages: number;
   sort: string;
   direction: "asc" | "desc";
   provenance: {
-    provider: typeof BACKLINK_PROVIDER;
+    provider: BacklinkProvider;
     fetchedAt: string;
     expiresAt: string;
     cached: boolean;
+    partial: boolean;
     requestId: string | null;
   };
 }
 
-export interface ProviderResult<T> {
-  data: T;
-  requestId: string | null;
-  effectiveTarget: string | null;
-  total?: number;
+export interface BingSite {
+  siteUrl: string;
+  verified: boolean;
+}
+
+export interface BingConnectionStatus {
+  configured: boolean;
+  connected: boolean;
+  selectedSiteUrl: string | null;
+  expiresAt: string | null;
+  reason: string | null;
+}
+
+export interface CommonCrawlConnectionStatus {
+  configured: boolean;
+  reason: string;
+}
+
+export interface BacklinkImportPreview {
+  importId: string;
+  fileName: string;
+  headers: string[];
+  sampleRows: string[][];
+  rowCount: number;
+  detectedMapping: Partial<BacklinkImportMapping>;
+  expiresAt: string;
 }

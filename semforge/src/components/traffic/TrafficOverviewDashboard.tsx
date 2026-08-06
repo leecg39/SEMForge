@@ -44,8 +44,9 @@ import {
 import type { DiscoveredCompetitors } from "@/server/position-tracking/insights";
 import type { KeywordHighlights, PagesBreakdown } from "@/server/position-tracking/highlights";
 import type { CampaignListItem, CampaignOverview } from "@/server/position-tracking/overview";
+import { MarketingTrafficDashboard } from "./MarketingTrafficDashboard";
 
-export type TrafficMarketView = "overview" | "traffic" | "market" | "pages";
+export type TrafficMarketView = "integrated" | "overview" | "traffic" | "market" | "pages";
 
 interface ProviderEnvelope<T> {
   status: "live" | "unavailable" | "error";
@@ -179,11 +180,15 @@ export function TrafficOverviewDashboard({
   initialView = "overview",
   initialCampaignId = "",
   campaigns = [],
+  folders = [],
+  initialFolderId = "",
 }: {
   initialSiteUrl?: string;
   initialView?: TrafficMarketView;
   initialCampaignId?: string;
   campaigns?: CampaignListItem[];
+  folders?: Array<{ id: string; name: string; domain: string }>;
+  initialFolderId?: string;
 }) {
   const router = useRouter();
   const initialCampaign = resolveAccessibleCampaign({
@@ -297,14 +302,14 @@ export function TrafficOverviewDashboard({
   }, []);
 
   useEffect(() => {
-    if (!siteUrl || !gscStatus?.connected) return;
+    if (!["traffic", "pages"].includes(initialView) || !siteUrl || !gscStatus?.connected) return;
     const controller = new AbortController();
     void Promise.resolve().then(() => loadGsc(siteUrl, range, controller.signal));
     return () => controller.abort();
-  }, [gscStatus?.connected, loadGsc, range, siteUrl]);
+  }, [gscStatus?.connected, initialView, loadGsc, range, siteUrl]);
 
   useEffect(() => {
-    if (!selectedCampaignId) return;
+    if (initialView !== "market" || !selectedCampaignId) return;
     const controller = new AbortController();
     void Promise.resolve().then(async () => {
       setMarketLoading(true);
@@ -324,7 +329,7 @@ export function TrafficOverviewDashboard({
       }
     });
     return () => controller.abort();
-  }, [selectedCampaignId]);
+  }, [initialView, selectedCampaignId]);
 
   const propertyValues = useMemo(() => properties.map((item) => item.siteUrl), [properties]);
   const selectedCampaign = campaigns.find((item) => item.id === selectedCampaignId) ?? null;
@@ -339,8 +344,10 @@ export function TrafficOverviewDashboard({
     : [];
 
   const hrefFor = (view: TrafficMarketView) => {
-    const path = view === "overview" ? "/analytics/traffic/" : `/analytics/traffic/${view === "traffic" ? "traffic-overview" : view === "market" ? "market-overview" : "top-pages"}/`;
+    const path = view === "integrated" || view === "overview" ? "/analytics/traffic/" : `/analytics/traffic/${view === "traffic" ? "traffic-overview" : view === "market" ? "market-overview" : "top-pages"}/`;
     const params = new URLSearchParams();
+    if (view === "overview") params.set("view", "start");
+    if (initialFolderId) params.set("fid", initialFolderId);
     if (siteUrl) params.set("siteUrl", siteUrl);
     if (selectedCampaignId) params.set("campaign", selectedCampaignId);
     return `${path}${params.size ? `?${params}` : ""}`;
@@ -411,6 +418,7 @@ export function TrafficOverviewDashboard({
 
       <nav className="mt-5 flex gap-1 overflow-x-auto border-b border-app-border" aria-label="트래픽 및 시장 보고서">
         {([
+          ["integrated", "통합 성과"],
           ["overview", "시작하기"],
           ["traffic", "트래픽 분석"],
           ["market", "시장 개요"],
@@ -431,6 +439,8 @@ export function TrafficOverviewDashboard({
           {[gscReason, marketReason].filter(Boolean).join(" ")}
         </div>
       )}
+
+      {initialView === "integrated" && <MarketingTrafficDashboard folders={folders} initialFolderId={initialFolderId} fallbackSiteUrl={siteUrl} />}
 
       {initialView === "overview" && (
         <OverviewContent

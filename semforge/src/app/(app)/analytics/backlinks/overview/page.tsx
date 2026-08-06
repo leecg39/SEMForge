@@ -1,6 +1,7 @@
 import { AppShell } from "@/components/app/AppShell";
 import { BacklinkAnalytics } from "@/components/analytics/backlinks/BacklinkAnalytics";
-import type { BacklinkScope } from "@/server/backlinks/contracts";
+import type { BacklinkDataset, BacklinkProvider, BacklinkScope } from "@/server/backlinks/contracts";
+import { normalizeLegacyBacklinkScope } from "@/server/backlinks/target";
 import { pageSession } from "@/server/page-auth";
 
 export const dynamic = "force-dynamic";
@@ -9,33 +10,32 @@ function single(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
-export default async function BacklinkAnalyticsPage({
-  searchParams,
-}: {
+export default async function BacklinkAnalyticsPage({ searchParams }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   await pageSession();
   const params = await searchParams;
-  const target = single(params.target)?.trim() ?? "";
-  const rawScope = single(params.scope);
-  const scope: BacklinkScope = rawScope === "subdomain" || rawScope === "page" ? rawScope : "root_domain";
+  const legacyTarget = single(params.target)?.trim() ?? "";
+  const siteUrl = single(params.siteUrl)?.trim() ?? (legacyTarget ? legacyTarget : "");
+  const targetUrl = single(params.targetUrl)?.trim() ?? "";
+  const scope: BacklinkScope = normalizeLegacyBacklinkScope(single(params.scope));
   const rawTab = single(params.tab);
-  const allowedTabs = ["overview", "links", "ref_domains", "anchors", "pages"] as const;
-  const tab = allowedTabs.find((value) => value === rawTab) ?? "overview";
+  const tab: "overview" | BacklinkDataset = rawTab === "target_pages" || rawTab === "inbound_links" ? rawTab : "overview";
+  const rawProvider = single(params.provider);
+  const provider: BacklinkProvider | undefined = rawProvider === "bing-csv" || rawProvider === "bing-webmaster" || rawProvider === "common-crawl" ? rawProvider : undefined;
   const parsedPage = Number(single(params.page) ?? 1);
-  const page = Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
-  const direction = single(params.direction) === "asc" ? "asc" as const : "desc" as const;
-
   return (
     <AppShell activeToolkit="seo" activeHref="/analytics/backlinks/overview/">
       <BacklinkAnalytics
-        key={`${target}|${scope}`}
-        initialTarget={target}
+        initialSiteUrl={siteUrl}
+        initialTargetUrl={targetUrl}
         initialScope={scope}
+        initialProvider={provider}
         initialTab={tab}
-        initialPage={page}
+        initialTargetPage={single(params.targetPage) ?? ""}
+        initialPage={Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1}
         initialSort={single(params.sort)}
-        initialDirection={direction}
+        initialDirection={single(params.direction) === "asc" ? "asc" : "desc"}
       />
     </AppShell>
   );

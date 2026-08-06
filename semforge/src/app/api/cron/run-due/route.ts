@@ -8,6 +8,7 @@ import { registerPositionTrackingDueJob } from "@/server/position-tracking/sched
 import { registerAiVisibilityDueJob } from "@/server/ai-visibility/schedule";
 import { registerContentMediaDueJob } from "@/server/content/media-due";
 import { registerSocialDueJob } from "@/server/social/schedule";
+import { ensureMarketingSyncDueJob } from "@/server/marketing/sync";
 
 /**
  * 주기 수집 트리거. 외부 cron/launchd 가 이 엔드포인트를 주기 호출한다.
@@ -42,6 +43,7 @@ export const GET = route(async (request: Request) => {
   registerAiVisibilityDueJob();
   registerContentMediaDueJob();
   registerSocialDueJob();
+  ensureMarketingSyncDueJob();
 
   const { searchParams } = new URL(request.url);
   const onlyParam = searchParams.get("only")?.trim();

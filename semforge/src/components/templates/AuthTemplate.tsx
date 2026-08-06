@@ -6,6 +6,10 @@ import { useState } from "react";
 import { ClientApiError, api } from "@/lib/client-api";
 import type { Dictionary } from "@/i18n/dictionaries";
 import type { AuthPageData } from "@/types/templates";
+import {
+  normalizeSignupRestoreKeyword,
+  signupSuccessHref,
+} from "@/components/templates/auth-restore";
 
 function GoogleIcon() {
   return (
@@ -55,12 +59,17 @@ const socialButtonCls =
 export function AuthTemplate({
   data,
   dict,
+  restoreKeyword,
 }: {
   data: AuthPageData;
   dict: Dictionary;
+  restoreKeyword?: string | null;
 }) {
   const router = useRouter();
   const isSignup = data.mode === "signup";
+  const safeRestoreKeyword = isSignup
+    ? normalizeSignupRestoreKeyword(restoreKeyword)
+    : null;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -79,8 +88,7 @@ export function AuthTemplate({
         email,
         password,
       });
-      // 인증 후에는 원본과 같은 경로(/home/)로 이동한다. 이 경로는 세션이 있으면 실제 폴더 화면을 렌더한다.
-      router.push("/home/");
+      router.push(isSignup ? signupSuccessHref(safeRestoreKeyword) : "/home/");
       router.refresh();
     } catch (caught) {
       if (caught instanceof ClientApiError) {
@@ -123,6 +131,14 @@ export function AuthTemplate({
             <p className="mt-1.5 text-[14px] leading-[1.5] text-[#6c6e79]">
               {data.subtitle}
             </p>
+          )}
+
+          {safeRestoreKeyword && (
+            <div className="mt-4 rounded-[7px] border border-[#b8dfd3] bg-[#f3fbf8] px-3 py-2.5">
+              <p className="text-[11px] font-semibold text-[#35665a]">{dict.auth.restoreKeyword}</p>
+              <p className="mt-1 break-words text-[14px] font-semibold text-[#181e15]">{safeRestoreKeyword}</p>
+              <p className="mt-1 text-[11px] leading-4 text-[#4e756a]">{dict.auth.restoreKeywordHint}</p>
+            </div>
           )}
 
           <form className="mt-6 flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
