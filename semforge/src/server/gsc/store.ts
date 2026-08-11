@@ -9,6 +9,14 @@ export interface SqlQueryable {
   ): Promise<{ rows: T[] }>;
 }
 
+interface ReleasableSqlQueryable extends SqlQueryable {
+  release(): void;
+}
+
+interface SqlConnectable extends SqlQueryable {
+  connect(): Promise<ReleasableSqlQueryable>;
+}
+
 export class GscStoreError extends Error {
   constructor(
     readonly code:
@@ -122,17 +130,24 @@ function normalizePropertyUri(propertyUri: string): string {
 async function inWorkspaceTransaction<T>(
   db: SqlQueryable,
   workspaceId: string,
-  operation: () => Promise<T>,
+  operation: (client: SqlQueryable) => Promise<T>,
 ): Promise<T> {
-  await db.query("begin");
+  const connect = (db as Partial<SqlConnectable>).connect;
+  const leasedClient = typeof connect === "function" ? await connect.call(db) : null;
+  const client = leasedClient ?? db;
+  let transactionStarted = false;
   try {
-    await db.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
-    const result = await operation();
-    await db.query("commit");
+    await client.query("begin");
+    transactionStarted = true;
+    await client.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
+    const result = await operation(client);
+    await client.query("commit");
     return result;
   } catch (error) {
-    await db.query("rollback");
+    if (transactionStarted) await client.query("rollback");
     throw error;
+  } finally {
+    leasedClient?.release();
   }
 }
 
@@ -159,8 +174,8 @@ export async function saveGscOAuthState(
     expiresAt: Date;
   },
 ): Promise<void> {
-  await inWorkspaceTransaction(db, input.workspaceId, async () => {
-    await db.query(
+  await inWorkspaceTransaction(db, input.workspaceId, async (client) => {
+    await client.query(
       `insert into oauth_states
          (workspace_id, user_id, state_hash, provider, connection_label, return_path, expires_at)
        values ($1, $2, $3, 'gsc', $4, $5, $6)`,
@@ -185,8 +200,8 @@ export async function consumeGscOAuthState(
     now: Date;
   },
 ): Promise<GscOAuthStateRecord | null> {
-  return inWorkspaceTransaction(db, input.workspaceId, async () => {
-    const result = await db.query<{
+  return inWorkspaceTransaction(db, input.workspaceId, async (client) => {
+    const result = await client.query<{
       workspace_id: string;
       user_id: string;
       connection_label: string;
@@ -227,8 +242,8 @@ export async function createGscConnection(
   },
 ): Promise<GscConnectionRecord> {
   try {
-    return await inWorkspaceTransaction(db, input.workspaceId, async () => {
-      const result = await db.query<GscConnectionRow>(
+    return await inWorkspaceTransaction(db, input.workspaceId, async (client) => {
+      const result = await client.query<GscConnectionRow>(
         `insert into gsc_connections
            (id, workspace_id, label, access_token_encrypted, refresh_token_encrypted, token_expires_at, scope)
          values ($1, $2, $3, $4, $5, $6, $7)
@@ -255,8 +270,8 @@ export async function listGscConnections(
   db: SqlQueryable,
   input: { workspaceId: string },
 ): Promise<GscConnectionRecord[]> {
-  return inWorkspaceTransaction(db, input.workspaceId, async () => {
-    const result = await db.query<GscConnectionRow>(
+  return inWorkspaceTransaction(db, input.workspaceId, async (client) => {
+    const result = await client.query<GscConnectionRow>(
       `select id::text, workspace_id::text, label, access_token_encrypted, refresh_token_encrypted,
               token_expires_at, scope, created_at, updated_at
          from gsc_connections
@@ -272,8 +287,8 @@ export async function getGscConnection(
   db: SqlQueryable,
   input: { workspaceId: string; connectionId: string },
 ): Promise<GscConnectionRecord | null> {
-  return inWorkspaceTransaction(db, input.workspaceId, async () => {
-    const result = await db.query<GscConnectionRow>(
+  return inWorkspaceTransaction(db, input.workspaceId, async (client) => {
+    const result = await client.query<GscConnectionRow>(
       `select id::text, workspace_id::text, label, access_token_encrypted, refresh_token_encrypted,
               token_expires_at, scope, created_at, updated_at
          from gsc_connections
@@ -297,8 +312,8 @@ export async function updateGscConnectionTokens(
   },
 ): Promise<GscConnectionRecord> {
   try {
-    return await inWorkspaceTransaction(db, input.workspaceId, async () => {
-      const result = await db.query<GscConnectionRow>(
+    return await inWorkspaceTransaction(db, input.workspaceId, async (client) => {
+      const result = await client.query<GscConnectionRow>(
         `update gsc_connections
             set access_token_encrypted = $3,
                 refresh_token_encrypted = $4,
@@ -330,8 +345,8 @@ export async function disconnectGscConnection(
   db: SqlQueryable,
   input: { workspaceId: string; connectionId: string },
 ): Promise<void> {
-  await inWorkspaceTransaction(db, input.workspaceId, async () => {
-    const result = await db.query<{ id: string }>(
+  await inWorkspaceTransaction(db, input.workspaceId, async (client) => {
+    const result = await client.query<{ id: string }>(
       `update gsc_connections
           set disconnected_at = now(), updated_at = now()
         where workspace_id = $1 and id = $2 and disconnected_at is null
@@ -352,18 +367,18 @@ export async function upsertGscPropertyBinding(
   },
 ): Promise<GscPropertyBindingRecord> {
   const propertyUri = normalizePropertyUri(input.propertyUri);
-  return inWorkspaceTransaction(db, input.workspaceId, async () => {
-    const site = await db.query<{ id: string }>(
+  return inWorkspaceTransaction(db, input.workspaceId, async (client) => {
+    const site = await client.query<{ id: string }>(
       "select id::text from sites where workspace_id = $1 and id = $2 and active limit 1",
       [input.workspaceId, input.siteId],
     );
-    const connection = await db.query<{ id: string }>(
+    const connection = await client.query<{ id: string }>(
       "select id::text from gsc_connections where workspace_id = $1 and id = $2 and disconnected_at is null limit 1",
       [input.workspaceId, input.connectionId],
     );
     if (!site.rows[0] || !connection.rows[0]) throw new GscStoreError("NOT_FOUND");
 
-    const result = await db.query<GscBindingRow>(
+    const result = await client.query<GscBindingRow>(
       `insert into gsc_property_bindings (workspace_id, site_id, connection_id, property_uri)
        values ($1, $2, $3, $4)
        on conflict (workspace_id, site_id)
