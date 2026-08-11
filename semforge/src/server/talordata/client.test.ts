@@ -4,6 +4,7 @@ import { ApiError } from "@/lib/api";
 import {
   fetchSerp,
   parsePaidResults,
+  RetryableTalordataError,
   shoppingResponseAvailability,
 } from "@/server/talordata/client";
 
@@ -181,6 +182,7 @@ test("수집 엔진 실패가 계속되면 횟수와 원인을 포함한 안전�
       assert.match(error.message, /토큰 승인 문제는 아니며/);
       assert.deepEqual(error.details, {
         attempts: 3,
+        kind: "provider",
         reason: "error, Collection failed",
       });
       return true;
@@ -252,4 +254,197 @@ test("중복 광고는 제거하되 상단과 하단 배치는 별개로 보존�
   });
   assert.equal(rows.length, 2);
   assert.deepEqual(rows.map((row) => row.placement), ["top", "bottom"]);
+});
+
+test("AIO 키 미존재와 명시적 부재를 구분하고 우선 키의 false를 보존한다", async () => {
+  const responses = [
+    {
+      code: 0,
+      data: {
+        organic: [{ title: "Example", link: "https://example.com" }],
+      },
+    },
+    {
+      code: 0,
+      data: {
+        organic: [{ title: "Example", link: "https://example.com" }],
+        ai_overview: false,
+      },
+    },
+    {
+      code: 0,
+      data: {
+        organic: [{ title: "Example", link: "https://example.com" }],
+        ai_overview: null,
+      },
+    },
+    {
+      code: 0,
+      data: {
+        organic: [{ title: "Example", link: "https://example.com" }],
+        ai_overview: false,
+        google_ai_overview: {
+          sources: [{ link: "https://should-not-win.example" }],
+        },
+      },
+    },
+  ];
+  let index = 0;
+  const fetchImpl: typeof fetch = async () => Response.json(responses[index++]);
+
+  const missing = await fetchSerp({ q: "키 미존재" }, { fetchImpl, maxAttempts: 1 });
+  const explicitAbsent = await fetchSerp(
+    { q: "명시적 부재" },
+    { fetchImpl, maxAttempts: 1 },
+  );
+  const explicitNull = await fetchSerp(
+    { q: "명시적 null" },
+    { fetchImpl, maxAttempts: 1 },
+  );
+  const preferredFalse = await fetchSerp(
+    { q: "우선 키 보존" },
+    { fetchImpl, maxAttempts: 1 },
+  );
+
+  assert.deepEqual(missing.aiOverview, {
+    present: false,
+    presenceAvailable: false,
+    citationsAvailable: false,
+    citations: [],
+  });
+  assert.deepEqual(explicitAbsent.aiOverview, {
+    present: false,
+    presenceAvailable: true,
+    citationsAvailable: false,
+    citations: [],
+  });
+  assert.deepEqual(explicitNull.aiOverview, {
+    present: false,
+    presenceAvailable: true,
+    citationsAvailable: false,
+    citations: [],
+  });
+  assert.deepEqual(preferredFalse.aiOverview, {
+    present: false,
+    presenceAvailable: true,
+    citationsAvailable: false,
+    citations: [],
+  });
+});
+
+test("AIO 본문은 있지만 검증 가능한 인용 URL이 없으면 인용 확인 불가로 보존한다", async () => {
+  const result = await fetchSerp(
+    { q: "인용 없는 AIO", aiOverview: true },
+    {
+      fetchImpl: async () =>
+        Response.json({
+          code: 0,
+          data: {
+            organic: [{ title: "Example", link: "https://example.com" }],
+            ai_overview: {
+              text: "공급자가 답변 본문만 제공한 경우",
+              sources: [],
+            },
+          },
+        }),
+      maxAttempts: 1,
+    },
+  );
+
+  assert.deepEqual(result.aiOverview, {
+    present: true,
+    presenceAvailable: true,
+    citationsAvailable: false,
+    citations: [],
+  });
+});
+
+test("worker abort는 client 내부 재시도나 backoff를 만들지 않고 즉시 전파한다", async () => {
+  const controller = new AbortController();
+  controller.abort("worker shutdown");
+  let calls = 0;
+  let sleeps = 0;
+
+  await assert.rejects(
+    () =>
+      fetchSerp(
+        { q: "중단된 수집" },
+        {
+          signal: controller.signal,
+          maxAttempts: 3,
+          fetchImpl: async (_input, init) => {
+            calls += 1;
+            assert.equal(init?.signal?.aborted, true);
+            throw new DOMException("aborted", "AbortError");
+          },
+          sleep: async () => {
+            sleeps += 1;
+          },
+        },
+      ),
+    (error: unknown) =>
+      error instanceof RetryableTalordataError && error.kind === "aborted",
+  );
+  assert.equal(calls, 1);
+  assert.equal(sleeps, 0);
+});
+
+test("공식 data.result 봉투를 풀고 AIO 요청을 명시하여 하나의 SERP로 반환한다", async () => {
+  let capturedBody: URLSearchParams | undefined;
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    assert.ok(init?.body instanceof URLSearchParams);
+    capturedBody = init.body;
+    return Response.json({
+      code: 0,
+      data: {
+        task_id: "task-official-1",
+        result: {
+          organic: [
+            {
+              position: 37,
+              title: "SEMForge",
+              link: "https://reports.example.com/weekly",
+            },
+          ],
+          ai_overview: {
+            sources: [
+              {
+                title: "SEMForge 보고서",
+                link: "https://reports.example.com/aio",
+              },
+            ],
+          },
+        },
+      },
+    });
+  };
+
+  const result = await fetchSerp(
+    { q: "SEMForge", num: 100, aiOverview: true },
+    { fetchImpl, maxAttempts: 1 },
+  );
+
+  assert.equal(capturedBody?.get("num"), "100");
+  assert.equal(capturedBody?.get("ai_overview"), "true");
+  assert.equal(result.organic[0]?.position, 37);
+  assert.equal(result.provider.id, "task-official-1");
+  assert.equal(result.aiOverview.presenceAvailable, true);
+  assert.equal(result.aiOverview.citations[0]?.domain, "reports.example.com");
+});
+
+test("공식 code=400 파라미터 오류는 재시도하지 않는다", async () => {
+  let calls = 0;
+  const fetchImpl: typeof fetch = async () => {
+    calls += 1;
+    return Response.json({ code: 400, data: "Missing query `q` parameter" });
+  };
+
+  await assert.rejects(
+    () => fetchSerp({ q: "invalid" }, { fetchImpl, maxAttempts: 3 }),
+    (error: unknown) =>
+      error instanceof ApiError &&
+      error.code === "INTERNAL" &&
+      /Missing query/.test(error.message),
+  );
+  assert.equal(calls, 1);
 });

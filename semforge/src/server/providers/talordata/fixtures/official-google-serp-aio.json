@@ -1,0 +1,42 @@
+{
+  "code": 0,
+  "data": {
+    "task_id": "task-google-aio-20260812",
+    "result": {
+      "search_metadata": {
+        "status": "Success",
+        "total_time_taken": 1.42
+      },
+      "organic": [
+        {
+          "position": 1,
+          "title": "Competitor",
+          "link": "https://competitor.example/weekly-report"
+        },
+        {
+          "position": 37,
+          "title": "SEMForge Weekly Report",
+          "link": "https://reports.example.com/weekly"
+        },
+        {
+          "position": 100,
+          "title": "SEMForge Archive",
+          "link": "https://example.com/archive"
+        }
+      ],
+      "ai_overview": {
+        "text": "Weekly search visibility reports compare mature search data.",
+        "sources": [
+          {
+            "title": "SEMForge AIO Report",
+            "link": "https://insights.example.com/aio"
+          },
+          {
+            "title": "Independent Source",
+            "link": "https://independent.example/source"
+          }
+        ]
+      }
+    }
+  }
+}

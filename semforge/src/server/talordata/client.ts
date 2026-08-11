@@ -1,3 +1,6 @@
+// @TASK P3-C1-T1 - TalorData Google SERP response evidence
+// @SPEC docs/planning/06-tasks.md#p3-c1-t1--google-rank와-aio-수집
+// @TEST src/server/talordata/client.test.ts
 import { ApiError } from "@/lib/api";
 
 /**
@@ -25,6 +28,8 @@ export interface SerpQuery {
   /** UI 언어 (hl). 기본 ko */
   hl?: string;
   device?: "desktop" | "mobile" | "tablet";
+  /** Google AI Overview 구조화 본문과 인용을 요청한다. */
+  aiOverview?: boolean;
   /** Google/Bing 지역 타겟팅용 canonical 위치. */
   location?: string;
   /** Google 위치 인코딩. location 과 함께 전달한다. */
@@ -71,6 +76,8 @@ export interface AiOverviewCitation {
 
 export interface AiOverviewInfo {
   present: boolean;
+  /** AIO 키가 응답에 있어 출현/미출현을 판정할 수 있는가. */
+  presenceAvailable: boolean;
   /**
    * 제공사가 AIO 본문(구조화 데이터)을 줬는가.
    * false 면 출현만 알 수 있고 인용 여부는 판정 불가다.
@@ -226,12 +233,18 @@ export interface TalordataMetadata {
 export interface TalordataClientOptions {
   fetchImpl?: typeof fetch;
   sleep?: (milliseconds: number) => Promise<void>;
+  signal?: AbortSignal;
   requestTimeoutMs?: number;
   maxAttempts?: number;
   retryBaseDelayMs?: number;
 }
 
-type RetryableFailureKind = "timeout" | "network" | "provider" | "invalid-response";
+type RetryableFailureKind =
+  | "aborted"
+  | "timeout"
+  | "network"
+  | "provider"
+  | "invalid-response";
 
 export class RetryableTalordataError extends Error {
   constructor(
@@ -292,11 +305,13 @@ function isAuthenticationFailure(message: string): boolean {
 }
 
 function isQuotaFailure(message: string): boolean {
-  return /quota|rate\s*limit|usage\s*limit|insufficient|payment|required|credit/i.test(message);
+  return /quota|rate\s*limit|usage\s*limit|insufficient|payment|required|credit|package\s+has\s+expired|balance/i.test(
+    message,
+  );
 }
 
 function isRetryableProviderFailure(message: string): boolean {
-  return /collection\s+failed|temporar|timeout|timed\s*out|try\s+again|unavailable|upstream|overload|internal\s+error/i.test(
+  return /collection\s+failed|temporar|timeout|timed\s*out|try\s+again|unavailable|upstream|overload|internal\s+(?:parsing\s+)?error|(?:json|html)\s+data\s+retrieval\s+failed|(?:json|html)\s+fetch\s+failed|data\s+collection\s+api\s+returned\s+incorrect\s+parameters/i.test(
     message
   );
 }
@@ -312,13 +327,13 @@ export function positiveInteger(value: number | undefined, fallback: number): nu
  * 제공사 응답 형태가 boolean 플래그 / 블록 배열 / { sources: [...] } 객체 등으로
  * 다양하므로 깊이 제한 순회로 link/url 계열 필드를 전부 수집한다.
  */
-function parseAiOverview(raw: unknown): AiOverviewInfo {
+function parseAiOverview(raw: unknown, presenceAvailable: boolean): AiOverviewInfo {
   if (raw === undefined || raw === null || raw === false) {
-    return { present: false, citationsAvailable: false, citations: [] };
+    return { present: false, presenceAvailable, citationsAvailable: false, citations: [] };
   }
   if (typeof raw !== "object") {
     // boolean true 등 출현만 알려주는 형태.
-    return { present: true, citationsAvailable: false, citations: [] };
+    return { present: true, presenceAvailable, citationsAvailable: false, citations: [] };
   }
 
   const citations = new Map<string, AiOverviewCitation>();
@@ -354,7 +369,10 @@ function parseAiOverview(raw: unknown): AiOverviewInfo {
 
   return {
     present: true,
-    citationsAvailable: true,
+    presenceAvailable,
+    // AIO 객체가 있다는 사실만으로 인용 판정 가능성을 추정하지 않는다.
+    // URL 증거가 하나도 없으면 특정 사이트의 인용 여부는 unknown이어야 한다.
+    citationsAvailable: citations.size > 0,
     citations: [...citations.values()],
   };
 }
@@ -425,9 +443,17 @@ export async function requestOnce(input: {
   body: URLSearchParams;
   fetchImpl: typeof fetch;
   timeoutMs: number;
-}): Promise<{ data: Record<string, unknown>; metadata?: TalordataMetadata }> {
+  signal?: AbortSignal;
+}): Promise<{
+  data: Record<string, unknown>;
+  metadata?: TalordataMetadata;
+  taskId: string | null;
+}> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), input.timeoutMs);
+  const requestSignal = input.signal
+    ? AbortSignal.any([controller.signal, input.signal])
+    : controller.signal;
   let response: Response;
   try {
     response = await input.fetchImpl(ENDPOINT, {
@@ -438,15 +464,18 @@ export async function requestOnce(input: {
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: input.body,
-      signal: controller.signal,
+      signal: requestSignal,
       cache: "no-store",
     });
   } catch (error) {
+    const externallyAborted = input.signal?.aborted === true;
     throw new RetryableTalordataError(
-      controller.signal.aborted
+      externallyAborted
+        ? "SERP 수집이 worker 중단 신호로 종료되었습니다."
+        : controller.signal.aborted
         ? "SERP 제공사 응답이 시간 초과되었습니다."
         : "SERP 제공사에 연결하지 못했습니다.",
-      controller.signal.aborted ? "timeout" : "network",
+      externallyAborted ? "aborted" : controller.signal.aborted ? "timeout" : "network",
       error instanceof Error ? error.message : String(error)
     );
   } finally {
@@ -491,39 +520,55 @@ export async function requestOnce(input: {
     );
   }
   const payload = rawPayload;
-
-  // 실측(2026-07-31 프로브)으로 확인된 실패 모드: 봉투 code=0 인데 data 가
-  // 오류 문자열인 형태 — {"code":0,"data":"error, Collection failed"}.
-  // 봉투 코드만 믿으면 정상 흐름으로 통과되므로 문자열 data 는 별도 분류한다.
-  if (typeof payload.data === "string") {
-    const message = payload.data.trim() || "제공사가 빈 오류 응답을 반환했습니다.";
-    if (isAuthenticationFailure(message)) {
-      throw new ApiError("INTERNAL", "SERP API 토큰이 유효하지 않습니다.");
-    }
-    if (isQuotaFailure(message)) {
-      throw new ApiError(
-        "RATE_LIMITED",
-        "SERP API 사용량 한도에 도달했습니다. 대시보드에서 잔량을 확인하세요."
-      );
-    }
-    throw new RetryableTalordataError(message, "provider");
-  }
-
-  // 실제 응답 봉투: { code, data: {...}, task_id } — SERP 데이터는 data 아래에 있다.
-  const data = isRecord(payload.data) ? payload.data : payload;
-  const metadata = isRecord(data.search_metadata)
-    ? (data.search_metadata as TalordataMetadata)
-    : undefined;
-  const message = providerMessage(payload, data, metadata);
   const hasResponseCode = payload.code !== undefined && payload.code !== null;
   const responseCode = hasResponseCode ? Number(payload.code) : 0;
 
   if (hasResponseCode && Number.isNaN(responseCode)) {
     throw new RetryableTalordataError(
       "SERP 제공사가 인식할 수 없는 상태 코드를 반환했습니다.",
-      "invalid-response"
+      "invalid-response",
     );
   }
+
+  // 실측(2026-07-31 프로브)으로 확인된 실패 모드: 봉투 code=0 인데 data 가
+  // 오류 문자열인 형태 — {"code":0,"data":"error, Collection failed"}.
+  // 봉투 코드만 믿으면 정상 흐름으로 통과되므로 문자열 data 는 별도 분류한다.
+  if (typeof payload.data === "string") {
+    const message = payload.data.trim() || "제공사가 빈 오류 응답을 반환했습니다.";
+    if (responseCode === 401 || isAuthenticationFailure(message)) {
+      throw new ApiError("INTERNAL", "SERP API 토큰이 유효하지 않습니다.");
+    }
+    if (responseCode === 429 || isQuotaFailure(message)) {
+      throw new ApiError(
+        "RATE_LIMITED",
+        "SERP API 사용량 한도에 도달했습니다. 대시보드에서 잔량을 확인하세요."
+      );
+    }
+    if (
+      responseCode === 0 ||
+      responseCode === 504 ||
+      responseCode >= 500 ||
+      isRetryableProviderFailure(message)
+    ) {
+      throw new RetryableTalordataError(message, "provider", {
+        code: responseCode,
+      });
+    }
+    throw new ApiError("INTERNAL", `SERP 제공사가 요청을 거부했습니다: ${message}`);
+  }
+
+  // 공식 봉투는 { code, data: { task_id, result } }이며,
+  // 이전 응답의 { code, data: { organic, ... } } 형태도 호환한다.
+  const dataEnvelope = isRecord(payload.data) ? payload.data : payload;
+  const data = isRecord(dataEnvelope.result) ? dataEnvelope.result : dataEnvelope;
+  const taskIdValue = dataEnvelope.task_id ?? payload.task_id;
+  const taskId = typeof taskIdValue === "string" && taskIdValue.trim()
+    ? taskIdValue.trim()
+    : null;
+  const metadata = isRecord(data.search_metadata)
+    ? (data.search_metadata as TalordataMetadata)
+    : undefined;
+  const message = providerMessage(payload, data, metadata);
 
   if (responseCode !== 0) {
     if (isAuthenticationFailure(message)) {
@@ -547,7 +592,7 @@ export async function requestOnce(input: {
     });
   }
 
-  return { data, metadata };
+  return { data, metadata, taskId };
 }
 
 export async function fetchSerp(
@@ -568,6 +613,9 @@ export async function fetchSerp(
     body.set("gl", country);
     body.set("hl", language);
     body.set("device", query.device ?? "desktop");
+    if (query.aiOverview) {
+      body.set("ai_overview", "true");
+    }
     if (query.location && query.uule) {
       body.set("location", query.location);
       body.set("uule", query.uule);
@@ -592,11 +640,12 @@ export async function fetchSerp(
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      const { data, metadata } = await requestOnce({
+      const { data, metadata, taskId } = await requestOnce({
         token,
         body,
         fetchImpl,
         timeoutMs,
+        signal: options.signal,
       });
 
       const organicRaw = Array.isArray(data.organic)
@@ -635,7 +684,15 @@ export async function fetchSerp(
         })
         .map(([, name]) => name);
 
-      const aiOverview = parseAiOverview(data.ai_overview ?? data.google_ai_overview);
+      const hasAiOverview = Object.prototype.hasOwnProperty.call(data, "ai_overview");
+      const hasGoogleAiOverview = Object.prototype.hasOwnProperty.call(
+        data,
+        "google_ai_overview",
+      );
+      const aiOverview = parseAiOverview(
+        hasAiOverview ? data.ai_overview : data.google_ai_overview,
+        hasAiOverview || hasGoogleAiOverview,
+      );
       // 구조화된 AIO 본문이 있으면 features 에도 출현을 보장한다.
       if (aiOverview.present && !features.includes("ai_overview")) {
         features.push("ai_overview");
@@ -656,13 +713,18 @@ export async function fetchSerp(
         aiOverview,
         localResults,
         provider: {
-          id: metadata?.id ?? null,
+          id: metadata?.id ?? taskId,
           timeTakenSeconds: metadata?.total_time_taken ?? null,
         },
         capturedAt: new Date(),
       };
     } catch (error) {
       if (!(error instanceof RetryableTalordataError)) {
+        throw error;
+      }
+      if (error.kind === "aborted") {
+        // Worker shutdown은 provider 장애 재시도와 다르다. 동일한 중단 신호로
+        // 외부 요청을 반복하지 않고 worker가 lease를 회수하도록 즉시 넘긴다.
         throw error;
       }
       lastFailure = error;
@@ -680,6 +742,7 @@ export async function fetchSerp(
   throw new ApiError("INTERNAL", message, {
     details: {
       attempts: maxAttempts,
+      kind: lastFailure?.kind ?? "provider",
       reason: lastFailure?.message ?? "unknown",
     },
   });
