@@ -41,7 +41,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# local sqlite database (스키마·시드 스크립트로 재생성 가능)
+# local runtime data
 /data/
 
 # 작업 산출물(스크린샷·체크포인트) — 커밋 제외
