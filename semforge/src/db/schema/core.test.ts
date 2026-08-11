@@ -112,3 +112,50 @@ test("invites는 생성 시점부터 최대 7일까지만 유효하다", () => {
   const checks = getTableConfig(invites).checks.map((constraint) => constraint.name);
   assert.ok(checks.includes("invites_expiry_window_ck"));
 });
+
+test("invites는 신규 workspace intent와 수락한 owner membership을 명시적으로 연결한다", () => {
+  const config = getTableConfig(invites);
+  assert.deepEqual(
+    config.columns.map((column) => column.name),
+    [
+      "id",
+      "email",
+      "token_hash",
+      "workspace_name",
+      "workspace_slug",
+      "role",
+      "expires_at",
+      "accepted_at",
+      "superseded_at",
+      "accepted_workspace_id",
+      "accepted_by_user_id",
+      "created_at",
+    ],
+  );
+
+  const checks = config.checks.map((constraint) => constraint.name);
+  assert.ok(checks.includes("invites_token_hash_ck"));
+  assert.ok(checks.includes("invites_owner_role_ck"));
+  assert.ok(checks.includes("invites_provisioning_state_ck"));
+  assert.ok(checks.includes("invites_intent_text_ck"));
+  assert.ok(checks.includes("invites_acceptance_time_ck"));
+  assert.ok(checks.includes("invites_superseded_time_ck"));
+
+  const acceptedMembership = config.foreignKeys
+    .map((key) => key.reference())
+    .find(
+      (key) =>
+        key.columns.map((column) => column.name).join(",") ===
+        "accepted_workspace_id,accepted_by_user_id,role",
+    );
+  assert.ok(acceptedMembership);
+  assert.equal(getTableConfig(acceptedMembership.foreignTable).name, "memberships");
+  assert.equal(
+    acceptedMembership.foreignColumns.map((column) => column.name).join(","),
+    "workspace_id,user_id,role",
+  );
+
+  const indexNames = config.indexes.map((index) => index.config.name);
+  assert.ok(indexNames.includes("invites_pending_email_uq"));
+  assert.ok(indexNames.includes("invites_pending_workspace_slug_uq"));
+});

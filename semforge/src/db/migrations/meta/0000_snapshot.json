@@ -1,5 +1,5 @@
 {
-  "id": "48ec92c1-3a04-471f-bebd-c5682988ed26",
+  "id": "29a9d713-87b5-4e63-83f4-87315b87b027",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -1030,12 +1030,6 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "workspace_id": {
-          "name": "workspace_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
         "email": {
           "name": "email",
           "type": "text",
@@ -1048,13 +1042,25 @@
           "primaryKey": false,
           "notNull": true
         },
+        "workspace_name": {
+          "name": "workspace_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "workspace_slug": {
+          "name": "workspace_slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "role": {
           "name": "role",
           "type": "membership_role",
           "typeSchema": "public",
           "primaryKey": false,
           "notNull": true,
-          "default": "'member'"
+          "default": "'owner'"
         },
         "expires_at": {
           "name": "expires_at",
@@ -1065,6 +1071,18 @@
         "accepted_at": {
           "name": "accepted_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "superseded_at": {
+          "name": "superseded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accepted_workspace_id": {
+          "name": "accepted_workspace_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
@@ -1087,12 +1105,6 @@
           "name": "invites_pending_email_uq",
           "columns": [
             {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
               "expression": "lower(\"email\")",
               "asc": true,
               "isExpression": true,
@@ -1100,37 +1112,66 @@
             }
           ],
           "isUnique": true,
-          "where": "\"invites\".\"accepted_at\" is null",
+          "where": "\"invites\".\"accepted_at\" is null and \"invites\".\"superseded_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "invites_pending_workspace_slug_uq": {
+          "name": "invites_pending_workspace_slug_uq",
+          "columns": [
+            {
+              "expression": "lower(\"workspace_slug\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"invites\".\"accepted_at\" is null and \"invites\".\"superseded_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "invites_accepted_membership_idx": {
+          "name": "invites_accepted_membership_idx",
+          "columns": [
+            {
+              "expression": "accepted_workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "accepted_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"invites\".\"accepted_at\" is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}
         }
       },
       "foreignKeys": {
-        "invites_workspace_id_workspaces_id_fk": {
-          "name": "invites_workspace_id_workspaces_id_fk",
+        "invites_accepted_owner_membership_fk": {
+          "name": "invites_accepted_owner_membership_fk",
           "tableFrom": "invites",
-          "tableTo": "workspaces",
+          "tableTo": "memberships",
           "columnsFrom": [
-            "workspace_id"
+            "accepted_workspace_id",
+            "accepted_by_user_id",
+            "role"
           ],
           "columnsTo": [
-            "id"
+            "workspace_id",
+            "user_id",
+            "role"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "invites_accepted_by_user_id_users_id_fk": {
-          "name": "invites_accepted_by_user_id_users_id_fk",
-          "tableFrom": "invites",
-          "tableTo": "users",
-          "columnsFrom": [
-            "accepted_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
+          "onDelete": "restrict",
           "onUpdate": "no action"
         }
       },
@@ -1149,6 +1190,30 @@
         "invites_expiry_window_ck": {
           "name": "invites_expiry_window_ck",
           "value": "\"invites\".\"expires_at\" > \"invites\".\"created_at\" and \"invites\".\"expires_at\" <= \"invites\".\"created_at\" + interval '7 days'"
+        },
+        "invites_token_hash_ck": {
+          "name": "invites_token_hash_ck",
+          "value": "\"invites\".\"token_hash\" ~ '^[0-9a-f]{64}$'"
+        },
+        "invites_owner_role_ck": {
+          "name": "invites_owner_role_ck",
+          "value": "\"invites\".\"role\" = 'owner'"
+        },
+        "invites_intent_text_ck": {
+          "name": "invites_intent_text_ck",
+          "value": "btrim(\"invites\".\"email\") <> '' and btrim(\"invites\".\"workspace_name\") <> '' and btrim(\"invites\".\"workspace_slug\") <> ''"
+        },
+        "invites_provisioning_state_ck": {
+          "name": "invites_provisioning_state_ck",
+          "value": "(\n        (\"invites\".\"accepted_at\" is null and \"invites\".\"superseded_at\" is null and \"invites\".\"accepted_workspace_id\" is null and \"invites\".\"accepted_by_user_id\" is null)\n        or\n        (\"invites\".\"accepted_at\" is not null and \"invites\".\"superseded_at\" is null and \"invites\".\"accepted_workspace_id\" is not null and \"invites\".\"accepted_by_user_id\" is not null)\n        or\n        (\"invites\".\"accepted_at\" is null and \"invites\".\"superseded_at\" is not null and \"invites\".\"accepted_workspace_id\" is null and \"invites\".\"accepted_by_user_id\" is null)\n      )"
+        },
+        "invites_acceptance_time_ck": {
+          "name": "invites_acceptance_time_ck",
+          "value": "\"invites\".\"accepted_at\" is null or (\"invites\".\"accepted_at\" >= \"invites\".\"created_at\" and \"invites\".\"accepted_at\" <= \"invites\".\"expires_at\")"
+        },
+        "invites_superseded_time_ck": {
+          "name": "invites_superseded_time_ck",
+          "value": "\"invites\".\"superseded_at\" is null or \"invites\".\"superseded_at\" >= \"invites\".\"expires_at\""
         }
       },
       "isRLSEnabled": false
@@ -1456,6 +1521,15 @@
           "columns": [
             "workspace_id",
             "user_id"
+          ]
+        },
+        "memberships_workspace_user_role_uq": {
+          "name": "memberships_workspace_user_role_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "user_id",
+            "role"
           ]
         }
       },

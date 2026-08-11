@@ -122,16 +122,25 @@ CREATE TABLE "gsc_property_bindings" (
 --> statement-breakpoint
 CREATE TABLE "invites" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"workspace_id" uuid NOT NULL,
 	"email" text NOT NULL,
 	"token_hash" text NOT NULL,
-	"role" "membership_role" DEFAULT 'member' NOT NULL,
+	"workspace_name" text NOT NULL,
+	"workspace_slug" text NOT NULL,
+	"role" "membership_role" DEFAULT 'owner' NOT NULL,
 	"expires_at" timestamp with time zone NOT NULL,
 	"accepted_at" timestamp with time zone,
+	"superseded_at" timestamp with time zone,
+	"accepted_workspace_id" uuid,
 	"accepted_by_user_id" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "invites_token_hash_uq" UNIQUE("token_hash"),
-	CONSTRAINT "invites_expiry_window_ck" CHECK ("invites"."expires_at" > "invites"."created_at" and "invites"."expires_at" <= "invites"."created_at" + interval '7 days')
+	CONSTRAINT "invites_expiry_window_ck" CHECK ("invites"."expires_at" > "invites"."created_at" and "invites"."expires_at" <= "invites"."created_at" + interval '7 days'),
+	CONSTRAINT "invites_token_hash_ck" CHECK ("invites"."token_hash" ~ '^[0-9a-f]{64}$'),
+	CONSTRAINT "invites_owner_role_ck" CHECK ("invites"."role" = 'owner'),
+	CONSTRAINT "invites_intent_text_ck" CHECK (btrim("invites"."email") <> '' and btrim("invites"."workspace_name") <> '' and btrim("invites"."workspace_slug") <> ''),
+	CONSTRAINT "invites_provisioning_state_ck" CHECK ((("invites"."accepted_at" is null and "invites"."superseded_at" is null and "invites"."accepted_workspace_id" is null and "invites"."accepted_by_user_id" is null) or ("invites"."accepted_at" is not null and "invites"."superseded_at" is null and "invites"."accepted_workspace_id" is not null and "invites"."accepted_by_user_id" is not null) or ("invites"."accepted_at" is null and "invites"."superseded_at" is not null and "invites"."accepted_workspace_id" is null and "invites"."accepted_by_user_id" is null))),
+	CONSTRAINT "invites_acceptance_time_ck" CHECK ("invites"."accepted_at" is null or ("invites"."accepted_at" >= "invites"."created_at" and "invites"."accepted_at" <= "invites"."expires_at")),
+	CONSTRAINT "invites_superseded_time_ck" CHECK ("invites"."superseded_at" is null or "invites"."superseded_at" >= "invites"."expires_at")
 );
 --> statement-breakpoint
 CREATE TABLE "jobs" (
@@ -164,7 +173,8 @@ CREATE TABLE "memberships" (
 	"role" "membership_role" DEFAULT 'member' NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "memberships_pk" PRIMARY KEY("workspace_id","user_id"),
-	CONSTRAINT "memberships_workspace_user_uq" UNIQUE("workspace_id","user_id")
+	CONSTRAINT "memberships_workspace_user_uq" UNIQUE("workspace_id","user_id"),
+	CONSTRAINT "memberships_workspace_user_role_uq" UNIQUE("workspace_id","user_id","role")
 );
 --> statement-breakpoint
 CREATE TABLE "naver_observations" (
@@ -479,8 +489,7 @@ ALTER TABLE "gsc_connections" ADD CONSTRAINT "gsc_connections_workspace_id_works
 ALTER TABLE "gsc_observations" ADD CONSTRAINT "gsc_observations_binding_fk" FOREIGN KEY ("workspace_id","site_id","binding_id") REFERENCES "public"."gsc_property_bindings"("workspace_id","site_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "gsc_property_bindings" ADD CONSTRAINT "gsc_property_bindings_site_fk" FOREIGN KEY ("workspace_id","site_id") REFERENCES "public"."sites"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "gsc_property_bindings" ADD CONSTRAINT "gsc_property_bindings_connection_fk" FOREIGN KEY ("workspace_id","connection_id") REFERENCES "public"."gsc_connections"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "invites" ADD CONSTRAINT "invites_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "invites" ADD CONSTRAINT "invites_accepted_by_user_id_users_id_fk" FOREIGN KEY ("accepted_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "invites" ADD CONSTRAINT "invites_accepted_owner_membership_fk" FOREIGN KEY ("accepted_workspace_id","accepted_by_user_id","role") REFERENCES "public"."memberships"("workspace_id","user_id","role") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "jobs" ADD CONSTRAINT "jobs_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "memberships" ADD CONSTRAINT "memberships_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "memberships" ADD CONSTRAINT "memberships_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -506,7 +515,9 @@ ALTER TABLE "weekly_reports" ADD CONSTRAINT "weekly_reports_site_fk" FOREIGN KEY
 CREATE INDEX "aio_observations_site_time_idx" ON "aio_observations" USING btree ("workspace_id","site_id","observed_at");--> statement-breakpoint
 CREATE INDEX "audit_events_workspace_created_idx" ON "audit_events" USING btree ("workspace_id","created_at");--> statement-breakpoint
 CREATE INDEX "gsc_observations_site_date_idx" ON "gsc_observations" USING btree ("workspace_id","site_id","data_date");--> statement-breakpoint
-CREATE UNIQUE INDEX "invites_pending_email_uq" ON "invites" USING btree ("workspace_id",lower("email")) WHERE "invites"."accepted_at" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "invites_pending_email_uq" ON "invites" USING btree (lower("email")) WHERE "invites"."accepted_at" is null and "invites"."superseded_at" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "invites_pending_workspace_slug_uq" ON "invites" USING btree (lower("workspace_slug")) WHERE "invites"."accepted_at" is null and "invites"."superseded_at" is null;--> statement-breakpoint
+CREATE INDEX "invites_accepted_membership_idx" ON "invites" USING btree ("accepted_workspace_id","accepted_by_user_id") WHERE "invites"."accepted_at" is not null;--> statement-breakpoint
 CREATE INDEX "jobs_claim_idx" ON "jobs" USING btree ("status","available_at","priority");--> statement-breakpoint
 CREATE INDEX "jobs_expired_lease_idx" ON "jobs" USING btree ("lease_expires_at") WHERE "jobs"."status" = 'leased';--> statement-breakpoint
 CREATE INDEX "memberships_user_idx" ON "memberships" USING btree ("user_id");--> statement-breakpoint
@@ -593,12 +604,15 @@ GRANT SELECT ON rank_observations, aio_observations, aio_citations, naver_observ
   gsc_observations, weekly_reports, report_sections, report_assets, deliveries,
   payments, provider_events TO semforge_web;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE ON users TO semforge_auth;--> statement-breakpoint
-GRANT SELECT, UPDATE ON invites TO semforge_auth;--> statement-breakpoint
+GRANT SELECT ON invites TO semforge_auth;--> statement-breakpoint
+GRANT UPDATE (accepted_at, accepted_workspace_id, accepted_by_user_id) ON invites TO semforge_auth;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON sessions TO semforge_auth;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE ON password_resets TO semforge_auth;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON auth_action_throttles TO semforge_auth;--> statement-breakpoint
 GRANT SELECT, INSERT ON workspaces, memberships TO semforge_auth;--> statement-breakpoint
-GRANT SELECT, INSERT ON invites TO semforge_operator;--> statement-breakpoint
+GRANT SELECT ON invites TO semforge_operator;--> statement-breakpoint
+GRANT INSERT (email, token_hash, workspace_name, workspace_slug, expires_at) ON invites TO semforge_operator;--> statement-breakpoint
+GRANT UPDATE (superseded_at) ON invites TO semforge_operator;--> statement-breakpoint
 GRANT SELECT ON workspaces, memberships, sites, tracked_queries, gsc_connections,
   gsc_property_bindings, billing_customers, payment_methods, subscriptions TO semforge_worker;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON provider_calls, usage_reservations, jobs, outbox,
@@ -652,9 +666,15 @@ CREATE POLICY users_auth_update ON users FOR UPDATE TO semforge_auth USING (true
 ALTER TABLE invites ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE invites FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY invites_auth_select ON invites FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
-CREATE POLICY invites_auth_update ON invites FOR UPDATE TO semforge_auth USING (true) WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY invites_auth_update ON invites FOR UPDATE TO semforge_auth
+  USING (accepted_at is null AND superseded_at is null AND expires_at >= now())
+  WITH CHECK (accepted_at is not null AND superseded_at is null AND accepted_workspace_id is not null AND accepted_by_user_id is not null);--> statement-breakpoint
 CREATE POLICY invites_operator_select ON invites FOR SELECT TO semforge_operator USING (true);--> statement-breakpoint
-CREATE POLICY invites_operator_insert ON invites FOR INSERT TO semforge_operator WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY invites_operator_insert ON invites FOR INSERT TO semforge_operator
+  WITH CHECK (accepted_at is null AND superseded_at is null AND accepted_workspace_id is null AND accepted_by_user_id is null AND role = 'owner');--> statement-breakpoint
+CREATE POLICY invites_operator_supersede ON invites FOR UPDATE TO semforge_operator
+  USING (accepted_at is null AND superseded_at is null AND expires_at < now())
+  WITH CHECK (accepted_at is null AND superseded_at is not null AND accepted_workspace_id is null AND accepted_by_user_id is null);--> statement-breakpoint
 ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE sessions FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY sessions_auth_select ON sessions FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint

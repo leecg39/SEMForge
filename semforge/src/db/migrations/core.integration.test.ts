@@ -160,7 +160,6 @@ test("auth role은 pre-tenant 인증 트랜잭션에 필요한 최소 권한과 
     "auth_action_throttles:SELECT",
     "auth_action_throttles:UPDATE",
     "invites:SELECT",
-    "invites:UPDATE",
     "memberships:INSERT",
     "memberships:SELECT",
     "password_resets:INSERT",
@@ -176,6 +175,14 @@ test("auth role은 pre-tenant 인증 트랜잭션에 필요한 최소 권한과 
     "workspaces:INSERT",
     "workspaces:SELECT",
   ]);
+
+  const inviteUpdateColumns = await pg.query<{ column_name: string }>(
+    "select column_name from information_schema.role_column_grants where grantee = 'semforge_auth' and table_schema = 'public' and table_name = 'invites' and privilege_type = 'UPDATE' order by column_name",
+  );
+  assert.deepEqual(
+    inviteUpdateColumns.rows.map((grant) => grant.column_name),
+    ["accepted_at", "accepted_by_user_id", "accepted_workspace_id"],
+  );
 
   const policies = await pg.query<{ tablename: string; roles: string[] }>(
     "select distinct tablename, roles from pg_policies where 'semforge_auth' = any(roles) order by tablename",
@@ -194,33 +201,40 @@ test("auth role은 pre-tenant 인증 트랜잭션에 필요한 최소 권한과 
   );
 });
 
-test("auth role은 초대 수락·세션·비밀번호 재설정은 수행하지만 사이트와 결제에는 접근하지 못한다", async () => {
+test("auth role은 초대 intent에서 신규 workspace·owner membership·session을 원자 생성한다", async () => {
   const workspaceId = "00000000-0000-4000-8000-0000000000a1";
   const userId = "00000000-0000-4000-8000-0000000000a2";
   const inviteId = "00000000-0000-4000-8000-0000000000a3";
-  await pg.query("insert into workspaces (id, name, slug) values ($1, 'Auth', 'auth-boundary')", [
-    workspaceId,
-  ]);
   await pg.query(
-    "insert into invites (id, workspace_id, email, token_hash, expires_at) values ($1, $2, 'member@example.com', 'invite-auth-boundary', now() + interval '1 day')",
-    [inviteId, workspaceId],
+    "insert into invites (id, email, token_hash, workspace_name, workspace_slug, role, expires_at) values ($1, 'owner@example.com', repeat('a', 64), 'Auth Agency', 'auth-boundary', 'owner', now() + interval '1 day')",
+    [inviteId],
   );
 
   await pg.query("begin");
   try {
     await pg.query("set local role semforge_auth");
+    const intent = await pg.query<{ workspace_name: string; workspace_slug: string }>(
+      "select workspace_name, workspace_slug from invites where id = $1",
+      [inviteId],
+    );
+    assert.deepEqual(intent.rows, [{ workspace_name: "Auth Agency", workspace_slug: "auth-boundary" }]);
     await pg.query(
-      "insert into users (id, email, password_hash) values ($1, 'member@example.com', 'password-hash')",
+      "insert into users (id, email, password_hash) values ($1, 'owner@example.com', 'password-hash')",
       [userId],
     );
-    await pg.query("insert into memberships (workspace_id, user_id) values ($1, $2)", [
+    await pg.query("insert into workspaces (id, name, slug) values ($1, $2, $3)", [
       workspaceId,
-      userId,
+      intent.rows[0]!.workspace_name,
+      intent.rows[0]!.workspace_slug,
     ]);
-    await pg.query("update invites set accepted_at = now(), accepted_by_user_id = $1 where id = $2", [
-      userId,
-      inviteId,
-    ]);
+    await pg.query(
+      "insert into memberships (workspace_id, user_id, role) values ($1, $2, 'owner')",
+      [workspaceId, userId],
+    );
+    await pg.query(
+      "update invites set accepted_at = now(), accepted_workspace_id = $1, accepted_by_user_id = $2 where id = $3 and accepted_at is null and superseded_at is null and expires_at >= now()",
+      [workspaceId, userId, inviteId],
+    );
     await pg.query(
       "insert into sessions (workspace_id, user_id, token_hash, expires_at) values ($1, $2, 'session-auth-boundary', now() + interval '1 day')",
       [workspaceId, userId],
@@ -245,16 +259,238 @@ test("auth role은 초대 수락·세션·비밀번호 재설정은 수행하지
     for (const [name, statement] of [
       ["sites", "select * from sites"],
       ["payments", "select * from payments"],
-      ["invite creation", "insert into invites (workspace_id, email, token_hash, expires_at) values ('00000000-0000-4000-8000-0000000000a1', 'other@example.com', 'forbidden-invite', now())"],
+      ["invite creation", "insert into invites (email, token_hash, workspace_name, workspace_slug, expires_at) values ('other@example.com', repeat('b', 64), 'Other', 'other', now() + interval '1 day')"],
       ["user deletion", "delete from users where id = '00000000-0000-4000-8000-0000000000a2'"],
     ] as const) {
       await pg.query(`savepoint auth_denied_${name.replace(/[^a-z]/g, "_")}`);
       await assert.rejects(pg.query(statement));
       await pg.query(`rollback to savepoint auth_denied_${name.replace(/[^a-z]/g, "_")}`);
     }
+    await pg.query("commit");
+  } catch (error) {
+    await pg.query("rollback");
+    throw error;
+  }
+
+  const accepted = await pg.query<{
+    accepted_workspace_id: string;
+    accepted_by_user_id: string;
+    role: string;
+  }>(
+    "select accepted_workspace_id::text, accepted_by_user_id::text, role::text from invites where id = $1",
+    [inviteId],
+  );
+  assert.deepEqual(accepted.rows, [
+    { accepted_workspace_id: workspaceId, accepted_by_user_id: userId, role: "owner" },
+  ]);
+
+  await pg.query("begin");
+  try {
+    await pg.query("set local role semforge_auth");
+    const reused = await pg.query<{ id: string }>(
+      "update invites set accepted_at = now(), accepted_workspace_id = $1, accepted_by_user_id = $2 where id = $3 returning id::text",
+      [workspaceId, userId, inviteId],
+    );
+    assert.deepEqual(reused.rows, []);
   } finally {
     await pg.query("rollback");
   }
+});
+
+test("auth 수락 트랜잭션 중간 실패는 account와 workspace 생성을 전부 rollback한다", async () => {
+  const workspaceId = "00000000-0000-4000-8000-0000000000a4";
+  const userId = "00000000-0000-4000-8000-0000000000a5";
+  const inviteId = "00000000-0000-4000-8000-0000000000a6";
+  await pg.query(
+    "insert into invites (id, email, token_hash, workspace_name, workspace_slug, expires_at) values ($1, 'rollback@example.com', repeat('b', 64), 'Rollback Agency', 'rollback-agency', now() + interval '1 day')",
+    [inviteId],
+  );
+
+  await pg.query("begin");
+  try {
+    await pg.query("set local role semforge_auth");
+    await pg.query(
+      "select id from invites where id = $1 and accepted_at is null and superseded_at is null and expires_at >= now() for update",
+      [inviteId],
+    );
+    await pg.query(
+      "insert into users (id, email, password_hash) values ($1, 'rollback@example.com', 'password-hash')",
+      [userId],
+    );
+    await pg.query(
+      "insert into workspaces (id, name, slug) values ($1, 'Rollback Agency', 'rollback-agency')",
+      [workspaceId],
+    );
+    await pg.query(
+      "insert into memberships (workspace_id, user_id, role) values ($1, $2, 'owner')",
+      [workspaceId, userId],
+    );
+    await pg.query(
+      "update invites set accepted_at = now(), accepted_workspace_id = $1, accepted_by_user_id = $2 where id = $3 and accepted_at is null and superseded_at is null and expires_at >= now()",
+      [workspaceId, userId, inviteId],
+    );
+    await assert.rejects(
+      pg.query(
+        "insert into sessions (workspace_id, user_id, token_hash, expires_at) values ('00000000-0000-4000-8000-0000000000af', $1, 'rollback-session', now() + interval '1 day')",
+        [userId],
+      ),
+    );
+  } finally {
+    await pg.query("rollback");
+  }
+
+  const [user, workspace, membership, session, invite] = await Promise.all([
+    pg.query<{ count: number }>("select count(*)::int as count from users where id = $1", [userId]),
+    pg.query<{ count: number }>("select count(*)::int as count from workspaces where id = $1", [
+      workspaceId,
+    ]),
+    pg.query<{ count: number }>(
+      "select count(*)::int as count from memberships where workspace_id = $1 and user_id = $2",
+      [workspaceId, userId],
+    ),
+    pg.query<{ count: number }>("select count(*)::int as count from sessions where user_id = $1", [
+      userId,
+    ]),
+    pg.query<{ accepted_at: Date | null; accepted_workspace_id: string | null }>(
+      "select accepted_at, accepted_workspace_id::text from invites where id = $1",
+      [inviteId],
+    ),
+  ]);
+  assert.equal(user.rows[0]!.count, 0);
+  assert.equal(workspace.rows[0]!.count, 0);
+  assert.equal(membership.rows[0]!.count, 0);
+  assert.equal(session.rows[0]!.count, 0);
+  assert.deepEqual(invite.rows, [{ accepted_at: null, accepted_workspace_id: null }]);
+});
+
+test("invite provisioning 제약은 잘못된 상태·역할·해시와 pending 중복을 거부한다", async () => {
+  const workspaceId = "00000000-0000-4000-8000-0000000000c1";
+  const userId = "00000000-0000-4000-8000-0000000000c2";
+  await pg.query(
+    "insert into workspaces (id, name, slug) values ($1, 'Constraint Owner', 'constraint-owner')",
+    [workspaceId],
+  );
+  await pg.query(
+    "insert into users (id, email, password_hash) values ($1, 'constraint-owner@example.com', 'password-hash')",
+    [userId],
+  );
+  await pg.query(
+    "insert into memberships (workspace_id, user_id, role) values ($1, $2, 'owner')",
+    [workspaceId, userId],
+  );
+  await pg.query(
+    "insert into invites (email, token_hash, workspace_name, workspace_slug, expires_at) values ('constraints@example.com', repeat('1', 64), 'Constraints', 'constraints', now() + interval '1 day')",
+  );
+
+  for (const statement of [
+    "insert into invites (email, token_hash, workspace_name, workspace_slug, expires_at) values ('plain-token@example.com', 'not-a-sha256', 'Plain', 'plain', now() + interval '1 day')",
+    "insert into invites (email, token_hash, workspace_name, workspace_slug, role, expires_at) values ('member-role@example.com', repeat('2', 64), 'Member', 'member-role', 'member', now() + interval '1 day')",
+    "insert into invites (email, token_hash, workspace_name, workspace_slug, expires_at, accepted_workspace_id) values ('bad-state@example.com', repeat('3', 64), 'Bad State', 'bad-state', now() + interval '1 day', '00000000-0000-4000-8000-0000000000c1')",
+    "insert into invites (email, token_hash, workspace_name, workspace_slug, expires_at) values ('CONSTRAINTS@example.com', repeat('4', 64), 'Duplicate Email', 'duplicate-email', now() + interval '1 day')",
+    "insert into invites (email, token_hash, workspace_name, workspace_slug, expires_at) values ('duplicate-slug@example.com', repeat('5', 64), 'Duplicate Slug', 'CONSTRAINTS', now() + interval '1 day')",
+    "insert into invites (email, token_hash, workspace_name, workspace_slug, expires_at) values ('blank@example.com', repeat('6', 64), '', 'blank', now() + interval '1 day')",
+    `insert into invites (email, token_hash, workspace_name, workspace_slug, expires_at, accepted_at, accepted_workspace_id, accepted_by_user_id) values ('late-acceptance@example.com', repeat('7', 64), 'Late Acceptance', 'late-acceptance', now() + interval '1 day', now() + interval '2 days', '${workspaceId}', '${userId}')`,
+    "insert into invites (email, token_hash, workspace_name, workspace_slug, expires_at, superseded_at) values ('early-supersede@example.com', repeat('70', 32), 'Early Supersede', 'early-supersede', now() + interval '1 day', now())",
+    `insert into invites (email, token_hash, workspace_name, workspace_slug, expires_at, accepted_at, superseded_at, accepted_workspace_id, accepted_by_user_id) values ('mixed-state@example.com', repeat('71', 32), 'Mixed State', 'mixed-state', now() + interval '1 day', now(), now() + interval '1 day', '${workspaceId}', '${userId}')`,
+  ]) {
+    await assert.rejects(pg.query(statement));
+  }
+});
+
+test("auth role은 만료된 invite intent를 잠그거나 수락하지 못한다", async () => {
+  const inviteId = "00000000-0000-4000-8000-0000000000c3";
+  await pg.query(
+    "insert into invites (id, email, token_hash, workspace_name, workspace_slug, created_at, expires_at) values ($1, 'expired@example.com', repeat('8', 64), 'Expired', 'expired', now() - interval '2 days', now() - interval '1 day')",
+    [inviteId],
+  );
+
+  await pg.query("begin");
+  try {
+    await pg.query("set local role semforge_auth");
+    const lockable = await pg.query<{ id: string }>(
+      "select id::text from invites where id = $1 and accepted_at is null and superseded_at is null and expires_at >= now() for update",
+      [inviteId],
+    );
+    assert.deepEqual(lockable.rows, []);
+    const accepted = await pg.query<{ id: string }>(
+      "update invites set accepted_at = now(), accepted_workspace_id = '00000000-0000-4000-8000-0000000000ce', accepted_by_user_id = '00000000-0000-4000-8000-0000000000cf' where id = $1 returning id::text",
+      [inviteId],
+    );
+    assert.deepEqual(accepted.rows, []);
+  } finally {
+    await pg.query("rollback");
+  }
+});
+
+test("operator는 만료 intent만 supersede하고 경쟁 재발급에서 pending 하나만 남긴다", async () => {
+  const expiredInviteId = "00000000-0000-4000-8000-0000000000d1";
+  const validInviteId = "00000000-0000-4000-8000-0000000000d2";
+  const acceptedInviteId = "00000000-0000-4000-8000-0000000000d3";
+  const acceptedWorkspaceId = "00000000-0000-4000-8000-0000000000d4";
+  const acceptedUserId = "00000000-0000-4000-8000-0000000000d5";
+
+  await pg.query(
+    "insert into workspaces (id, name, slug) values ($1, 'Accepted Invite', 'accepted-invite')",
+    [acceptedWorkspaceId],
+  );
+  await pg.query(
+    "insert into users (id, email, password_hash) values ($1, 'accepted-invite@example.com', 'password-hash')",
+    [acceptedUserId],
+  );
+  await pg.query(
+    "insert into memberships (workspace_id, user_id, role) values ($1, $2, 'owner')",
+    [acceptedWorkspaceId, acceptedUserId],
+  );
+  await pg.query(
+    "insert into invites (id, email, token_hash, workspace_name, workspace_slug, created_at, expires_at) values ($1, 'reissue@example.com', repeat('9', 64), 'Reissue', 'reissue', now() - interval '2 days', now() - interval '1 day')",
+    [expiredInviteId],
+  );
+  await pg.query(
+    "insert into invites (id, email, token_hash, workspace_name, workspace_slug, expires_at) values ($1, 'valid-invite@example.com', repeat('ef', 32), 'Valid Invite', 'valid-invite', now() + interval '1 day')",
+    [validInviteId],
+  );
+  await pg.query(
+    "insert into invites (id, email, token_hash, workspace_name, workspace_slug, expires_at, accepted_at, accepted_workspace_id, accepted_by_user_id) values ($1, 'accepted-invite@example.com', repeat('de', 32), 'Accepted Invite', 'accepted-invite', now() + interval '1 day', now(), $2, $3)",
+    [acceptedInviteId, acceptedWorkspaceId, acceptedUserId],
+  );
+
+  await pg.query("set role semforge_operator");
+  try {
+    const superseded = await pg.query<{ id: string }>(
+      "update invites set superseded_at = now() where id = $1 returning id::text",
+      [expiredInviteId],
+    );
+    assert.deepEqual(superseded.rows, [{ id: expiredInviteId }]);
+
+    for (const inviteId of [validInviteId, acceptedInviteId]) {
+      const denied = await pg.query<{ id: string }>(
+        "update invites set superseded_at = now() where id = $1 returning id::text",
+        [inviteId],
+      );
+      assert.deepEqual(denied.rows, []);
+    }
+    await assert.rejects(
+      pg.query("update invites set workspace_name = 'Forged' where id = $1", [expiredInviteId]),
+    );
+
+    const attempts = await Promise.allSettled([
+      pg.query(
+        "insert into invites (email, token_hash, workspace_name, workspace_slug, expires_at) values ('reissue@example.com', repeat('ab', 32), 'Reissue', 'reissue', now() + interval '1 day')",
+      ),
+      pg.query(
+        "insert into invites (email, token_hash, workspace_name, workspace_slug, expires_at) values ('REISSUE@example.com', repeat('cd', 32), 'Reissue Two', 'REISSUE', now() + interval '1 day')",
+      ),
+    ]);
+    assert.equal(attempts.filter((attempt) => attempt.status === "fulfilled").length, 1);
+    assert.equal(attempts.filter((attempt) => attempt.status === "rejected").length, 1);
+  } finally {
+    await pg.query("reset role");
+  }
+
+  const state = await pg.query<{ active: number; superseded: number }>(
+    "select count(*) filter (where accepted_at is null and superseded_at is null)::int as active, count(*) filter (where superseded_at is not null)::int as superseded from invites where lower(email) = 'reissue@example.com'",
+  );
+  assert.deepEqual(state.rows, [{ active: 1, superseded: 1 }]);
 });
 
 test("operator role은 NOLOGIN 권한 그룹이며 invites SELECT/INSERT 권한만 가진다", async () => {
@@ -281,8 +517,20 @@ test("operator role은 NOLOGIN 권한 그룹이며 invites SELECT/INSERT 권한�
   );
   assert.deepEqual(
     grants.rows.map((grant) => `${grant.table_name}:${grant.privilege_type}`),
-    ["invites:INSERT", "invites:SELECT"],
+    ["invites:SELECT"],
   );
+
+  const inviteInsertColumns = await pg.query<{ column_name: string }>(
+    "select column_name from information_schema.role_column_grants where grantee = 'semforge_operator' and table_schema = 'public' and table_name = 'invites' and privilege_type = 'INSERT' order by column_name",
+  );
+  assert.deepEqual(
+    inviteInsertColumns.rows.map((grant) => grant.column_name),
+    ["email", "expires_at", "token_hash", "workspace_name", "workspace_slug"],
+  );
+  const inviteUpdateColumns = await pg.query<{ column_name: string }>(
+    "select column_name from information_schema.role_column_grants where grantee = 'semforge_operator' and table_schema = 'public' and table_name = 'invites' and privilege_type = 'UPDATE' order by column_name",
+  );
+  assert.deepEqual(inviteUpdateColumns.rows.map((grant) => grant.column_name), ["superseded_at"]);
 
   const policies = await pg.query<{ tablename: string }>(
     "select distinct tablename from pg_policies where 'semforge_operator' = any(roles) order by tablename",
@@ -292,28 +540,55 @@ test("operator role은 NOLOGIN 권한 그룹이며 invites SELECT/INSERT 권한�
 
 test("operator는 7일 초대를 발급하지만 인증·사이트·결제 데이터에는 접근하지 못한다", async () => {
   const workspaceId = "00000000-0000-4000-8000-0000000000b1";
+  const userId = "00000000-0000-4000-8000-0000000000b2";
   await pg.query("insert into workspaces (id, name, slug) values ($1, 'Operator', 'operator-boundary')", [
     workspaceId,
   ]);
+  await pg.query(
+    "insert into users (id, email, password_hash) values ($1, 'existing-owner@example.com', 'password-hash')",
+    [userId],
+  );
+  await pg.query(
+    "insert into memberships (workspace_id, user_id, role) values ($1, $2, 'owner')",
+    [workspaceId, userId],
+  );
 
   await pg.query("begin");
   try {
     await pg.query("set local role semforge_operator");
     await pg.query(
-      "insert into invites (workspace_id, email, token_hash, expires_at) values ($1, 'design-partner@example.com', 'operator-seven-day-invite', now() + interval '7 days')",
-      [workspaceId],
+      "insert into invites (email, token_hash, workspace_name, workspace_slug, expires_at) values ('design-partner@example.com', repeat('c', 64), 'Design Partner', 'design-partner', now() + interval '7 days')",
     );
-    const visible = await pg.query<{ email: string }>(
-      "select email from invites where token_hash = 'operator-seven-day-invite'",
+    const visible = await pg.query<{
+      email: string;
+      workspace_name: string;
+      workspace_slug: string;
+      role: string;
+      accepted_at: Date | null;
+    }>(
+      "select email, workspace_name, workspace_slug, role::text, accepted_at from invites where token_hash = repeat('c', 64)",
     );
-    assert.deepEqual(visible.rows, [{ email: "design-partner@example.com" }]);
+    assert.deepEqual(visible.rows, [
+      {
+        email: "design-partner@example.com",
+        workspace_name: "Design Partner",
+        workspace_slug: "design-partner",
+        role: "owner",
+        accepted_at: null,
+      },
+    ]);
 
     for (const [name, statement] of [
-      ["eight day invite", `insert into invites (workspace_id, email, token_hash, expires_at) values ('${workspaceId}', 'late@example.com', 'operator-eight-day-invite', now() + interval '8 days')`],
-      ["invite update", "update invites set email = 'changed@example.com' where token_hash = 'operator-seven-day-invite'"],
-      ["invite delete", "delete from invites where token_hash = 'operator-seven-day-invite'"],
+      ["eight day invite", "insert into invites (email, token_hash, workspace_name, workspace_slug, expires_at) values ('late@example.com', repeat('d', 64), 'Late', 'late', now() + interval '8 days')"],
+      ["accepted field injection", `insert into invites (email, token_hash, workspace_name, workspace_slug, expires_at, accepted_at, accepted_workspace_id, accepted_by_user_id) values ('forged@example.com', repeat('e', 64), 'Forged', 'forged', now() + interval '1 day', now(), '${workspaceId}', '${userId}')`],
+      ["created at injection", "insert into invites (email, token_hash, workspace_name, workspace_slug, expires_at, created_at) values ('future@example.com', repeat('f', 64), 'Future', 'future', now() + interval '14 days', now() + interval '7 days')"],
+      ["member role injection", "insert into invites (email, token_hash, workspace_name, workspace_slug, role, expires_at) values ('member@example.com', repeat('0', 64), 'Member', 'member', 'member', now() + interval '1 day')"],
+      ["invite update", "update invites set email = 'changed@example.com' where token_hash = repeat('c', 64)"],
+      ["invite delete", "delete from invites where token_hash = repeat('c', 64)"],
       ["users", "select * from users"],
       ["sessions", "select * from sessions"],
+      ["workspaces", "select * from workspaces"],
+      ["memberships", "select * from memberships"],
       ["sites", "select * from sites"],
       ["payments", "select * from payments"],
     ] as const) {

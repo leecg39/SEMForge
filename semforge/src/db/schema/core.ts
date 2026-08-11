@@ -120,6 +120,11 @@ export const memberships = pgTable(
   (table) => [
     primaryKey({ columns: [table.workspaceId, table.userId], name: "memberships_pk" }),
     unique("memberships_workspace_user_uq").on(table.workspaceId, table.userId),
+    unique("memberships_workspace_user_role_uq").on(
+      table.workspaceId,
+      table.userId,
+      table.role,
+    ),
     index("memberships_user_idx").on(table.userId),
   ],
 );
@@ -150,15 +155,16 @@ export const invites = pgTable(
   "invites",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    workspaceId: uuid("workspace_id")
-      .notNull()
-      .references(() => workspaces.id, { onDelete: "cascade" }),
     email: text("email").notNull(),
     tokenHash: text("token_hash").notNull(),
-    role: membershipRoleEnum("role").notNull().default("member"),
+    workspaceName: text("workspace_name").notNull(),
+    workspaceSlug: text("workspace_slug").notNull(),
+    role: membershipRoleEnum("role").notNull().default("owner"),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     acceptedAt: timestamp("accepted_at", { withTimezone: true }),
-    acceptedByUserId: uuid("accepted_by_user_id").references(() => users.id),
+    supersededAt: timestamp("superseded_at", { withTimezone: true }),
+    acceptedWorkspaceId: uuid("accepted_workspace_id"),
+    acceptedByUserId: uuid("accepted_by_user_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -167,9 +173,44 @@ export const invites = pgTable(
       "invites_expiry_window_ck",
       sql`${table.expiresAt} > ${table.createdAt} and ${table.expiresAt} <= ${table.createdAt} + interval '7 days'`,
     ),
+    check("invites_token_hash_ck", sql`${table.tokenHash} ~ '^[0-9a-f]{64}$'`),
+    check("invites_owner_role_ck", sql`${table.role} = 'owner'`),
+    check(
+      "invites_intent_text_ck",
+      sql`btrim(${table.email}) <> '' and btrim(${table.workspaceName}) <> '' and btrim(${table.workspaceSlug}) <> ''`,
+    ),
+    check(
+      "invites_provisioning_state_ck",
+      sql`(
+        (${table.acceptedAt} is null and ${table.supersededAt} is null and ${table.acceptedWorkspaceId} is null and ${table.acceptedByUserId} is null)
+        or
+        (${table.acceptedAt} is not null and ${table.supersededAt} is null and ${table.acceptedWorkspaceId} is not null and ${table.acceptedByUserId} is not null)
+        or
+        (${table.acceptedAt} is null and ${table.supersededAt} is not null and ${table.acceptedWorkspaceId} is null and ${table.acceptedByUserId} is null)
+      )`,
+    ),
+    check(
+      "invites_acceptance_time_ck",
+      sql`${table.acceptedAt} is null or (${table.acceptedAt} >= ${table.createdAt} and ${table.acceptedAt} <= ${table.expiresAt})`,
+    ),
+    check(
+      "invites_superseded_time_ck",
+      sql`${table.supersededAt} is null or ${table.supersededAt} >= ${table.expiresAt}`,
+    ),
+    foreignKey({
+      columns: [table.acceptedWorkspaceId, table.acceptedByUserId, table.role],
+      foreignColumns: [memberships.workspaceId, memberships.userId, memberships.role],
+      name: "invites_accepted_owner_membership_fk",
+    }).onDelete("restrict"),
     uniqueIndex("invites_pending_email_uq")
-      .on(table.workspaceId, sql`lower(${table.email})`)
-      .where(sql`${table.acceptedAt} is null`),
+      .on(sql`lower(${table.email})`)
+      .where(sql`${table.acceptedAt} is null and ${table.supersededAt} is null`),
+    uniqueIndex("invites_pending_workspace_slug_uq")
+      .on(sql`lower(${table.workspaceSlug})`)
+      .where(sql`${table.acceptedAt} is null and ${table.supersededAt} is null`),
+    index("invites_accepted_membership_idx")
+      .on(table.acceptedWorkspaceId, table.acceptedByUserId)
+      .where(sql`${table.acceptedAt} is not null`),
   ],
 );
 
