@@ -189,6 +189,16 @@ class MemoryBillingStore implements BillingStore {
     const payment = this.attempts.find((attempt) => attempt.orderId === orderId);
     return payment ? structuredClone(payment) : null;
   }
+
+  async findPaymentByIdempotencyKey(workspaceId: string, idempotencyKey: string) {
+    if (workspaceId !== this.account.subscription.workspaceId) return null;
+    const payment = this.attempts.find((attempt) => attempt.idempotencyKey === idempotencyKey);
+    return payment ? structuredClone(payment) : null;
+  }
+
+  async disablePaymentMethod() {
+    return { account: cloneAccount(this.account), changed: false };
+  }
 }
 
 function createTossStub(overrides: Partial<TossBillingClient> = {}): TossBillingClient {

@@ -6,11 +6,13 @@ import { and, asc, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { getDatabase, type SemforgeDatabase } from "@/db/client";
 import {
   authActionThrottles,
+  billingCustomers,
   invites,
   memberships,
   outbox,
   passwordResets,
   sessions,
+  subscriptions,
   users,
   workspaces,
 } from "@/db/schema";
@@ -75,6 +77,10 @@ function toAuthUser(row: typeof users.$inferSelect): AuthUser {
     displayName: row.displayName,
     disabledAt: row.disabledAt,
   };
+}
+
+function deriveTossCustomerKey(workspaceId: string): string {
+  return `semforge_${workspaceId.replaceAll("-", "")}`;
 }
 
 /** pending invite의 workspace provisioning intent만 쓰는 운영자 전용 경계다. */
@@ -275,6 +281,32 @@ export class PostgresAuthStore implements AuthStore {
           })
           .returning({ role: memberships.role });
         if (!membership) throw new AuthAtomicConflictError();
+
+        const [billingCustomer] = await tx
+          .insert(billingCustomers)
+          .values({
+            workspaceId: workspace.id,
+            tossCustomerKey: deriveTossCustomerKey(workspace.id),
+            createdAt: input.now,
+            updatedAt: input.now,
+          })
+          .onConflictDoNothing()
+          .returning({ id: billingCustomers.id });
+        if (!billingCustomer) throw new AuthAtomicConflictError();
+
+        const [subscription] = await tx
+          .insert(subscriptions)
+          .values({
+            workspaceId: workspace.id,
+            billingCustomerId: billingCustomer.id,
+            status: "account_created",
+            amountKrw: 49_000,
+            createdAt: input.now,
+            updatedAt: input.now,
+          })
+          .onConflictDoNothing()
+          .returning({ id: subscriptions.id });
+        if (!subscription) throw new AuthAtomicConflictError();
 
         const consumed = await tx
           .update(invites)

@@ -224,6 +224,23 @@ async function loadPayment(client: PoolClient, orderId: string): Promise<Payment
   return payment(result.rows[0] ?? {});
 }
 
+async function loadPaymentByIdempotencyKey(
+  client: PoolClient,
+  workspaceId: string,
+  idempotencyKey: string,
+): Promise<PaymentAttempt | null> {
+  const result = await client.query<Row>(
+    `select workspace_id, id as payment_id, subscription_id as payment_subscription_id,
+       order_id, idempotency_key, toss_payment_key, status as payment_status,
+       amount_krw as payment_amount_krw, billing_period_start, billing_period_end,
+       attempt, failure_code, failure_message, paid_at
+     from payments
+     where workspace_id = $1 and idempotency_key = $2`,
+    [workspaceId, idempotencyKey],
+  );
+  return payment(result.rows[0] ?? {});
+}
+
 export function createPostgresBillingStore(options: {
   readonly pool?: Pool;
   readonly fingerprintSecret: string;
@@ -294,7 +311,7 @@ export function createPostgresBillingStore(options: {
              status, amount_krw, billing_period_start, billing_period_end, attempt,
              failure_code, failure_message, paid_at)
            values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-           on conflict (order_id) do nothing
+           on conflict (workspace_id, idempotency_key) do nothing
            returning id`,
           [
             input.attempt.id,
@@ -316,7 +333,11 @@ export function createPostgresBillingStore(options: {
         const created = inserted.rowCount === 1;
         const attempt = created
           ? input.attempt
-          : await loadPayment(client, input.attempt.orderId);
+          : await loadPaymentByIdempotencyKey(
+              client,
+              input.workspaceId,
+              input.attempt.idempotencyKey,
+            );
         if (!attempt) throw new Error("payment reservation invariant failed");
         if (created) {
           await client.query(
@@ -452,6 +473,42 @@ export function createPostgresBillingStore(options: {
 
     async findPaymentByOrderId(orderId) {
       return transaction(pool, (client) => loadPayment(client, orderId));
+    },
+
+    async findPaymentByIdempotencyKey(workspaceId, idempotencyKey) {
+      return transaction(pool, (client) =>
+        loadPaymentByIdempotencyKey(client, workspaceId, idempotencyKey),
+      );
+    },
+
+    async disablePaymentMethod(input) {
+      return transaction(pool, async (client) => {
+        const current = await loadAccount(client, input.workspaceId);
+        if (!current) throw new Error("billing account not found");
+        const disabled = await client.query(
+          `update payment_methods
+           set active = false, replaced_at = coalesce(replaced_at, now()), updated_at = now()
+           where workspace_id = $1 and id = $2 and active`,
+          [input.workspaceId, input.paymentMethodId],
+        );
+        if ((disabled.rowCount ?? 0) > 0) {
+          await client.query(
+            `update subscriptions
+             set payment_method_id = null,
+                 status = case
+                   when status in ('billing_authorized', 'charge_pending', 'active', 'past_due') then 'past_due'
+                   else status
+                 end,
+                 grace_ends_at = coalesce(grace_ends_at, now() + interval '7 days'),
+                 updated_at = now()
+             where workspace_id = $1 and payment_method_id = $2`,
+            [input.workspaceId, input.paymentMethodId],
+          );
+        }
+        const updated = await loadAccount(client, input.workspaceId);
+        if (!updated) throw new Error("billing account disappeared");
+        return { account: updated, changed: (disabled.rowCount ?? 0) > 0 };
+      });
     },
 
     async findAccountByBillingKey(billingKey) {

@@ -293,24 +293,26 @@ export async function listSites(
 ): Promise<{ items: SiteRecord[]; nextCursor: string | null }> {
   const limit = Math.min(Math.max(input.limit ?? 20, 1), 50);
   const cursor = input.cursor ? decodeCursor(input.cursor) : null;
-  const result = await db.query<SiteRow>(
-    `select id::text, workspace_id::text, name, domain, timezone, active, created_at, updated_at
-       from sites
-      where workspace_id = $1
-        and ($2::timestamptz is null or (created_at, id) > ($2::timestamptz, $3::uuid))
-      order by created_at asc, id asc
-      limit $4`,
-    [input.workspaceId, cursor?.createdAt ?? null, cursor?.id ?? null, limit + 1],
-  );
-  const rows = result.rows.slice(0, limit);
-  const last = rows.at(-1);
-  return {
-    items: rows.map(toSite),
-    nextCursor:
-      result.rows.length > limit && last
-        ? encodeCursor({ createdAt: new Date(last.created_at).toISOString(), id: last.id })
-        : null,
-  };
+  return inTransaction(db, input.workspaceId, async () => {
+    const result = await db.query<SiteRow>(
+      `select id::text, workspace_id::text, name, domain, timezone, active, created_at, updated_at
+         from sites
+        where workspace_id = $1
+          and ($2::timestamptz is null or (created_at, id) > ($2::timestamptz, $3::uuid))
+        order by created_at asc, id asc
+        limit $4`,
+      [input.workspaceId, cursor?.createdAt ?? null, cursor?.id ?? null, limit + 1],
+    );
+    const rows = result.rows.slice(0, limit);
+    const last = rows.at(-1);
+    return {
+      items: rows.map(toSite),
+      nextCursor:
+        result.rows.length > limit && last
+          ? encodeCursor({ createdAt: new Date(last.created_at).toISOString(), id: last.id })
+          : null,
+    };
+  });
 }
 
 function encodeCursor(value: { createdAt: string; id: string }): string {

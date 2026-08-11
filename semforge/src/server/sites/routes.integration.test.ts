@@ -32,7 +32,12 @@ after(async () => pg.close());
 function handlersFor(workspace = workspaceId) {
   return createSitesRouteHandlers({
     db: pg,
-    resolveSession: async () => ({ workspaceId: workspace, userId }),
+    resolveSession: async () => ({
+      workspaceId: workspace,
+      userId,
+      role: "owner",
+      requestId: "route-test-session",
+    }),
     resolveDomainAddresses: async () => ["8.8.8.8"],
   });
 }

@@ -67,6 +67,7 @@ export interface BillingHttpService {
     readonly workspaceId: string;
     readonly actorUserId: string;
     readonly requestId: string;
+    readonly idempotencyKey: string;
     readonly force?: boolean;
   }): Promise<BillingChargeResult | { readonly outcome: string; readonly account: unknown }>;
   cancelAtPeriodEnd(input: {
@@ -119,6 +120,11 @@ const webhookBodySchema = z.discriminatedUnion("eventType", [
     reason: z.string().max(500).nullish(),
   }),
 ]);
+
+const WEBHOOK_MAX_BODY_BYTES = 64 * 1024;
+const WEBHOOK_RATE_LIMIT_WINDOW_MS = 1_000;
+const WEBHOOK_RATE_LIMIT_MAX = 60;
+const webhookRateBuckets = new Map<string, { windowStartedAt: number; count: number }>();
 
 function requiredIdempotencyKey(request: Request): string {
   const value = request.headers.get("idempotency-key");
@@ -173,15 +179,51 @@ function isJsonContentType(value: string | null): boolean {
   return value.split(";", 1)[0]?.trim().toLowerCase() === "application/json";
 }
 
-async function parseBillingBody<T>(request: Request, schema: z.ZodType<T>): Promise<T> {
+function enforceWebhookRateLimit(request: Request, now: Date): void {
+  const key =
+    request.headers.get("x-forwarded-for")?.split(",", 1)[0]?.trim() ||
+    request.headers.get("cf-connecting-ip")?.trim() ||
+    "unknown";
+  const nowMs = now.getTime();
+  const bucket = webhookRateBuckets.get(key);
+  if (!bucket || nowMs - bucket.windowStartedAt >= WEBHOOK_RATE_LIMIT_WINDOW_MS) {
+    webhookRateBuckets.set(key, { windowStartedAt: nowMs, count: 1 });
+    return;
+  }
+  bucket.count += 1;
+  if (bucket.count > WEBHOOK_RATE_LIMIT_MAX) {
+    throw new ApiError("RATE_LIMITED", undefined, { retryAfterSeconds: 1 });
+  }
+}
+
+async function parseBillingBody<T>(
+  request: Request,
+  schema: z.ZodType<T>,
+  options: { readonly maxBytes?: number } = {},
+): Promise<T> {
   if (!isJsonContentType(request.headers.get("content-type"))) {
     throw new ApiError("UNSUPPORTED_MEDIA_TYPE");
+  }
+  const contentLength = request.headers.get("content-length");
+  if (
+    options.maxBytes !== undefined &&
+    contentLength !== null &&
+    Number.parseInt(contentLength, 10) > options.maxBytes
+  ) {
+    throw new ApiError("BAD_REQUEST", "요청 본문이 너무 큽니다.");
   }
   let body: unknown;
   try {
     const text = await request.text();
+    if (
+      options.maxBytes !== undefined &&
+      Buffer.byteLength(text, "utf8") > options.maxBytes
+    ) {
+      throw new ApiError("BAD_REQUEST", "요청 본문이 너무 큽니다.");
+    }
     body = text ? JSON.parse(text) : {};
-  } catch {
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
     throw new ApiError("BAD_REQUEST", "요청 본문이 올바른 JSON이 아닙니다.");
   }
   if (
@@ -251,7 +293,7 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
     }),
 
     retry: (request: Request) => api(request, async (apiContextRequestId) => {
-      requiredIdempotencyKey(request);
+      const idempotencyKey = requiredIdempotencyKey(request);
       const principal = await options.requireAuth(request, {
         csrf: true,
         roles: ["owner", "admin"],
@@ -262,6 +304,7 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
         workspaceId: principal.workspaceId,
         actorUserId: principal.userId,
         requestId,
+        idempotencyKey,
         force: true,
       });
       return { data: serializeResult(result), requestId };
@@ -285,15 +328,19 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
 
     webhook: (request: Request) =>
       api(request, async () => {
+        const receivedAt = options.now?.() ?? new Date();
+        enforceWebhookRateLimit(request, receivedAt);
         const transmissionId = request.headers.get("tosspayments-webhook-transmission-id");
         if (!transmissionId || transmissionId !== transmissionId.trim()) {
           throw new ApiError("BAD_REQUEST", "Toss transmission id가 필요합니다.");
         }
-        const event = await parseBillingBody(request, webhookBodySchema);
+        const event = await parseBillingBody(request, webhookBodySchema, {
+          maxBytes: WEBHOOK_MAX_BODY_BYTES,
+        });
         const result = await options.getService().handleWebhook({
           transmissionId,
           event,
-          receivedAt: options.now?.() ?? new Date(),
+          receivedAt,
         });
         return { data: serializeResult(result) };
       }),

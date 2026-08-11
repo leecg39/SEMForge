@@ -162,6 +162,14 @@ export interface BillingStore {
     readonly processedAt: Date;
   }): Promise<void>;
   findPaymentByOrderId(orderId: string): Promise<PaymentAttempt | null>;
+  findPaymentByIdempotencyKey(
+    workspaceId: string,
+    idempotencyKey: string,
+  ): Promise<PaymentAttempt | null>;
+  disablePaymentMethod(input: {
+    readonly workspaceId: string;
+    readonly paymentMethodId: string;
+  }): Promise<{ readonly account: BillingAccount; readonly changed: boolean }>;
   /** Requires the follow-up HMAC lookup column; raw/plain hashes are forbidden. */
   findAccountByBillingKey?(billingKey: string): Promise<BillingAccount | null>;
 }
@@ -236,6 +244,7 @@ export interface BillingService {
     readonly workspaceId: string;
     readonly actorUserId: string | null;
     readonly requestId: string | null;
+    readonly idempotencyKey: string;
     readonly force?: boolean;
   }): Promise<BillingChargeResult>;
   cancelAtPeriodEnd(input: {
@@ -498,6 +507,7 @@ export function createBillingService(options: BillingServiceOptions): BillingSer
     billingPeriodStart: Date;
     billingPeriodEnd: Date;
     attemptNumber: number;
+    externalIdempotencyKey?: string;
     actorUserId: string | null;
     requestId: string | null;
     occurredAt: Date;
@@ -511,12 +521,13 @@ export function createBillingService(options: BillingServiceOptions): BillingSer
       billingPeriodStart: input.billingPeriodStart,
       attempt: input.attemptNumber,
     });
+    const idempotencyKey = input.externalIdempotencyKey ?? identity.idempotencyKey;
     const attempt: PaymentAttempt = {
       id: newPaymentAttemptId(),
       workspaceId: input.account.subscription.workspaceId,
       subscriptionId: input.account.subscription.id,
       orderId: identity.orderId,
-      idempotencyKey: identity.idempotencyKey,
+      idempotencyKey,
       tossPaymentKey: null,
       status: "pending",
       amountKrw: BILLING_AMOUNT_KRW,
@@ -664,9 +675,35 @@ export function createBillingService(options: BillingServiceOptions): BillingSer
     workspaceId: string;
     actorUserId: string | null;
     requestId: string | null;
+    idempotencyKey: string;
     force?: boolean;
   }): Promise<BillingChargeResult> {
+    if (!input.idempotencyKey || input.idempotencyKey !== input.idempotencyKey.trim()) {
+      throw new BillingServiceError("INVALID_STATE", "Idempotency-Key가 필요합니다.");
+    }
     const occurredAt = now();
+    const replay = await options.store.findPaymentByIdempotencyKey(
+      input.workspaceId,
+      input.idempotencyKey,
+    );
+    if (replay) {
+      const replayAccount = await requiredAccount(input.workspaceId);
+      if (replay.status === "paid") return { outcome: "paid", account: replayAccount };
+      if (
+        replay.status === "failed" ||
+        replay.status === "canceled" ||
+        replay.status === "refunded"
+      ) {
+        return { outcome: "failed", account: replayAccount };
+      }
+      return queryAndReconcile({
+        account: replayAccount,
+        attempt: replay,
+        actorUserId: input.actorUserId,
+        requestId: input.requestId,
+        occurredAt,
+      });
+    }
     const account = await requiredAccount(input.workspaceId);
     const latest = account.latestPayment;
     if (account.subscription.status !== "past_due" || !latest) {
@@ -691,6 +728,7 @@ export function createBillingService(options: BillingServiceOptions): BillingSer
       billingPeriodStart: latest.billingPeriodStart,
       billingPeriodEnd: latest.billingPeriodEnd,
       attemptNumber: nextAttempt,
+      externalIdempotencyKey: input.idempotencyKey,
       actorUserId: input.actorUserId,
       requestId: input.requestId,
       occurredAt,
@@ -797,6 +835,7 @@ export function createBillingService(options: BillingServiceOptions): BillingSer
           workspaceId: input.workspaceId,
           actorUserId: input.actorUserId,
           requestId: input.requestId,
+          idempotencyKey: input.idempotencyKey,
           force: true,
         });
       }
@@ -884,6 +923,12 @@ export function createBillingService(options: BillingServiceOptions): BillingSer
           receivedAt: input.receivedAt,
         });
         if (claim === "processed") return { outcome: "duplicate" };
+        if (account.paymentMethod?.active) {
+          await options.store.disablePaymentMethod({
+            workspaceId: account.subscription.workspaceId,
+            paymentMethodId: account.paymentMethod.id,
+          });
+        }
         await options.store.completeProviderEvent({
           provider: "toss",
           providerEventId: input.transmissionId,
@@ -894,6 +939,12 @@ export function createBillingService(options: BillingServiceOptions): BillingSer
 
       const attempt = await options.store.findPaymentByOrderId(input.event.data.orderId);
       if (!attempt) return { outcome: "ignored", reason: "unknown_order" };
+      const queriedByPaymentKey = await options.toss.queryPaymentByPaymentKey(
+        input.event.data.paymentKey,
+      );
+      if (queriedByPaymentKey && queriedByPaymentKey.orderId !== attempt.orderId) {
+        return { outcome: "ignored", reason: "payment_fingerprint_mismatch" };
+      }
       const claim = await options.store.claimProviderEvent({
         provider: "toss",
         providerEventId: input.transmissionId,
@@ -909,9 +960,22 @@ export function createBillingService(options: BillingServiceOptions): BillingSer
       });
       if (claim === "processed") return { outcome: "duplicate" };
       const account = await requiredAccount(attempt.workspaceId);
-      await queryAndReconcile({
+      await settleFromProvider({
         account,
         attempt,
+        payment:
+          queriedByPaymentKey ??
+          (await options.toss.queryPaymentByOrderId(attempt.orderId)) ??
+          {
+            paymentKey: input.event.data.paymentKey,
+            orderId: attempt.orderId,
+            status: input.event.data.status,
+            totalAmount: attempt.amountKrw,
+            requestedAt: input.event.createdAt,
+            approvedAt: null,
+            method: "unknown",
+            card: null,
+          },
         actorUserId: null,
         requestId: input.transmissionId,
         occurredAt: input.receivedAt,

@@ -200,6 +200,76 @@ test("웹훅은 세션 auth를 요구하지 않고 공식 transmission id로 ded
   });
 });
 
+test("웹훅은 과대 본문과 초당 rate limit 초과를 서비스 호출 전에 거부한다", async () => {
+  let calls = 0;
+  const handlers = createBillingHttpHandlers({
+    requireAuth: async () => principal,
+    getService: () =>
+      serviceStub({
+        async handleWebhook() {
+          calls += 1;
+          return { outcome: "processed" };
+        },
+      }),
+    now: () => new Date("2026-08-11T03:02:00.000Z"),
+  });
+  const validBody = JSON.stringify({
+    eventType: "PAYMENT_STATUS_CHANGED",
+    createdAt: "2026-08-11T12:00:00.000000+09:00",
+    data: {
+      orderId: "sf_order_0198f06a",
+      paymentKey: "payment-key-secret",
+      status: "DONE",
+    },
+  });
+
+  const oversized = await handlers.webhook(
+    new Request("https://semforge.example/api/v1/webhooks/toss", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "content-length": String(65 * 1024),
+        "tosspayments-webhook-transmission-id": "transmission-oversized",
+        "x-forwarded-for": "203.0.113.77",
+      },
+      body: validBody,
+    }),
+  );
+  assert.equal(oversized.status, 400);
+
+  for (let index = 0; index < 60; index += 1) {
+    const response = await handlers.webhook(
+      new Request("https://semforge.example/api/v1/webhooks/toss", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "tosspayments-webhook-transmission-id": `transmission-rate-${index}`,
+          "x-forwarded-for": "203.0.113.78",
+        },
+        body: validBody,
+      }),
+    );
+    assert.equal(response.status, 200);
+  }
+  const limited = await handlers.webhook(
+    new Request("https://semforge.example/api/v1/webhooks/toss", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "tosspayments-webhook-transmission-id": "transmission-rate-limited",
+        "x-forwarded-for": "203.0.113.78",
+      },
+      body: validBody,
+    }),
+  );
+  const limitedBody = await limited.json();
+
+  assert.equal(limited.status, 429);
+  assert.equal(limited.headers.get("retry-after"), "1");
+  assert.equal(limitedBody.error.code, "RATE_LIMITED");
+  assert.equal(calls, 60);
+});
+
 test("취소 API는 효력 발생일과 무일할환불·법정예외 정책을 응답한다", async () => {
   const handlers = createBillingHttpHandlers({
     requireAuth: async () => principal,
