@@ -44,6 +44,19 @@ test("test mode는 외부 키 없이 명시적으로 실행할 수 있다", () =
   const env = parseServerEnv({ NODE_ENV: "test" });
   assert.equal(env.NODE_ENV, "test");
   assert.equal(env.DATABASE_URL, undefined);
+  assert.equal(env.AUTH_TRUST_PROXY_HEADERS, false);
+});
+
+test("AUTH_TRUST_PROXY_HEADERS는 명시적인 true/false만 허용한다", () => {
+  assert.equal(
+    parseServerEnv({ NODE_ENV: "test", AUTH_TRUST_PROXY_HEADERS: "true" })
+      .AUTH_TRUST_PROXY_HEADERS,
+    true,
+  );
+  assert.throws(
+    () => parseServerEnv({ NODE_ENV: "test", AUTH_TRUST_PROXY_HEADERS: "yes" }),
+    EnvironmentValidationError,
+  );
 });
 
 test("previous key map은 유효한 JSON object와 32-byte secret만 허용한다", () => {

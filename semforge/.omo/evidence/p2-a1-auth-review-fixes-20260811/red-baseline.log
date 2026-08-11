@@ -1,0 +1,118 @@
+✔ src/db/migrations/core.integration.test.ts (1674.247334ms)
+✖ AUTH_TRUST_PROXY_HEADERS는 명시적인 true/false만 허용한다 (5.889708ms)
+✖ login throttleKey는 피해자 이메일만으로 고정되지 않고 클라이언트 신호를 해시한다 (50.022709ms)
+✖ login throttleKey는 trusted proxy opt-in 없이는 spoofed forwarded IP를 무시한다 (1.830417ms)
+✖ password reset 생성은 reset token row와 이메일 outbox를 같은 auth transaction에 예약한다 (1382.735791ms)
+✖ 비밀번호 재설정 요청은 30분 해시 토큰과 outbox delivery를 원자 저장 경계에 전달한다 (1.337125ms)
+✖ 비밀번호 재설정 요청은 계정 존재·throttle은 숨기되 outbox 영속화 실패는 성공으로 숨기지 않는다 (0.220666ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 1
+ℹ fail 6
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1962.472959
+
+✖ failing tests:
+
+test at src/lib/env.test.ts:2:2739
+✖ AUTH_TRUST_PROXY_HEADERS는 명시적인 true/false만 허용한다 (5.889708ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - true
+  
+      at TestContext.<anonymous> (/private/tmp/semforge-red-SZaryI/src/lib/env.test.ts:51:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.start (node:internal/test_runner/test:1191:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/server/auth/http.test.ts:2:4416
+✖ login throttleKey는 피해자 이메일만으로 고정되지 않고 클라이언트 신호를 해시한다 (50.022709ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /^[a-f0-9]{64}$/u. Input:
+  
+  'undefined'
+  
+      at TestContext.<anonymous> (/private/tmp/semforge-red-SZaryI/src/server/auth/http.test.ts:174:10)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'undefined',
+    expected: /^[a-f0-9]{64}$/u,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at src/server/auth/http.test.ts:2:5519
+✖ login throttleKey는 trusted proxy opt-in 없이는 spoofed forwarded IP를 무시한다 (1.830417ms)
+  AssertionError [ERR_ASSERTION]: Expected "actual" to be strictly unequal to:
+  
+  'undefined'
+      at TestContext.<anonymous> (/private/tmp/semforge-red-SZaryI/src/server/auth/http.test.ts:225:10)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'undefined',
+    expected: 'undefined',
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }
+
+test at src/server/auth/postgres-store.test.ts:2:21394
+✖ password reset 생성은 reset token row와 이메일 outbox를 같은 auth transaction에 예약한다 (1382.735791ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (/private/tmp/semforge-red-SZaryI/src/server/auth/postgres-store.test.ts:721:10)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/server/auth/service.test.ts:2:15199
+✖ 비밀번호 재설정 요청은 30분 해시 토큰과 outbox delivery를 원자 저장 경계에 전달한다 (1.337125ms)
+  Error [AuthServiceError]: 인증 서비스의 password reset notifier 경계가 구성되지 않았습니다.
+      at configurationError (/private/tmp/semforge-red-SZaryI/src/server/auth/service.ts:53:10)
+      at Object.requestPasswordReset (/private/tmp/semforge-red-SZaryI/src/server/auth/service.ts:251:28)
+      at TestContext.<anonymous> (/private/tmp/semforge-red-SZaryI/src/server/auth/service.test.ts:441:19)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.start (node:internal/test_runner/test:1191:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17) {
+    code: 'AUTH_CONFIGURATION',
+    retryAfterSeconds: undefined
+  }
+
+test at src/server/auth/service.test.ts:2:16730
+✖ 비밀번호 재설정 요청은 계정 존재·throttle은 숨기되 outbox 영속화 실패는 성공으로 숨기지 않는다 (0.220666ms)
+  Error [AuthServiceError]: 인증 서비스의 password reset notifier 경계가 구성되지 않았습니다.
+      at configurationError (/private/tmp/semforge-red-SZaryI/src/server/auth/service.ts:53:10)
+      at Object.requestPasswordReset (/private/tmp/semforge-red-SZaryI/src/server/auth/service.ts:251:28)
+      at TestContext.<anonymous> (/private/tmp/semforge-red-SZaryI/src/server/auth/service.test.ts:517:41)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    code: 'AUTH_CONFIGURATION',
+    retryAfterSeconds: undefined
+  }

@@ -112,6 +112,11 @@ export interface CreatePasswordResetInput {
   readonly tokenHash: string;
   readonly expiresAt: Date;
   readonly now: Date;
+  readonly delivery?: {
+    readonly email: string;
+    readonly resetUrl: string;
+    readonly expiresAt: Date;
+  };
 }
 
 export interface AuthPasswordReset {

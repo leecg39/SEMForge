@@ -7,6 +7,10 @@ const secretSchema = z
   .string()
   .min(32)
   .refine((value) => value === value.trim(), "must not contain leading or trailing whitespace");
+const booleanStringSchema = z
+  .enum(["true", "false"])
+  .default("false")
+  .transform((value) => value === "true");
 
 const rawServerEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -18,6 +22,7 @@ const rawServerEnvSchema = z.object({
   BILLING_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   MIGRATION_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   APP_PUBLIC_URL: z.string().trim().url().optional(),
+  AUTH_TRUST_PROXY_HEADERS: booleanStringSchema,
   APP_SECRET: secretSchema.optional(),
   APP_SECRET_CURRENT_KEY_ID: keyIdSchema.optional(),
   APP_SECRET_PREVIOUS_KEYS: z.string().optional(),

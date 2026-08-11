@@ -1,6 +1,8 @@
 // @TASK P2-A1-T1 - Authentication HTTP adapter
 // @SPEC docs/planning/06-tasks.md#p2-a1-t1--초대-전용-인증과-세션
 // @TEST src/server/auth/http.test.ts
+import { createHash } from "node:crypto";
+
 import { z, ZodError } from "zod";
 
 import {
@@ -59,6 +61,7 @@ export interface AuthHttpDependencies {
   readonly getService: () => AuthHttpService;
   readonly now?: () => Date;
   readonly production?: boolean;
+  readonly trustedProxyHeaders?: boolean;
 }
 
 const loginRequestSchema = loginInputSchema
@@ -138,6 +141,40 @@ function publicSession(result: AuthSessionResult) {
   };
 }
 
+function normalizedHeader(request: Request, name: string): string {
+  const value = request.headers.get(name)?.normalize("NFKC").trim() ?? "";
+  return value.slice(0, 256);
+}
+
+function firstForwardedFor(request: Request): string {
+  const value = normalizedHeader(request, "x-forwarded-for");
+  return value.split(",")[0]?.trim().slice(0, 128) ?? "";
+}
+
+function authThrottleKey(
+  request: Request,
+  trustedProxyHeaders: boolean,
+): string {
+  const url = new URL(request.url);
+  const signal = {
+    host: url.host.toLocaleLowerCase("en-US"),
+    userAgent: normalizedHeader(request, "user-agent"),
+    acceptLanguage: normalizedHeader(request, "accept-language"),
+    secChUa: normalizedHeader(request, "sec-ch-ua"),
+    secChUaPlatform: normalizedHeader(request, "sec-ch-ua-platform"),
+    secFetchSite: normalizedHeader(request, "sec-fetch-site"),
+    proxy: trustedProxyHeaders
+      ? {
+          forwardedFor: firstForwardedFor(request),
+          realIp: normalizedHeader(request, "x-real-ip").slice(0, 128),
+        }
+      : undefined,
+  };
+  return createHash("sha256")
+    .update(`semforge-auth-http-throttle-v1:${JSON.stringify(signal)}`)
+    .digest("hex");
+}
+
 /**
  * DB를 모르는 public HTTP seam이다. Route modules는 runtime service factory만
  * 주입하며, 테스트는 이 factory에 fake service를 주입해 실제 Request/Response를 검증한다.
@@ -152,6 +189,10 @@ export function createAuthHttpHandlers(dependencies: AuthHttpDependencies) {
       const result = await callAuth(() =>
         dependencies.getService().login({
           ...body,
+          throttleKey: authThrottleKey(
+            request,
+            dependencies.trustedProxyHeaders ?? false,
+          ),
           ...(currentSessionToken ? { currentSessionToken } : {}),
         }),
       );
@@ -213,7 +254,13 @@ export function createAuthHttpHandlers(dependencies: AuthHttpDependencies) {
     forgotPassword: withApiV1(async (request) => {
       const body = await parseJsonBody(request, forgotPasswordRequestSchema);
       const result = await callAuth(() =>
-        dependencies.getService().requestPasswordReset(body),
+        dependencies.getService().requestPasswordReset({
+          ...body,
+          throttleKey: authThrottleKey(
+            request,
+            dependencies.trustedProxyHeaders ?? false,
+          ),
+        }),
       );
       return apiSuccess(result, { status: 202 });
     }),

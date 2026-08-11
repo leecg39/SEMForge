@@ -8,6 +8,7 @@ import { SESSION_COOKIE_NAME } from "@/lib/session";
 import { AuthServiceError } from "@/server/auth/contracts";
 import {
   createAuthHttpHandlers,
+  type AuthHttpDependencies,
   type AuthHttpService,
 } from "@/server/auth/http";
 
@@ -59,11 +60,15 @@ function service(overrides: Partial<AuthHttpService> = {}): AuthHttpService {
   };
 }
 
-function handlers(authService: AuthHttpService = service()) {
+function handlers(
+  authService: AuthHttpService = service(),
+  overrides: Partial<Omit<AuthHttpDependencies, "getService">> = {},
+) {
   return createAuthHttpHandlers({
     getService: () => authService,
     now: () => NOW,
     production: false,
+    ...overrides,
   });
 }
 
@@ -113,7 +118,11 @@ test("login은 same-origin JSON만 받고 raw session token을 쿠키에만 기�
   assert.equal(response.status, 200);
   assert.equal(received?.email, "owner@example.com");
   assert.equal(received?.currentSessionToken, "c".repeat(43));
-  assert.equal(received?.throttleKey, undefined);
+  assert.match(String(received?.throttleKey), /^[a-f0-9]{64}$/u);
+  assert.notEqual(received?.throttleKey, "198.51.100.99");
+  assert.notEqual(received?.throttleKey, "203.0.113.10");
+  assert.equal(JSON.stringify(received).includes("198.51.100.99"), false);
+  assert.equal(JSON.stringify(received).includes("203.0.113.10"), false);
   assert.match(response.headers.get("set-cookie") ?? "", new RegExp(`${SESSION_COOKIE_NAME}=${RAW_SESSION_TOKEN}`));
   assert.match(response.headers.get("set-cookie") ?? "", /HttpOnly/);
   assert.match(response.headers.get("set-cookie") ?? "", /SameSite=Lax/);
@@ -129,6 +138,92 @@ test("login은 same-origin JSON만 받고 raw session token을 쿠키에만 기�
     error: null,
     requestId: response.headers.get("x-request-id"),
   });
+});
+
+test("login throttleKey는 피해자 이메일만으로 고정되지 않고 클라이언트 신호를 해시한다", async () => {
+  const received: string[] = [];
+  const authService = service({
+    async login(input) {
+      received.push(String(input.throttleKey));
+      return {
+        token: RAW_SESSION_TOKEN,
+        expiresAt: EXPIRES_AT,
+        principal: PRINCIPAL,
+      };
+    },
+  });
+
+  await handlers(authService).login(
+    jsonRequest(
+      "/api/v1/auth/login",
+      { email: "victim@example.com", password: "wrong-password" },
+      { "user-agent": "attacker-a/1.0", "accept-language": "ko-KR" },
+    ),
+    undefined,
+  );
+  await handlers(authService).login(
+    jsonRequest(
+      "/api/v1/auth/login",
+      { email: "victim@example.com", password: "wrong-password" },
+      { "user-agent": "attacker-b/1.0", "accept-language": "ko-KR" },
+    ),
+    undefined,
+  );
+
+  assert.equal(received.length, 2);
+  assert.match(received[0]!, /^[a-f0-9]{64}$/u);
+  assert.match(received[1]!, /^[a-f0-9]{64}$/u);
+  assert.notEqual(received[0], received[1]);
+  assert.equal(received.some((key) => key.includes("victim@example.com")), false);
+});
+
+test("login throttleKey는 trusted proxy opt-in 없이는 spoofed forwarded IP를 무시한다", async () => {
+  const received: string[] = [];
+  const authService = service({
+    async login(input) {
+      received.push(String(input.throttleKey));
+      return {
+        token: RAW_SESSION_TOKEN,
+        expiresAt: EXPIRES_AT,
+        principal: PRINCIPAL,
+      };
+    },
+  });
+  const body = { email: "owner@example.com", password: "correct-password" };
+  const commonHeaders = {
+    "user-agent": "same-client/1.0",
+    "accept-language": "ko-KR",
+  };
+
+  await handlers(authService).login(
+    jsonRequest("/api/v1/auth/login", body, {
+      ...commonHeaders,
+      "x-forwarded-for": "198.51.100.1",
+      "x-real-ip": "198.51.100.2",
+    }),
+    undefined,
+  );
+  await handlers(authService).login(
+    jsonRequest("/api/v1/auth/login", body, {
+      ...commonHeaders,
+      "x-forwarded-for": "203.0.113.1",
+      "x-real-ip": "203.0.113.2",
+    }),
+    undefined,
+  );
+  await handlers(authService, { trustedProxyHeaders: true }).login(
+    jsonRequest("/api/v1/auth/login", body, {
+      ...commonHeaders,
+      "x-forwarded-for": "203.0.113.1, 10.0.0.1",
+      "x-real-ip": "203.0.113.2",
+    }),
+    undefined,
+  );
+
+  assert.equal(received.length, 3);
+  assert.equal(received[0], received[1]);
+  assert.notEqual(received[1], received[2]);
+  assert.equal(received.some((key) => key.includes("203.0.113.1")), false);
 });
 
 test("login은 cross-origin 요청을 service 실행 전에 거부한다", async () => {
@@ -323,7 +418,11 @@ test("forgot password는 존재 여부와 무관한 202 응답만 반환한다",
   );
 
   assert.equal(response.status, 202);
-  assert.equal(received?.throttleKey, undefined);
+  assert.match(String(received?.throttleKey), /^[a-f0-9]{64}$/u);
+  assert.notEqual(received?.throttleKey, "198.51.100.99");
+  assert.notEqual(received?.throttleKey, "203.0.113.20");
+  assert.equal(JSON.stringify(received).includes("unknown@example.com"), true);
+  assert.equal(JSON.stringify(received).includes("198.51.100.99"), false);
   assert.deepEqual((await payload(response)).data, { accepted: true });
 });
 

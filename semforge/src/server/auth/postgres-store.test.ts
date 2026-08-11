@@ -8,6 +8,7 @@ import { afterEach, test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
+import { eq } from "drizzle-orm";
 
 import type { SemforgeDatabase } from "@/db/client";
 import * as schema from "@/db/schema";
@@ -676,6 +677,58 @@ test("password reset은 token을 한 번만 소비하고 password 변경과 모�
     })).status,
     "invalid",
   );
+});
+
+test("password reset 생성은 reset token row와 이메일 outbox를 같은 auth transaction에 예약한다", async () => {
+  const { auth: store, operator, database } = await createStores();
+  const now = testNow();
+  await operator.createInvite({
+    workspaceName: "Reset Outbox Agency",
+    workspaceSlug: "reset-outbox-agency",
+    email: "reset-outbox@example.com",
+    tokenHash: digest("reset-outbox-invite"),
+    role: "owner",
+    expiresAt: addMs(now, 7 * DAY_MS),
+    now,
+  });
+  const accepted = await store.acceptInviteAtomic({
+    tokenHash: digest("reset-outbox-invite"),
+    email: "reset-outbox@example.com",
+    user: { kind: "new", passwordHash: "scrypt:old", displayName: "Reset Outbox" },
+    sessionTokenHash: digest("reset-outbox-session"),
+    sessionExpiresAt: addMs(now, 30 * DAY_MS),
+    now,
+  });
+  assert.equal(accepted.status, "accepted");
+  if (accepted.status !== "accepted") return;
+
+  const reset = await store.createPasswordReset({
+    userId: accepted.principal.userId,
+    tokenHash: digest("reset-outbox-token"),
+    expiresAt: addMs(now, HOUR_MS),
+    now,
+    delivery: {
+      email: "reset-outbox@example.com",
+      resetUrl: "https://app.semforge.test/reset-password/raw-reset-token",
+      expiresAt: addMs(now, HOUR_MS),
+    },
+  });
+
+  const rows = await database
+    .select()
+    .from(schema.outbox)
+    .where(eq(schema.outbox.idempotencyKey, `password-reset:${reset.id}`));
+  assert.equal(rows.length, 1);
+  const outbox = rows[0]!;
+  assert.equal(outbox.workspaceId, accepted.principal.workspaceId);
+  assert.equal(outbox.topic, "email.password_reset");
+  assert.equal(outbox.publishedAt, null);
+  assert.deepEqual(outbox.payload, {
+    kind: "password_reset",
+    email: "reset-outbox@example.com",
+    resetUrl: "https://app.semforge.test/reset-password/raw-reset-token",
+    expiresAt: addMs(now, HOUR_MS).toISOString(),
+  });
 });
 
 test("동시 password reset은 한 요청만 password를 변경하고 다른 요청은 invalid로 끝난다", async () => {

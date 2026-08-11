@@ -6,7 +6,6 @@ import type {
   AuthSessionPrincipal,
   AuthStore,
   OperatorInviteStore,
-  PasswordResetNotifier,
 } from "@/server/auth/contracts";
 import { AuthServiceError } from "@/server/auth/contracts";
 import { hashPassword, verifyPassword } from "@/server/auth/password";
@@ -32,7 +31,7 @@ const PASSWORD_RESET_TTL_MS = 30 * 60 * 1_000;
 export interface AuthServiceDependencies {
   readonly store?: AuthStore;
   readonly inviteStore?: OperatorInviteStore;
-  readonly notifier?: PasswordResetNotifier;
+  readonly passwordResetBaseUrl?: string;
   readonly now?: () => Date;
 }
 
@@ -81,6 +80,23 @@ function throttleDigest(action: "login" | "forgot_password", email: string, key?
   return createHash("sha256")
     .update(`semforge-auth-v1:${action}:${email}:${key ?? "unknown"}`)
     .digest("hex");
+}
+
+function passwordResetUrl(baseUrl: string | undefined, token: string): string {
+  if (!baseUrl) throw configurationError("password reset public URL");
+  try {
+    const base = new URL(baseUrl);
+    if (
+      (base.protocol !== "https:" && base.protocol !== "http:") ||
+      base.username ||
+      base.password
+    ) {
+      throw new Error("invalid public URL");
+    }
+    return new URL(`/reset-password/${token}`, base.origin).toString();
+  } catch {
+    throw configurationError("password reset public URL");
+  }
 }
 
 export function createAuthService(dependencies: AuthServiceDependencies) {
@@ -247,43 +263,37 @@ export function createAuthService(dependencies: AuthServiceDependencies) {
     ): Promise<{ readonly accepted: true }> {
       const store = dependencies.store;
       if (!store) throw configurationError("auth store");
-      const notifier = dependencies.notifier;
-      if (!notifier) throw configurationError("password reset notifier");
       const parsed = requestPasswordResetInputSchema.parse(input);
       const accepted = { accepted: true } as const;
       const requestedAt = now();
 
-      try {
-        const throttle = await store.consumeAuthThrottle({
-          action: "forgot_password",
-          keyHash: throttleDigest(
-            "forgot_password",
-            parsed.email,
-            parsed.throttleKey,
-          ),
-          now: requestedAt,
-        });
-        if (!throttle.allowed) return accepted;
+      const throttle = await store.consumeAuthThrottle({
+        action: "forgot_password",
+        keyHash: throttleDigest(
+          "forgot_password",
+          parsed.email,
+          parsed.throttleKey,
+        ),
+        now: requestedAt,
+      });
+      if (!throttle.allowed) return accepted;
 
-        const user = await store.findUserByEmail(parsed.email);
-        if (!user || user.disabledAt) return accepted;
+      const user = await store.findUserByEmail(parsed.email);
+      if (!user || user.disabledAt) return accepted;
 
-        const token = createOpaqueToken();
-        const expiresAt = new Date(requestedAt.getTime() + PASSWORD_RESET_TTL_MS);
-        await store.createPasswordReset({
-          userId: user.id,
-          tokenHash: hashOpaqueToken(token),
-          expiresAt,
-          now: requestedAt,
-        });
-        await notifier.enqueuePasswordReset({
+      const token = createOpaqueToken();
+      const expiresAt = new Date(requestedAt.getTime() + PASSWORD_RESET_TTL_MS);
+      await store.createPasswordReset({
+        userId: user.id,
+        tokenHash: hashOpaqueToken(token),
+        expiresAt,
+        now: requestedAt,
+        delivery: {
           email: user.email,
-          token,
+          resetUrl: passwordResetUrl(dependencies.passwordResetBaseUrl, token),
           expiresAt,
-        });
-      } catch {
-        // 동일 응답을 유지해 계정 존재 여부와 인프라 상태를 노출하지 않는다.
-      }
+        },
+      });
       return accepted;
     },
 

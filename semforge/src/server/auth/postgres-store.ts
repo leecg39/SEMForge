@@ -8,6 +8,7 @@ import {
   authActionThrottles,
   invites,
   memberships,
+  outbox,
   passwordResets,
   sessions,
   users,
@@ -521,6 +522,38 @@ export class PostgresAuthStore implements AuthStore {
           expiresAt: passwordResets.expiresAt,
         });
       if (!reset) throw new Error("비밀번호 재설정 token을 생성하지 못했습니다.");
+
+      if (input.delivery) {
+        const [membership] = await tx
+          .select({ workspaceId: memberships.workspaceId })
+          .from(memberships)
+          .where(eq(memberships.userId, input.userId))
+          .orderBy(asc(memberships.createdAt), asc(memberships.workspaceId))
+          .limit(1);
+        if (!membership) {
+          throw new Error("비밀번호 재설정 outbox workspace를 찾을 수 없습니다.");
+        }
+
+        const [delivery] = await tx
+          .insert(outbox)
+          .values({
+            workspaceId: membership.workspaceId,
+            topic: "email.password_reset",
+            payload: {
+              kind: "password_reset",
+              email: input.delivery.email,
+              resetUrl: input.delivery.resetUrl,
+              expiresAt: input.delivery.expiresAt.toISOString(),
+            },
+            idempotencyKey: `password-reset:${reset.id}`,
+            availableAt: input.now,
+            createdAt: input.now,
+          })
+          .returning({ id: outbox.id });
+        if (!delivery) {
+          throw new Error("비밀번호 재설정 outbox를 예약하지 못했습니다.");
+        }
+      }
       return reset;
     });
   }

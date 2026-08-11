@@ -6,7 +6,6 @@ import { test } from "node:test";
 
 import {
   AuthServiceError,
-  type PasswordResetNotification,
 } from "@/server/auth/contracts";
 import { hashPassword, verifyPassword } from "@/server/auth/password";
 import { createAuthService } from "@/server/auth/service";
@@ -414,9 +413,8 @@ test("세션 조회와 로그아웃은 raw cookie를 저장소에 넘기지 않�
   assert.equal(await service.getSession(undefined), null);
 });
 
-test("비밀번호 재설정 요청은 30분 해시 토큰을 저장하고 raw token은 알림 경계에만 전달한다", async () => {
+test("비밀번호 재설정 요청은 30분 해시 토큰과 outbox delivery를 원자 저장 경계에 전달한다", async () => {
   let resetRecord: Parameters<AuthStore["createPasswordReset"]>[0] | undefined;
-  let notification: PasswordResetNotification | undefined;
   const service = createAuthService({
     store: storeFixture({
       findUserByEmail: async () => ({
@@ -435,11 +433,7 @@ test("비밀번호 재설정 요청은 30분 해시 토큰을 저장하고 raw t
         };
       },
     }),
-    notifier: {
-      enqueuePasswordReset: async (input) => {
-        notification = input;
-      },
-    },
+    passwordResetBaseUrl: "https://app.semforge.test",
     now: () => NOW,
   });
 
@@ -451,26 +445,23 @@ test("비밀번호 재설정 요청은 30분 해시 토큰을 저장하고 raw t
     { accepted: true },
   );
 
-  const rawToken = String(notification?.token);
+  const delivery = resetRecord?.delivery;
+  const resetUrl = String(delivery?.resetUrl);
+  const rawToken = new URL(resetUrl).pathname.split("/").at(-1) ?? "";
   assert.match(rawToken, /^[A-Za-z0-9_-]{43}$/u);
-  assert.equal(notification?.email, "reset@example.com");
-  assert.equal((notification?.expiresAt as Date).toISOString(), "2026-08-11T03:30:00.000Z");
+  assert.equal(delivery?.email, "reset@example.com");
+  assert.equal(delivery?.expiresAt.toISOString(), "2026-08-11T03:30:00.000Z");
+  assert.equal(resetUrl, `https://app.semforge.test/reset-password/${rawToken}`);
   assert.equal(
     resetRecord?.tokenHash,
     createHash("sha256").update(rawToken).digest("hex"),
   );
-  assert.equal(JSON.stringify(resetRecord).includes(rawToken), false);
+  assert.equal(JSON.stringify({ ...resetRecord, delivery: undefined }).includes(rawToken), false);
 });
 
-test("비밀번호 재설정 요청은 계정 존재·throttle·알림 오류와 관계없이 같은 accepted를 반환한다", async () => {
-  let notifications = 0;
+test("비밀번호 재설정 요청은 계정 존재·throttle은 숨기되 outbox 영속화 실패는 성공으로 숨기지 않는다", async () => {
   const missingService = createAuthService({
     store: storeFixture({ findUserByEmail: async () => null }),
-    notifier: {
-      enqueuePasswordReset: async () => {
-        notifications += 1;
-      },
-    },
     now: () => NOW,
   });
   const blockedService = createAuthService({
@@ -485,10 +476,9 @@ test("비밀번호 재설정 요청은 계정 존재·throttle·알림 오류와
         throw new Error("blocked request must stop before account lookup");
       },
     }),
-    notifier: { enqueuePasswordReset: async () => { notifications += 1; } },
     now: () => NOW,
   });
-  const notifierFailureService = createAuthService({
+  const deliveryService = createAuthService({
     store: storeFixture({
       findUserByEmail: async () => ({
         id: "user-reset",
@@ -503,19 +493,34 @@ test("비밀번호 재설정 요청은 계정 존재·throttle·알림 오류와
         expiresAt: reset.expiresAt,
       }),
     }),
-    notifier: {
-      enqueuePasswordReset: async () => {
+    passwordResetBaseUrl: "https://app.semforge.test",
+    now: () => NOW,
+  });
+  const outboxFailureService = createAuthService({
+    store: storeFixture({
+      findUserByEmail: async () => ({
+        id: "user-reset",
+        email: "nobody@example.com",
+        passwordHash: "not-used",
+        displayName: null,
+        disabledAt: null,
+      }),
+      createPasswordReset: async () => {
         throw new Error("email outbox unavailable");
       },
-    },
+    }),
+    passwordResetBaseUrl: "https://app.semforge.test",
     now: () => NOW,
   });
 
   const input = { email: "nobody@example.com", throttleKey: "203.0.113.20" };
   assert.deepEqual(await missingService.requestPasswordReset(input), { accepted: true });
   assert.deepEqual(await blockedService.requestPasswordReset(input), { accepted: true });
-  assert.deepEqual(await notifierFailureService.requestPasswordReset(input), { accepted: true });
-  assert.equal(notifications, 0);
+  assert.deepEqual(await deliveryService.requestPasswordReset(input), { accepted: true });
+  await assert.rejects(
+    () => outboxFailureService.requestPasswordReset(input),
+    /email outbox unavailable/u,
+  );
 });
 
 test("비밀번호 재설정은 새 해시와 토큰 해시를 원자 소비 경계에 전달한다", async () => {
