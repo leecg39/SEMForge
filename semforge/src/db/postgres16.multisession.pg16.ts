@@ -86,6 +86,10 @@ test("PostgreSQL 16 실제 세션은 SKIP LOCKED, provider canonical visibility,
     assert.notEqual(pids[0].rows[0]!.pid, pids[1].rows[0]!.pid);
 
     await Promise.all([firstClient.query("begin"), secondClient.query("begin")]);
+    await Promise.all([
+      firstClient.query("set local role semforge_dispatcher"),
+      secondClient.query("set local role semforge_dispatcher"),
+    ]);
     const claimBarrier = barrier(2);
     const claims = await Promise.all([
       (async () => {
@@ -154,29 +158,38 @@ test("PostgreSQL 16 실제 세션은 SKIP LOCKED, provider canonical visibility,
        values ($1, 'collection.google.weekly', '{"siteId":"pg16"}'::jsonb, 'pg16-crash')`,
       [workspaceA],
     );
-    const relay = new PostgresOutboxRelay(pool);
     const initialTime = new Date("2026-08-12T00:00:00.000Z");
-    const firstLease = (await relay.claim({
+    await firstClient.query("begin");
+    await firstClient.query("set local role semforge_dispatcher");
+    const firstLease = (await new PostgresOutboxRelay(firstClient).claim({
       workerId: "pg16-relay-crashed",
       now: initialTime,
       leaseMs: 1_000,
     }))[0]!;
-    const recovered = await relay.recoverExpired({
+    await firstClient.query("commit");
+    await secondClient.query("begin");
+    await secondClient.query("set local role semforge_dispatcher");
+    const recovered = await new PostgresOutboxRelay(secondClient).recoverExpired({
       now: new Date("2026-08-12T00:00:02.000Z"),
     });
+    await secondClient.query("commit");
     assert.equal(recovered.length, 1);
     assert.equal(recovered[0]!.record.id, firstLease.id);
     assert.equal(recovered[0]!.dead, false);
     const retryTime = new Date("2026-08-12T00:00:03.000Z");
-    const recoveredLease = (await relay.claim({
+    await firstClient.query("begin");
+    await firstClient.query("set local role semforge_dispatcher");
+    const recoveredRelay = new PostgresOutboxRelay(firstClient);
+    const recoveredLease = (await recoveredRelay.claim({
       workerId: "pg16-relay-recovered",
       now: retryTime,
       leaseMs: 10_000,
     }))[0]!;
-    const published = await relay.publish(recoveredLease, {
+    const published = await recoveredRelay.publish(recoveredLease, {
       jobType: "collect.google",
       now: retryTime,
     });
+    await firstClient.query("commit");
     assert.equal(published.type, "collect.google");
     const outboxState = await pool.query<{ published: boolean }>(
       "select published_at is not null as published from outbox where id = $1",

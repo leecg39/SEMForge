@@ -262,7 +262,7 @@ BEGIN
   RETURN NEW;
 END;
 $$;--> statement-breakpoint
-CREATE TRIGGER jobs_request_hash BEFORE INSERT OR UPDATE OF type, payload, max_attempts, priority
+CREATE TRIGGER jobs_request_hash BEFORE INSERT OR UPDATE
 ON jobs FOR EACH ROW EXECUTE FUNCTION set_job_request_hash();--> statement-breakpoint
 CREATE FUNCTION set_outbox_request_hash() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = public, pg_temp AS $$
@@ -274,7 +274,7 @@ BEGIN
   RETURN NEW;
 END;
 $$;--> statement-breakpoint
-CREATE TRIGGER outbox_request_hash BEFORE INSERT OR UPDATE OF topic, payload, max_attempts
+CREATE TRIGGER outbox_request_hash BEFORE INSERT OR UPDATE
 ON outbox FOR EACH ROW EXECUTE FUNCTION set_outbox_request_hash();--> statement-breakpoint
 CREATE TABLE "password_resets" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -762,11 +762,18 @@ GRANT INSERT (workspace_id, topic, payload, idempotency_key, available_at, creat
 GRANT SELECT ON invites TO semforge_operator;--> statement-breakpoint
 GRANT INSERT (email, token_hash, workspace_name, workspace_slug, expires_at) ON invites TO semforge_operator;--> statement-breakpoint
 GRANT UPDATE (superseded_at) ON invites TO semforge_operator;--> statement-breakpoint
-GRANT SELECT, INSERT, UPDATE ON jobs TO semforge_dispatcher;--> statement-breakpoint
-GRANT SELECT, UPDATE ON outbox TO semforge_dispatcher;--> statement-breakpoint
+GRANT SELECT ON jobs TO semforge_dispatcher;--> statement-breakpoint
+GRANT INSERT (workspace_id, type, payload, idempotency_key, priority, available_at, max_attempts)
+  ON jobs TO semforge_dispatcher;--> statement-breakpoint
+GRANT UPDATE (status, available_at, lease_owner, lease_token, lease_generation,
+  lease_expires_at, attempts, last_error, updated_at) ON jobs TO semforge_dispatcher;--> statement-breakpoint
+GRANT SELECT ON outbox TO semforge_dispatcher;--> statement-breakpoint
+GRANT UPDATE (available_at, lease_owner, lease_token, lease_generation,
+  lease_expires_at, attempts, published_at, last_error) ON outbox TO semforge_dispatcher;--> statement-breakpoint
 GRANT INSERT ON audit_events TO semforge_dispatcher;--> statement-breakpoint
-GRANT SELECT ON workspaces, sites, tracked_queries, gsc_property_bindings TO semforge_scheduler;--> statement-breakpoint
-GRANT INSERT ON outbox TO semforge_scheduler;--> statement-breakpoint
+GRANT SELECT ON sites, tracked_queries, gsc_property_bindings TO semforge_scheduler;--> statement-breakpoint
+GRANT INSERT (workspace_id, topic, payload, idempotency_key, available_at, created_at)
+  ON outbox TO semforge_scheduler;--> statement-breakpoint
 GRANT SELECT ON workspaces, memberships, sites, tracked_queries, gsc_connections,
   gsc_property_bindings, billing_customers, payment_methods, subscriptions TO semforge_worker;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON provider_calls, usage_reservations,
@@ -793,8 +800,6 @@ CREATE POLICY workspaces_auth_select ON workspaces FOR SELECT TO semforge_auth U
 CREATE POLICY workspaces_auth_insert ON workspaces FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY workspaces_worker_read ON workspaces FOR SELECT TO semforge_worker
   USING (id = nullif(current_setting('app.workspace_id', true), '')::uuid);--> statement-breakpoint
-CREATE POLICY workspaces_scheduler_read ON workspaces FOR SELECT TO semforge_scheduler
-  USING (true);--> statement-breakpoint
 DO $$
 DECLARE tenant_table text;
 BEGIN
