@@ -12,6 +12,7 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 import { createSecretCrypto } from "@/lib/crypto";
 import type { GscTokenSet } from "@/server/gsc/oauth";
 import { GSC_SCOPE, hashOAuthState } from "@/server/gsc/oauth";
+import { GoogleSearchConsoleError } from "@/server/gsc/google-client";
 import {
   GscServiceError,
   createGscService,
@@ -325,6 +326,94 @@ test("properties 조회와 binding은 다른 workspace/site IDOR를 거부한다
     }),
     (error: unknown) => error instanceof GscServiceError && error.code === "NOT_FOUND",
   );
+});
+
+test("bindProperty는 Google sites.list에 exact property URI가 없으면 저장 전에 NOT_FOUND로 거부한다", async () => {
+  const service = createGscService({
+    db: pg,
+    crypto,
+    oauthConfig: {
+      clientId: "google-client",
+      clientSecret: "google-secret",
+      redirectUri: "https://semforge.example/api/v1/integrations/gsc/callback",
+    },
+    searchConsoleClient: {
+      async listSites(accessToken) {
+        assert.equal(accessToken, "access-token-3");
+        return [{ siteUrl: "sc-domain:example.com", permissionLevel: "siteOwner" }];
+      },
+      async revokeToken() {},
+    },
+    now: () => new Date("2026-08-11T02:30:00.000Z"),
+  });
+  const before = await pg.query<{ count: string }>(
+    "select count(*)::text from gsc_property_bindings where workspace_id = $1",
+    [workspaceId],
+  );
+
+  await assert.rejects(
+    service.bindProperty({
+      workspaceId,
+      siteId,
+      connectionId: "31000000-0000-4000-8000-000000000301",
+      propertyUri: "sc-domain:not-authorized.example",
+    }),
+    (error: unknown) => error instanceof GscServiceError && error.code === "NOT_FOUND",
+  );
+
+  const after = await pg.query<{ count: string; unauthorized_count: string }>(
+    `select count(*)::text,
+            count(*) filter (where property_uri = 'sc-domain:not-authorized.example')::text as unauthorized_count
+       from gsc_property_bindings
+      where workspace_id = $1`,
+    [workspaceId],
+  );
+  assert.equal(after.rows[0]!.count, before.rows[0]!.count);
+  assert.equal(after.rows[0]!.unauthorized_count, "0");
+});
+
+test("bindProperty는 Google sites.list timeout을 UPSTREAM으로 반환하고 저장하지 않는다", async () => {
+  const service = createGscService({
+    db: pg,
+    crypto,
+    oauthConfig: {
+      clientId: "google-client",
+      clientSecret: "google-secret",
+      redirectUri: "https://semforge.example/api/v1/integrations/gsc/callback",
+    },
+    searchConsoleClient: {
+      async listSites(accessToken) {
+        assert.equal(accessToken, "access-token-3");
+        throw new GoogleSearchConsoleError("UPSTREAM", "Google Search Console request timed out.");
+      },
+      async revokeToken() {},
+    },
+    now: () => new Date("2026-08-11T02:30:00.000Z"),
+  });
+  const before = await pg.query<{ count: string }>(
+    "select count(*)::text from gsc_property_bindings where workspace_id = $1",
+    [workspaceId],
+  );
+
+  await assert.rejects(
+    service.bindProperty({
+      workspaceId,
+      siteId,
+      connectionId: "31000000-0000-4000-8000-000000000301",
+      propertyUri: "sc-domain:timeout.example",
+    }),
+    (error: unknown) => error instanceof GscServiceError && error.code === "UPSTREAM",
+  );
+
+  const after = await pg.query<{ count: string; timeout_count: string }>(
+    `select count(*)::text,
+            count(*) filter (where property_uri = 'sc-domain:timeout.example')::text as timeout_count
+       from gsc_property_bindings
+      where workspace_id = $1`,
+    [workspaceId],
+  );
+  assert.equal(after.rows[0]!.count, before.rows[0]!.count);
+  assert.equal(after.rows[0]!.timeout_count, "0");
 });
 
 test("disconnect는 복호화한 refresh token을 Google revoke에 전달한 뒤 connection을 숨긴다", async () => {

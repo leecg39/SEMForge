@@ -59,6 +59,8 @@ function mapGscError(error: unknown): never {
       throw new ApiError("CONFLICT", "Google refresh token이 발급되지 않았습니다. 연결을 다시 진행해 주세요.");
     case "NOT_FOUND":
       throw new ApiError("NOT_FOUND");
+    case "FORBIDDEN":
+      throw new ApiError("FORBIDDEN");
     case "DUPLICATE_LABEL":
       throw new ApiError("DUPLICATE", "같은 이름의 Search Console 연결이 이미 있습니다.");
     case "UPSTREAM":

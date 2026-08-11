@@ -30,6 +30,7 @@ import {
   upsertGscPropertyBinding,
 } from "@/server/gsc/store";
 import {
+  GoogleSearchConsoleError,
   createGoogleSearchConsoleClient,
   type GoogleSearchConsoleClient,
   type GscProperty,
@@ -46,6 +47,7 @@ export class GscServiceError extends Error {
       | "INVALID_SCOPE"
       | "MISSING_REFRESH_TOKEN"
       | "NOT_FOUND"
+      | "FORBIDDEN"
       | "DUPLICATE_LABEL"
       | "UPSTREAM"
       | "SECRET_DECRYPTION_FAILED",
@@ -136,6 +138,29 @@ function mapStoreError(error: unknown): never {
     if (error.code === "INVALID_SCOPE") throw new GscServiceError("INVALID_SCOPE");
   }
   throw error;
+}
+
+function mapProviderError(error: unknown): never {
+  if (error instanceof GoogleSearchConsoleError) {
+    if (error.code === "UNAUTHORIZED") throw new GscServiceError("FORBIDDEN");
+    throw new GscServiceError("UPSTREAM");
+  }
+  throw error;
+}
+
+function propertyCanBeUsed(property: GscProperty): boolean {
+  return property.permissionLevel === "siteOwner" ||
+    property.permissionLevel === "siteFullUser" ||
+    property.permissionLevel === "siteRestrictedUser";
+}
+
+function assertPropertyAuthorized(
+  properties: readonly GscProperty[],
+  propertyUri: string,
+): void {
+  const exact = properties.find((property) => property.siteUrl === propertyUri);
+  if (!exact) throw new GscServiceError("NOT_FOUND");
+  if (!propertyCanBeUsed(exact)) throw new GscServiceError("FORBIDDEN");
 }
 
 function decryptToken(
@@ -283,12 +308,25 @@ export function createGscService(options: GscServiceOptions): GscService {
         input.connectionId,
         "access-token",
       );
-      return searchConsoleClient.listSites(accessToken);
+      try {
+        return await searchConsoleClient.listSites(accessToken);
+      } catch (error) {
+        mapProviderError(error);
+      }
     },
 
     async bindProperty(input) {
+      const propertyUri = input.propertyUri.trim();
+      const properties = await service.listProperties({
+        workspaceId: input.workspaceId,
+        connectionId: input.connectionId,
+      });
+      assertPropertyAuthorized(properties, propertyUri);
       try {
-        return await upsertGscPropertyBinding(options.db, input);
+        return await upsertGscPropertyBinding(options.db, {
+          ...input,
+          propertyUri,
+        });
       } catch (error) {
         mapStoreError(error);
       }
