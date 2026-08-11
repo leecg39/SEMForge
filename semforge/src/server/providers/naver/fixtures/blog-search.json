@@ -1,0 +1,14 @@
+{
+  "lastBuildDate": "Tue, 07 Jul 2026 12:00:00 +0900",
+  "total": 987654,
+  "start": 1,
+  "display": 1,
+  "items": [
+    {
+      "title": "fixture title that must not escape the provider",
+      "link": "https://example.invalid/post",
+      "description": "fixture body that must not escape the provider",
+      "bloggername": "fixture-user"
+    }
+  ]
+}
