@@ -11,8 +11,9 @@ const secretSchema = z
 const rawServerEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
-  // @TASK P1-D2 - Never reuse the migration owner DSN for authentication runtime access.
+  // @TASK P1-D3 - Never reuse the migration owner DSN for auth or operator runtime access.
   AUTH_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
+  OPERATOR_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   WORKER_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   MIGRATION_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   APP_PUBLIC_URL: z.string().trim().url().optional(),
@@ -83,6 +84,7 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
     for (const required of [
       "DATABASE_URL",
       "AUTH_DATABASE_URL",
+      "OPERATOR_DATABASE_URL",
       "WORKER_DATABASE_URL",
       "MIGRATION_DATABASE_URL",
       "APP_PUBLIC_URL",

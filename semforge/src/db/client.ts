@@ -7,8 +7,8 @@ import { Pool, type PoolConfig } from "pg";
 import * as schema from "@/db/schema";
 import { getServerEnv, type ServerEnv } from "@/lib/env";
 
-// @TASK P1-D2 - Dedicated pre-tenant authentication runtime role
-export type DatabaseRole = "web" | "auth" | "worker";
+// @TASK P1-D3 - Dedicated pre-tenant auth and operator runtime roles
+export type DatabaseRole = "web" | "auth" | "operator" | "worker";
 export type SemforgeDatabase = NodePgDatabase<typeof schema>;
 
 const globalPools = globalThis as unknown as {
@@ -25,6 +25,7 @@ export function resolveDatabaseUrl(role: DatabaseRole, env: ServerEnv): string {
   const key = {
     web: "DATABASE_URL",
     auth: "AUTH_DATABASE_URL",
+    operator: "OPERATOR_DATABASE_URL",
     worker: "WORKER_DATABASE_URL",
   } as const satisfies Record<DatabaseRole, keyof ServerEnv>;
   const envKey = key[role];

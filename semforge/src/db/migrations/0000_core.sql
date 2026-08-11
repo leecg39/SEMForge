@@ -130,7 +130,8 @@ CREATE TABLE "invites" (
 	"accepted_at" timestamp with time zone,
 	"accepted_by_user_id" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "invites_token_hash_uq" UNIQUE("token_hash")
+	CONSTRAINT "invites_token_hash_uq" UNIQUE("token_hash"),
+	CONSTRAINT "invites_expiry_window_ck" CHECK ("invites"."expires_at" > "invites"."created_at" and "invites"."expires_at" <= "invites"."created_at" + interval '7 days')
 );
 --> statement-breakpoint
 CREATE TABLE "jobs" (
@@ -568,17 +569,20 @@ $$;--> statement-breakpoint
 CREATE TRIGGER tracked_queries_enforce_limit BEFORE INSERT OR UPDATE OF workspace_id, site_id, type, active ON tracked_queries
 FOR EACH ROW EXECUTE FUNCTION enforce_tracked_query_limit();--> statement-breakpoint
 
--- @TASK P1-D1-T1 - Web/auth/worker role boundary and tenant RLS
+-- @TASK P1-D3 - Web/auth/operator/worker role boundary and tenant RLS
+-- semforge_* runtime roles are NOLOGIN privilege groups. Infrastructure must provision
+-- distinct LOGIN INHERIT members and grant exactly one runtime group to each account.
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_web') THEN CREATE ROLE semforge_web NOLOGIN NOINHERIT NOBYPASSRLS; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_web') THEN CREATE ROLE semforge_web NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_auth') THEN CREATE ROLE semforge_auth NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_worker') THEN CREATE ROLE semforge_worker NOLOGIN NOINHERIT NOBYPASSRLS; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_operator') THEN CREATE ROLE semforge_operator NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_worker') THEN CREATE ROLE semforge_worker NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
 END
 $$;--> statement-breakpoint
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC;--> statement-breakpoint
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;--> statement-breakpoint
-GRANT USAGE ON SCHEMA public TO semforge_web, semforge_auth, semforge_worker;--> statement-breakpoint
+GRANT USAGE ON SCHEMA public TO semforge_web, semforge_auth, semforge_operator, semforge_worker;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON
   workspaces, memberships, sites, tracked_queries,
   gsc_connections, oauth_states, gsc_property_bindings,
@@ -594,6 +598,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON sessions TO semforge_auth;--> statement-
 GRANT SELECT, INSERT, UPDATE ON password_resets TO semforge_auth;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON auth_action_throttles TO semforge_auth;--> statement-breakpoint
 GRANT SELECT, INSERT ON workspaces, memberships TO semforge_auth;--> statement-breakpoint
+GRANT SELECT, INSERT ON invites TO semforge_operator;--> statement-breakpoint
 GRANT SELECT ON workspaces, memberships, sites, tracked_queries, gsc_connections,
   gsc_property_bindings, billing_customers, payment_methods, subscriptions TO semforge_worker;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON provider_calls, usage_reservations, jobs, outbox,
@@ -648,6 +653,8 @@ ALTER TABLE invites ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE invites FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY invites_auth_select ON invites FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
 CREATE POLICY invites_auth_update ON invites FOR UPDATE TO semforge_auth USING (true) WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY invites_operator_select ON invites FOR SELECT TO semforge_operator USING (true);--> statement-breakpoint
+CREATE POLICY invites_operator_insert ON invites FOR INSERT TO semforge_operator WITH CHECK (true);--> statement-breakpoint
 ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE sessions FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY sessions_auth_select ON sessions FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint

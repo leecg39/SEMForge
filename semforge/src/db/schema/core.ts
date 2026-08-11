@@ -163,6 +163,10 @@ export const invites = pgTable(
   },
   (table) => [
     unique("invites_token_hash_uq").on(table.tokenHash),
+    check(
+      "invites_expiry_window_ck",
+      sql`${table.expiresAt} > ${table.createdAt} and ${table.expiresAt} <= ${table.createdAt} + interval '7 days'`,
+    ),
     uniqueIndex("invites_pending_email_uq")
       .on(table.workspaceId, sql`lower(${table.email})`)
       .where(sql`${table.acceptedAt} is null`),

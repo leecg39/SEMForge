@@ -1,5 +1,5 @@
 {
-  "id": "cc425ce1-bdab-458d-9e2e-7686bbd2f5bc",
+  "id": "48ec92c1-3a04-471f-bebd-c5682988ed26",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -1145,7 +1145,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "invites_expiry_window_ck": {
+          "name": "invites_expiry_window_ck",
+          "value": "\"invites\".\"expires_at\" > \"invites\".\"created_at\" and \"invites\".\"expires_at\" <= \"invites\".\"created_at\" + interval '7 days'"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.jobs": {

@@ -256,3 +256,73 @@ test("auth role은 초대 수락·세션·비밀번호 재설정은 수행하지
     await pg.query("rollback");
   }
 });
+
+test("operator role은 NOLOGIN 권한 그룹이며 invites SELECT/INSERT 권한만 가진다", async () => {
+  const role = await pg.query<{
+    rolcanlogin: boolean;
+    rolsuper: boolean;
+    rolcreatedb: boolean;
+    rolcreaterole: boolean;
+    rolbypassrls: boolean;
+  }>(
+    "select rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolbypassrls from pg_roles where rolname = 'semforge_operator'",
+  );
+  assert.deepEqual(role.rows[0], {
+    rolcanlogin: false,
+    rolsuper: false,
+    rolcreatedb: false,
+    rolcreaterole: false,
+    rolbypassrls: false,
+  });
+  // IaC가 만드는 semforge_operator_login은 LOGIN INHERIT 멤버여야 하며 이 그룹을 DSN으로 직접 쓰지 않는다.
+
+  const grants = await pg.query<{ table_name: string; privilege_type: string }>(
+    "select table_name, privilege_type from information_schema.role_table_grants where grantee = 'semforge_operator' and table_schema = 'public' order by table_name, privilege_type",
+  );
+  assert.deepEqual(
+    grants.rows.map((grant) => `${grant.table_name}:${grant.privilege_type}`),
+    ["invites:INSERT", "invites:SELECT"],
+  );
+
+  const policies = await pg.query<{ tablename: string }>(
+    "select distinct tablename from pg_policies where 'semforge_operator' = any(roles) order by tablename",
+  );
+  assert.deepEqual(policies.rows.map((policy) => policy.tablename), ["invites"]);
+});
+
+test("operator는 7일 초대를 발급하지만 인증·사이트·결제 데이터에는 접근하지 못한다", async () => {
+  const workspaceId = "00000000-0000-4000-8000-0000000000b1";
+  await pg.query("insert into workspaces (id, name, slug) values ($1, 'Operator', 'operator-boundary')", [
+    workspaceId,
+  ]);
+
+  await pg.query("begin");
+  try {
+    await pg.query("set local role semforge_operator");
+    await pg.query(
+      "insert into invites (workspace_id, email, token_hash, expires_at) values ($1, 'design-partner@example.com', 'operator-seven-day-invite', now() + interval '7 days')",
+      [workspaceId],
+    );
+    const visible = await pg.query<{ email: string }>(
+      "select email from invites where token_hash = 'operator-seven-day-invite'",
+    );
+    assert.deepEqual(visible.rows, [{ email: "design-partner@example.com" }]);
+
+    for (const [name, statement] of [
+      ["eight day invite", `insert into invites (workspace_id, email, token_hash, expires_at) values ('${workspaceId}', 'late@example.com', 'operator-eight-day-invite', now() + interval '8 days')`],
+      ["invite update", "update invites set email = 'changed@example.com' where token_hash = 'operator-seven-day-invite'"],
+      ["invite delete", "delete from invites where token_hash = 'operator-seven-day-invite'"],
+      ["users", "select * from users"],
+      ["sessions", "select * from sessions"],
+      ["sites", "select * from sites"],
+      ["payments", "select * from payments"],
+    ] as const) {
+      const savepoint = `operator_denied_${name.replace(/[^a-z]/g, "_")}`;
+      await pg.query(`savepoint ${savepoint}`);
+      await assert.rejects(pg.query(statement));
+      await pg.query(`rollback to savepoint ${savepoint}`);
+    }
+  } finally {
+    await pg.query("rollback");
+  }
+});

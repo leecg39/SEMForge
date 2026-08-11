@@ -9,6 +9,7 @@ import {
   authActionThrottles,
   aioPresenceEnum,
   jobStatusEnum,
+  invites,
   reportStatusEnum,
   subscriptionStatusEnum,
   tenantTables,
@@ -105,4 +106,9 @@ test("auth_action_throttles는 workspace 없이 action과 SHA-256 hash만 저장
     config.columns.map((column) => column.name),
     ["action", "key_hash", "window_started_at", "attempt_count", "blocked_until", "updated_at"],
   );
+});
+
+test("invites는 생성 시점부터 최대 7일까지만 유효하다", () => {
+  const checks = getTableConfig(invites).checks.map((constraint) => constraint.name);
+  assert.ok(checks.includes("invites_expiry_window_ck"));
 });

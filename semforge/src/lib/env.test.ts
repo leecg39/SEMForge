@@ -7,10 +7,11 @@ import { EnvironmentValidationError, parseServerEnv } from "@/lib/env";
 
 const productionEnv = {
   NODE_ENV: "production",
-  DATABASE_URL: "postgresql://semforge:test@db.example.com:5432/semforge",
-  AUTH_DATABASE_URL: "postgresql://semforge_auth:test@db.example.com:5432/semforge",
-  WORKER_DATABASE_URL: "postgresql://semforge_worker:test@db.example.com:5432/semforge",
-  MIGRATION_DATABASE_URL: "postgresql://semforge_owner:test@db.example.com:5432/semforge",
+  DATABASE_URL: "postgresql://semforge_web_login:test@db.example.com:5432/semforge",
+  AUTH_DATABASE_URL: "postgresql://semforge_auth_login:test@db.example.com:5432/semforge",
+  OPERATOR_DATABASE_URL: "postgresql://semforge_operator_login:test@db.example.com:5432/semforge",
+  WORKER_DATABASE_URL: "postgresql://semforge_worker_login:test@db.example.com:5432/semforge",
+  MIGRATION_DATABASE_URL: "postgresql://semforge_owner_login:test@db.example.com:5432/semforge",
   APP_PUBLIC_URL: "https://app.semforge.example",
   APP_SECRET: "production-secret-material-that-is-at-least-32-bytes",
   APP_SECRET_CURRENT_KEY_ID: "key-2026-08",
@@ -20,6 +21,7 @@ test("production은 database, public URL, current encryption key를 모두 요�
   for (const missing of [
     "DATABASE_URL",
     "AUTH_DATABASE_URL",
+    "OPERATOR_DATABASE_URL",
     "WORKER_DATABASE_URL",
     "MIGRATION_DATABASE_URL",
     "APP_PUBLIC_URL",
