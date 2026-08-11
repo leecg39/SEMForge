@@ -69,7 +69,7 @@ test("RelKwdStat는 timestamp.method.path HMAC 서명과 공식 인증 헤더를
   );
 });
 
-test("월간 검색수의 <10과 소수 광고 지표를 손실 없이 정규화한다", async () => {
+test("월간 검색수의 <10 qualifier를 보존하고 PPC 지표는 공개 결과에서 제거한다", async () => {
   const result = await fetchNaverRelatedKeywords(["SEO"], {
     credentials,
     fetchImpl: async () => keywordToolResponse(),
@@ -96,12 +96,12 @@ test("월간 검색수의 <10과 소수 광고 지표를 손실 없이 정규화
     maxExclusive: 1260,
     display: "1,250–1,259",
   });
-  assert.equal(row?.monthlyAveragePcClicks, 1.25);
-  assert.equal(row?.monthlyAverageMobileClicks, 12.75);
-  assert.equal(row?.monthlyAveragePcCtr, 0.13);
-  assert.equal(row?.monthlyAverageMobileCtr, 1.56);
-  assert.equal(row?.averageAdDepth, 7.8);
-  assert.equal(row?.competition, "high");
+  assert.deepEqual(Object.keys(row ?? {}).sort(), [
+    "keyword",
+    "monthlyMobileQueries",
+    "monthlyPcQueries",
+    "monthlyTotalQueries",
+  ]);
 });
 
 test("count helper는 exact와 qualifier 합계를 범위로 반환한다", () => {

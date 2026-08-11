@@ -103,19 +103,11 @@ export type NaverQueryCount =
   | NaverLessThanQueryCount
   | NaverRangeQueryCount;
 
-export type NaverKeywordCompetition = "low" | "medium" | "high" | "unknown";
-
 /** 공식 RelKwdStat 응답에서 사용하는 필드의 허용 형태. */
 export interface NaverKeywordToolRawItem {
   relKeyword?: unknown;
   monthlyPcQcCnt?: unknown;
   monthlyMobileQcCnt?: unknown;
-  monthlyAvePcClkCnt?: unknown;
-  monthlyAveMobileClkCnt?: unknown;
-  monthlyAvePcCtr?: unknown;
-  monthlyAveMobileCtr?: unknown;
-  plAvgDepth?: unknown;
-  compIdx?: unknown;
 }
 
 export interface NaverRelatedKeyword {
@@ -123,13 +115,6 @@ export interface NaverRelatedKeyword {
   monthlyPcQueries: NaverQueryCount | null;
   monthlyMobileQueries: NaverQueryCount | null;
   monthlyTotalQueries: NaverQueryCount | null;
-  monthlyAveragePcClicks: number | null;
-  monthlyAverageMobileClicks: number | null;
-  monthlyAveragePcCtr: number | null;
-  monthlyAverageMobileCtr: number | null;
-  averageAdDepth: number | null;
-  competition: NaverKeywordCompetition;
-  competitionLabel: string | null;
 }
 
 export interface NaverRelatedKeywordsResult {
@@ -269,30 +254,12 @@ function safeBaseUrl(value: string | undefined): string {
   return (value ?? NAVER_SEARCH_ADS_BASE_URL).replace(/\/+$/, "");
 }
 
-function finiteMetric(value: unknown): number | null {
-  if (typeof value === "number") return Number.isFinite(value) && value >= 0 ? value : null;
-  if (typeof value !== "string" || !value.trim()) return null;
-  const parsed = Number(value.replaceAll(",", "").trim());
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
-}
-
-function competitionFrom(value: unknown): { value: NaverKeywordCompetition; label: string | null } {
-  if (typeof value !== "string" || !value.trim()) return { value: "unknown", label: null };
-  const label = value.trim();
-  const normalized = label.toLocaleLowerCase("en-US");
-  if (["높음", "high"].includes(normalized)) return { value: "high", label };
-  if (["중간", "medium", "mid"].includes(normalized)) return { value: "medium", label };
-  if (["낮음", "low"].includes(normalized)) return { value: "low", label };
-  return { value: "unknown", label };
-}
-
 export function normalizeNaverKeywordToolItem(raw: NaverKeywordToolRawItem): NaverRelatedKeyword | null {
   if (typeof raw.relKeyword !== "string") return null;
   const keyword = raw.relKeyword.normalize("NFKC").trim();
   if (!keyword) return null;
   const monthlyPcQueries = parseNaverQueryCount(raw.monthlyPcQcCnt);
   const monthlyMobileQueries = parseNaverQueryCount(raw.monthlyMobileQcCnt);
-  const competition = competitionFrom(raw.compIdx);
   return {
     keyword,
     monthlyPcQueries,
@@ -301,13 +268,6 @@ export function normalizeNaverKeywordToolItem(raw: NaverKeywordToolRawItem): Nav
       monthlyPcQueries && monthlyMobileQueries
         ? sumNaverQueryCounts([monthlyPcQueries, monthlyMobileQueries])
         : null,
-    monthlyAveragePcClicks: finiteMetric(raw.monthlyAvePcClkCnt),
-    monthlyAverageMobileClicks: finiteMetric(raw.monthlyAveMobileClkCnt),
-    monthlyAveragePcCtr: finiteMetric(raw.monthlyAvePcCtr),
-    monthlyAverageMobileCtr: finiteMetric(raw.monthlyAveMobileCtr),
-    averageAdDepth: finiteMetric(raw.plAvgDepth),
-    competition: competition.value,
-    competitionLabel: competition.label,
   };
 }
 
