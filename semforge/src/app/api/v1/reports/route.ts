@@ -7,4 +7,3 @@ const handlers = createReportsRouteHandlers();
 export function GET(request: Request): Promise<Response> {
   return handlers.reports.GET(request, undefined);
 }
-

@@ -5,4 +5,3 @@ import { createReportsRouteHandlers } from "@/server/reports/routes";
 const handlers = createReportsRouteHandlers();
 
 export const GET = handlers.reportById.GET;
-

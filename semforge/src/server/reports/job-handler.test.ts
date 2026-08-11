@@ -134,4 +134,3 @@ test("report.snapshot 작업은 잘못된 payload와 workspace 경계를 termina
     error: "REPORT_SNAPSHOT_WORKSPACE_MISMATCH",
   });
 });
-

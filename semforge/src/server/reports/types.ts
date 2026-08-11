@@ -85,4 +85,3 @@ export interface GenerateWeeklyReportInput {
 export interface WeeklyReportGenerator {
   generate(input: GenerateWeeklyReportInput): Promise<ReportDetail>;
 }
-

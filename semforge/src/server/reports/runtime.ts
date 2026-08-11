@@ -16,4 +16,3 @@ export function createRuntimeReportGenerationJobHandler(): JobHandler<ReportGene
   const source = getPool("worker") as unknown as ReportSqlSource;
   return createReportGenerationJobHandler(createPostgresWeeklyReportGenerator(source));
 }
-

@@ -43,4 +43,3 @@ test("수집 retry는 월요일 07:00 KST 이전에만 예약된다", () => {
   assert.equal(nextCollectionRetryAt(new Date("2026-08-09T21:59:00.000Z"), 2 * 60_000, schedule), null);
   assert.equal(nextCollectionRetryAt(schedule.retryCutoffAt, 1, schedule), null);
 });
-

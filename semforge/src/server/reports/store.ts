@@ -96,6 +96,7 @@ type NaverRow = {
   blog_result_count: number | null;
   trend: unknown[] | string | null;
   demographics: Readonly<Record<string, unknown>> | string | null;
+  sources: Array<{ status?: unknown }> | string;
 };
 
 type GscRow = {
@@ -314,10 +315,20 @@ async function collectSections(
       `select observation.tracked_query_id::text, query.query, observation.observed_at,
               observation.collected_at, observation.monthly_pc_search_volume,
               observation.monthly_mobile_search_volume, observation.blog_result_count,
-              observation.trend, observation.demographics
+              observation.trend, observation.demographics,
+              coalesce((
+                select jsonb_agg(jsonb_build_object(
+                  'source', source.source, 'status', source.status,
+                  'collectedAt', source.collected_at, 'errorCode', source.error_code,
+                  'metadata', source.metadata
+                ) order by source.source)
+                  from naver_observation_sources source
+                 where source.workspace_id = observation.workspace_id
+                   and source.observation_id = observation.id
+              ), '[]'::jsonb) as sources
          from tracked_queries query
          join lateral (
-           select tracked_query_id, observed_at, collected_at, monthly_pc_search_volume,
+           select id, workspace_id, tracked_query_id, observed_at, collected_at, monthly_pc_search_volume,
                   monthly_mobile_search_volume, blog_result_count, trend, demographics
              from naver_observations
             where workspace_id = query.workspace_id and tracked_query_id = query.id
@@ -365,7 +376,19 @@ async function collectSections(
       citations: jsonValue(row.citations),
     })),
   });
-  const naver = section("naver", schedule.snapshotAt, naverRows, {
+  const naverAvailableRows = naverRows.filter((row) => {
+    const sources = jsonValue<Array<{ status?: unknown }>>(row.sources);
+    return sources.some((source) => source.status === "succeeded") ||
+      (sources.length === 0 &&
+        [
+          row.monthly_pc_search_volume,
+          row.monthly_mobile_search_volume,
+          row.blog_result_count,
+          row.trend,
+          row.demographics,
+        ].some((value) => value !== null));
+  });
+  const naver = section("naver", schedule.snapshotAt, naverAvailableRows, {
     observations: naverRows.map((row) => ({
       trackedQueryId: row.tracked_query_id,
       query: row.query,
@@ -376,6 +399,7 @@ async function collectSections(
       blogResultCount: row.blog_result_count,
       trend: row.trend === null ? null : jsonValue(row.trend),
       demographics: row.demographics === null ? null : jsonValue(row.demographics),
+      sources: jsonValue(row.sources),
     })),
   });
   const gscData = gscRows.map((row) => ({
@@ -572,4 +596,3 @@ export function createPostgresWeeklyReportGenerator(source: ReportSqlSource): We
     generate: (input) => generateWeeklyReport(source, input),
   };
 }
-

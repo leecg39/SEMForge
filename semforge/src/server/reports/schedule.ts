@@ -2,6 +2,8 @@
 // @SPEC docs/planning/06-tasks.md#p3-r1-t1--주간-불변-리포트-스냅샷
 // @TEST src/server/reports/schedule.test.ts
 
+import { calculateMatureGscWindows } from "@/server/collectors/gsc/date-windows";
+
 const KST_OFFSET_HOURS = 9;
 const REPORT_MONDAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const GSC_TIMEZONE = "America/Los_Angeles" as const;
@@ -49,27 +51,13 @@ function kstInstant(date: Date, hour: number): Date {
   );
 }
 
-function dateInTimeZone(value: Date, timeZone: string): Date {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(value);
-  const part = (type: Intl.DateTimeFormatPartTypes) =>
-    Number(parts.find((candidate) => candidate.type === type)?.value);
-  return new Date(Date.UTC(part("year"), part("month") - 1, part("day")));
-}
-
 export function buildWeeklyReportSchedule(cycleMonday: string): WeeklyReportSchedule {
   const monday = parseCalendarDate(cycleMonday);
   if (monday.getUTCDay() !== 1) throw new RangeError("cycleMonday must be a Monday");
 
   const sunday = addCalendarDays(monday, -1);
   const snapshotAt = kstInstant(monday, 8);
-  const snapshotPtDate = dateInTimeZone(snapshotAt, GSC_TIMEZONE);
-  const daysSinceThursday = (snapshotPtDate.getUTCDay() - 4 + 7) % 7;
-  const currentEnd = addCalendarDays(snapshotPtDate, -daysSinceThursday);
+  const gsc = calculateMatureGscWindows(snapshotAt);
 
   return {
     cycleMonday,
@@ -79,12 +67,12 @@ export function buildWeeklyReportSchedule(cycleMonday: string): WeeklyReportSche
     gsc: {
       timezone: GSC_TIMEZONE,
       current: {
-        start: formatCalendarDate(addCalendarDays(currentEnd, -6)),
-        end: formatCalendarDate(currentEnd),
+        start: gsc.current.startDate,
+        end: gsc.current.endDate,
       },
       comparison: {
-        start: formatCalendarDate(addCalendarDays(currentEnd, -13)),
-        end: formatCalendarDate(addCalendarDays(currentEnd, -7)),
+        start: gsc.comparison.startDate,
+        end: gsc.comparison.endDate,
       },
     },
   };
@@ -101,4 +89,3 @@ export function nextCollectionRetryAt(
   const candidate = new Date(now.getTime() + delayMs);
   return now < schedule.retryCutoffAt && candidate < schedule.retryCutoffAt ? candidate : null;
 }
-

@@ -64,4 +64,3 @@ export function createReportsRouteHandlers(dependencies: ReportsRouteDependencie
 
   return { reports, reportById };
 }
-

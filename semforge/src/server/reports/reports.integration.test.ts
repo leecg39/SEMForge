@@ -63,6 +63,19 @@ test("snapshot은 rank/AIO/NAVER/GSC를 한 객체로 동결하고 누락 provid
      values ($1, $2, $3, '2026-08-09T09:30:00.000Z', 3, 'https://report-1.example.com', 'Result')`,
     [workspaceId, siteId, rankQueryId],
   );
+  const naverObservation = await pg.query<{ id: string }>(
+    `insert into naver_observations
+      (workspace_id, site_id, tracked_query_id, observed_at, collected_at)
+     values ($1, $2, $3, '2026-08-09T09:30:00.000Z', '2026-08-09T09:31:00.000Z')
+     returning id::text as id`,
+    [workspaceId, siteId, rankQueryId],
+  );
+  await pg.query(
+    `insert into naver_observation_sources
+      (workspace_id, observation_id, source, status, collected_at, error_code)
+     values ($1, $2, 'search_ads_monthly_volume', 'failed', '2026-08-09T09:31:00.000Z', 'UPSTREAM')`,
+    [workspaceId, naverObservation.rows[0]?.id],
+  );
 
   const report = await generateWeeklyReport(pg, { workspaceId, siteId, cycleMonday: "2026-08-10" });
 
@@ -186,4 +199,3 @@ test("GET reports API는 session workspace envelope만 반환하고 다른 tenan
   assert.equal(forbidden.status, 404);
   assert.equal((await getReport(pg, attacker.workspaceId, report.id)), null);
 });
-
