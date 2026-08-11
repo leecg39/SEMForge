@@ -2,6 +2,7 @@
 // @SPEC docs/planning/06-tasks.md#p3-r1-t1--주간-불변-리포트-스냅샷
 // @TEST src/server/reports/reports.integration.test.ts
 import { buildWeeklyReportSchedule } from "@/server/reports/schedule";
+import { enqueueReportDeliveryOutbox } from "@/server/reports/delivery/outbox";
 import {
   REPORT_SECTION_KEYS,
   type GenerateWeeklyReportInput,
@@ -435,7 +436,13 @@ export async function generateWeeklyReport(
       schedule.gsc.current.start,
       schedule.gsc.current.end,
     );
-    if (replay) return replay;
+    if (replay) {
+      await enqueueReportDeliveryOutbox(db, {
+        workspaceId: input.workspaceId,
+        reportId: replay.id,
+      });
+      return replay;
+    }
 
     const brand = (
       await db.query<BrandRow>(
@@ -526,6 +533,10 @@ export async function generateWeeklyReport(
     );
     const created = await loadReport(db, input.workspaceId, inserted.id);
     if (!created) throw new Error("created report snapshot could not be loaded");
+    await enqueueReportDeliveryOutbox(db, {
+      workspaceId: input.workspaceId,
+      reportId: created.id,
+    });
     return created;
   });
 }

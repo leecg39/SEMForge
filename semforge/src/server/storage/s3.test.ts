@@ -27,15 +27,17 @@ test("private PUT은 checksum·서버 암호화·If-None-Match를 서명하고 p
   });
   const body = new TextEncoder().encode("immutable-pdf");
   const checksumSha256 = createHash("sha256").update(body).digest("hex");
+  const contentIdentitySha256 = "b".repeat(64);
 
   const result = await storage.putPrivate({
     key: "reports/51000000-0000-4000-8000-000000000001/report/snapshot.pdf",
     body,
     contentType: "application/pdf",
     checksumSha256,
+    contentIdentitySha256,
   });
 
-  assert.deepEqual(result, { created: true, checksumSha256, sizeBytes: 13 });
+  assert.deepEqual(result, { created: true, checksumSha256, sizeBytes: 13, contentIdentitySha256 });
   assert.equal(requests.length, 1);
   const request = requests[0]!;
   assert.equal(request.method, "PUT");
@@ -43,6 +45,7 @@ test("private PUT은 checksum·서버 암호화·If-None-Match를 서명하고 p
   assert.equal(request.headers.get("if-none-match"), "*");
   assert.equal(request.headers.get("x-amz-server-side-encryption"), "AES256");
   assert.equal(request.headers.get("x-amz-meta-sha256"), checksumSha256);
+  assert.equal(request.headers.get("x-amz-meta-content-identity-sha256"), contentIdentitySha256);
   assert.equal(request.headers.get("x-amz-acl"), null);
   assert.match(request.headers.get("authorization") ?? "", /^AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE\//);
   assert.doesNotMatch(request.headers.get("authorization") ?? "", /wJalrXUtnFEMI/);

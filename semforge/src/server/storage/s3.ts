@@ -10,12 +10,15 @@ export interface PutPrivateObjectInput {
   readonly body: Uint8Array;
   readonly contentType: string;
   readonly checksumSha256: string;
+  /** PDF bytes may vary across Chromium runs; this binds the immutable object to its report snapshot. */
+  readonly contentIdentitySha256?: string;
 }
 
 export interface PutPrivateObjectResult {
   readonly created: boolean;
   readonly checksumSha256: string;
   readonly sizeBytes: number;
+  readonly contentIdentitySha256?: string;
 }
 
 export interface SignedObjectUrl {
@@ -85,7 +88,7 @@ function signingKey(secret: string, date: string, region: string): Buffer {
   return hmac(hmac(hmac(hmac(`AWS4${secret}`, date), region), "s3"), "aws4_request");
 }
 
-function requireNonBlank(value: string, field: string): string {
+function requireNonBlank(value: string): string {
   const normalized = value.trim();
   if (!normalized || normalized.length > 512) throw new ObjectStorageError("INVALID_CONFIG");
   return normalized;
@@ -154,13 +157,13 @@ export class S3PrivateObjectStorage implements PrivateObjectStorage {
     ) {
       throw new ObjectStorageError("INVALID_CONFIG");
     }
-    this.region = requireNonBlank(options.region, "region");
-    this.bucket = requireNonBlank(options.bucket, "bucket");
+    this.region = requireNonBlank(options.region);
+    this.bucket = requireNonBlank(options.bucket);
     if (!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(this.bucket)) {
       throw new ObjectStorageError("INVALID_CONFIG");
     }
-    this.accessKeyId = requireNonBlank(options.accessKeyId, "accessKeyId");
-    this.secretAccessKey = requireNonBlank(options.secretAccessKey, "secretAccessKey");
+    this.accessKeyId = requireNonBlank(options.accessKeyId);
+    this.secretAccessKey = requireNonBlank(options.secretAccessKey);
     this.fetcher = options.fetch ?? globalThis.fetch;
     this.clock = options.clock ?? (() => new Date());
   }
@@ -168,10 +171,13 @@ export class S3PrivateObjectStorage implements PrivateObjectStorage {
   async putPrivate(input: PutPrivateObjectInput): Promise<PutPrivateObjectResult> {
     const key = requireKey(input.key);
     const checksum = requireChecksum(input.checksumSha256);
+    const contentIdentity = input.contentIdentitySha256 === undefined
+      ? undefined
+      : requireChecksum(input.contentIdentitySha256);
     if (sha256(input.body) !== checksum || input.body.byteLength > MAX_OBJECT_BYTES) {
       throw new ObjectStorageError("INVALID_OBJECT");
     }
-    const contentType = requireNonBlank(input.contentType, "contentType");
+    const contentType = requireNonBlank(input.contentType);
     const url = this.objectUrl(key);
     const headers: Record<string, string> = {
       "content-type": contentType,
@@ -180,6 +186,7 @@ export class S3PrivateObjectStorage implements PrivateObjectStorage {
       "x-amz-meta-sha256": checksum,
       "x-amz-server-side-encryption": "AES256",
     };
+    if (contentIdentity) headers["x-amz-meta-content-identity-sha256"] = contentIdentity;
     headers.authorization = this.authorization("PUT", url, headers, checksum, this.clock());
     let response: Response;
     try {
@@ -188,13 +195,20 @@ export class S3PrivateObjectStorage implements PrivateObjectStorage {
       throw new ObjectStorageError("PROVIDER_ERROR");
     }
     if (response.ok) {
-      return { created: true, checksumSha256: checksum, sizeBytes: input.body.byteLength };
+      return {
+        created: true,
+        checksumSha256: checksum,
+        sizeBytes: input.body.byteLength,
+        ...(contentIdentity ? { contentIdentitySha256: contentIdentity } : {}),
+      };
     }
     if (response.status !== 409 && response.status !== 412) {
       throw new ObjectStorageError("PROVIDER_ERROR");
     }
     const existing = await this.head(key);
-    if (existing.checksumSha256 !== checksum || existing.sizeBytes !== input.body.byteLength) {
+    const exactBytes = existing.checksumSha256 === checksum && existing.sizeBytes === input.body.byteLength;
+    const sameIdentity = contentIdentity !== undefined && existing.contentIdentitySha256 === contentIdentity;
+    if (!exactBytes && !sameIdentity) {
       throw new ObjectStorageError("OBJECT_CONFLICT");
     }
     return { created: false, ...existing };
@@ -280,7 +294,11 @@ export class S3PrivateObjectStorage implements PrivateObjectStorage {
     return `AWS4-HMAC-SHA256 Credential=${this.accessKeyId}/${scope}, SignedHeaders=${signed}, Signature=${signature}`;
   }
 
-  private async head(rawKey: string): Promise<{ checksumSha256: string; sizeBytes: number }> {
+  private async head(rawKey: string): Promise<{
+    checksumSha256: string;
+    sizeBytes: number;
+    contentIdentitySha256?: string;
+  }> {
     const url = this.objectUrl(requireKey(rawKey));
     const headers: Record<string, string> = { "x-amz-content-sha256": EMPTY_SHA256 };
     headers.authorization = this.authorization("HEAD", url, headers, EMPTY_SHA256, this.clock());
@@ -293,10 +311,20 @@ export class S3PrivateObjectStorage implements PrivateObjectStorage {
     if (response.status === 404) throw new ObjectStorageError("NOT_FOUND");
     if (!response.ok) throw new ObjectStorageError("PROVIDER_ERROR");
     const checksumSha256 = response.headers.get("x-amz-meta-sha256")?.toLowerCase() ?? "";
+    const contentIdentitySha256 = response.headers
+      .get("x-amz-meta-content-identity-sha256")
+      ?.toLowerCase();
     const sizeBytes = Number(response.headers.get("content-length"));
     if (!/^[0-9a-f]{64}$/.test(checksumSha256) || !Number.isSafeInteger(sizeBytes) || sizeBytes < 0) {
       throw new ObjectStorageError("PROVIDER_ERROR");
     }
-    return { checksumSha256, sizeBytes };
+    if (contentIdentitySha256 !== undefined && !/^[0-9a-f]{64}$/.test(contentIdentitySha256)) {
+      throw new ObjectStorageError("PROVIDER_ERROR");
+    }
+    return {
+      checksumSha256,
+      sizeBytes,
+      ...(contentIdentitySha256 ? { contentIdentitySha256 } : {}),
+    };
   }
 }

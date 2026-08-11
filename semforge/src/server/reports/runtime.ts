@@ -6,6 +6,7 @@ import {
   createReportGenerationJobHandler,
   type ReportGenerationPayload,
 } from "@/server/reports/job-handler";
+import { createRuntimeReportDeliveryJobHandlers } from "@/server/reports/delivery/runtime";
 import {
   createPostgresWeeklyReportGenerator,
   type ReportSqlSource,
@@ -15,4 +16,12 @@ import {
 export function createRuntimeReportGenerationJobHandler(): JobHandler<ReportGenerationPayload> {
   const source = getPool("worker") as unknown as ReportSqlSource;
   return createReportGenerationJobHandler(createPostgresWeeklyReportGenerator(source));
+}
+
+/** Worker entrypoint가 수동 갱신 없이 report snapshot→PDF/email jobs를 등록하는 고정 registry. */
+export function createRuntimeReportJobHandlers() {
+  return {
+    "report.snapshot": createRuntimeReportGenerationJobHandler(),
+    ...createRuntimeReportDeliveryJobHandlers(),
+  } as const;
 }

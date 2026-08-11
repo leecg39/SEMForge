@@ -40,6 +40,15 @@ const rawServerEnvSchema = z.object({
   NAVER_SEARCH_AD_ACCESS_LICENSE: z.string().trim().min(1).optional(),
   NAVER_SEARCH_AD_SECRET_KEY: z.string().trim().min(1).optional(),
   NAVER_SEARCH_AD_CUSTOMER_ID: z.string().trim().min(1).optional(),
+  // @TASK P4-R1-T1 - Private report storage, Chromium PDF, and Resend delivery.
+  RESEND_API_KEY: z.string().trim().min(1).max(512).optional(),
+  RESEND_FROM_EMAIL: z.string().trim().min(3).max(320).optional(),
+  S3_ENDPOINT: z.string().trim().url().optional(),
+  S3_REGION: z.string().trim().min(1).max(100).optional(),
+  S3_BUCKET: z.string().trim().regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/).optional(),
+  S3_ACCESS_KEY_ID: z.string().trim().min(1).max(512).optional(),
+  S3_SECRET_ACCESS_KEY: z.string().min(1).max(1024).optional(),
+  CHROMIUM_EXECUTABLE_PATH: z.string().trim().startsWith("/").optional(),
   BILLING_FINGERPRINT_SECRET: secretSchema.optional(),
   PGPOOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
   PGPOOL_CONNECTION_TIMEOUT_MS: z.coerce.number().int().min(100).max(60_000).default(5_000),
@@ -121,6 +130,14 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
       "NAVER_SEARCH_AD_SECRET_KEY",
       "NAVER_SEARCH_AD_CUSTOMER_ID",
       "BILLING_FINGERPRINT_SECRET",
+      "RESEND_API_KEY",
+      "RESEND_FROM_EMAIL",
+      "S3_ENDPOINT",
+      "S3_REGION",
+      "S3_BUCKET",
+      "S3_ACCESS_KEY_ID",
+      "S3_SECRET_ACCESS_KEY",
+      "CHROMIUM_EXECUTABLE_PATH",
     ] as const) {
       if (!parsed.data[required]) issues.push(`${required} is required in production`);
     }
@@ -138,6 +155,13 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
     !parsed.data.APP_PUBLIC_URL.startsWith("https://")
   ) {
     issues.push("APP_PUBLIC_URL must use https in production");
+  }
+  if (
+    parsed.data.NODE_ENV === "production" &&
+    parsed.data.S3_ENDPOINT &&
+    !parsed.data.S3_ENDPOINT.startsWith("https://")
+  ) {
+    issues.push("S3_ENDPOINT must use https in production");
   }
   if (issues.length > 0) throw new EnvironmentValidationError(issues);
 
