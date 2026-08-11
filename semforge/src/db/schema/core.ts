@@ -710,6 +710,10 @@ export const weeklyReports = pgTable(
     unique("weekly_reports_site_period_uq").on(table.workspaceId, table.siteId, table.periodStart, table.periodEnd),
     foreignKey({ columns: [table.workspaceId, table.siteId], foreignColumns: [sites.workspaceId, sites.id], name: "weekly_reports_site_fk" }).onDelete("cascade"),
     check("weekly_reports_period_ck", sql`${table.periodEnd} >= ${table.periodStart} and ${table.comparisonEnd} >= ${table.comparisonStart}`),
+    check(
+      "weekly_reports_snapshot_state_ck",
+      sql`${table.status} in ('collecting', 'failed') or (${table.snapshot} is not null and ${table.snapshotReadyAt} is not null)`,
+    ),
   ],
 );
 
@@ -729,6 +733,11 @@ export const reportSections = pgTable(
     unique("report_sections_workspace_id_uq").on(table.workspaceId, table.id),
     unique("report_sections_report_key_uq").on(table.workspaceId, table.reportId, table.key),
     foreignKey({ columns: [table.workspaceId, table.reportId], foreignColumns: [weeklyReports.workspaceId, weeklyReports.id], name: "report_sections_report_fk" }).onDelete("cascade"),
+    check("report_sections_key_ck", sql`${table.key} in ('rank', 'aio', 'naver', 'gsc')`),
+    check(
+      "report_sections_availability_ck",
+      sql`(${table.available} and ${table.unavailableReason} is null) or (not ${table.available} and ${table.unavailableReason} is not null)`,
+    ),
   ],
 );
 
