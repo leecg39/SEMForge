@@ -95,6 +95,8 @@ CREATE TABLE "gsc_observations" (
 	"workspace_id" uuid NOT NULL,
 	"site_id" uuid NOT NULL,
 	"binding_id" uuid NOT NULL,
+	"provider_call_id" uuid NOT NULL,
+	"collected_at" timestamp with time zone NOT NULL,
 	"data_date" date NOT NULL,
 	"dimension_hash" text NOT NULL,
 	"dimensions" jsonb NOT NULL,
@@ -184,6 +186,7 @@ CREATE TABLE "naver_observations" (
 	"tracked_query_id" uuid NOT NULL,
 	"query_type" "tracked_query_type" DEFAULT 'rank' NOT NULL,
 	"observed_at" timestamp with time zone NOT NULL,
+	"collected_at" timestamp with time zone NOT NULL,
 	"monthly_pc_search_volume" integer,
 	"monthly_mobile_search_volume" integer,
 	"blog_result_count" bigint,
@@ -194,6 +197,20 @@ CREATE TABLE "naver_observations" (
 	CONSTRAINT "naver_observations_query_time_uq" UNIQUE("workspace_id","tracked_query_id","observed_at"),
 	CONSTRAINT "naver_observations_volume_ck" CHECK (coalesce("naver_observations"."monthly_pc_search_volume", 0) >= 0 and coalesce("naver_observations"."monthly_mobile_search_volume", 0) >= 0 and coalesce("naver_observations"."blog_result_count", 0) >= 0),
 	CONSTRAINT "naver_observations_query_type_ck" CHECK ("naver_observations"."query_type" = 'rank')
+);
+--> statement-breakpoint
+CREATE TABLE "naver_observation_sources" (
+	"workspace_id" uuid NOT NULL,
+	"observation_id" uuid NOT NULL,
+	"source" text NOT NULL,
+	"status" text NOT NULL,
+	"provider_call_id" uuid,
+	"collected_at" timestamp with time zone,
+	"error_code" text,
+	"metadata" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	CONSTRAINT "naver_observation_sources_workspace_observation_source_uq" UNIQUE("workspace_id","observation_id","source"),
+	CONSTRAINT "naver_observation_sources_source_ck" CHECK ("naver_observation_sources"."source" in ('search_ads_monthly_volume', 'datalab_trend', 'datalab_gender', 'datalab_age', 'search_api_blog_total')),
+	CONSTRAINT "naver_observation_sources_status_ck" CHECK ("naver_observation_sources"."status" in ('succeeded', 'unavailable', 'retryable', 'failed'))
 );
 --> statement-breakpoint
 CREATE TABLE "oauth_states" (
@@ -518,6 +535,7 @@ ALTER TABLE "billing_customers" ADD CONSTRAINT "billing_customers_workspace_id_w
 ALTER TABLE "deliveries" ADD CONSTRAINT "deliveries_report_fk" FOREIGN KEY ("workspace_id","report_id") REFERENCES "public"."weekly_reports"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "gsc_connections" ADD CONSTRAINT "gsc_connections_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "gsc_observations" ADD CONSTRAINT "gsc_observations_binding_fk" FOREIGN KEY ("workspace_id","site_id","binding_id") REFERENCES "public"."gsc_property_bindings"("workspace_id","site_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "gsc_observations" ADD CONSTRAINT "gsc_observations_provider_call_fk" FOREIGN KEY ("workspace_id","provider_call_id") REFERENCES "public"."provider_calls"("workspace_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "gsc_property_bindings" ADD CONSTRAINT "gsc_property_bindings_site_fk" FOREIGN KEY ("workspace_id","site_id") REFERENCES "public"."sites"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "gsc_property_bindings" ADD CONSTRAINT "gsc_property_bindings_connection_fk" FOREIGN KEY ("workspace_id","connection_id") REFERENCES "public"."gsc_connections"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "invites" ADD CONSTRAINT "invites_accepted_owner_membership_fk" FOREIGN KEY ("accepted_workspace_id","accepted_by_user_id","role") REFERENCES "public"."memberships"("workspace_id","user_id","role") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
@@ -525,6 +543,8 @@ ALTER TABLE "jobs" ADD CONSTRAINT "jobs_workspace_id_workspaces_id_fk" FOREIGN K
 ALTER TABLE "memberships" ADD CONSTRAINT "memberships_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "memberships" ADD CONSTRAINT "memberships_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "naver_observations" ADD CONSTRAINT "naver_observations_query_fk" FOREIGN KEY ("workspace_id","site_id","tracked_query_id","query_type") REFERENCES "public"."tracked_queries"("workspace_id","site_id","id","type") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "naver_observation_sources" ADD CONSTRAINT "naver_observation_sources_observation_fk" FOREIGN KEY ("workspace_id","observation_id") REFERENCES "public"."naver_observations"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "naver_observation_sources" ADD CONSTRAINT "naver_observation_sources_provider_call_fk" FOREIGN KEY ("workspace_id","provider_call_id") REFERENCES "public"."provider_calls"("workspace_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "oauth_states" ADD CONSTRAINT "oauth_states_membership_fk" FOREIGN KEY ("workspace_id","user_id") REFERENCES "public"."memberships"("workspace_id","user_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "outbox" ADD CONSTRAINT "outbox_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "password_resets" ADD CONSTRAINT "password_resets_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -635,7 +655,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON
 TO semforge_web;--> statement-breakpoint
 GRANT SELECT, INSERT ON audit_events, provider_calls, usage_reservations, jobs, outbox TO semforge_web;--> statement-breakpoint
 GRANT SELECT ON rank_observations, aio_observations, aio_citations, naver_observations,
-  gsc_observations, weekly_reports, report_sections, report_assets, deliveries,
+  naver_observation_sources, gsc_observations, weekly_reports, report_sections, report_assets, deliveries,
   payments, provider_events, billing_ledger_events TO semforge_web;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE ON users TO semforge_auth;--> statement-breakpoint
 GRANT SELECT ON invites TO semforge_auth;--> statement-breakpoint
@@ -652,9 +672,10 @@ GRANT UPDATE (superseded_at) ON invites TO semforge_operator;--> statement-break
 GRANT SELECT ON workspaces, memberships, sites, tracked_queries, gsc_connections,
   gsc_property_bindings, billing_customers, payment_methods, subscriptions TO semforge_worker;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON provider_calls, usage_reservations, jobs, outbox,
-  rank_observations, aio_observations, aio_citations, naver_observations, gsc_observations,
+  rank_observations, aio_observations, aio_citations, naver_observations, naver_observation_sources, gsc_observations,
   weekly_reports, report_sections, report_assets, deliveries, payments, provider_events
 TO semforge_worker;--> statement-breakpoint
+GRANT INSERT ON audit_events TO semforge_worker;--> statement-breakpoint
 GRANT SELECT ON sessions, memberships TO semforge_billing;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE ON billing_customers, payment_methods, subscriptions, payments, provider_events TO semforge_billing;--> statement-breakpoint
 GRANT INSERT ON billing_ledger_events TO semforge_billing;--> statement-breakpoint
@@ -682,7 +703,7 @@ BEGIN
     'gsc_connections', 'oauth_states', 'gsc_property_bindings',
     'provider_calls', 'usage_reservations', 'jobs', 'outbox',
     'rank_observations', 'aio_observations', 'aio_citations',
-    'naver_observations', 'gsc_observations',
+    'naver_observations', 'naver_observation_sources', 'gsc_observations',
     'weekly_reports', 'report_sections', 'report_assets', 'deliveries',
     'billing_customers', 'payment_methods', 'subscriptions', 'payments', 'provider_events', 'billing_ledger_events'
   ] LOOP
@@ -731,6 +752,8 @@ CREATE POLICY password_resets_auth_insert ON password_resets FOR INSERT TO semfo
 CREATE POLICY password_resets_auth_update ON password_resets FOR UPDATE TO semforge_auth USING (true) WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY outbox_auth_insert ON outbox FOR INSERT TO semforge_auth
   WITH CHECK (topic = 'email.password_reset');--> statement-breakpoint
+CREATE POLICY audit_events_worker_insert ON audit_events FOR INSERT TO semforge_worker
+  WITH CHECK (true);--> statement-breakpoint
 ALTER TABLE auth_action_throttles ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE auth_action_throttles FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY auth_action_throttles_auth_select ON auth_action_throttles FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
@@ -743,7 +766,7 @@ BEGIN
   FOREACH worker_table IN ARRAY ARRAY[
     'memberships', 'sites', 'tracked_queries', 'gsc_connections', 'gsc_property_bindings',
     'provider_calls', 'usage_reservations', 'jobs', 'outbox',
-    'rank_observations', 'aio_observations', 'aio_citations', 'naver_observations', 'gsc_observations',
+    'rank_observations', 'aio_observations', 'aio_citations', 'naver_observations', 'naver_observation_sources', 'gsc_observations',
     'weekly_reports', 'report_sections', 'report_assets', 'deliveries',
     'billing_customers', 'payment_methods', 'subscriptions', 'payments', 'provider_events', 'billing_ledger_events'
   ] LOOP

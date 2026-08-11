@@ -8,8 +8,11 @@ import { getTableConfig } from "drizzle-orm/pg-core";
 import {
   authActionThrottles,
   aioPresenceEnum,
+  gscObservations,
   jobStatusEnum,
   invites,
+  naverObservationSources,
+  naverObservations,
   reportStatusEnum,
   subscriptionStatusEnum,
   tenantTables,
@@ -32,6 +35,7 @@ const requiredTenantTables = [
   "aio_observations",
   "aio_citations",
   "naver_observations",
+  "naver_observation_sources",
   "gsc_observations",
   "weekly_reports",
   "report_sections",
@@ -96,6 +100,68 @@ test("tracked_queries는 workspace와 site를 함께 참조한다", () => {
         key.columns.map((column) => column.name).join(",") === "workspace_id,site_id" &&
         key.foreignColumns.map((column) => column.name).join(",") === "workspace_id,id",
     ),
+  );
+});
+
+test("NAVER와 GSC 관측값은 수집 provenance를 tenant 복합 FK로 고정한다", () => {
+  const naverConfig = getTableConfig(naverObservations);
+  const naverCollectedAt = naverConfig.columns.find((column) => column.name === "collected_at");
+  assert.equal(naverCollectedAt?.notNull, true);
+
+  const sourcesConfig = getTableConfig(naverObservationSources);
+  assert.deepEqual(
+    sourcesConfig.columns.map((column) => column.name),
+    [
+      "workspace_id",
+      "observation_id",
+      "source",
+      "status",
+      "provider_call_id",
+      "collected_at",
+      "error_code",
+      "metadata",
+    ],
+  );
+  assert.ok(
+    sourcesConfig.foreignKeys.some((key) => {
+      const reference = key.reference();
+      return (
+        getTableConfig(reference.foreignTable).name === "naver_observations" &&
+        reference.columns.map((column) => column.name).join(",") ===
+          "workspace_id,observation_id" &&
+        reference.foreignColumns.map((column) => column.name).join(",") === "workspace_id,id"
+      );
+    }),
+  );
+  assert.ok(
+    sourcesConfig.foreignKeys.some((key) => {
+      const reference = key.reference();
+      return (
+        getTableConfig(reference.foreignTable).name === "provider_calls" &&
+        reference.columns.map((column) => column.name).join(",") ===
+          "workspace_id,provider_call_id" &&
+        reference.foreignColumns.map((column) => column.name).join(",") === "workspace_id,id"
+      );
+    }),
+  );
+  assert.deepEqual(
+    sourcesConfig.checks.map((constraint) => constraint.name).sort(),
+    ["naver_observation_sources_source_ck", "naver_observation_sources_status_ck"],
+  );
+
+  const gscConfig = getTableConfig(gscObservations);
+  assert.equal(gscConfig.columns.find((column) => column.name === "provider_call_id")?.notNull, true);
+  assert.equal(gscConfig.columns.find((column) => column.name === "collected_at")?.notNull, true);
+  assert.ok(
+    gscConfig.foreignKeys.some((key) => {
+      const reference = key.reference();
+      return (
+        getTableConfig(reference.foreignTable).name === "provider_calls" &&
+        reference.columns.map((column) => column.name).join(",") ===
+          "workspace_id,provider_call_id" &&
+        reference.foreignColumns.map((column) => column.name).join(",") === "workspace_id,id"
+      );
+    }),
   );
 });
 

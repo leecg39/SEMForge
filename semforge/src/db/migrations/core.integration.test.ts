@@ -121,6 +121,73 @@ test("web, worker, billing role은 BYPASSRLS가 아니며 web 정책은 명시�
   );
 });
 
+test("worker role은 audit_events에 INSERT만 허용하고 기록을 읽을 수 없다", async () => {
+  const workspaceId = "00000000-0000-4000-8000-0000000000cb";
+  await pg.query(
+    "insert into workspaces (id, name, slug) values ($1, 'Worker Audit', 'worker-audit')",
+    [workspaceId],
+  );
+
+  const grants = await pg.query<{ privilege_type: string }>(
+    "select privilege_type from information_schema.role_table_grants where grantee = 'semforge_worker' and table_schema = 'public' and table_name = 'audit_events' order by privilege_type",
+  );
+  assert.deepEqual(grants.rows.map((row) => row.privilege_type), ["INSERT"]);
+
+  const policies = await pg.query<{ policyname: string; cmd: string }>(
+    "select policyname, cmd from pg_policies where tablename = 'audit_events' and 'semforge_worker' = any(roles) order by policyname",
+  );
+  assert.deepEqual(policies.rows, [
+    { policyname: "audit_events_worker_insert", cmd: "INSERT" },
+  ]);
+
+  await pg.query("begin");
+  try {
+    await pg.query("set local role semforge_worker");
+    await pg.query(
+      `insert into audit_events (workspace_id, action, entity_type, entity_id, request_id, metadata)
+       values ($1, 'job.leased', 'job', 'job-1', 'worker-1', '{"attempt":1}'::jsonb)`,
+      [workspaceId],
+    );
+    await pg.query("savepoint audit_select_denied");
+    await assert.rejects(pg.query("select metadata from audit_events where workspace_id = $1", [workspaceId]));
+    await pg.query("rollback to savepoint audit_select_denied");
+    await pg.query("commit");
+  } catch (error) {
+    await pg.query("rollback");
+    throw error;
+  }
+
+  const stored = await pg.query<{ action: string }>(
+    "select action from audit_events where workspace_id = $1 and entity_id = 'job-1'",
+    [workspaceId],
+  );
+  assert.deepEqual(stored.rows, [{ action: "job.leased" }]);
+});
+
+test("NAVER/GSC provenance schema는 source/status와 tenant 복합 FK를 실제 DB에서 강제한다", async () => {
+  const columns = await pg.query<{ table_name: string; column_name: string; is_nullable: string }>(
+    `select table_name, column_name, is_nullable
+       from information_schema.columns
+      where table_schema = 'public'
+        and ((table_name = 'naver_observations' and column_name = 'collected_at')
+          or (table_name = 'gsc_observations' and column_name in ('provider_call_id', 'collected_at')))
+      order by table_name, column_name`,
+  );
+  assert.deepEqual(columns.rows, [
+    { table_name: "gsc_observations", column_name: "collected_at", is_nullable: "NO" },
+    { table_name: "gsc_observations", column_name: "provider_call_id", is_nullable: "NO" },
+    { table_name: "naver_observations", column_name: "collected_at", is_nullable: "NO" },
+  ]);
+
+  const sourceChecks = await pg.query<{ conname: string }>(
+    "select conname from pg_constraint where conrelid = 'naver_observation_sources'::regclass and contype = 'c' order by conname",
+  );
+  assert.deepEqual(sourceChecks.rows.map((row) => row.conname), [
+    "naver_observation_sources_source_ck",
+    "naver_observation_sources_status_ck",
+  ]);
+});
+
 test("billing role은 fingerprint 결제수단과 append-only ledger만 변경한다", async () => {
   const workspaceId = "00000000-0000-4000-8000-0000000000d1";
   const customerId = "00000000-0000-4000-8000-0000000000d2";
