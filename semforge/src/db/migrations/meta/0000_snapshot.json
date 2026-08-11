@@ -3568,6 +3568,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "provider_call_id": {
+          "name": "provider_call_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
         "provider": {
           "name": "provider",
           "type": "text",
@@ -3635,17 +3641,19 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "usage_reservations_workspace_id_workspaces_id_fk": {
-          "name": "usage_reservations_workspace_id_workspaces_id_fk",
+        "usage_reservations_provider_call_fk": {
+          "name": "usage_reservations_provider_call_fk",
           "tableFrom": "usage_reservations",
-          "tableTo": "workspaces",
+          "tableTo": "provider_calls",
           "columnsFrom": [
-            "workspace_id"
+            "workspace_id",
+            "provider_call_id"
           ],
           "columnsTo": [
+            "workspace_id",
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "restrict",
           "onUpdate": "no action"
         }
       },
@@ -3665,6 +3673,14 @@
           "columns": [
             "workspace_id",
             "idempotency_key"
+          ]
+        },
+        "usage_reservations_provider_call_uq": {
+          "name": "usage_reservations_provider_call_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "provider_call_id"
           ]
         }
       },

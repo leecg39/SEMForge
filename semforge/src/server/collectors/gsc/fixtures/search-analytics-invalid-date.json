@@ -1,0 +1,12 @@
+{
+  "rows": [
+    {
+      "keys": ["not-a-date"],
+      "clicks": 1,
+      "impressions": 2,
+      "ctr": 0.5,
+      "position": 1
+    }
+  ],
+  "debug": "provider-raw-must-not-escape"
+}

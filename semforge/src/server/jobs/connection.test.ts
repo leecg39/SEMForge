@@ -6,7 +6,10 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { test } from "node:test";
 
-import { withDedicatedWorkerConnection } from "@/server/jobs/connection";
+import {
+  withDedicatedWorkerConnection,
+  withWorkerTransaction,
+} from "@/server/jobs/connection";
 
 test("connection helper는 아직 통합되지 않은 queue 모듈에 의존하지 않는다", async () => {
   const source = await readFile(
@@ -47,4 +50,40 @@ test("job callback은 하나의 connected client를 쓰고 성공·실패 모두
     /STORE_FAILED/,
   );
   assert.deepEqual(events.slice(-3), ["connect", "failure", "release"]);
+});
+
+test("worker transaction은 전용 connection에서 commit하고 오류면 rollback한 뒤 release한다", async () => {
+  const events: string[] = [];
+  const client = {
+    query: async (statement: string) => {
+      events.push(statement);
+      return { rows: [] };
+    },
+    release: () => {
+      events.push("release");
+    },
+  };
+  const pool = {
+    query: client.query,
+    connect: async () => {
+      events.push("connect");
+      return client;
+    },
+  };
+
+  await withWorkerTransaction(pool, async (transaction) => {
+    assert.equal(transaction, client);
+    events.push("operation");
+  });
+  assert.deepEqual(events, ["connect", "begin", "operation", "commit", "release"]);
+
+  events.length = 0;
+  await assert.rejects(
+    withWorkerTransaction(pool, async () => {
+      events.push("operation");
+      throw new Error("TRANSACTION_FAILED");
+    }),
+    /TRANSACTION_FAILED/,
+  );
+  assert.deepEqual(events, ["connect", "begin", "operation", "rollback", "release"]);
 });

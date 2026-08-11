@@ -17,6 +17,10 @@ export interface WorkerConnectionPool {
   connect(): Promise<WorkerSqlClient>;
 }
 
+type WorkerTransactionCallback = <T>(
+  operation: (transaction: WorkerSqlQueryable) => Promise<T>,
+) => Promise<T>;
+
 export async function withDedicatedWorkerConnection<T>(
   pool: WorkerConnectionPool,
   operation: (client: WorkerSqlClient) => Promise<T>,
@@ -27,4 +31,35 @@ export async function withDedicatedWorkerConnection<T>(
   } finally {
     client.release();
   }
+}
+
+// @TASK P3-W1-T1 - Keep every worker state transition on one leased transaction
+export async function withWorkerTransaction<T>(
+  database: WorkerSqlQueryable,
+  operation: (transaction: WorkerSqlQueryable) => Promise<T>,
+): Promise<T> {
+  const connect = (database as Partial<WorkerConnectionPool>).connect;
+  if (typeof connect === "function") {
+    return withDedicatedWorkerConnection(
+      { connect: connect.bind(database) },
+      async (client) => {
+        await client.query("begin");
+        try {
+          const result = await operation(client);
+          await client.query("commit");
+          return result;
+        } catch (error) {
+          await client.query("rollback");
+          throw error;
+        }
+      },
+    );
+  }
+
+  const transaction = (database as { transaction?: WorkerTransactionCallback }).transaction;
+  if (typeof transaction === "function") {
+    return transaction.call(database, operation) as Promise<T>;
+  }
+
+  throw new TypeError("WORKER_TRANSACTION_UNSUPPORTED");
 }

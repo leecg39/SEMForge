@@ -466,6 +466,7 @@ CREATE TABLE "tracked_queries" (
 CREATE TABLE "usage_reservations" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"workspace_id" uuid NOT NULL,
+	"provider_call_id" uuid NOT NULL,
 	"provider" text NOT NULL,
 	"resource" text NOT NULL,
 	"units" integer NOT NULL,
@@ -478,6 +479,7 @@ CREATE TABLE "usage_reservations" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "usage_reservations_workspace_id_uq" UNIQUE("workspace_id","id"),
 	CONSTRAINT "usage_reservations_idempotency_uq" UNIQUE("workspace_id","idempotency_key"),
+	CONSTRAINT "usage_reservations_provider_call_uq" UNIQUE("workspace_id","provider_call_id"),
 	CONSTRAINT "usage_reservations_units_ck" CHECK ("usage_reservations"."units" > 0),
 	CONSTRAINT "usage_reservations_period_ck" CHECK ("usage_reservations"."period_end" > "usage_reservations"."period_start")
 );
@@ -562,7 +564,7 @@ ALTER TABLE "sites" ADD CONSTRAINT "sites_workspace_id_workspaces_id_fk" FOREIGN
 ALTER TABLE "subscriptions" ADD CONSTRAINT "subscriptions_customer_fk" FOREIGN KEY ("workspace_id","billing_customer_id") REFERENCES "public"."billing_customers"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "subscriptions" ADD CONSTRAINT "subscriptions_payment_method_fk" FOREIGN KEY ("workspace_id","payment_method_id") REFERENCES "public"."payment_methods"("workspace_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "tracked_queries" ADD CONSTRAINT "tracked_queries_site_fk" FOREIGN KEY ("workspace_id","site_id") REFERENCES "public"."sites"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "usage_reservations" ADD CONSTRAINT "usage_reservations_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "usage_reservations" ADD CONSTRAINT "usage_reservations_provider_call_fk" FOREIGN KEY ("workspace_id","provider_call_id") REFERENCES "public"."provider_calls"("workspace_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "weekly_reports" ADD CONSTRAINT "weekly_reports_site_fk" FOREIGN KEY ("workspace_id","site_id") REFERENCES "public"."sites"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "aio_observations_site_time_idx" ON "aio_observations" USING btree ("workspace_id","site_id","observed_at");--> statement-breakpoint
 CREATE INDEX "audit_events_workspace_created_idx" ON "audit_events" USING btree ("workspace_id","created_at");--> statement-breakpoint
