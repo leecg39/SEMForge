@@ -10,8 +10,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # 실행 환경
 
-- 개발 서버는 **Homebrew Node v25**로 실행해야 한다. 기본 PATH의 Node v22로 띄우면 `better-sqlite3` 네이티브 모듈 버전 불일치로 `/home/` 등이 500 오류를 반환한다.
-- Node 버전을 바꿔 쓰려면 `npm rebuild better-sqlite3`로 해당 버전에 맞게 재컴파일할 것.
+- 개발·CI·프로덕션은 **Node 24 LTS**로 통일한다. `package.json`의 engines 범위를 벗어난 Node 버전으로 검증하지 않는다.
+- 데이터베이스는 PostgreSQL 16 전용이다. SQLite 및 `better-sqlite3`를 추가하거나 호환 계층을 만들지 않는다.
 - 브라우저 자동화는 ego-browser(ego-lite)가 기본이다.
 
 # 데이터 연동 원칙 (사용자 지침, 2026-07-29)

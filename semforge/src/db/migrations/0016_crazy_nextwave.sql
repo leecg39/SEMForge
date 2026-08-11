@@ -1,1 +1,0 @@
-ALTER TABLE `tracked_keywords` ADD `tags` text DEFAULT '[]' NOT NULL;

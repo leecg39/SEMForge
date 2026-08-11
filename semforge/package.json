@@ -2,6 +2,9 @@
   "name": "semforge",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -9,6 +12,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test \"src/**/*.test.ts\"",
+    "test:db": "tsx --test src/db/**/*.test.ts src/lib/crypto.test.ts src/lib/env.test.ts",
     "verify": "npm run lint && npm run typecheck && npm run test",
     "test:analytics": "tsx --test src/lib/analytics/metrics.test.ts src/lib/analytics/intent.test.ts src/lib/analytics/keyword-gap.test.ts",
     "test:talordata": "tsx --test src/server/talordata/client.test.ts src/server/talordata/collect.test.ts src/server/talordata/trends.test.ts src/server/talordata/insights.test.ts",
@@ -25,11 +29,6 @@
     "content:migrate-svg": "tsx scripts/convert-content-package-assets-to-svg.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
-    "db:cleanup:demo": "tsx scripts/db-cleanup-demo.ts",
-    "db:backup": "tsx scripts/db-backup.ts",
-    "db:seed": "tsx src/db/seed.ts",
-    "db:seed:analytics": "SEED_DEMO_DATA=1 tsx src/db/seed-analytics-cli.ts",
-    "db:reset": "rm -rf data && npm run db:migrate && npm run db:seed",
     "loop:bootstrap": "bash scripts/loop-bootstrap.sh",
     "loop:verify": "tsx scripts/loop-verify.ts",
     "loop:smoke": "tsx scripts/loop-smoke.ts",
@@ -44,7 +43,6 @@
     "@radix-ui/react-icons": "^1.3.2",
     "@radix-ui/react-select": "^2.3.7",
     "@radix-ui/react-tabs": "^1.1.21",
-    "@types/pg": "^8.20.4",
     "agentation": "^3.0.2",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
@@ -61,8 +59,10 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.3.14",
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "^24",
+    "@types/pg": "^8.20.4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "drizzle-kit": "^0.31.10",

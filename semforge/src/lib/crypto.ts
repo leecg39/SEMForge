@@ -1,64 +1,160 @@
+// @TASK P1-D1-T1 - Versioned AES-256-GCM secret envelope and key rotation
+// @SPEC docs/planning/06-tasks.md#p1-d1-t1--postgresql-16-핵심-스키마와-암호화-기반
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
 
-/**
- * OAuth 토큰 등 비밀값의 at-rest 암호화 (AES-256-GCM).
- *
- * - 키 재료: env APP_SECRET (임의의 긴 문자열). scrypt 로 256bit 키를 파생한다.
- * - 저장 형식: `enc:v1:<iv b64>:<tag b64>:<ciphertext b64>` — 접두어로 평문과 구분한다.
- * - APP_SECRET 미설정 시 애플리케이션 시작을 실패시킨다.
- * - 복호화 실패(키 변경 등)는 null 을 반환해 호출부가 "재연결 필요" 로 처리한다.
- */
+import { parsePreviousSecretKeys } from "@/lib/env";
 
-const PREFIX = "enc:v1:";
-const KEY_SALT = "semforge-token-encryption-v1";
+const ENVELOPE_PREFIX = "enc:v1";
+const KEY_ID_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
 
-let cachedKey: Buffer | null | undefined;
+export type SecretKeyring = Readonly<{
+  currentKeyId: string;
+  currentSecret: string;
+  previousKeys?: Readonly<Record<string, string>>;
+}>;
 
-function getKey(): Buffer | null {
-  if (cachedKey !== undefined) return cachedKey;
-  const secret = process.env.APP_SECRET?.trim();
-  if (!secret) {
-    throw new Error("APP_SECRET 이 설정되지 않았습니다.");
+export type SecretDecryptionFailure =
+  | "invalid_envelope"
+  | "unknown_key"
+  | "authentication_failed";
+
+export class SecretDecryptionError extends Error {
+  constructor(readonly code: SecretDecryptionFailure) {
+    super(`비밀값 복호화 실패: ${code}`);
+    this.name = "SecretDecryptionError";
   }
-  cachedKey = scryptSync(secret, KEY_SALT, 32);
-  return cachedKey;
+}
+
+export type SecretCrypto = Readonly<{
+  encrypt(plaintext: string): string;
+  decrypt(stored: string): string | null;
+  decryptOrThrow(stored: string): string;
+}>;
+
+function assertKey(keyId: string, secret: string): void {
+  if (!KEY_ID_PATTERN.test(keyId)) throw new Error(`유효하지 않은 encryption key id: ${keyId}`);
+  if (secret.length < 32) throw new Error(`encryption key ${keyId}는 32자 이상이어야 합니다.`);
+}
+
+function deriveKey(keyId: string, secret: string): Buffer {
+  assertKey(keyId, secret);
+  return scryptSync(secret, `semforge-secret-envelope-v1:${keyId}`, 32);
+}
+
+function decodeEnvelope(stored: string): {
+  keyId: string;
+  iv: Buffer;
+  tag: Buffer;
+  ciphertext: Buffer;
+} {
+  const parts = stored.split(":");
+  if (parts.length !== 6 || `${parts[0]}:${parts[1]}` !== ENVELOPE_PREFIX) {
+    throw new SecretDecryptionError("invalid_envelope");
+  }
+
+  const [, , keyId, ivEncoded, tagEncoded, ciphertextEncoded] = parts;
+  if (!KEY_ID_PATTERN.test(keyId) || !ivEncoded || !tagEncoded || !ciphertextEncoded) {
+    throw new SecretDecryptionError("invalid_envelope");
+  }
+
+  const iv = Buffer.from(ivEncoded, "base64url");
+  const tag = Buffer.from(tagEncoded, "base64url");
+  const ciphertext = Buffer.from(ciphertextEncoded, "base64url");
+  if (iv.length !== 12 || tag.length !== 16 || ciphertext.length === 0) {
+    throw new SecretDecryptionError("invalid_envelope");
+  }
+  return { keyId, iv, tag, ciphertext };
+}
+
+export function createSecretCrypto(keyring: SecretKeyring): SecretCrypto {
+  assertKey(keyring.currentKeyId, keyring.currentSecret);
+  for (const [keyId, secret] of Object.entries(keyring.previousKeys ?? {})) assertKey(keyId, secret);
+
+  const secrets = new Map<string, string>([
+    ...Object.entries(keyring.previousKeys ?? {}),
+    [keyring.currentKeyId, keyring.currentSecret],
+  ]);
+
+  const decryptOrThrow = (stored: string): string => {
+    const envelope = decodeEnvelope(stored);
+    const secret = secrets.get(envelope.keyId);
+    if (!secret) throw new SecretDecryptionError("unknown_key");
+
+    try {
+      const decipher = createDecipheriv(
+        "aes-256-gcm",
+        deriveKey(envelope.keyId, secret),
+        envelope.iv,
+      );
+      decipher.setAuthTag(envelope.tag);
+      return Buffer.concat([
+        decipher.update(envelope.ciphertext),
+        decipher.final(),
+      ]).toString("utf8");
+    } catch (error) {
+      if (error instanceof SecretDecryptionError) throw error;
+      throw new SecretDecryptionError("authentication_failed");
+    }
+  };
+
+  return {
+    encrypt(plaintext: string): string {
+      const iv = randomBytes(12);
+      const cipher = createCipheriv(
+        "aes-256-gcm",
+        deriveKey(keyring.currentKeyId, keyring.currentSecret),
+        iv,
+      );
+      const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+      const tag = cipher.getAuthTag();
+      return [
+        ENVELOPE_PREFIX,
+        keyring.currentKeyId,
+        iv.toString("base64url"),
+        tag.toString("base64url"),
+        ciphertext.toString("base64url"),
+      ].join(":");
+    },
+    decrypt(stored: string): string | null {
+      try {
+        return decryptOrThrow(stored);
+      } catch {
+        return null;
+      }
+    },
+    decryptOrThrow,
+  };
+}
+
+function keyringFromEnvironment(): SecretKeyring {
+  const currentSecret = process.env.APP_SECRET?.trim();
+  const currentKeyId = process.env.APP_SECRET_CURRENT_KEY_ID?.trim();
+  if (!currentSecret || !currentKeyId) {
+    throw new Error("APP_SECRET과 APP_SECRET_CURRENT_KEY_ID가 설정되지 않았습니다.");
+  }
+  return {
+    currentKeyId,
+    currentSecret,
+    previousKeys: parsePreviousSecretKeys(process.env.APP_SECRET_PREVIOUS_KEYS),
+  };
 }
 
 export function isEncryptionConfigured(): boolean {
-  return getKey() !== null;
+  return Boolean(process.env.APP_SECRET?.trim() && process.env.APP_SECRET_CURRENT_KEY_ID?.trim());
 }
 
 export function isEncrypted(value: string): boolean {
-  return value.startsWith(PREFIX);
+  return value.startsWith(`${ENVELOPE_PREFIX}:`);
 }
 
-/** 비밀값을 암호화한다. */
 export function encryptSecret(plaintext: string): string {
-  const key = getKey();
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
-  const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return `${PREFIX}${iv.toString("base64")}:${tag.toString("base64")}:${ciphertext.toString("base64")}`;
+  return createSecretCrypto(keyringFromEnvironment()).encrypt(plaintext);
 }
 
-/**
- * 저장된 비밀값을 복호화한다.
- * - 평문(비암호화 시절 값)은 그대로 반환한다.
- * - 암호문 복호화 실패(키 변경/손상)는 null — 호출부는 재연결을 안내한다.
- */
 export function decryptSecret(stored: string): string | null {
-  if (!isEncrypted(stored)) return stored;
-  const key = getKey();
-  try {
-    const [ivB64, tagB64, dataB64] = stored.slice(PREFIX.length).split(":");
-    const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivB64, "base64"));
-    decipher.setAuthTag(Buffer.from(tagB64, "base64"));
-    return Buffer.concat([
-      decipher.update(Buffer.from(dataB64, "base64")),
-      decipher.final(),
-    ]).toString("utf8");
-  } catch {
-    return null;
-  }
+  return createSecretCrypto(keyringFromEnvironment()).decrypt(stored);
+}
+
+export function decryptSecretOrThrow(stored: string): string {
+  return createSecretCrypto(keyringFromEnvironment()).decryptOrThrow(stored);
 }
