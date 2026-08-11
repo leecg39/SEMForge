@@ -31,10 +31,27 @@ spec:
             - { name: SEMFORGE_SERVICE, value: worker }
             - { name: PGSSLMODE, value: verify-full }
             - { name: APP_PUBLIC_URL, value: "https://app.semforge.example" }
+            - { name: CHROMIUM_EXECUTABLE_PATH, value: "/usr/bin/chromium" }
+            - name: AUTH_DATABASE_URL
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: auth-database-url } }
             - name: DISPATCHER_DATABASE_URL
               valueFrom: { secretKeyRef: { name: semforge-worker, key: dispatcher-database-url } }
             - name: WORKER_DATABASE_URL
               valueFrom: { secretKeyRef: { name: semforge-worker, key: tenant-database-url } }
+            - name: RESEND_API_KEY
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: resend-api-key } }
+            - name: RESEND_FROM_EMAIL
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: resend-from-email } }
+            - name: S3_ENDPOINT
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: s3-endpoint } }
+            - name: S3_REGION
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: s3-region } }
+            - name: S3_BUCKET
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: s3-bucket } }
+            - name: S3_ACCESS_KEY_ID
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: s3-access-key-id } }
+            - name: S3_SECRET_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: s3-secret-access-key } }
             - name: APP_SECRET
               valueFrom: { secretKeyRef: { name: semforge-worker, key: app-secret } }
             - name: APP_SECRET_CURRENT_KEY_ID

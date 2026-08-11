@@ -161,6 +161,37 @@ test("job/outbox canonical request hash는 schema와 migration snapshot에 함�
   assert.equal(Object.hasOwn(snapshot.tables["public.outbox"]!.columns, "request_hash"), true);
 });
 
+test("worker report outbox INSERT tenant policy는 schema와 canonical snapshot에 고정된다", () => {
+  const config = getTableConfig(outbox);
+  assert.equal(config.enableRLS, true);
+  assert.ok(config.policies.some((policy) =>
+    policy.name === "outbox_worker_insert" &&
+    policy.for === "insert" &&
+    policy.to === "semforge_worker" &&
+    policy.using === undefined &&
+    policy.withCheck !== undefined));
+
+  const snapshot = JSON.parse(
+    readFileSync(
+      path.join(process.cwd(), "src", "db", "migrations", "meta", "0000_snapshot.json"),
+      "utf8",
+    ),
+  ) as {
+    tables: Record<string, {
+      isRLSEnabled: boolean;
+      policies: Record<string, { for: string; to: string[]; withCheck?: string }>;
+    }>;
+  };
+  const snapshotOutbox = snapshot.tables["public.outbox"]!;
+  assert.equal(snapshotOutbox.isRLSEnabled, true);
+  assert.deepEqual(snapshotOutbox.policies.outbox_worker_insert?.to, ["semforge_worker"]);
+  assert.equal(snapshotOutbox.policies.outbox_worker_insert?.for, "INSERT");
+  assert.match(
+    snapshotOutbox.policies.outbox_worker_insert?.withCheck ?? "",
+    /workspace_id.*current_setting.*topic.*report\.pdf\.render.*report\.email\.deliver/u,
+  );
+});
+
 test("NAVER와 GSC 관측값은 수집 provenance를 tenant 복합 FK로 고정한다", () => {
   const naverConfig = getTableConfig(naverObservations);
   const naverCollectedAt = naverConfig.columns.find((column) => column.name === "collected_at");

@@ -3,6 +3,10 @@
 // @TEST src/server/reports/reports.integration.test.ts
 import { buildWeeklyReportSchedule } from "@/server/reports/schedule";
 import {
+  enqueueReportDeliveryOutbox,
+  loadReportOwnerRecipients,
+} from "@/server/reports/delivery/outbox";
+import {
   REPORT_SECTION_KEYS,
   type GenerateWeeklyReportInput,
   type ReportDetail,
@@ -426,8 +430,11 @@ async function collectSections(
 export async function generateWeeklyReport(
   source: ReportSqlSource,
   input: GenerateWeeklyReportInput,
+  options: { readonly ownerRecipients?: readonly string[] } = {},
 ): Promise<ReportDetail> {
   const schedule = buildWeeklyReportSchedule(input.cycleMonday);
+  const ownerRecipients = options.ownerRecipients ??
+    await loadReportOwnerRecipients(source, input.workspaceId);
   return withTransaction(source, input.workspaceId, async (db) => {
     const replay = await existingForPeriod(
       db,
@@ -435,7 +442,14 @@ export async function generateWeeklyReport(
       schedule.gsc.current.start,
       schedule.gsc.current.end,
     );
-    if (replay) return replay;
+    if (replay) {
+      await enqueueReportDeliveryOutbox(db, {
+        workspaceId: input.workspaceId,
+        reportId: replay.id,
+        ownerRecipients,
+      });
+      return replay;
+    }
 
     const brand = (
       await db.query<BrandRow>(
@@ -526,6 +540,11 @@ export async function generateWeeklyReport(
     );
     const created = await loadReport(db, input.workspaceId, inserted.id);
     if (!created) throw new Error("created report snapshot could not be loaded");
+    await enqueueReportDeliveryOutbox(db, {
+      workspaceId: input.workspaceId,
+      reportId: created.id,
+      ownerRecipients,
+    });
     return created;
   });
 }
@@ -591,8 +610,17 @@ export async function getReport(
   return withTransaction(source, workspaceId, (db) => loadReport(db, workspaceId, reportId));
 }
 
-export function createPostgresWeeklyReportGenerator(source: ReportSqlSource): WeeklyReportGenerator {
+export function createPostgresWeeklyReportGenerator(
+  source: ReportSqlSource,
+  options: {
+    readonly loadOwnerRecipients?: (workspaceId: string) => Promise<readonly string[]>;
+  } = {},
+): WeeklyReportGenerator {
   return {
-    generate: (input) => generateWeeklyReport(source, input),
+    async generate(input) {
+      const ownerRecipients = await (options.loadOwnerRecipients ??
+        ((workspaceId: string) => loadReportOwnerRecipients(source, workspaceId)))(input.workspaceId);
+      return generateWeeklyReport(source, input, { ownerRecipients });
+    },
   };
 }

@@ -59,7 +59,10 @@ test("Docker worker는 dispatcher claim과 tenant DB가 분리된 production com
   assert.match(production, /database:\s*dispatcherPool/u);
   assert.match(production, /tenantDatabase:\s*workerPool/u);
   assert.match(production, /token:\s*requireEnv\(env,\s*"TALORDATA_API_TOKEN"\)/u);
-  assert.match(production, /"report\.snapshot"/u);
+  assert.match(production, /createRuntimeReportJobHandlers\(\{/u);
+  assert.match(production, /workerDatabase:\s*workerPool/u);
+  assert.match(production, /authDatabase:\s*authPool/u);
+  assert.match(production, /composeProductionWorkerJobHandlers\(\{ google, naver, gsc, reports \}\)/u);
 });
 
 test("entrypoint와 compose는 migration 성공 뒤 web/worker/relay/scheduler를 분리 실행한다", async () => {
@@ -87,18 +90,72 @@ test("entrypoint와 compose는 migration 성공 뒤 web/worker/relay/scheduler�
 
 test("Kubernetes 예시는 worker/relay/scheduler secret과 실행 역할을 분리한다", async () => {
   const deployment = await source("deploy/kubernetes/pipeline-runtime.yaml");
+  const worker = deployment.match(/name:\s*semforge-worker[\s\S]*?(?=---)/u)?.[0] ?? "";
+  const relay = deployment.match(/name:\s*semforge-relay[\s\S]*?(?=---)/u)?.[0] ?? "";
+  const scheduler = deployment.match(/name:\s*semforge-weekly-scheduler[\s\S]*/u)?.[0] ?? "";
+  const reportRuntimeVariables = [
+    "APP_PUBLIC_URL",
+    "AUTH_DATABASE_URL",
+    "RESEND_API_KEY",
+    "RESEND_FROM_EMAIL",
+    "S3_ENDPOINT",
+    "S3_REGION",
+    "S3_BUCKET",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+    "CHROMIUM_EXECUTABLE_PATH",
+  ];
 
   assert.match(deployment, /kind:\s*Deployment[\s\S]*name:\s*semforge-worker/u);
-  assert.match(deployment, /name:\s*DISPATCHER_DATABASE_URL/u);
-  assert.match(deployment, /name:\s*WORKER_DATABASE_URL/u);
+  for (const required of [
+    "AUTH_DATABASE_URL",
+    "DISPATCHER_DATABASE_URL",
+    "WORKER_DATABASE_URL",
+    "APP_PUBLIC_URL",
+    "RESEND_API_KEY",
+    "RESEND_FROM_EMAIL",
+    "S3_ENDPOINT",
+    "S3_REGION",
+    "S3_BUCKET",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+    "CHROMIUM_EXECUTABLE_PATH",
+  ]) {
+    assert.match(worker, new RegExp(`name:\\s*${required}`));
+  }
   assert.match(deployment, /name:\s*semforge-relay/u);
   assert.match(deployment, /SEMFORGE_SERVICE[\s\S]*value:\s*relay/u);
   assert.match(deployment, /kind:\s*CronJob[\s\S]*name:\s*semforge-weekly-scheduler/u);
   assert.match(deployment, /name:\s*SCHEDULER_DATABASE_URL/u);
-  assert.doesNotMatch(
-    deployment.match(/name:\s*semforge-relay[\s\S]*?(?=---)/u)?.[0] ?? "",
-    /WORKER_DATABASE_URL|SCHEDULER_DATABASE_URL/u,
-  );
+  assert.doesNotMatch(relay, /WORKER_DATABASE_URL|SCHEDULER_DATABASE_URL/u);
+  for (const reportVariable of reportRuntimeVariables) {
+    assert.doesNotMatch(relay, new RegExp(`name:\\s*${reportVariable}`));
+    assert.doesNotMatch(scheduler, new RegExp(`name:\\s*${reportVariable}`));
+  }
+});
+
+test("환경 예시는 report delivery 변수 이름만 제공하고 역할별 env_file secret 주입을 유지한다", async () => {
+  const [example, compose] = await Promise.all([
+    source(".env.example"),
+    source("docker-compose.yml"),
+  ]);
+  for (const required of [
+    "APP_PUBLIC_URL",
+    "AUTH_DATABASE_URL",
+    "RESEND_API_KEY",
+    "RESEND_FROM_EMAIL",
+    "S3_ENDPOINT",
+    "S3_REGION",
+    "S3_BUCKET",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+    "CHROMIUM_EXECUTABLE_PATH",
+  ]) {
+    assert.match(example, new RegExp(`^${required}=`, "mu"));
+  }
+  assert.match(compose, /SEMFORGE_WEB_ENV_FILE/u);
+  assert.match(compose, /SEMFORGE_WORKER_ENV_FILE/u);
+  assert.doesNotMatch(compose, /(?:RESEND_API_KEY|S3_SECRET_ACCESS_KEY):\s*[^$\n]/u);
 });
 
 test("nginx 예시는 TLS 1.2+, auth rate limit, streaming proxy 보안을 포함한다", async () => {

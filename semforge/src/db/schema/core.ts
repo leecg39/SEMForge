@@ -13,6 +13,7 @@ import {
   jsonb,
   numeric,
   pgEnum,
+  pgPolicy,
   pgTable,
   primaryKey,
   text,
@@ -532,8 +533,13 @@ export const outbox = pgTable(
     unique("outbox_idempotency_uq").on(table.workspaceId, table.topic, table.idempotencyKey),
     index("outbox_claim_idx").on(table.publishedAt, table.availableAt),
     index("outbox_expired_lease_idx").on(table.leaseExpiresAt).where(sql`${table.publishedAt} is null`),
+    pgPolicy("outbox_worker_insert", {
+      for: "insert",
+      to: "semforge_worker",
+      withCheck: sql`${table.workspaceId} = nullif(current_setting('app.workspace_id', true), '')::uuid and ${table.topic} in ('report.pdf.render', 'report.email.deliver')`,
+    }),
   ],
-);
+).enableRLS();
 
 export const rankObservations = pgTable(
   "rank_observations",

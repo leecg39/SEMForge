@@ -36,6 +36,19 @@ const validWebEnvironment = {
   NAVER_SEARCH_AD_CUSTOMER_ID: "naver-customer",
   TALORDATA_API_TOKEN: "talordata-token",
   BILLING_FINGERPRINT_SECRET: "billing-fingerprint-secret-at-least-32-bytes",
+  S3_ENDPOINT: "https://objects.semforge.example",
+  S3_REGION: "ap-northeast-2",
+  S3_BUCKET: "semforge-private",
+  S3_ACCESS_KEY_ID: "semforge-web-access-key",
+  S3_SECRET_ACCESS_KEY: "semforge-web-secret-key",
+};
+
+const validWorkerEnvironment = {
+  ...validWebEnvironment,
+  SEMFORGE_SERVICE: "worker",
+  RESEND_API_KEY: "re_worker_delivery_key",
+  RESEND_FROM_EMAIL: "SEMForge <reports@semforge.example>",
+  CHROMIUM_EXECUTABLE_PATH: "/usr/bin/chromium",
 };
 
 test("web preflight는 필수 secret 누락을 값 없이 한 번에 보고한다", () => {
@@ -57,11 +70,32 @@ test("web preflight는 필수 secret 누락을 값 없이 한 번에 보고한�
   );
 });
 
+test("web preflight는 signed URL용 S3 credentials만 report secret으로 요구한다", () => {
+  assert.doesNotThrow(() => validateRuntimeEnvironment("web", validWebEnvironment));
+  for (const missing of [
+    "S3_ENDPOINT",
+    "S3_REGION",
+    "S3_BUCKET",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+  ]) {
+    const candidate = { ...validWebEnvironment };
+    delete candidate[missing];
+    assert.throws(
+      () => validateRuntimeEnvironment("web", candidate),
+      (error) => {
+        assert.ok(error instanceof RuntimeConfigurationError);
+        assert.deepEqual(error.issues, [`${missing} is required`]);
+        return true;
+      },
+    );
+  }
+});
+
 test("production preflight는 PostgreSQL verify-full 외 TLS 설정을 거부한다", () => {
   assert.throws(
     () => validateRuntimeEnvironment("worker", {
-      ...validWebEnvironment,
-      SEMFORGE_SERVICE: "worker",
+      ...validWorkerEnvironment,
       PGSSLMODE: "require",
     }),
     (error) => {
@@ -75,8 +109,7 @@ test("production preflight는 PostgreSQL verify-full 외 TLS 설정을 거부한
 test("production preflight는 DSN query의 sslmode 우회를 거부한다", () => {
   assert.throws(
     () => validateRuntimeEnvironment("worker", {
-      ...validWebEnvironment,
-      SEMFORGE_SERVICE: "worker",
+      ...validWorkerEnvironment,
       WORKER_DATABASE_URL:
         "postgresql://worker:password@db.example.com/semforge?sslmode=disable",
     }),
@@ -101,8 +134,7 @@ test("migration preflight는 owner DSN만 요구하고 서비스 secret을 요�
 
 test("worker preflight는 dispatcher와 tenant DB를 요구하지만 scheduler DB는 요구하지 않는다", () => {
   const workerEnvironment = {
-    ...validWebEnvironment,
-    SEMFORGE_SERVICE: "worker",
+    ...validWorkerEnvironment,
   };
   delete workerEnvironment.SCHEDULER_DATABASE_URL;
 
@@ -117,6 +149,32 @@ test("worker preflight는 dispatcher와 tenant DB를 요구하지만 scheduler D
       return true;
     },
   );
+});
+
+test("worker preflight는 report 생성·전송에 필요한 auth·URL·Resend·S3·Chromium을 요구한다", () => {
+  for (const missing of [
+    "AUTH_DATABASE_URL",
+    "APP_PUBLIC_URL",
+    "RESEND_API_KEY",
+    "RESEND_FROM_EMAIL",
+    "S3_ENDPOINT",
+    "S3_REGION",
+    "S3_BUCKET",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+    "CHROMIUM_EXECUTABLE_PATH",
+  ]) {
+    const candidate = { ...validWorkerEnvironment };
+    delete candidate[missing];
+    assert.throws(
+      () => validateRuntimeEnvironment("worker", candidate),
+      (error) => {
+        assert.ok(error instanceof RuntimeConfigurationError);
+        assert.deepEqual(error.issues, [`${missing} is required`]);
+        return true;
+      },
+    );
+  }
 });
 
 test("relay와 scheduler preflight는 분리된 DB role만으로 시작한다", () => {
@@ -136,7 +194,10 @@ test("relay와 scheduler preflight는 분리된 DB role만으로 시작한다", 
 
 test("preflight는 image profile과 SEMFORGE_SERVICE 불일치를 거부한다", () => {
   assert.throws(
-    () => validateRuntimeEnvironment("worker", validWebEnvironment),
+    () => validateRuntimeEnvironment("worker", {
+      ...validWorkerEnvironment,
+      SEMFORGE_SERVICE: "web",
+    }),
     (error) => {
       assert.ok(error instanceof RuntimeConfigurationError);
       assert.deepEqual(error.issues, ["SEMFORGE_SERVICE must equal worker"]);

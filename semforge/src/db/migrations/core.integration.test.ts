@@ -206,6 +206,99 @@ test("worker role은 transaction-local workspace 밖 tenant row와 global queue�
   }
 });
 
+test("worker role은 자기 workspace report outbox 최소 컬럼만 INSERT하고 조회·수정·tenant 이탈은 거부된다", async () => {
+  const tenantA = "00000000-0000-4000-8000-000000000121";
+  const tenantB = "00000000-0000-4000-8000-000000000122";
+  await pg.query(
+    "insert into workspaces (id, name, slug) values ($1, 'Report Outbox A', 'report-outbox-a'), ($2, 'Report Outbox B', 'report-outbox-b')",
+    [tenantA, tenantB],
+  );
+
+  const insertColumns = await pg.query<{ column_name: string }>(
+    "select column_name from information_schema.role_column_grants where grantee = 'semforge_worker' and table_schema = 'public' and table_name = 'outbox' and privilege_type = 'INSERT' order by column_name",
+  );
+  assert.deepEqual(insertColumns.rows.map(({ column_name }) => column_name), [
+    "idempotency_key",
+    "payload",
+    "topic",
+    "workspace_id",
+  ]);
+  const tablePrivileges = await pg.query<{ privilege_type: string }>(
+    "select privilege_type from information_schema.role_table_grants where grantee = 'semforge_worker' and table_schema = 'public' and table_name = 'outbox' order by privilege_type",
+  );
+  assert.deepEqual(tablePrivileges.rows, []);
+  const policies = await pg.query<{ policyname: string; cmd: string; with_check: string | null }>(
+    "select policyname, cmd, with_check from pg_policies where tablename = 'outbox' and 'semforge_worker' = any(roles) order by policyname",
+  );
+  assert.equal(policies.rows.length, 1);
+  assert.equal(policies.rows[0]!.policyname, "outbox_worker_insert");
+  assert.equal(policies.rows[0]!.cmd, "INSERT");
+  assert.match(
+    policies.rows[0]!.with_check ?? "",
+    /workspace_id.*current_setting.*topic.*report\.pdf\.render.*report\.email\.deliver/u,
+  );
+
+  await pg.query("begin");
+  try {
+    await pg.query("set local role semforge_worker");
+    await pg.query("select set_config('app.workspace_id', $1, true)", [tenantA]);
+    await pg.query(
+      `insert into outbox (workspace_id, topic, payload, idempotency_key)
+       values ($1, 'report.pdf.render', '{"reportId":"00000000-0000-4000-8000-000000000123"}'::jsonb, 'report-outbox-own')`,
+      [tenantA],
+    );
+    await pg.query(
+      `insert into outbox (workspace_id, topic, payload, idempotency_key)
+       values ($1, 'report.email.deliver', '{"reportId":"00000000-0000-4000-8000-000000000123","recipient":"owner@example.test"}'::jsonb, 'report-outbox-email-own')`,
+      [tenantA],
+    );
+    await pg.query("savepoint worker_outbox_arbitrary_topic");
+    await assert.rejects(
+      pg.query(
+        `insert into outbox (workspace_id, topic, payload, idempotency_key)
+         values ($1, 'arbitrary.worker.topic', '{}'::jsonb, 'report-outbox-arbitrary')`,
+        [tenantA],
+      ),
+    );
+    await pg.query("rollback to savepoint worker_outbox_arbitrary_topic");
+    await pg.query("savepoint worker_outbox_cross_tenant");
+    await assert.rejects(
+      pg.query(
+        `insert into outbox (workspace_id, topic, payload, idempotency_key)
+         values ($1, 'report.pdf.render', '{}'::jsonb, 'report-outbox-cross')`,
+        [tenantB],
+      ),
+    );
+    await pg.query("rollback to savepoint worker_outbox_cross_tenant");
+    await pg.query("savepoint worker_outbox_select");
+    await assert.rejects(pg.query("select payload from outbox where workspace_id = $1", [tenantA]));
+    await pg.query("rollback to savepoint worker_outbox_select");
+    await pg.query("savepoint worker_outbox_update");
+    await assert.rejects(
+      pg.query(
+        "update outbox set last_error = 'forbidden' where workspace_id = $1 and idempotency_key = 'report-outbox-own'",
+        [tenantA],
+      ),
+    );
+    await pg.query("rollback to savepoint worker_outbox_update");
+    await pg.query("commit");
+  } catch (error) {
+    await pg.query("rollback");
+    throw error;
+  }
+
+  const stored = await pg.query<{ workspace_id: string; idempotency_key: string }>(
+    "select workspace_id, idempotency_key from outbox where idempotency_key like 'report-outbox-%' order by idempotency_key",
+  );
+  assert.deepEqual(stored.rows, [{
+    workspace_id: tenantA,
+    idempotency_key: "report-outbox-email-own",
+  }, {
+    workspace_id: tenantA,
+    idempotency_key: "report-outbox-own",
+  }]);
+});
+
 test("dispatcher role은 jobs/outbox만 전역 처리하고 tenant domain row는 읽지 못한다", async () => {
   await pg.query("begin");
   try {

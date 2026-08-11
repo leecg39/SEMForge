@@ -7,8 +7,8 @@
 | 파일 | 필수 PostgreSQL 역할 | 그 밖의 값 |
 | --- | --- | --- |
 | `migration.env` | `MIGRATION_DATABASE_URL` | `NODE_ENV=production`, `PGSSLMODE=verify-full` |
-| `web.env` | `DATABASE_URL`, `AUTH_DATABASE_URL`, `OPERATOR_DATABASE_URL`, `BILLING_DATABASE_URL` | web 인증·결제 secret |
-| `worker.env` | `DISPATCHER_DATABASE_URL`, `WORKER_DATABASE_URL` | collector secret, `APP_PUBLIC_URL` |
+| `web.env` | `DATABASE_URL`, `AUTH_DATABASE_URL`, `OPERATOR_DATABASE_URL`, `BILLING_DATABASE_URL` | web 인증·결제 secret, S3 호환 저장소 5종 |
+| `worker.env` | `AUTH_DATABASE_URL`, `DISPATCHER_DATABASE_URL`, `WORKER_DATABASE_URL` | collector secret, `APP_PUBLIC_URL`, Resend 2종, S3 호환 저장소 5종, `CHROMIUM_EXECUTABLE_PATH` |
 | `relay.env` | `DISPATCHER_DATABASE_URL` | secret 없음 |
 | `scheduler.env` | `SCHEDULER_DATABASE_URL` | secret 없음 |
 

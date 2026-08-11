@@ -30,6 +30,14 @@ const productionEnv = {
   NAVER_SEARCH_AD_SECRET_KEY: "test-naver-search-ad-secret-key",
   NAVER_SEARCH_AD_CUSTOMER_ID: "test-naver-search-ad-customer-id",
   BILLING_FINGERPRINT_SECRET: "billing-fingerprint-secret-at-least-32-bytes",
+  RESEND_API_KEY: "re_production_delivery_key",
+  RESEND_FROM_EMAIL: "SEMForge <reports@semforge.example>",
+  S3_ENDPOINT: "https://objects.semforge.example",
+  S3_REGION: "ap-northeast-2",
+  S3_BUCKET: "semforge-private",
+  S3_ACCESS_KEY_ID: "semforge-production-access-key",
+  S3_SECRET_ACCESS_KEY: "semforge-production-secret-key-material",
+  CHROMIUM_EXECUTABLE_PATH: "/usr/bin/chromium",
 };
 
 test("production은 database, encryption, billing, Google, NAVER 자격증명을 모두 요구한다", () => {
@@ -55,6 +63,14 @@ test("production은 database, encryption, billing, Google, NAVER 자격증명을
     "NAVER_SEARCH_AD_SECRET_KEY",
     "NAVER_SEARCH_AD_CUSTOMER_ID",
     "BILLING_FINGERPRINT_SECRET",
+    "RESEND_API_KEY",
+    "RESEND_FROM_EMAIL",
+    "S3_ENDPOINT",
+    "S3_REGION",
+    "S3_BUCKET",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+    "CHROMIUM_EXECUTABLE_PATH",
   ] as const) {
     const candidate = { ...productionEnv };
     delete candidate[missing];
@@ -136,6 +152,7 @@ test("worker profile은 dispatcher claim DB와 tenant worker DB를 분리해 요
   const workerEnv = {
     NODE_ENV: "production",
     SEMFORGE_SERVICE: "worker",
+    AUTH_DATABASE_URL: "postgresql://auth:test@db.example.com:5432/semforge",
     WORKER_DATABASE_URL: "postgresql://worker:test@db.example.com:5432/semforge",
     DISPATCHER_DATABASE_URL: "postgresql://dispatcher:test@db.example.com:5432/semforge",
     APP_PUBLIC_URL: "https://app.semforge.example",
@@ -149,9 +166,41 @@ test("worker profile은 dispatcher claim DB와 tenant worker DB를 분리해 요
     NAVER_SEARCH_AD_SECRET_KEY: "test-naver-search-ad-secret-key",
     NAVER_SEARCH_AD_CUSTOMER_ID: "test-naver-search-ad-customer-id",
     TALORDATA_API_TOKEN: "test-talordata-token",
+    RESEND_API_KEY: "re_test_worker_key",
+    RESEND_FROM_EMAIL: "SEMForge <reports@semforge.example>",
+    S3_ENDPOINT: "https://objects.semforge.example",
+    S3_REGION: "ap-northeast-2",
+    S3_BUCKET: "semforge-private",
+    S3_ACCESS_KEY_ID: "semforge-worker-access-key",
+    S3_SECRET_ACCESS_KEY: "semforge-worker-secret-key",
+    CHROMIUM_EXECUTABLE_PATH: "/usr/bin/chromium",
     PGSSLMODE: "verify-full",
   };
   assert.equal(parseServerEnv(workerEnv).SEMFORGE_SERVICE, "worker");
+
+  for (const missing of [
+    "AUTH_DATABASE_URL",
+    "APP_PUBLIC_URL",
+    "RESEND_API_KEY",
+    "RESEND_FROM_EMAIL",
+    "S3_ENDPOINT",
+    "S3_REGION",
+    "S3_BUCKET",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+    "CHROMIUM_EXECUTABLE_PATH",
+  ] as const) {
+    const candidate: Record<string, string | undefined> = { ...workerEnv };
+    delete candidate[missing];
+    assert.throws(
+      () => parseServerEnv(candidate),
+      (error: unknown) => {
+        assert.ok(error instanceof EnvironmentValidationError);
+        assert.deepEqual(error.issues, [`${missing} is required in production`]);
+        return true;
+      },
+    );
+  }
 
   const missingDispatcher: Record<string, string | undefined> = { ...workerEnv };
   delete missingDispatcher.DISPATCHER_DATABASE_URL;
@@ -191,6 +240,54 @@ test("worker profile은 dispatcher claim DB와 tenant worker DB를 분리해 요
   );
 });
 
+test("web profile은 signed URL용 S3 credentials만 요구하고 email·Chromium secret은 요구하지 않는다", () => {
+  const webEnv: Record<string, string | undefined> = {
+    ...productionEnv,
+    SEMFORGE_SERVICE: "web",
+  };
+  for (const unnecessary of [
+    "WORKER_DATABASE_URL",
+    "DISPATCHER_DATABASE_URL",
+    "SCHEDULER_DATABASE_URL",
+    "MIGRATION_DATABASE_URL",
+    "TALORDATA_API_TOKEN",
+    "NAVER_OPEN_API_CLIENT_ID",
+    "NAVER_OPEN_API_CLIENT_SECRET",
+    "NAVER_SEARCH_AD_ACCESS_LICENSE",
+    "NAVER_SEARCH_AD_SECRET_KEY",
+    "NAVER_SEARCH_AD_CUSTOMER_ID",
+    "RESEND_API_KEY",
+    "RESEND_FROM_EMAIL",
+    "CHROMIUM_EXECUTABLE_PATH",
+  ] as const) {
+    delete webEnv[unnecessary];
+  }
+
+  const parsed = parseServerEnv(webEnv);
+  assert.equal(parsed.SEMFORGE_SERVICE, "web");
+  assert.equal(parsed.RESEND_API_KEY, undefined);
+  assert.equal(parsed.CHROMIUM_EXECUTABLE_PATH, undefined);
+
+  for (const missing of [
+    "S3_ENDPOINT",
+    "S3_REGION",
+    "S3_BUCKET",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+  ] as const) {
+    const candidate = { ...webEnv };
+    delete candidate[missing];
+    assert.throws(
+      () => parseServerEnv(candidate),
+      (error: unknown) => {
+        assert.ok(error instanceof EnvironmentValidationError);
+        assert.deepEqual(error.issues, [`${missing} is required in production`]);
+        return true;
+      },
+    );
+  }
+});
+
 test("relay와 scheduler profile은 각자의 최소권한 PostgreSQL 역할만 요구한다", () => {
   const relay = parseServerEnv({
     NODE_ENV: "production",
@@ -222,4 +319,11 @@ test("build profile은 image build 중 운영 secret을 읽지 않는다", () =>
 
   assert.equal(env.SEMFORGE_SERVICE, "build");
   assert.equal(env.DATABASE_URL, undefined);
+});
+
+test("production object storage endpoint는 https만 허용한다", () => {
+  assert.throws(
+    () => parseServerEnv({ ...productionEnv, S3_ENDPOINT: "http://objects.semforge.example" }),
+    EnvironmentValidationError,
+  );
 });

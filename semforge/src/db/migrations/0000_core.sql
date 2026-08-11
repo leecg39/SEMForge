@@ -780,6 +780,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON provider_calls, usage_reservations,
   rank_observations, aio_observations, aio_citations, naver_observations, naver_observation_sources, gsc_observations,
   weekly_reports, report_sections, report_assets, deliveries, payments, provider_events
 TO semforge_worker;--> statement-breakpoint
+GRANT INSERT (workspace_id, topic, payload, idempotency_key)
+  ON outbox TO semforge_worker;--> statement-breakpoint
 GRANT INSERT ON audit_events TO semforge_worker;--> statement-breakpoint
 GRANT SELECT ON sessions, memberships TO semforge_billing;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE ON billing_customers, payment_methods, subscriptions, payments, provider_events TO semforge_billing;--> statement-breakpoint
@@ -859,6 +861,11 @@ CREATE POLICY outbox_auth_insert ON outbox FOR INSERT TO semforge_auth
   WITH CHECK (topic = 'email.password_reset');--> statement-breakpoint
 CREATE POLICY audit_events_worker_insert ON audit_events FOR INSERT TO semforge_worker
   WITH CHECK (workspace_id = nullif(current_setting('app.workspace_id', true), '')::uuid);--> statement-breakpoint
+CREATE POLICY outbox_worker_insert ON outbox FOR INSERT TO semforge_worker
+  WITH CHECK (
+    workspace_id = nullif(current_setting('app.workspace_id', true), '')::uuid
+    AND topic IN ('report.pdf.render', 'report.email.deliver')
+  );--> statement-breakpoint
 CREATE POLICY audit_events_dispatcher_insert ON audit_events FOR INSERT TO semforge_dispatcher
   WITH CHECK (true);--> statement-breakpoint
 ALTER TABLE auth_action_throttles ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
