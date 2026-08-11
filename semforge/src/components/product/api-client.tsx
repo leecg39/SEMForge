@@ -50,6 +50,30 @@ function requestError(message: string, requestId?: string) {
   return Object.assign(new Error(message), { requestId });
 }
 
+const TENANT_OVERRIDE_KEYS = new Set([
+  "workspaceId",
+  "workspace_id",
+  "tenantId",
+  "tenant_id",
+  "userId",
+  "user_id",
+]);
+
+function assertNoTenantOverride(value: unknown, seen = new WeakSet<object>()): void {
+  if (typeof value !== "object" || value === null || seen.has(value)) return;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    value.forEach((item) => assertNoTenantOverride(item, seen));
+    return;
+  }
+  for (const [key, item] of Object.entries(value)) {
+    if (TENANT_OVERRIDE_KEYS.has(key)) {
+      throw new Error("인증으로 결정되는 tenant 식별자는 요청 본문에서 지정할 수 없습니다.");
+    }
+    assertNoTenantOverride(item, seen);
+  }
+}
+
 export async function requestApi<T>(
   endpoint: `/api/v1/${string}`,
   parser: Parser<T>,
@@ -146,6 +170,7 @@ export async function mutateApi<T>(
   body: Readonly<Record<string, unknown>>,
   parser: Parser<T>,
 ): Promise<{ readonly data: T; readonly requestId: string }> {
+  assertNoTenantOverride(body);
   return requestApi(endpoint, parser, {
     method,
     headers: {
