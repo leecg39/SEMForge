@@ -56,6 +56,26 @@ export interface TrackedQueryRecord {
   collection: typeof GOOGLE_COLLECTION_SETTINGS;
 }
 
+export interface SiteGscBindingRecord {
+  id: string;
+  workspaceId: string;
+  siteId: string;
+  connectionId: string;
+  propertyUri: string;
+  createdAt: string;
+}
+
+export interface SiteDetailRecord {
+  site: SiteRecord;
+  /** 활성 한도 usage는 active=true 항목만 계산하며, UI 재활성화를 위해 비활성 항목도 반환한다. */
+  tracking: {
+    rank: TrackedQueryRecord[];
+    aio: TrackedQueryRecord[];
+  };
+  /** 연결 해제된 GSC connection의 잔존 binding은 현재 연결로 노출하지 않는다. */
+  gscBinding: SiteGscBindingRecord | null;
+}
+
 export class SitesStoreError extends Error {
   constructor(
     readonly code:
@@ -147,6 +167,15 @@ type TrackedQueryRow = {
   active: boolean;
   created_at: Date | string;
   updated_at: Date | string;
+};
+
+type SiteGscBindingRow = {
+  id: string;
+  workspace_id: string;
+  site_id: string;
+  connection_id: string;
+  property_uri: string;
+  created_at: Date | string;
 };
 
 type OutboxPayloadRow = {
@@ -311,6 +340,64 @@ export async function listSites(
         result.rows.length > limit && last
           ? encodeCursor({ createdAt: new Date(last.created_at).toISOString(), id: last.id })
           : null,
+    };
+  });
+}
+
+// @TASK P4-B1 - UI site-detail API contract
+// @SPEC docs/planning/06-tasks.md#p4-f1-t1--허용-페이지-전체-구현
+export async function getSiteDetail(
+  db: SqlQueryable,
+  input: { workspaceId: string; siteId: string },
+): Promise<SiteDetailRecord | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(input.siteId)) {
+    return null;
+  }
+  return inTransaction(db, input.workspaceId, async () => {
+    const site = await getSiteById(db, input.workspaceId, input.siteId);
+    if (!site) return null;
+
+    const trackedQueries = (
+      await db.query<TrackedQueryRow>(
+        `select id::text, workspace_id::text, site_id::text, type, query, normalized_query,
+                active, created_at, updated_at
+           from tracked_queries
+          where workspace_id = $1 and site_id = $2
+          order by type asc, created_at asc, id asc`,
+        [input.workspaceId, input.siteId],
+      )
+    ).rows.map(toTrackedQuery);
+    const binding = (
+      await db.query<SiteGscBindingRow>(
+        `select binding.id::text, binding.workspace_id::text, binding.site_id::text,
+                binding.connection_id::text, binding.property_uri, binding.created_at
+           from gsc_property_bindings binding
+           join gsc_connections connection
+             on connection.workspace_id = binding.workspace_id
+            and connection.id = binding.connection_id
+            and connection.disconnected_at is null
+          where binding.workspace_id = $1 and binding.site_id = $2
+          limit 1`,
+        [input.workspaceId, input.siteId],
+      )
+    ).rows[0];
+
+    return {
+      site,
+      tracking: {
+        rank: trackedQueries.filter((item) => item.type === "rank"),
+        aio: trackedQueries.filter((item) => item.type === "aio"),
+      },
+      gscBinding: binding
+        ? {
+            id: binding.id,
+            workspaceId: binding.workspace_id,
+            siteId: binding.site_id,
+            connectionId: binding.connection_id,
+            propertyUri: binding.property_uri,
+            createdAt: new Date(binding.created_at).toISOString(),
+          }
+        : null,
     };
   });
 }

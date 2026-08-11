@@ -26,6 +26,7 @@ const validWebEnvironment = {
   APP_PUBLIC_URL: "https://app.semforge.example",
   APP_SECRET: "app-secret-material-that-is-at-least-32-bytes",
   APP_SECRET_CURRENT_KEY_ID: "key-2026-08",
+  TOSS_CLIENT_KEY: "test_ck_semforge_toss_client",
   TOSS_SECRET_KEY: "test-toss-secret",
   GOOGLE_CLIENT_ID: "google-client-id",
   GOOGLE_CLIENT_SECRET: "google-client-secret",
@@ -90,6 +91,20 @@ test("web preflight는 signed URL용 S3 credentials만 report secret으로 요�
       },
     );
   }
+});
+
+test("web preflight는 Toss 자동결제 client key를 시작 전에 요구한다", () => {
+  const candidate = { ...validWebEnvironment };
+  delete candidate.TOSS_CLIENT_KEY;
+
+  assert.throws(
+    () => validateRuntimeEnvironment("web", candidate),
+    (error) => {
+      assert.ok(error instanceof RuntimeConfigurationError);
+      assert.deepEqual(error.issues, ["TOSS_CLIENT_KEY is required"]);
+      return true;
+    },
+  );
 });
 
 test("production preflight는 PostgreSQL verify-full 외 TLS 설정을 거부한다", () => {

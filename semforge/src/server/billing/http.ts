@@ -45,6 +45,10 @@ export type BillingSummaryResponse = {
 };
 
 export interface BillingHttpService {
+  getCheckoutIdentity(input: { readonly workspaceId: string }): Promise<{
+    readonly customerKey: string;
+    readonly subscriptionStatus: SubscriptionStatus;
+  }>;
   getSummary(input: { readonly workspaceId: string }): Promise<{
     readonly status: SubscriptionStatus;
     readonly amountKrw: number;
@@ -89,6 +93,10 @@ export interface BillingHttpService {
 export interface BillingHttpHandlerOptions {
   readonly requireAuth: RequireAuth;
   readonly getService: () => BillingHttpService;
+  readonly checkout?: {
+    readonly clientKey: string;
+    readonly appPublicUrl: string;
+  };
   readonly now?: () => Date;
 }
 
@@ -172,6 +180,32 @@ function serializeSummary(
 
 function serializeResult<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function checkoutUrls(appPublicUrl: string): {
+  readonly successUrl: string;
+  readonly failUrl: string;
+} {
+  let origin: URL;
+  try {
+    origin = new URL(appPublicUrl);
+  } catch {
+    throw new ApiError("INTERNAL");
+  }
+  if (
+    !["http:", "https:"].includes(origin.protocol) ||
+    origin.username ||
+    origin.password ||
+    origin.pathname !== "/" ||
+    origin.search ||
+    origin.hash
+  ) {
+    throw new ApiError("INTERNAL");
+  }
+  return {
+    successUrl: new URL("/app/billing?billing=success", origin).toString(),
+    failUrl: new URL("/app/billing?billing=fail", origin).toString(),
+  };
 }
 
 function isJsonContentType(value: string | null): boolean {
@@ -261,6 +295,31 @@ async function api<T>(
 
 export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
   return {
+    checkout: (request: Request) => api(request, async (apiContextRequestId) => {
+      if (new URL(request.url).searchParams.size > 0) {
+        throw new ApiError("BAD_REQUEST", "checkout 설정은 query override를 허용하지 않습니다.");
+      }
+      if (!options.checkout) throw new ApiError("INTERNAL");
+      const principal = await options.requireAuth(request, {
+        csrf: false,
+        roles: ["owner", "admin"],
+      });
+      const identity = await options.getService().getCheckoutIdentity({
+        workspaceId: principal.workspaceId,
+      });
+      const requestId = requestIdFor(principal, apiContextRequestId);
+      return {
+        data: {
+          clientKey: options.checkout.clientKey,
+          customerKey: identity.customerKey,
+          method: "CARD" as const,
+          ...checkoutUrls(options.checkout.appPublicUrl),
+          subscriptionStatus: identity.subscriptionStatus,
+        },
+        requestId,
+      };
+    }),
+
     summary: (request: Request) => api(request, async (apiContextRequestId) => {
       const principal = await options.requireAuth(request, {
         csrf: false,
