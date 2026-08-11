@@ -17,6 +17,8 @@ const booleanStringSchema = z
 
 const rawServerEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  // @TASK P4-O1-T1 - Keep web, worker, and migration containers least-privileged.
+  SEMFORGE_SERVICE: z.enum(["web", "worker", "migrate", "all"]).default("all"),
   DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   // @TASK P1-D3 - Never reuse the migration owner DSN for auth or operator runtime access.
   AUTH_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
@@ -40,6 +42,7 @@ const rawServerEnvSchema = z.object({
   NAVER_SEARCH_AD_ACCESS_LICENSE: z.string().trim().min(1).optional(),
   NAVER_SEARCH_AD_SECRET_KEY: z.string().trim().min(1).optional(),
   NAVER_SEARCH_AD_CUSTOMER_ID: z.string().trim().min(1).optional(),
+  TALORDATA_API_TOKEN: z.string().trim().min(1).optional(),
   BILLING_FINGERPRINT_SECRET: secretSchema.optional(),
   PGPOOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
   PGPOOL_CONNECTION_TIMEOUT_MS: z.coerce.number().int().min(100).max(60_000).default(5_000),
@@ -92,6 +95,59 @@ export type ServerEnv = Omit<z.infer<typeof rawServerEnvSchema>, "APP_SECRET_PRE
   APP_SECRET_PREVIOUS_KEYS: PreviousSecretKeys;
 };
 
+const productionRequiredByService = {
+  all: [
+    "DATABASE_URL",
+    "AUTH_DATABASE_URL",
+    "OPERATOR_DATABASE_URL",
+    "WORKER_DATABASE_URL",
+    "BILLING_DATABASE_URL",
+    "MIGRATION_DATABASE_URL",
+    "APP_PUBLIC_URL",
+    "APP_SECRET",
+    "APP_SECRET_CURRENT_KEY_ID",
+    "TOSS_SECRET_KEY",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "NAVER_OPEN_API_CLIENT_ID",
+    "NAVER_OPEN_API_CLIENT_SECRET",
+    "NAVER_SEARCH_AD_ACCESS_LICENSE",
+    "NAVER_SEARCH_AD_SECRET_KEY",
+    "NAVER_SEARCH_AD_CUSTOMER_ID",
+    "BILLING_FINGERPRINT_SECRET",
+  ],
+  web: [
+    "DATABASE_URL",
+    "AUTH_DATABASE_URL",
+    "OPERATOR_DATABASE_URL",
+    "BILLING_DATABASE_URL",
+    "APP_PUBLIC_URL",
+    "APP_SECRET",
+    "APP_SECRET_CURRENT_KEY_ID",
+    "TOSS_SECRET_KEY",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "BILLING_FINGERPRINT_SECRET",
+  ],
+  worker: [
+    "WORKER_DATABASE_URL",
+    "APP_SECRET",
+    "APP_SECRET_CURRENT_KEY_ID",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "NAVER_OPEN_API_CLIENT_ID",
+    "NAVER_OPEN_API_CLIENT_SECRET",
+    "NAVER_SEARCH_AD_ACCESS_LICENSE",
+    "NAVER_SEARCH_AD_SECRET_KEY",
+    "NAVER_SEARCH_AD_CUSTOMER_ID",
+    "TALORDATA_API_TOKEN",
+  ],
+  migrate: ["MIGRATION_DATABASE_URL"],
+} as const satisfies Record<
+  z.infer<typeof rawServerEnvSchema>["SEMFORGE_SERVICE"],
+  readonly (keyof z.infer<typeof rawServerEnvSchema>)[]
+>;
+
 export function parseServerEnv(source: Record<string, string | undefined>): ServerEnv {
   const parsed = rawServerEnvSchema.safeParse(source);
   if (!parsed.success) {
@@ -102,27 +158,11 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
 
   const issues: string[] = [];
   if (parsed.data.NODE_ENV === "production") {
-    for (const required of [
-      "DATABASE_URL",
-      "AUTH_DATABASE_URL",
-      "OPERATOR_DATABASE_URL",
-      "WORKER_DATABASE_URL",
-      "BILLING_DATABASE_URL",
-      "MIGRATION_DATABASE_URL",
-      "APP_PUBLIC_URL",
-      "APP_SECRET",
-      "APP_SECRET_CURRENT_KEY_ID",
-      "TOSS_SECRET_KEY",
-      "GOOGLE_CLIENT_ID",
-      "GOOGLE_CLIENT_SECRET",
-      "NAVER_OPEN_API_CLIENT_ID",
-      "NAVER_OPEN_API_CLIENT_SECRET",
-      "NAVER_SEARCH_AD_ACCESS_LICENSE",
-      "NAVER_SEARCH_AD_SECRET_KEY",
-      "NAVER_SEARCH_AD_CUSTOMER_ID",
-      "BILLING_FINGERPRINT_SECRET",
-    ] as const) {
+    for (const required of productionRequiredByService[parsed.data.SEMFORGE_SERVICE]) {
       if (!parsed.data[required]) issues.push(`${required} is required in production`);
+    }
+    if (parsed.data.PGSSLMODE !== "verify-full") {
+      issues.push("PGSSLMODE must be verify-full in production");
     }
   }
   if (

@@ -112,3 +112,47 @@ test("production public URL은 https만 허용한다", () => {
     EnvironmentValidationError,
   );
 });
+
+// @TASK P4-O1-T1 - Least-privilege production service startup profiles
+test("migrate profile은 migration owner DSN과 verify-full TLS만으로 시작할 수 있다", () => {
+  const env = parseServerEnv({
+    NODE_ENV: "production",
+    SEMFORGE_SERVICE: "migrate",
+    MIGRATION_DATABASE_URL: "postgresql://owner:test@db.example.com:5432/semforge",
+    PGSSLMODE: "verify-full",
+  });
+
+  assert.equal(env.SEMFORGE_SERVICE, "migrate");
+  assert.equal(env.MIGRATION_DATABASE_URL?.includes("owner"), true);
+});
+
+test("worker profile은 worker DB와 collector secret만 요구한다", () => {
+  const workerEnv = {
+    NODE_ENV: "production",
+    SEMFORGE_SERVICE: "worker",
+    WORKER_DATABASE_URL: "postgresql://worker:test@db.example.com:5432/semforge",
+    APP_SECRET: "production-secret-material-that-is-at-least-32-bytes",
+    APP_SECRET_CURRENT_KEY_ID: "key-2026-08",
+    GOOGLE_CLIENT_ID: "test-google-client-id",
+    GOOGLE_CLIENT_SECRET: "test-google-client-secret",
+    NAVER_OPEN_API_CLIENT_ID: "test-naver-open-api-client-id",
+    NAVER_OPEN_API_CLIENT_SECRET: "test-naver-open-api-client-secret",
+    NAVER_SEARCH_AD_ACCESS_LICENSE: "test-naver-search-ad-access-license",
+    NAVER_SEARCH_AD_SECRET_KEY: "test-naver-search-ad-secret-key",
+    NAVER_SEARCH_AD_CUSTOMER_ID: "test-naver-search-ad-customer-id",
+    TALORDATA_API_TOKEN: "test-talordata-token",
+    PGSSLMODE: "verify-full",
+  };
+  assert.equal(parseServerEnv(workerEnv).SEMFORGE_SERVICE, "worker");
+
+  const missingToken: Record<string, string | undefined> = { ...workerEnv };
+  delete missingToken.TALORDATA_API_TOKEN;
+  assert.throws(
+    () => parseServerEnv(missingToken),
+    (error: unknown) => {
+      assert.ok(error instanceof EnvironmentValidationError);
+      assert.deepEqual(error.issues, ["TALORDATA_API_TOKEN is required in production"]);
+      return true;
+    },
+  );
+});
