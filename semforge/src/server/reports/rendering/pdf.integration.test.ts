@@ -1,6 +1,8 @@
 // @TASK P4-R1-T1 - Real Chromium Korean PDF contract
 // @SPEC docs/planning/06-tasks.md#p4-r1-t1--한글-pdf이메일객체-저장소
 import assert from "node:assert/strict";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { test } from "node:test";
 
 import { PDFDocument } from "pdf-lib";
@@ -81,4 +83,11 @@ test("실제 Chromium은 Noto Sans KR로 장문·빈·partial·깨진 로고 sna
 
   const parsed = await PDFDocument.load(rendered.pdf);
   assert.ok(parsed.getPageCount() >= 5);
+
+  const evidencePath = process.env.SEMFORGE_PDF_EVIDENCE_PATH;
+  if (evidencePath) {
+    const absolute = path.resolve(evidencePath);
+    await mkdir(path.dirname(absolute), { recursive: true });
+    await writeFile(absolute, rendered.pdf);
+  }
 });
