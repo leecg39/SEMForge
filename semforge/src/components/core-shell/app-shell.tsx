@@ -1,7 +1,8 @@
-// @TASK P1-F1-T1 - Responsive paid beta app shell
-// @SPEC SEMForge paid beta plan#allowed-app-pages
+// @TASK P4-F1-T1 - Responsive paid beta app shell with billing access state
+// @SPEC docs/planning/06-tasks.md#p4-f1-t1--허용-페이지-전체-구현
 // @TEST src/components/core-shell/core-shell.test.ts
 import Link from "next/link";
+import { BillingAccessProvider } from "@/components/product/billing-access";
 import { BrandMark } from "./brand-mark";
 import { CoreIcon } from "./core-icon";
 
@@ -78,7 +79,7 @@ export function AppShell({
           <span className="sf-beta-badge sf-app-topbar__badge">비공개 베타</span>
         </header>
         <main id="main-content" className="sf-app-main" tabIndex={-1}>
-          {children}
+          <BillingAccessProvider>{children}</BillingAccessProvider>
         </main>
       </div>
 
