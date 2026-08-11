@@ -439,9 +439,8 @@ export const usageReservations = pgTable(
   "usage_reservations",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    workspaceId: uuid("workspace_id")
-      .notNull()
-      .references(() => workspaces.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull(),
+    providerCallId: uuid("provider_call_id").notNull(),
     provider: text("provider").notNull(),
     resource: text("resource").notNull(),
     units: integer("units").notNull(),
@@ -455,6 +454,12 @@ export const usageReservations = pgTable(
   (table) => [
     unique("usage_reservations_workspace_id_uq").on(table.workspaceId, table.id),
     unique("usage_reservations_idempotency_uq").on(table.workspaceId, table.idempotencyKey),
+    unique("usage_reservations_provider_call_uq").on(table.workspaceId, table.providerCallId),
+    foreignKey({
+      columns: [table.workspaceId, table.providerCallId],
+      foreignColumns: [providerCalls.workspaceId, providerCalls.id],
+      name: "usage_reservations_provider_call_fk",
+    }).onDelete("restrict"),
     check("usage_reservations_units_ck", sql`${table.units} > 0`),
     check("usage_reservations_period_ck", sql`${table.periodEnd} > ${table.periodStart}`),
   ],

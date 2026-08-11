@@ -1,6 +1,8 @@
 // @TASK P1-D1-T1 - Canonical PostgreSQL schema contract
 // @SPEC docs/planning/06-tasks.md#p1-d1-t1--postgresql-16-핵심-스키마와-암호화-기반
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { test } from "node:test";
 
 import { getTableConfig } from "drizzle-orm/pg-core";
@@ -13,10 +15,12 @@ import {
   invites,
   naverObservationSources,
   naverObservations,
+  providerCalls,
   reportStatusEnum,
   subscriptionStatusEnum,
   tenantTables,
   trackedQueries,
+  usageReservations,
 } from "@/db/schema/core";
 
 const requiredTenantTables = [
@@ -100,6 +104,39 @@ test("tracked_queries는 workspace와 site를 함께 참조한다", () => {
         key.columns.map((column) => column.name).join(",") === "workspace_id,site_id" &&
         key.foreignColumns.map((column) => column.name).join(",") === "workspace_id,id",
     ),
+  );
+});
+
+test("usage reservation은 provider call을 같은 workspace 복합 FK로 고정한다", () => {
+  const config = getTableConfig(usageReservations);
+  assert.equal(config.columns.find((column) => column.name === "provider_call_id")?.notNull, true);
+  assert.ok(
+    config.foreignKeys.some((key) => {
+      const reference = key.reference();
+      return (
+        getTableConfig(reference.foreignTable).name === getTableConfig(providerCalls).name &&
+        reference.columns.map((column) => column.name).join(",") ===
+          "workspace_id,provider_call_id" &&
+        reference.foreignColumns.map((column) => column.name).join(",") === "workspace_id,id"
+      );
+    }),
+  );
+});
+
+test("migration snapshot도 provider call 연결 컬럼을 usage reservation에 기록한다", () => {
+  const snapshot = JSON.parse(
+    readFileSync(
+      path.join(process.cwd(), "src", "db", "migrations", "meta", "0000_snapshot.json"),
+      "utf8",
+    ),
+  ) as { tables: Record<string, { columns: Record<string, unknown> }> };
+  assert.equal(
+    Object.hasOwn(snapshot.tables["public.usage_reservations"]!.columns, "provider_call_id"),
+    true,
+  );
+  assert.equal(
+    Object.hasOwn(snapshot.tables["public.provider_calls"]!.columns, "provider_call_id"),
+    false,
   );
 });
 
