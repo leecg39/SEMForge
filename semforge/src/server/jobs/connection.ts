@@ -37,6 +37,7 @@ export async function withDedicatedWorkerConnection<T>(
 export async function withWorkerTransaction<T>(
   database: WorkerSqlQueryable,
   operation: (transaction: WorkerSqlQueryable) => Promise<T>,
+  workspaceId?: string,
 ): Promise<T> {
   const connect = (database as Partial<WorkerConnectionPool>).connect;
   if (typeof connect === "function") {
@@ -45,6 +46,9 @@ export async function withWorkerTransaction<T>(
       async (client) => {
         await client.query("begin");
         try {
+          if (workspaceId) {
+            await client.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
+          }
           const result = await operation(client);
           await client.query("commit");
           return result;
@@ -58,7 +62,12 @@ export async function withWorkerTransaction<T>(
 
   const transaction = (database as { transaction?: WorkerTransactionCallback }).transaction;
   if (typeof transaction === "function") {
-    return transaction.call(database, operation) as Promise<T>;
+    return transaction.call(database, async (client) => {
+      if (workspaceId) {
+        await client.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
+      }
+      return operation(client);
+    }) as Promise<T>;
   }
 
   throw new TypeError("WORKER_TRANSACTION_UNSUPPORTED");

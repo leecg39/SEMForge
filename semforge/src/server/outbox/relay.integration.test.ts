@@ -10,6 +10,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 
 import { PostgresOutboxRelay } from "@/server/outbox/relay";
+import { CollectionOutboxRelayRuntime } from "@/worker/relay-runtime";
 
 const databases: PGlite[] = [];
 const migrationsFolder = path.join(process.cwd(), "src", "db", "migrations");
@@ -156,4 +157,69 @@ test("만료된 마지막 outbox attempt는 명시적 DLQ가 되고 다시 claim
       reason: "LEASE_EXPIRED",
     },
   }]);
+});
+
+test("기존 job과 canonical 요청이 충돌하면 outbox는 unpublished 상태를 유지한다", async () => {
+  const workspaceId = "51000000-0000-4000-8000-000000000004";
+  const database = await createDatabase(workspaceId, "outbox-idempotency-conflict");
+  const now = new Date("2026-08-12T06:00:00.000Z");
+  await database.query(
+    `insert into outbox (workspace_id, topic, payload, idempotency_key, available_at)
+     values ($1, 'collection.google.weekly', '{"siteId":"canonical"}'::jsonb, 'weekly:conflict', $2)`,
+    [workspaceId, now],
+  );
+  await database.query(
+    `insert into jobs
+       (workspace_id, type, payload, idempotency_key, priority, available_at, max_attempts)
+     values ($1, 'collect.google', '{"siteId":"different"}'::jsonb,
+             'outbox:collection.google.weekly:weekly:conflict', 100, $2, 5)`,
+    [workspaceId, now],
+  );
+  const relay = new PostgresOutboxRelay(database);
+  const event = (await relay.claim({ workerId: "relay-conflict", now, leaseMs: 60_000 }))[0]!;
+
+  await assert.rejects(
+    relay.publish(event, { jobType: "collect.google", maxAttempts: 5, priority: 100, now }),
+    /IDEMPOTENCY_CONFLICT/u,
+  );
+  const state = await database.query<{ published_at: Date | null; payload: Record<string, unknown> }>(
+    `select event.published_at, job.payload
+       from outbox event
+       join jobs job on job.workspace_id = event.workspace_id
+      where event.id = $1`,
+    [event.id],
+  );
+  assert.equal(state.rows[0]?.published_at, null);
+  assert.deepEqual(state.rows[0]?.payload, { siteId: "different" });
+});
+
+test("production relay는 collection topic만 claim하고 canonical job type으로 publish한다", async () => {
+  const workspaceId = "51000000-0000-4000-8000-000000000005";
+  const database = await createDatabase(workspaceId, "outbox-production-topics");
+  const now = new Date("2026-08-12T07:00:00.000Z");
+  await database.query(
+    `insert into outbox (workspace_id, topic, payload, idempotency_key, available_at)
+     values ($1, 'collection.google.weekly', '{"siteId":"site-google"}'::jsonb, 'google-weekly', $2),
+            ($1, 'email.password_reset', '{"email":"user@example.com"}'::jsonb, 'email-reset', $2)`,
+    [workspaceId, now],
+  );
+  const runtime = new CollectionOutboxRelayRuntime({
+    database,
+    relayId: "relay-production",
+    clock: () => now,
+  });
+
+  assert.deepEqual(await runtime.runOnce(), { claimed: 1, published: 1, failed: 0 });
+  const jobs = await database.query<{ type: string; payload: Record<string, unknown> }>(
+    "select type, payload from jobs where workspace_id = $1",
+    [workspaceId],
+  );
+  assert.deepEqual(jobs.rows, [{ type: "collect.google", payload: { siteId: "site-google" } }]);
+  const events = await database.query<{ topic: string; published: boolean }>(
+    "select topic, published_at is not null as published from outbox order by topic",
+  );
+  assert.deepEqual(events.rows, [
+    { topic: "collection.google.weekly", published: true },
+    { topic: "email.password_reset", published: false },
+  ]);
 });

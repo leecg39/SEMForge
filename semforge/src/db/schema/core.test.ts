@@ -11,10 +11,12 @@ import {
   authActionThrottles,
   aioPresenceEnum,
   gscObservations,
+  jobs,
   jobStatusEnum,
   invites,
   naverObservationSources,
   naverObservations,
+  outbox,
   providerCalls,
   reportStatusEnum,
   subscriptionStatusEnum,
@@ -138,6 +140,25 @@ test("migration snapshot도 provider call 연결 컬럼을 usage reservation에 
     Object.hasOwn(snapshot.tables["public.provider_calls"]!.columns, "provider_call_id"),
     false,
   );
+});
+
+test("job/outbox canonical request hash는 schema와 migration snapshot에 함께 존재한다", () => {
+  assert.equal(
+    getTableConfig(jobs).columns.find((column) => column.name === "request_hash")?.notNull,
+    true,
+  );
+  assert.equal(
+    getTableConfig(outbox).columns.find((column) => column.name === "request_hash")?.notNull,
+    true,
+  );
+  const snapshot = JSON.parse(
+    readFileSync(
+      path.join(process.cwd(), "src", "db", "migrations", "meta", "0000_snapshot.json"),
+      "utf8",
+    ),
+  ) as { tables: Record<string, { columns: Record<string, unknown> }> };
+  assert.equal(Object.hasOwn(snapshot.tables["public.jobs"]!.columns, "request_hash"), true);
+  assert.equal(Object.hasOwn(snapshot.tables["public.outbox"]!.columns, "request_hash"), true);
 });
 
 test("NAVER와 GSC 관측값은 수집 provenance를 tenant 복합 FK로 고정한다", () => {

@@ -51,6 +51,11 @@ function providerResult(overrides: Partial<TalordataGoogleSearchResult> = {}): T
         description: null,
       },
     ],
+    organicCoverage: {
+      requested: 100,
+      validatedThrough: 100,
+      complete: true,
+    },
     aiOverview: {
       present: true,
       presenceAvailable: true,
@@ -330,6 +335,62 @@ test("등록 도메인과 하위 도메인이 top100에 없으면 >100을 null�
       resultTitle: null,
     },
   ]);
+});
+
+test("partial organic coverage는 >100 관측을 쓰지 않고 known retryable로 재시도한다", async () => {
+  const failures: ProviderCallFailure[] = [];
+  const batches: GoogleObservationBatch[] = [];
+  const handler = createGoogleCollectionJobHandler({
+    provider: {
+      async search(input) {
+        return providerResult({
+          query: input.query,
+          organic: [{
+            position: 10,
+            title: "Partial competitor",
+            link: "https://competitor.example/partial",
+            domain: "competitor.example",
+            displayLink: null,
+            description: null,
+          }],
+          organicCoverage: {
+            requested: 100,
+            validatedThrough: 10,
+            complete: false,
+          },
+        });
+      },
+    },
+    observations: { async upsert(batch) { batches.push(batch); } },
+  });
+  const context = contextWith({
+    async reserve() {
+      return {
+        disposition: "execute",
+        providerCallId: "00000000-0000-4000-8000-000000000014",
+        usageReservationId: "00000000-0000-4000-8000-000000000015",
+        responseMetadata: null,
+      };
+    },
+    async succeed() { assert.fail("partial coverage must not succeed provider call"); },
+    async fail(failure) { failures.push(failure); },
+  });
+
+  const result = await handler(
+    jobWith(payloadFor([{
+      workspaceId,
+      siteId,
+      trackedQueryId: "00000000-0000-4000-8000-000000000016",
+      type: "rank",
+      query: "partial coverage",
+    }])),
+    context,
+  );
+
+  assert.equal(result.status, "retryable");
+  assert.equal(result.status === "retryable" ? result.error : null, "TALORDATA_PARTIAL_ORGANIC_COVERAGE");
+  assert.equal(failures[0]?.disposition, "retryable");
+  assert.equal(batches.length, 0);
 });
 
 test("AIO 증거 미제공은 unknown, 명시적 미출현과 검증 인용 미일치는 absent로 저장한다", async () => {
@@ -652,7 +713,46 @@ test("TalorData rate limit은 provider call을 실패 처리하고 worker retrya
 
   assert.equal(result.status, "retryable");
   assert.equal(failures[0]?.errorCode, "rate_limit");
+  assert.equal(failures[0]?.disposition, "retryable");
   assert.equal(writes, 0);
+});
+
+test("TalorData timeout은 provider call을 outcome unknown으로 보존한다", async () => {
+  const failures: ProviderCallFailure[] = [];
+  const handler = createGoogleCollectionJobHandler({
+    provider: {
+      async search() {
+        throw new TalordataProviderFailure("retryable", "timeout", "timed out");
+      },
+    },
+    observations: { async upsert() { assert.fail("timeout must not write"); } },
+  });
+  const context = contextWith({
+    async reserve() {
+      return {
+        disposition: "execute",
+        providerCallId: "00000000-0000-4000-8000-000000000094",
+        usageReservationId: "00000000-0000-4000-8000-000000000095",
+        responseMetadata: null,
+      };
+    },
+    async succeed() {},
+    async fail(failure) { failures.push(failure); },
+  });
+
+  const result = await handler(
+    jobWith(payloadFor([{
+      workspaceId,
+      siteId,
+      trackedQueryId: "00000000-0000-4000-8000-000000000096",
+      type: "rank",
+      query: "timeout",
+    }])),
+    context,
+  );
+
+  assert.equal(result.status, "retryable");
+  assert.equal(failures[0]?.disposition, "outcome_unknown");
 });
 
 test("빈 normalized query와 중복 trackedQueryId를 provider 예약 전에 거부한다", async () => {

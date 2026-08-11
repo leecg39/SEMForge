@@ -3,26 +3,12 @@
 // @TEST src/server/providers/talordata/provider.test.ts
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { after, before, test } from "node:test";
+import { test } from "node:test";
 
 import {
   createTalordataGoogleProvider,
   TalordataProviderFailure,
 } from "@/server/providers/talordata/provider";
-
-const previousToken = process.env.TALORDATA_API_TOKEN;
-
-before(() => {
-  process.env.TALORDATA_API_TOKEN = "provider-test-token";
-});
-
-after(() => {
-  if (previousToken === undefined) {
-    delete process.env.TALORDATA_API_TOKEN;
-  } else {
-    process.env.TALORDATA_API_TOKEN = previousToken;
-  }
-});
 
 function fixture(name: string): unknown {
   return JSON.parse(
@@ -33,6 +19,7 @@ function fixture(name: string): unknown {
 test("공식 응답 픽스처를 KR/ko/desktop/top100 AIO 결과로 변환한다", async () => {
   let body: URLSearchParams | undefined;
   const provider = createTalordataGoogleProvider({
+    token: "provider-test-token",
     fetchImpl: async (_input, init) => {
       assert.ok(init?.body instanceof URLSearchParams);
       body = init.body;
@@ -62,10 +49,16 @@ test("공식 응답 픽스처를 KR/ko/desktop/top100 AIO 결과로 변환한다
   assert.equal(result.aiOverview.citations[0]?.domain, "insights.example.com");
   assert.equal(result.provenance.source, "talordata");
   assert.equal(result.provenance.window, 100);
+  assert.deepEqual(result.organicCoverage, {
+    requested: 100,
+    validatedThrough: 100,
+    complete: true,
+  });
 });
 
 test("공식 rate limit은 worker가 재시도할 수 있는 오류로 분류한다", async () => {
   const provider = createTalordataGoogleProvider({
+    token: "provider-test-token",
     fetchImpl: async () => Response.json(fixture("official-rate-limit.json")),
     maxAttempts: 1,
   });
@@ -81,6 +74,7 @@ test("공식 rate limit은 worker가 재시도할 수 있는 오류로 분류한
 
 test("공식 timeout은 재시도 가능한 provider timeout으로 분류한다", async () => {
   const provider = createTalordataGoogleProvider({
+    token: "provider-test-token",
     fetchImpl: async () => Response.json(fixture("official-timeout.json")),
     maxAttempts: 1,
   });
@@ -98,6 +92,7 @@ test("worker abort signal을 HTTP 경계까지 전파하고 retryable aborted로
   const controller = new AbortController();
   controller.abort("worker shutdown");
   const provider = createTalordataGoogleProvider({
+    token: "provider-test-token",
     fetchImpl: async (_input, init) => {
       assert.equal(init?.signal?.aborted, true);
       throw new DOMException("aborted", "AbortError");
@@ -121,6 +116,7 @@ test("worker abort signal을 HTTP 경계까지 전파하고 retryable aborted로
 
 test("공식 code=400 collection pipeline 실패는 retryable provider로 분류한다", async () => {
   const provider = createTalordataGoogleProvider({
+    token: "provider-test-token",
     fetchImpl: async () => Response.json(fixture("official-pipeline-error.json")),
     maxAttempts: 1,
   });
@@ -136,6 +132,7 @@ test("공식 code=400 collection pipeline 실패는 retryable provider로 분류
 
 test("공식 code=401 인증 실패는 재시도하지 않는 terminal로 분류한다", async () => {
   const provider = createTalordataGoogleProvider({
+    token: "provider-test-token",
     fetchImpl: async () => Response.json(fixture("official-auth-error.json")),
     maxAttempts: 3,
   });
@@ -147,4 +144,23 @@ test("공식 code=401 인증 실패는 재시도하지 않는 terminal로 분류
       error.disposition === "terminal" &&
       error.reason === "authentication",
   );
+});
+
+test("provider token은 명시적으로 주입해야 하며 process.env fallback을 사용하지 않는다", async () => {
+  const previous = process.env.TALORDATA_API_TOKEN;
+  process.env.TALORDATA_API_TOKEN = "must-not-be-read";
+  try {
+    const provider = createTalordataGoogleProvider({
+      fetchImpl: async () => Response.json(fixture("official-google-serp-aio.json")),
+      maxAttempts: 1,
+    });
+    await assert.rejects(
+      provider.search({ query: "missing injected token", includeAiOverview: false }),
+      (error: unknown) =>
+        error instanceof TalordataProviderFailure && error.reason === "configuration",
+    );
+  } finally {
+    if (previous === undefined) delete process.env.TALORDATA_API_TOKEN;
+    else process.env.TALORDATA_API_TOKEN = previous;
+  }
 });

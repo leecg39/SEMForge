@@ -51,13 +51,24 @@ export interface ProviderCallFailure {
   readonly providerCallId: string;
   readonly usageReservationId: string;
   readonly errorCode: string;
+  readonly disposition?: "retryable" | "terminal" | "outcome_unknown";
   readonly responseMetadata?: Readonly<Record<string, unknown>>;
+}
+
+export interface ProviderCallReconciliation {
+  readonly providerCallId: string;
+  readonly usageReservationId: string;
+  readonly outcome: "retryable" | "failed" | "succeeded";
+  readonly reason: string;
+  readonly responseMetadata?: Readonly<Record<string, unknown>>;
+  readonly costUnits?: number;
 }
 
 export interface ProviderCallCoordinator {
   reserve(request: ProviderCallRequest): Promise<ProviderCallReservation>;
   succeed(result: ProviderCallSuccess): Promise<void>;
   fail(result: ProviderCallFailure): Promise<void>;
+  reconcile?(result: ProviderCallReconciliation): Promise<void>;
 }
 
 export interface JobExecutionContext {

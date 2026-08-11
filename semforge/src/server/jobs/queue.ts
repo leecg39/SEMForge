@@ -34,6 +34,7 @@ export interface JobRecord {
   readonly status: JobStatus;
   readonly payload: Readonly<Record<string, unknown>>;
   readonly idempotencyKey: string;
+  readonly requestHash: string;
   readonly priority: number;
   readonly availableAt: Date;
   readonly attempts: number;
@@ -79,6 +80,7 @@ type JobRow = {
   status: JobStatus;
   payload: Record<string, unknown> | string;
   idempotency_key: string;
+  request_hash: string;
   priority: number;
   available_at: Date | string;
   lease_owner: string | null;
@@ -94,7 +96,7 @@ type JobRow = {
 
 export class JobQueueError extends Error {
   constructor(
-    readonly code: "INVALID_JOB" | "LEASE_LOST" | "JOB_NOT_FOUND",
+    readonly code: "INVALID_JOB" | "LEASE_LOST" | "JOB_NOT_FOUND" | "IDEMPOTENCY_CONFLICT",
     message: string = code,
   ) {
     super(message);
@@ -142,6 +144,7 @@ function toJob(row: JobRow): JobRecord {
     status: row.status,
     payload: parsePayload(row.payload),
     idempotencyKey: row.idempotency_key,
+    requestHash: row.request_hash,
     priority: row.priority,
     availableAt: new Date(row.available_at),
     attempts: row.attempts,
@@ -174,13 +177,13 @@ function toLeasedJob(row: JobRow): LeasedJob {
 }
 
 const JOB_COLUMNS = `
-  id::text, workspace_id::text, type, status, payload, idempotency_key,
+  id::text, workspace_id::text, type, status, payload, idempotency_key, request_hash,
   priority, available_at, lease_owner, lease_token::text, lease_generation,
   lease_expires_at, attempts, max_attempts, last_error, created_at, updated_at
 `;
 
 const CLAIMED_JOB_COLUMNS = `
-  job.id::text, job.workspace_id::text, job.type, job.status, job.payload, job.idempotency_key,
+  job.id::text, job.workspace_id::text, job.type, job.status, job.payload, job.idempotency_key, job.request_hash,
   job.priority, job.available_at, job.lease_owner, job.lease_token::text, job.lease_generation,
   job.lease_expires_at, job.attempts, job.max_attempts, job.last_error, job.created_at, job.updated_at
 `;
@@ -227,6 +230,14 @@ export class PostgresJobQueue {
     );
     const row = result.rows[0];
     if (!row) throw new JobQueueError("JOB_NOT_FOUND");
+    const expected = await this.database.query<{ request_hash: string }>(
+      `select encode(sha256(convert_to($1::text || chr(31) || $2::jsonb::text || chr(31) ||
+                 $3::integer::text || chr(31) || $4::integer::text, 'UTF8')), 'hex') as request_hash`,
+      [type, JSON.stringify(input.payload), maxAttempts, priority],
+    );
+    if (row.request_hash !== expected.rows[0]?.request_hash) {
+      throw new JobQueueError("IDEMPOTENCY_CONFLICT");
+    }
     return toJob(row);
   }
 

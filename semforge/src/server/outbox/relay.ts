@@ -12,6 +12,7 @@ export interface ClaimOutboxInput {
   readonly limit?: number;
   readonly leaseMs?: number;
   readonly now?: Date;
+  readonly topics?: readonly string[];
 }
 
 export interface PublishOutboxInput {
@@ -43,6 +44,7 @@ export interface OutboxRecord {
   readonly topic: string;
   readonly payload: Readonly<Record<string, unknown>>;
   readonly idempotencyKey: string;
+  readonly requestHash: string;
   readonly availableAt: Date;
   readonly attempts: number;
   readonly maxAttempts: number;
@@ -61,6 +63,7 @@ type OutboxRow = {
   topic: string;
   payload: Record<string, unknown> | string;
   idempotency_key: string;
+  request_hash: string;
   available_at: Date | string;
   lease_owner: string | null;
   lease_token: string | null;
@@ -80,6 +83,7 @@ type JobRow = {
   status: JobStatus;
   payload: Record<string, unknown> | string;
   idempotency_key: string;
+  request_hash: string;
   priority: number;
   available_at: Date | string;
   attempts: number;
@@ -87,11 +91,12 @@ type JobRow = {
   last_error: string | null;
   created_at: Date | string;
   updated_at: Date | string;
+  idempotency_conflict?: boolean;
 };
 
 export class OutboxRelayError extends Error {
   constructor(
-    readonly code: "INVALID_OUTBOX" | "LEASE_LOST" | "JOB_NOT_FOUND",
+    readonly code: "INVALID_OUTBOX" | "LEASE_LOST" | "JOB_NOT_FOUND" | "IDEMPOTENCY_CONFLICT",
     message: string = code,
   ) {
     super(message);
@@ -133,6 +138,7 @@ function toLeasedOutbox(row: OutboxRow): LeasedOutboxRecord {
     topic: row.topic,
     payload: parseJson(row.payload),
     idempotencyKey: row.idempotency_key,
+    requestHash: row.request_hash,
     availableAt: new Date(row.available_at),
     attempts: row.attempts,
     maxAttempts: row.max_attempts,
@@ -155,6 +161,7 @@ function toOutbox(row: OutboxRow): OutboxRecord {
     topic: row.topic,
     payload: parseJson(row.payload),
     idempotencyKey: row.idempotency_key,
+    requestHash: row.request_hash,
     availableAt: new Date(row.available_at),
     attempts: row.attempts,
     maxAttempts: row.max_attempts,
@@ -172,6 +179,7 @@ function toJob(row: JobRow): JobRecord {
     status: row.status,
     payload: parseJson(row.payload),
     idempotencyKey: row.idempotency_key,
+    requestHash: row.request_hash,
     priority: row.priority,
     availableAt: new Date(row.available_at),
     attempts: row.attempts,
@@ -183,25 +191,25 @@ function toJob(row: JobRow): JobRecord {
 }
 
 const OUTBOX_COLUMNS = `
-  id::text, workspace_id::text, topic, payload, idempotency_key, available_at,
+  id::text, workspace_id::text, topic, payload, idempotency_key, request_hash, available_at,
   lease_owner, lease_token::text, lease_generation, lease_expires_at,
   attempts, max_attempts, published_at, last_error, created_at
 `;
 
 const CLAIMED_OUTBOX_COLUMNS = `
-  event.id::text, event.workspace_id::text, event.topic, event.payload, event.idempotency_key,
+  event.id::text, event.workspace_id::text, event.topic, event.payload, event.idempotency_key, event.request_hash,
   event.available_at, event.lease_owner, event.lease_token::text, event.lease_generation,
   event.lease_expires_at, event.attempts, event.max_attempts, event.published_at,
   event.last_error, event.created_at
 `;
 
 const JOB_COLUMNS = `
-  id::text, workspace_id::text, type, status, payload, idempotency_key,
+  id::text, workspace_id::text, type, status, payload, idempotency_key, request_hash,
   priority, available_at, attempts, max_attempts, last_error, created_at, updated_at
 `;
 
 const EXISTING_JOB_COLUMNS = `
-  job.id::text, job.workspace_id::text, job.type, job.status, job.payload, job.idempotency_key,
+  job.id::text, job.workspace_id::text, job.type, job.status, job.payload, job.idempotency_key, job.request_hash,
   job.priority, job.available_at, job.attempts, job.max_attempts, job.last_error,
   job.created_at, job.updated_at
 `;
@@ -217,12 +225,17 @@ export class PostgresOutboxRelay {
     const limit = requireInteger(input.limit ?? 1, 1, 100, "limit");
     const leaseMs = requireInteger(input.leaseMs ?? 60_000, 1_000, 60 * 60 * 1000, "leaseMs");
     const now = input.now ?? this.clock();
+    const topics = input.topics?.map((topic) => requireNonBlank(topic, "topic"));
+    if (topics && (topics.length === 0 || new Set(topics).size !== topics.length)) {
+      throw new OutboxRelayError("INVALID_OUTBOX", "topics are invalid");
+    }
     const result = await this.database.query<OutboxRow>(
       `with candidates as (
          select id
            from outbox
           where published_at is null and available_at <= $1 and attempts < max_attempts
             and (lease_expires_at is null or lease_expires_at <= $1)
+            and ($5::text[] is null or topic = any($5::text[]))
           order by available_at asc, created_at asc
           for update skip locked
           limit $2
@@ -243,7 +256,7 @@ export class PostgresOutboxRelay {
            from claimed
        )
        select * from claimed order by available_at asc, created_at asc`,
-      [now, limit, workerId, leaseMs],
+      [now, limit, workerId, leaseMs, topics ?? null],
     );
     return result.rows.map(toLeasedOutbox);
   }
@@ -285,6 +298,14 @@ export class PostgresOutboxRelay {
                       and job.type = $7
                       and job.idempotency_key = 'outbox:' || source.topic || ':' || source.idempotency_key
           where not exists (select 1 from inserted_job)
+       ), checked_job as (
+         select resolved_job.*,
+                resolved_job.request_hash <> encode(sha256(convert_to(
+                  $7::text || chr(31) || source.payload::text || chr(31) ||
+                  $9::integer::text || chr(31) || $8::integer::text,
+                  'UTF8'
+                )), 'hex') as idempotency_conflict
+           from resolved_job cross join source
        ), published as (
          update outbox as event
             set published_at = coalesce(event.published_at, $6),
@@ -294,7 +315,7 @@ export class PostgresOutboxRelay {
                 last_error = null
            from source
           where event.id = source.id::uuid
-            and exists (select 1 from resolved_job)
+            and exists (select 1 from checked_job where not idempotency_conflict)
          returning event.id::text
        ), audited as (
          insert into audit_events (workspace_id, action, entity_type, entity_id, request_id, metadata)
@@ -303,7 +324,9 @@ export class PostgresOutboxRelay {
            from source
           where source.published_at is null and exists (select 1 from published)
        )
-       select * from resolved_job where exists (select 1 from published) limit 1`,
+       select * from checked_job
+        where idempotency_conflict or exists (select 1 from published)
+        limit 1`,
       [
         requireNonBlank(event.workspaceId, "workspaceId"),
         requireNonBlank(event.id, "outboxId"),
@@ -317,6 +340,9 @@ export class PostgresOutboxRelay {
       ],
     );
     const row = result.rows[0];
+    if (row?.idempotency_conflict) {
+      throw new OutboxRelayError("IDEMPOTENCY_CONFLICT");
+    }
     if (!row) {
       throw new OutboxRelayError("LEASE_LOST", "OUTBOX_LEASE_LOST");
     }

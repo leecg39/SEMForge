@@ -53,6 +53,11 @@ export interface TalordataGoogleSearchInput {
 export interface TalordataGoogleSearchResult {
   query: string;
   organic: readonly SerpOrganicItem[];
+  organicCoverage: {
+    readonly requested: number;
+    readonly validatedThrough: number;
+    readonly complete: boolean;
+  };
   aiOverview: AiOverviewInfo;
   providerRequestId: string | null;
   collectedAt: string;
@@ -146,6 +151,11 @@ function classifyFailure(error: unknown): TalordataProviderFailure {
 export function createTalordataGoogleProvider(
   options: TalordataClientOptions = {},
 ): TalordataGoogleProvider {
+  const clientOptions: TalordataClientOptions = {
+    ...options,
+    // An empty explicit value disables the lower-level development fallback.
+    token: options.token ?? "",
+  };
   return {
     async search(input) {
       try {
@@ -159,11 +169,12 @@ export function createTalordataGoogleProvider(
             device: TALORDATA_GOOGLE_COLLECTION.device,
             aiOverview: input.includeAiOverview,
           },
-          { ...options, signal: input.signal ?? options.signal },
+          { ...clientOptions, signal: input.signal ?? clientOptions.signal },
         );
         return {
           query: result.query,
           organic: result.organic,
+          organicCoverage: result.organicCoverage,
           aiOverview: result.aiOverview,
           providerRequestId: result.provider.id,
           collectedAt: result.capturedAt.toISOString(),
