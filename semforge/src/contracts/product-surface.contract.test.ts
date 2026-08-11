@@ -114,13 +114,18 @@ function isAllowedApiRoute(route: string): boolean {
 test("발견된 App Router 페이지는 제품 페이지 허용 목록 안에만 존재한다", () => {
   const pageFiles = walkFiles(appRoot).filter((file) => /^page\.(?:ts|tsx|js|jsx)$/.test(path.basename(file)));
   const discovered = pageFiles.map((file) => ({ file: relativeProjectPath(file), route: routePath(file) }));
-  const forbidden = discovered.filter(({ route }) => !allowedPages.has(route));
   const duplicateRoutes = discovered
     .map(({ route }) => route)
     .filter((route, index, routes) => routes.indexOf(route) !== index);
+  const discoveredRoutes = discovered.map(({ route }) => route).toSorted();
+  const expectedRoutes = [...allowedPages].toSorted();
 
-  assert.deepEqual(forbidden, [], `허용되지 않은 페이지:\n${JSON.stringify(forbidden, null, 2)}`);
   assert.deepEqual(duplicateRoutes, [], `중복 페이지 경로: ${duplicateRoutes.join(", ")}`);
+  assert.deepEqual(
+    discoveredRoutes,
+    expectedRoutes,
+    `페이지 목록은 14개 제품 계약과 정확히 일치해야 합니다.\n${JSON.stringify(discovered, null, 2)}`,
+  );
 });
 
 test("발견된 Route Handler는 v1 제품 API와 health 허용 목록 안에만 존재한다", () => {
@@ -136,10 +141,17 @@ test("발견된 Route Handler는 v1 제품 API와 health 허용 목록 안에만
 });
 
 test("제품 소스에는 레거시 기능 경로와 SQLite·복제 제품 흔적이 없다", () => {
-  const sourceRoots = ["src/app", "src/components", "src/server", "src/lib"];
+  const sourceRoots = [
+    "src/app",
+    "src/components",
+    "src/server",
+    "src/lib",
+    "src/i18n",
+    "src/types",
+  ];
   const sourceFiles = sourceRoots
     .flatMap((root) => walkFiles(path.join(projectRoot, root)))
-    .filter((file) => /\.(?:ts|tsx|js|jsx|css)$/.test(file));
+    .filter((file) => /\.(?:ts|tsx|js|jsx|css|json)$/.test(file));
 
   const forbiddenPaths = sourceFiles
     .map(relativeProjectPath)
@@ -150,6 +162,8 @@ test("제품 소스에는 레거시 기능 경로와 SQLite·복제 제품 흔�
     { label: "SQLite DATABASE_PATH", pattern: /\bDATABASE_PATH\b/ },
     { label: "Semrush clone identity", pattern: /semrush/i },
     { label: "GitNexus", pattern: /gitnexus/i },
+    { label: "clone wording", pattern: /\bclone\b|클론|복제/i },
+    { label: "legacy CRUD", pattern: /\bcrud\b|\bResourceSpec\b|\bListMetaShape\b/i },
     { label: "legacy API namespace", pattern: /\/api\/(?!v1(?:\/|$))/ },
   ] as const;
   const forbiddenContents = sourceFiles
