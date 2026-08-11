@@ -1,29 +1,38 @@
+// @TASK P1-D1-T1 - Owner-only PostgreSQL migration runner
+// @SPEC docs/planning/06-tasks.md#p1-d1-t1--postgresql-16-핵심-스키마와-암호화-기반
 import path from "node:path";
-import { Pool } from "pg";
+
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { Pool } from "pg";
 
-/** `npm run db:migrate` 로 실행. PostgreSQL 마이그레이션을 순서대로 적용한다. */
+import { getServerEnv } from "@/lib/env";
 
-const connectionString = process.env.DATABASE_URL?.trim();
-if (!connectionString) {
-  throw new Error("DATABASE_URL 이 설정되지 않았습니다.");
-}
+const env = getServerEnv();
+const connectionString = env.MIGRATION_DATABASE_URL ??
+  (env.NODE_ENV === "production" ? undefined : env.DATABASE_URL);
+if (!connectionString) throw new Error("MIGRATION_DATABASE_URL이 필요합니다.");
 
 const pool = new Pool({
   connectionString,
-  max: Number(process.env.PGPOOL_MAX ?? "1"),
+  max: 1,
+  connectionTimeoutMillis: env.PGPOOL_CONNECTION_TIMEOUT_MS,
+  idleTimeoutMillis: env.PGPOOL_IDLE_TIMEOUT_MS,
+  statement_timeout: env.PG_STATEMENT_TIMEOUT_MS,
+  application_name: "semforge-migrator",
   ssl:
-    process.env.PGSSLMODE === "disable"
-      ? undefined
-      : process.env.PGSSLMODE
-        ? { rejectUnauthorized: false }
-        : undefined,
+    env.PGSSLMODE === "disable"
+      ? false
+      : env.PGSSLMODE === "verify-full"
+        ? { rejectUnauthorized: true }
+        : { rejectUnauthorized: false },
 });
 
-const db = drizzle(pool);
-
-await migrate(db, { migrationsFolder: path.join(process.cwd(), "src", "db", "migrations") });
-
-console.log("[db] migrations applied");
-await pool.end();
+try {
+  await migrate(drizzle(pool), {
+    migrationsFolder: path.join(process.cwd(), "src", "db", "migrations"),
+  });
+  console.log("[db] PostgreSQL migrations applied");
+} finally {
+  await pool.end();
+}

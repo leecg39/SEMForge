@@ -1,1 +1,0 @@
-ALTER TABLE `advertising_research_items` ADD `shopping_availability` text DEFAULT 'unavailable' NOT NULL;

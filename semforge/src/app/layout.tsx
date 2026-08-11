@@ -1,53 +1,35 @@
-import { Agentation } from "agentation";
 import type { Metadata } from "next";
-import { Inter, Sora } from "next/font/google";
-import { LocaleProvider } from "@/i18n/LocaleProvider";
-import { getLocale } from "@/i18n/server";
+import "@fontsource/noto-sans-kr/400.css";
+import "@fontsource/noto-sans-kr/500.css";
+import "@fontsource/noto-sans-kr/600.css";
+import "@fontsource/noto-sans-kr/700.css";
 import "./globals.css";
 
-// 디스플레이 폰트: 원본 자사 폰트(Lazzer/Factor A) 대신 시각적으로 유사한
-// 오픈소스 폰트(Sora)로 대체. CSS 변수명은 유지해 컴포넌트 변경 불필요.
-const sora = Sora({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700", "800"],
-  variable: "--font-lazzer",
-  display: "swap",
-});
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap",
-});
-
+// @TASK P1-F1-T1 - Independent Korean-first root layout
+// @SPEC SEMForge paid beta plan#independent-brand
 export const metadata: Metadata = {
-  title: "SEMForge — SEO & AI 가시성 플랫폼",
-  description:
-    "SEMForge는 SEO, AI 가시성, 트래픽 분석을 하나로 묶은 실데이터 기반 검색 마케팅 플랫폼입니다.",
-  icons: {
-    icon: [{ url: "/seo/favicon.svg", type: "image/svg+xml" }],
+  title: {
+    default: "SEMForge — 주간 검색 가시성 리포트",
+    template: "%s · SEMForge",
   },
+  description:
+    "Google 순위, AI Overview, Search Console, NAVER 수요 변화를 매주 한 장으로 정리하는 한국 SEO 대행사 리포트입니다.",
+  applicationName: "SEMForge",
+  robots: { index: false, follow: false },
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const locale = await getLocale();
-
   return (
-    <html
-      lang={locale}
-      className={`${sora.variable} ${inter.variable} h-full antialiased`}
-      style={{ ["--font-factor-a" as string]: "var(--font-lazzer)" }}
-    >
-      <body className="min-h-full flex flex-col">
-        <LocaleProvider initialLocale={locale}>
-          {children}
-          {/* 개발 중에만 로드되는 주석 툴바 */}
-          {process.env.NODE_ENV === "development" && <Agentation />}
-        </LocaleProvider>
+    <html lang="ko">
+      <body>
+        <a className="sf-skip-link" href="#main-content">
+          본문 바로가기
+        </a>
+        {children}
       </body>
     </html>
   );

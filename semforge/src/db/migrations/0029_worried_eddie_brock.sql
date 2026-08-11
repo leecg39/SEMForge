@@ -1,2 +1,0 @@
-DROP INDEX `social_runs_project_kind_active_unique`;--> statement-breakpoint
-CREATE UNIQUE INDEX `social_runs_project_kind_active_unique` ON `social_runs` (`project_id`,`kind`) WHERE "social_runs"."kind" = 'sync' AND "social_runs"."status" IN ('queued', 'running') AND "social_runs"."deleted_at" IS NULL;

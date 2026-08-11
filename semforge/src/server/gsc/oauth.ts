@@ -11,7 +11,7 @@ import { ApiError } from "@/lib/api";
 const AUTHORIZATION_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 export const GSC_SCOPE = "https://www.googleapis.com/auth/webmasters.readonly";
-const DEFAULT_REDIRECT_URI = "http://localhost:3000/api/gsc/callback";
+const DEFAULT_REDIRECT_URI = "http://localhost:3000/api/v1/integrations/gsc/callback";
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
 export interface GscOAuthConfig {

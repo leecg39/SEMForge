@@ -1,8 +1,0 @@
-{
-  "correctness": 45,
-  "data_semantics": 25,
-  "api_and_privacy": 15,
-  "frontend_accessibility": 15,
-  "direction": "higher_is_better",
-  "maximum": 100
-}

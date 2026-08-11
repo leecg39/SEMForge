@@ -1,5 +1,4 @@
 import { ApiError } from "@/lib/api";
-import { normalizeDomain } from "@/lib/analytics/metrics";
 
 /**
  * TalorData SERP API 클라이언트.
@@ -114,6 +113,19 @@ interface TalordataOrganicRaw {
   link?: string;
   display_link?: string;
   description?: string;
+}
+
+function normalizeDomain(input: string): string {
+  const trimmed = input.trim().toLocaleLowerCase("en-US");
+  if (!trimmed) return "";
+  try {
+    const withProtocol = /^[a-z][a-z\d+.-]*:\/\//i.test(trimmed)
+      ? trimmed
+      : `https://${trimmed}`;
+    return new URL(withProtocol).hostname.replace(/^www\./, "").replace(/\.$/, "");
+  } catch {
+    return "";
+  }
 }
 
 function firstString(record: Record<string, unknown>, keys: readonly string[]): string | null {
