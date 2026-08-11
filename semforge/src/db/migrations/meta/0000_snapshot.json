@@ -1,5 +1,5 @@
 {
-  "id": "a110661b-cb02-4ce1-81b4-ccf22640aa49",
+  "id": "cc425ce1-bdab-458d-9e2e-7686bbd2f5bc",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -370,6 +370,80 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.auth_action_throttles": {
+      "name": "auth_action_throttles",
+      "schema": "",
+      "columns": {
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key_hash": {
+          "name": "key_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "window_started_at": {
+          "name": "window_started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "attempt_count": {
+          "name": "attempt_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "blocked_until": {
+          "name": "blocked_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "auth_action_throttles_action_key_uq": {
+          "name": "auth_action_throttles_action_key_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "action",
+            "key_hash"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "auth_action_throttles_action_ck": {
+          "name": "auth_action_throttles_action_ck",
+          "value": "\"auth_action_throttles\".\"action\" in ('login', 'forgot_password')"
+        },
+        "auth_action_throttles_key_hash_ck": {
+          "name": "auth_action_throttles_key_hash_ck",
+          "value": "\"auth_action_throttles\".\"key_hash\" ~ '^[0-9a-f]{64}$'"
+        },
+        "auth_action_throttles_attempt_count_ck": {
+          "name": "auth_action_throttles_attempt_count_ck",
+          "value": "\"auth_action_throttles\".\"attempt_count\" >= 0"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.billing_customers": {

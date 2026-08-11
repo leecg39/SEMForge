@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { getTableConfig } from "drizzle-orm/pg-core";
 
 import {
+  authActionThrottles,
   aioPresenceEnum,
   jobStatusEnum,
   reportStatusEnum,
@@ -93,5 +94,15 @@ test("tracked_queries는 workspace와 site를 함께 참조한다", () => {
         key.columns.map((column) => column.name).join(",") === "workspace_id,site_id" &&
         key.foreignColumns.map((column) => column.name).join(",") === "workspace_id,id",
     ),
+  );
+});
+
+test("auth_action_throttles는 workspace 없이 action과 SHA-256 hash만 저장한다", () => {
+  const config = getTableConfig(authActionThrottles);
+  assert.equal(config.name, "auth_action_throttles");
+  assert.equal(config.columns.some((column) => column.name === "workspace_id"), false);
+  assert.deepEqual(
+    config.columns.map((column) => column.name),
+    ["action", "key_hash", "window_started_at", "attempt_count", "blocked_until", "updated_at"],
   );
 });

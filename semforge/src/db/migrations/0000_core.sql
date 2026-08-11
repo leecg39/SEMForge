@@ -523,6 +523,21 @@ CREATE INDEX "sites_workspace_active_idx" ON "sites" USING btree ("workspace_id"
 CREATE INDEX "tracked_queries_active_idx" ON "tracked_queries" USING btree ("workspace_id","site_id","type","active");--> statement-breakpoint
 CREATE UNIQUE INDEX "users_email_lower_uq" ON "users" USING btree (lower("email"));--> statement-breakpoint
 
+-- @TASK P1-D2 - Hashed pre-tenant authentication throttles
+-- @SPEC docs/planning/06-tasks.md#phase-1--postgresql-기반과-물리적-축소
+CREATE TABLE "auth_action_throttles" (
+	"action" text NOT NULL,
+	"key_hash" text NOT NULL,
+	"window_started_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"attempt_count" integer DEFAULT 0 NOT NULL,
+	"blocked_until" timestamp with time zone,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "auth_action_throttles_action_key_uq" UNIQUE("action","key_hash"),
+	CONSTRAINT "auth_action_throttles_action_ck" CHECK ("auth_action_throttles"."action" in ('login', 'forgot_password')),
+	CONSTRAINT "auth_action_throttles_key_hash_ck" CHECK ("auth_action_throttles"."key_hash" ~ '^[0-9a-f]{64}$'),
+	CONSTRAINT "auth_action_throttles_attempt_count_ck" CHECK ("auth_action_throttles"."attempt_count" >= 0)
+);--> statement-breakpoint
+
 -- @TASK P1-D1-T1 - Concurrency-safe beta entitlements
 -- @SPEC docs/planning/06-tasks.md#p1-d1-t1--postgresql-16-핵심-스키마와-암호화-기반
 CREATE FUNCTION enforce_workspace_site_limit() RETURNS trigger
@@ -557,7 +572,7 @@ FOR EACH ROW EXECUTE FUNCTION enforce_tracked_query_limit();--> statement-breakp
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_web') THEN CREATE ROLE semforge_web NOLOGIN NOINHERIT NOBYPASSRLS; END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_auth') THEN CREATE ROLE semforge_auth NOLOGIN NOINHERIT NOBYPASSRLS; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_auth') THEN CREATE ROLE semforge_auth NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_worker') THEN CREATE ROLE semforge_worker NOLOGIN NOINHERIT NOBYPASSRLS; END IF;
 END
 $$;--> statement-breakpoint
@@ -573,7 +588,11 @@ GRANT SELECT, INSERT ON audit_events, provider_calls, usage_reservations, jobs, 
 GRANT SELECT ON rank_observations, aio_observations, aio_citations, naver_observations,
   gsc_observations, weekly_reports, report_sections, report_assets, deliveries,
   payments, provider_events TO semforge_web;--> statement-breakpoint
-GRANT SELECT, INSERT, UPDATE, DELETE ON users, sessions, invites, password_resets TO semforge_auth;--> statement-breakpoint
+GRANT SELECT, INSERT, UPDATE ON users TO semforge_auth;--> statement-breakpoint
+GRANT SELECT, UPDATE ON invites TO semforge_auth;--> statement-breakpoint
+GRANT SELECT, INSERT, UPDATE, DELETE ON sessions TO semforge_auth;--> statement-breakpoint
+GRANT SELECT, INSERT, UPDATE ON password_resets TO semforge_auth;--> statement-breakpoint
+GRANT SELECT, INSERT, UPDATE, DELETE ON auth_action_throttles TO semforge_auth;--> statement-breakpoint
 GRANT SELECT, INSERT ON workspaces, memberships TO semforge_auth;--> statement-breakpoint
 GRANT SELECT ON workspaces, memberships, sites, tracked_queries, gsc_connections,
   gsc_property_bindings, billing_customers, payment_methods, subscriptions TO semforge_worker;--> statement-breakpoint
@@ -593,8 +612,8 @@ CREATE POLICY workspaces_tenant_isolation ON workspaces
   TO semforge_web
   USING (id = nullif(current_setting('app.workspace_id', true), '')::uuid)
   WITH CHECK (id = nullif(current_setting('app.workspace_id', true), '')::uuid);--> statement-breakpoint
-CREATE POLICY workspaces_auth_onboarding ON workspaces TO semforge_auth
-  USING (true) WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY workspaces_auth_select ON workspaces FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
+CREATE POLICY workspaces_auth_insert ON workspaces FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY workspaces_worker_read ON workspaces FOR SELECT TO semforge_worker
   USING (true);--> statement-breakpoint
 DO $$
@@ -618,8 +637,34 @@ BEGIN
   END LOOP;
 END
 $$;--> statement-breakpoint
-CREATE POLICY memberships_auth_onboarding ON memberships TO semforge_auth
-  USING (true) WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY memberships_auth_select ON memberships FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
+CREATE POLICY memberships_auth_insert ON memberships FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE users FORCE ROW LEVEL SECURITY;--> statement-breakpoint
+CREATE POLICY users_auth_select ON users FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
+CREATE POLICY users_auth_insert ON users FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY users_auth_update ON users FOR UPDATE TO semforge_auth USING (true) WITH CHECK (true);--> statement-breakpoint
+ALTER TABLE invites ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE invites FORCE ROW LEVEL SECURITY;--> statement-breakpoint
+CREATE POLICY invites_auth_select ON invites FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
+CREATE POLICY invites_auth_update ON invites FOR UPDATE TO semforge_auth USING (true) WITH CHECK (true);--> statement-breakpoint
+ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE sessions FORCE ROW LEVEL SECURITY;--> statement-breakpoint
+CREATE POLICY sessions_auth_select ON sessions FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
+CREATE POLICY sessions_auth_insert ON sessions FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY sessions_auth_update ON sessions FOR UPDATE TO semforge_auth USING (true) WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY sessions_auth_delete ON sessions FOR DELETE TO semforge_auth USING (true);--> statement-breakpoint
+ALTER TABLE password_resets ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE password_resets FORCE ROW LEVEL SECURITY;--> statement-breakpoint
+CREATE POLICY password_resets_auth_select ON password_resets FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
+CREATE POLICY password_resets_auth_insert ON password_resets FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY password_resets_auth_update ON password_resets FOR UPDATE TO semforge_auth USING (true) WITH CHECK (true);--> statement-breakpoint
+ALTER TABLE auth_action_throttles ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE auth_action_throttles FORCE ROW LEVEL SECURITY;--> statement-breakpoint
+CREATE POLICY auth_action_throttles_auth_select ON auth_action_throttles FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
+CREATE POLICY auth_action_throttles_auth_insert ON auth_action_throttles FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY auth_action_throttles_auth_update ON auth_action_throttles FOR UPDATE TO semforge_auth USING (true) WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY auth_action_throttles_auth_delete ON auth_action_throttles FOR DELETE TO semforge_auth USING (true);--> statement-breakpoint
 DO $$
 DECLARE worker_table text;
 BEGIN

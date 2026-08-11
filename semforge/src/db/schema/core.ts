@@ -187,6 +187,29 @@ export const passwordResets = pgTable(
   ],
 );
 
+// @TASK P1-D2 - Hashed login/password-reset throttle state
+// @SPEC docs/planning/06-tasks.md#phase-1--postgresql-기반과-물리적-축소
+export const authActionThrottles = pgTable(
+  "auth_action_throttles",
+  {
+    action: text("action").notNull(),
+    keyHash: text("key_hash").notNull(),
+    windowStartedAt: timestamp("window_started_at", { withTimezone: true }).notNull().defaultNow(),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    blockedUntil: timestamp("blocked_until", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("auth_action_throttles_action_key_uq").on(table.action, table.keyHash),
+    check(
+      "auth_action_throttles_action_ck",
+      sql`${table.action} in ('login', 'forgot_password')`,
+    ),
+    check("auth_action_throttles_key_hash_ck", sql`${table.keyHash} ~ '^[0-9a-f]{64}$'`),
+    check("auth_action_throttles_attempt_count_ck", sql`${table.attemptCount} >= 0`),
+  ],
+);
+
 export const auditEvents = pgTable(
   "audit_events",
   {
@@ -780,7 +803,13 @@ export const providerEvents = pgTable(
   ],
 );
 
-export const preTenantTables = [users, sessions, invites, passwordResets] as const;
+export const preTenantTables = [
+  users,
+  sessions,
+  invites,
+  passwordResets,
+  authActionThrottles,
+] as const;
 
 export const tenantTables = [
   memberships,

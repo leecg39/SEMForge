@@ -8,6 +8,7 @@ import { EnvironmentValidationError, parseServerEnv } from "@/lib/env";
 const productionEnv = {
   NODE_ENV: "production",
   DATABASE_URL: "postgresql://semforge:test@db.example.com:5432/semforge",
+  AUTH_DATABASE_URL: "postgresql://semforge_auth:test@db.example.com:5432/semforge",
   WORKER_DATABASE_URL: "postgresql://semforge_worker:test@db.example.com:5432/semforge",
   MIGRATION_DATABASE_URL: "postgresql://semforge_owner:test@db.example.com:5432/semforge",
   APP_PUBLIC_URL: "https://app.semforge.example",
@@ -18,6 +19,7 @@ const productionEnv = {
 test("production은 database, public URL, current encryption key를 모두 요구한다", () => {
   for (const missing of [
     "DATABASE_URL",
+    "AUTH_DATABASE_URL",
     "WORKER_DATABASE_URL",
     "MIGRATION_DATABASE_URL",
     "APP_PUBLIC_URL",

@@ -7,7 +7,8 @@ import { Pool, type PoolConfig } from "pg";
 import * as schema from "@/db/schema";
 import { getServerEnv, type ServerEnv } from "@/lib/env";
 
-export type DatabaseRole = "web" | "worker";
+// @TASK P1-D2 - Dedicated pre-tenant authentication runtime role
+export type DatabaseRole = "web" | "auth" | "worker";
 export type SemforgeDatabase = NodePgDatabase<typeof schema>;
 
 const globalPools = globalThis as unknown as {
@@ -20,9 +21,15 @@ function sslConfig(env: ServerEnv): PoolConfig["ssl"] {
   return { rejectUnauthorized: false };
 }
 
-function connectionStringFor(role: DatabaseRole, env: ServerEnv): string {
-  const value = role === "worker" ? env.WORKER_DATABASE_URL : env.DATABASE_URL;
-  if (!value) throw new Error(`${role === "worker" ? "WORKER_DATABASE_URL" : "DATABASE_URL"}이 필요합니다.`);
+export function resolveDatabaseUrl(role: DatabaseRole, env: ServerEnv): string {
+  const key = {
+    web: "DATABASE_URL",
+    auth: "AUTH_DATABASE_URL",
+    worker: "WORKER_DATABASE_URL",
+  } as const satisfies Record<DatabaseRole, keyof ServerEnv>;
+  const envKey = key[role];
+  const value = env[envKey];
+  if (typeof value !== "string" || !value) throw new Error(`${envKey}이 필요합니다.`);
   return value;
 }
 
@@ -32,7 +39,7 @@ export function getPool(role: DatabaseRole = "web"): Pool {
 
   const env = getServerEnv();
   pools[role] = new Pool({
-    connectionString: connectionStringFor(role, env),
+    connectionString: resolveDatabaseUrl(role, env),
     max: env.PGPOOL_MAX,
     connectionTimeoutMillis: env.PGPOOL_CONNECTION_TIMEOUT_MS,
     idleTimeoutMillis: env.PGPOOL_IDLE_TIMEOUT_MS,

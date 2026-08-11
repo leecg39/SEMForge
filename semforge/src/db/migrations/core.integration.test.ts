@@ -133,3 +133,126 @@ test("DB도 GSC token과 Toss billing key의 평문 저장을 거부한다", asy
     ),
   );
 });
+
+test("auth role은 pre-tenant 인증 트랜잭션에 필요한 최소 권한과 RLS 정책만 가진다", async () => {
+  const role = await pg.query<{
+    rolsuper: boolean;
+    rolcreatedb: boolean;
+    rolcreaterole: boolean;
+    rolbypassrls: boolean;
+  }>(
+    "select rolsuper, rolcreatedb, rolcreaterole, rolbypassrls from pg_roles where rolname = 'semforge_auth'",
+  );
+  assert.deepEqual(role.rows[0], {
+    rolsuper: false,
+    rolcreatedb: false,
+    rolcreaterole: false,
+    rolbypassrls: false,
+  });
+
+  const grants = await pg.query<{ table_name: string; privilege_type: string }>(
+    "select table_name, privilege_type from information_schema.role_table_grants where grantee = 'semforge_auth' and table_schema = 'public' order by table_name, privilege_type",
+  );
+  const actual = grants.rows.map((grant) => `${grant.table_name}:${grant.privilege_type}`);
+  assert.deepEqual(actual, [
+    "auth_action_throttles:DELETE",
+    "auth_action_throttles:INSERT",
+    "auth_action_throttles:SELECT",
+    "auth_action_throttles:UPDATE",
+    "invites:SELECT",
+    "invites:UPDATE",
+    "memberships:INSERT",
+    "memberships:SELECT",
+    "password_resets:INSERT",
+    "password_resets:SELECT",
+    "password_resets:UPDATE",
+    "sessions:DELETE",
+    "sessions:INSERT",
+    "sessions:SELECT",
+    "sessions:UPDATE",
+    "users:INSERT",
+    "users:SELECT",
+    "users:UPDATE",
+    "workspaces:INSERT",
+    "workspaces:SELECT",
+  ]);
+
+  const policies = await pg.query<{ tablename: string; roles: string[] }>(
+    "select distinct tablename, roles from pg_policies where 'semforge_auth' = any(roles) order by tablename",
+  );
+  assert.deepEqual(
+    policies.rows.map((policy) => policy.tablename),
+    [
+      "auth_action_throttles",
+      "invites",
+      "memberships",
+      "password_resets",
+      "sessions",
+      "users",
+      "workspaces",
+    ],
+  );
+});
+
+test("auth role은 초대 수락·세션·비밀번호 재설정은 수행하지만 사이트와 결제에는 접근하지 못한다", async () => {
+  const workspaceId = "00000000-0000-4000-8000-0000000000a1";
+  const userId = "00000000-0000-4000-8000-0000000000a2";
+  const inviteId = "00000000-0000-4000-8000-0000000000a3";
+  await pg.query("insert into workspaces (id, name, slug) values ($1, 'Auth', 'auth-boundary')", [
+    workspaceId,
+  ]);
+  await pg.query(
+    "insert into invites (id, workspace_id, email, token_hash, expires_at) values ($1, $2, 'member@example.com', 'invite-auth-boundary', now() + interval '1 day')",
+    [inviteId, workspaceId],
+  );
+
+  await pg.query("begin");
+  try {
+    await pg.query("set local role semforge_auth");
+    await pg.query(
+      "insert into users (id, email, password_hash) values ($1, 'member@example.com', 'password-hash')",
+      [userId],
+    );
+    await pg.query("insert into memberships (workspace_id, user_id) values ($1, $2)", [
+      workspaceId,
+      userId,
+    ]);
+    await pg.query("update invites set accepted_at = now(), accepted_by_user_id = $1 where id = $2", [
+      userId,
+      inviteId,
+    ]);
+    await pg.query(
+      "insert into sessions (workspace_id, user_id, token_hash, expires_at) values ($1, $2, 'session-auth-boundary', now() + interval '1 day')",
+      [workspaceId, userId],
+    );
+    await pg.query(
+      "insert into password_resets (user_id, token_hash, expires_at) values ($1, 'reset-auth-boundary', now() + interval '1 hour')",
+      [userId],
+    );
+    await pg.query(
+      "insert into auth_action_throttles (action, key_hash, attempt_count) values ('login', $1, 1) on conflict (action, key_hash) do update set attempt_count = auth_action_throttles.attempt_count + 1, updated_at = now()",
+      ["a".repeat(64)],
+    );
+
+    await pg.query("savepoint invalid_throttle_hash");
+    await assert.rejects(
+      pg.query(
+        "insert into auth_action_throttles (action, key_hash) values ('forgot_password', 'member@example.com')",
+      ),
+    );
+    await pg.query("rollback to savepoint invalid_throttle_hash");
+
+    for (const [name, statement] of [
+      ["sites", "select * from sites"],
+      ["payments", "select * from payments"],
+      ["invite creation", "insert into invites (workspace_id, email, token_hash, expires_at) values ('00000000-0000-4000-8000-0000000000a1', 'other@example.com', 'forbidden-invite', now())"],
+      ["user deletion", "delete from users where id = '00000000-0000-4000-8000-0000000000a2'"],
+    ] as const) {
+      await pg.query(`savepoint auth_denied_${name.replace(/[^a-z]/g, "_")}`);
+      await assert.rejects(pg.query(statement));
+      await pg.query(`rollback to savepoint auth_denied_${name.replace(/[^a-z]/g, "_")}`);
+    }
+  } finally {
+    await pg.query("rollback");
+  }
+});
