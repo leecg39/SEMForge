@@ -74,7 +74,9 @@ export function createSessionRequireAuth(
 
 export function createBillingHandlers() {
   const env = getServerEnv();
+  if (!env.TOSS_CLIENT_KEY) throw new Error("TOSS_CLIENT_KEY가 필요합니다.");
   if (!env.TOSS_SECRET_KEY) throw new Error("TOSS_SECRET_KEY가 필요합니다.");
+  if (!env.APP_PUBLIC_URL) throw new Error("APP_PUBLIC_URL이 필요합니다.");
   if (!env.BILLING_FINGERPRINT_SECRET) {
     throw new Error("BILLING_FINGERPRINT_SECRET이 필요합니다.");
   }
@@ -101,5 +103,9 @@ export function createBillingHandlers() {
   return createBillingHttpHandlers({
     requireAuth: createSessionRequireAuth(undefined, env.APP_PUBLIC_URL),
     getService: () => service,
+    checkout: {
+      clientKey: env.TOSS_CLIENT_KEY,
+      appPublicUrl: env.APP_PUBLIC_URL,
+    },
   });
 }

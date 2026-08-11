@@ -10,6 +10,7 @@ import {
   type BillingLedgerEntry,
   type BillingStore,
   type PaymentAttempt,
+  BillingServiceError,
   createBillingService,
 } from "@/server/billing/service";
 import {
@@ -242,6 +243,20 @@ function serviceFixture(store = new MemoryBillingStore(), toss = createTossStub(
     }),
   };
 }
+
+test("checkout identity는 인증된 workspace의 서버 고정 customerKey만 반환한다", async () => {
+  const { service } = serviceFixture();
+
+  assert.deepEqual(await service.getCheckoutIdentity({ workspaceId: WORKSPACE_ID }), {
+    customerKey: CUSTOMER_KEY,
+    subscriptionStatus: "account_created",
+  });
+  await assert.rejects(
+    service.getCheckoutIdentity({ workspaceId: "0198f06a-1b42-7000-8000-000000000099" }),
+    (error: unknown) =>
+      error instanceof BillingServiceError && error.code === "NOT_FOUND",
+  );
+});
 
 test("빌링 인증 직후 49,000원 첫 결제가 성공해야만 active가 된다", async () => {
   const { service, store } = serviceFixture();

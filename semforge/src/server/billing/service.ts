@@ -222,6 +222,10 @@ export interface BillingChargeResult {
 }
 
 export interface BillingService {
+  getCheckoutIdentity(input: { readonly workspaceId: string }): Promise<{
+    readonly customerKey: string;
+    readonly subscriptionStatus: SubscriptionStatus;
+  }>;
   getSummary(input: { readonly workspaceId: string }): Promise<{
     readonly status: SubscriptionStatus;
     readonly amountKrw: number;
@@ -736,6 +740,14 @@ export function createBillingService(options: BillingServiceOptions): BillingSer
   }
 
   return {
+    async getCheckoutIdentity(input) {
+      const account = await requiredAccount(input.workspaceId);
+      return {
+        customerKey: account.customer.tossCustomerKey,
+        subscriptionStatus: account.subscription.status,
+      };
+    },
+
     async getSummary(input) {
       const account = await requiredAccount(input.workspaceId);
       const latest = account.latestPayment;
