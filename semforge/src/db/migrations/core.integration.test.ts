@@ -100,3 +100,36 @@ test("web role은 transaction-local workspace 밖의 row를 볼 수 없다", asy
     await pg.query("rollback");
   }
 });
+
+test("web과 worker role은 BYPASSRLS가 아니며 web 정책은 명시적으로 role에 한정된다", async () => {
+  const roles = await pg.query<{ rolname: string; rolbypassrls: boolean }>(
+    "select rolname, rolbypassrls from pg_roles where rolname in ('semforge_web', 'semforge_worker') order by rolname",
+  );
+  assert.deepEqual(roles.rows, [
+    { rolname: "semforge_web", rolbypassrls: false },
+    { rolname: "semforge_worker", rolbypassrls: false },
+  ]);
+
+  const policies = await pg.query<{ policyname: string; roles: string[] }>(
+    "select policyname, roles from pg_policies where tablename = 'sites' order by policyname",
+  );
+  assert.ok(
+    policies.rows.some(
+      (policy) => policy.policyname === "sites_tenant_isolation" && policy.roles.includes("semforge_web"),
+    ),
+  );
+});
+
+test("DB도 GSC token과 Toss billing key의 평문 저장을 거부한다", async () => {
+  const workspaceId = "00000000-0000-4000-8000-000000000090";
+  await pg.query("insert into workspaces (id, name, slug) values ($1, 'Secrets', 'secrets')", [
+    workspaceId,
+  ]);
+
+  await assert.rejects(
+    pg.query(
+      "insert into gsc_connections (workspace_id, label, access_token_encrypted, refresh_token_encrypted, token_expires_at) values ($1, 'GSC', 'plain', 'plain', now())",
+      [workspaceId],
+    ),
+  );
+});

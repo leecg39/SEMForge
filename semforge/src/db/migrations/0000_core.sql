@@ -526,7 +526,7 @@ CREATE UNIQUE INDEX "users_email_lower_uq" ON "users" USING btree (lower("email"
 -- @TASK P1-D1-T1 - Concurrency-safe beta entitlements
 -- @SPEC docs/planning/06-tasks.md#p1-d1-t1--postgresql-16-핵심-스키마와-암호화-기반
 CREATE FUNCTION enforce_workspace_site_limit() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = public, pg_temp AS $$
 BEGIN
   IF NOT NEW.active THEN RETURN NEW; END IF;
   PERFORM 1 FROM workspaces WHERE id = NEW.workspace_id FOR UPDATE;
@@ -540,7 +540,7 @@ CREATE TRIGGER sites_enforce_limit BEFORE INSERT OR UPDATE OF workspace_id, acti
 FOR EACH ROW EXECUTE FUNCTION enforce_workspace_site_limit();--> statement-breakpoint
 
 CREATE FUNCTION enforce_tracked_query_limit() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = public, pg_temp AS $$
 BEGIN
   IF NOT NEW.active THEN RETURN NEW; END IF;
   PERFORM 1 FROM sites WHERE workspace_id = NEW.workspace_id AND id = NEW.site_id FOR UPDATE;
@@ -556,31 +556,47 @@ FOR EACH ROW EXECUTE FUNCTION enforce_tracked_query_limit();--> statement-breakp
 -- @TASK P1-D1-T1 - Web/auth/worker role boundary and tenant RLS
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_web') THEN CREATE ROLE semforge_web NOLOGIN NOBYPASSRLS; END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_auth') THEN CREATE ROLE semforge_auth NOLOGIN BYPASSRLS; END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_worker') THEN CREATE ROLE semforge_worker NOLOGIN BYPASSRLS; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_web') THEN CREATE ROLE semforge_web NOLOGIN NOINHERIT NOBYPASSRLS; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_auth') THEN CREATE ROLE semforge_auth NOLOGIN NOINHERIT NOBYPASSRLS; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_worker') THEN CREATE ROLE semforge_worker NOLOGIN NOINHERIT NOBYPASSRLS; END IF;
 END
 $$;--> statement-breakpoint
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC;--> statement-breakpoint
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;--> statement-breakpoint
 GRANT USAGE ON SCHEMA public TO semforge_web, semforge_auth, semforge_worker;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON
-  workspaces, memberships, audit_events, sites, tracked_queries,
+  workspaces, memberships, sites, tracked_queries,
   gsc_connections, oauth_states, gsc_property_bindings,
-  provider_calls, usage_reservations, jobs, outbox,
-  rank_observations, aio_observations, aio_citations,
-  naver_observations, gsc_observations,
-  weekly_reports, report_sections, report_assets, deliveries,
-  billing_customers, payment_methods, subscriptions, payments, provider_events
+  billing_customers, payment_methods, subscriptions
 TO semforge_web;--> statement-breakpoint
+GRANT SELECT, INSERT ON audit_events, provider_calls, usage_reservations, jobs, outbox TO semforge_web;--> statement-breakpoint
+GRANT SELECT ON rank_observations, aio_observations, aio_citations, naver_observations,
+  gsc_observations, weekly_reports, report_sections, report_assets, deliveries,
+  payments, provider_events TO semforge_web;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON users, sessions, invites, password_resets TO semforge_auth;--> statement-breakpoint
 GRANT SELECT, INSERT ON workspaces, memberships TO semforge_auth;--> statement-breakpoint
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO semforge_worker;--> statement-breakpoint
+GRANT SELECT ON workspaces, memberships, sites, tracked_queries, gsc_connections,
+  gsc_property_bindings, billing_customers, payment_methods, subscriptions TO semforge_worker;--> statement-breakpoint
+GRANT SELECT, INSERT, UPDATE, DELETE ON provider_calls, usage_reservations, jobs, outbox,
+  rank_observations, aio_observations, aio_citations, naver_observations, gsc_observations,
+  weekly_reports, report_sections, report_assets, deliveries, payments, provider_events
+TO semforge_worker;--> statement-breakpoint
+
+ALTER TABLE gsc_connections ADD CONSTRAINT gsc_connections_encrypted_tokens_ck
+  CHECK (access_token_encrypted ~ '^enc:v[0-9]+:' AND refresh_token_encrypted ~ '^enc:v[0-9]+:');--> statement-breakpoint
+ALTER TABLE payment_methods ADD CONSTRAINT payment_methods_encrypted_billing_key_ck
+  CHECK (billing_key_encrypted ~ '^enc:v[0-9]+:');--> statement-breakpoint
 
 ALTER TABLE workspaces ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE workspaces FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY workspaces_tenant_isolation ON workspaces
+  TO semforge_web
   USING (id = nullif(current_setting('app.workspace_id', true), '')::uuid)
   WITH CHECK (id = nullif(current_setting('app.workspace_id', true), '')::uuid);--> statement-breakpoint
+CREATE POLICY workspaces_auth_onboarding ON workspaces TO semforge_auth
+  USING (true) WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY workspaces_worker_read ON workspaces FOR SELECT TO semforge_worker
+  USING (true);--> statement-breakpoint
 DO $$
 DECLARE tenant_table text;
 BEGIN
@@ -596,9 +612,26 @@ BEGIN
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', tenant_table);
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', tenant_table);
     EXECUTE format(
-      'CREATE POLICY %I ON %I USING (workspace_id = nullif(current_setting(''app.workspace_id'', true), '''')::uuid) WITH CHECK (workspace_id = nullif(current_setting(''app.workspace_id'', true), '''')::uuid)',
+      'CREATE POLICY %I ON %I TO semforge_web USING (workspace_id = nullif(current_setting(''app.workspace_id'', true), '''')::uuid) WITH CHECK (workspace_id = nullif(current_setting(''app.workspace_id'', true), '''')::uuid)',
       tenant_table || '_tenant_isolation', tenant_table
     );
+  END LOOP;
+END
+$$;--> statement-breakpoint
+CREATE POLICY memberships_auth_onboarding ON memberships TO semforge_auth
+  USING (true) WITH CHECK (true);--> statement-breakpoint
+DO $$
+DECLARE worker_table text;
+BEGIN
+  FOREACH worker_table IN ARRAY ARRAY[
+    'memberships', 'sites', 'tracked_queries', 'gsc_connections', 'gsc_property_bindings',
+    'provider_calls', 'usage_reservations', 'jobs', 'outbox',
+    'rank_observations', 'aio_observations', 'aio_citations', 'naver_observations', 'gsc_observations',
+    'weekly_reports', 'report_sections', 'report_assets', 'deliveries',
+    'billing_customers', 'payment_methods', 'subscriptions', 'payments', 'provider_events'
+  ] LOOP
+    EXECUTE format('CREATE POLICY %I ON %I TO semforge_worker USING (true) WITH CHECK (true)',
+      worker_table || '_worker_access', worker_table);
   END LOOP;
 END
 $$;

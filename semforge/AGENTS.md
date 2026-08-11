@@ -22,3 +22,12 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - 외부 API 호출 비용은 **사용자가 승인한 상태**다. "지금 순위 수집"/"지금 크롤" 같은 실비용 동작도 묻지 말고 실행해도 된다.
 - 수집 실패 시에는 정직하게 오류/빈 상태를 표시하고, 가짜 숫자를 만들어 채우지 않는다. 수집 데이터는 출처(`source: "talordata"` 등)와 provenance 배지로 구분해 표시한다.
 - API 키는 코드·로그·스크린샷·커밋에 노출하지 않는다 (`.env*`는 gitignore).
+
+# Lessons Learned
+
+### [2026-08-11] nullable child와 tenant composite FK 삭제 정책 (PostgreSQL, FK, tenancy)
+- **상황**: 관측값이 선택적 provider call을 같은 workspace 안에서만 참조하도록 복합 FK를 설계했다.
+- **문제**: `(workspace_id, provider_call_id) ON DELETE SET NULL`은 PostgreSQL이 두 컬럼을 모두 NULL로 만들기 때문에 `workspace_id NOT NULL`과 충돌한다.
+- **원인**: 복합 FK의 기본 `SET NULL` 대상은 nullable child 컬럼 하나가 아니라 FK 전체 컬럼이다.
+- **해결**: append-only 관측값의 FK를 `ON DELETE RESTRICT`로 고정하고, site/query/type도 하나의 복합 FK로 묶었다.
+- **교훈**: tenant key가 포함된 복합 FK에는 전체 `SET NULL`을 사용하지 말고 RESTRICT/CASCADE 또는 명시적 column-list SQL을 선택한다.
