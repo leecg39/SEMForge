@@ -10,7 +10,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "SEMFORGE_SERVICE=build next build",
     "start": "next start",
     "start:worker": "node --import tsx scripts/ops/worker.ts",
     "start:relay": "node --import tsx scripts/ops/relay.ts",

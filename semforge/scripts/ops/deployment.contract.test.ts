@@ -14,6 +14,16 @@ test("Next production build는 standalone output을 생성한다", async () => {
   assert.match(await source("next.config.ts"), /output:\s*["']standalone["']/u);
 });
 
+test("package build script는 secret 없는 build service profile을 강제한다", async () => {
+  const packageJson = JSON.parse(await source("package.json")) as {
+    scripts?: Record<string, string>;
+  };
+  const build = packageJson.scripts?.build ?? "";
+
+  assert.match(build, /SEMFORGE_SERVICE=build/u);
+  assert.doesNotMatch(build, /DATABASE_URL|SECRET|TOKEN/u);
+});
+
 test("Dockerfile은 Node 24 web/pipeline/migrator target과 non-root Chromium/Noto runtime을 제공한다", async () => {
   const dockerfile = await source("Dockerfile");
 
