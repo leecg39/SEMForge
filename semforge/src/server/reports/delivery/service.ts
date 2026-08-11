@@ -33,6 +33,16 @@ export interface ReportEmailSender {
   send(input: ReportEmailSendInput): Promise<{ providerMessageId: string }>;
 }
 
+export class ReportEmailSenderError extends Error {
+  constructor(
+    readonly disposition: "retryable" | "rejected",
+    message = "REPORT_EMAIL_SENDER_ERROR",
+  ) {
+    super(message);
+    this.name = "ReportEmailSenderError";
+  }
+}
+
 export interface ReportDeliveryService {
   renderPdf(input: {
     workspaceId: string;
@@ -65,7 +75,12 @@ export interface ReportDeliveryServiceOptions {
 }
 
 export class ReportDeliveryError extends Error {
-  constructor(readonly code: "INVALID_INPUT" | "PDF_ERROR" | "EMAIL_PROVIDER_ERROR" | "EMAIL_IDEMPOTENCY_EXPIRED") {
+  constructor(readonly code:
+    | "INVALID_INPUT"
+    | "PDF_ERROR"
+    | "EMAIL_PROVIDER_ERROR"
+    | "EMAIL_PROVIDER_REJECTED"
+    | "EMAIL_IDEMPOTENCY_EXPIRED") {
     super(`REPORT_${code}`);
     this.name = "ReportDeliveryError";
   }
@@ -229,13 +244,20 @@ export function createReportDeliveryService(
           pdfAssetId: published.asset.id,
           snapshotSha256: hash,
         };
-      } catch {
+      } catch (error) {
+        const providerRejected = error instanceof ReportEmailSenderError &&
+          error.disposition === "rejected";
+        const errorCode = providerRejected
+          ? "REPORT_EMAIL_PROVIDER_REJECTED"
+          : "REPORT_EMAIL_PROVIDER_ERROR";
         await options.store.markEmailFailed({
           workspaceId: input.workspaceId,
           deliveryId: prepared.id,
-          errorCode: "REPORT_EMAIL_PROVIDER_ERROR",
+          errorCode,
         });
-        throw new ReportDeliveryError("EMAIL_PROVIDER_ERROR");
+        throw new ReportDeliveryError(
+          providerRejected ? "EMAIL_PROVIDER_REJECTED" : "EMAIL_PROVIDER_ERROR",
+        );
       }
     },
   };

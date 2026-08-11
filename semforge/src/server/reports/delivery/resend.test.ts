@@ -84,3 +84,34 @@ test("Resend 오류 본문·API key·수신 PII는 예외에 노출하지 않는
     },
   );
 });
+
+test("Resend 409는 idempotency 충돌 종류에 따라 terminal과 retryable을 구분한다", async () => {
+  const input = {
+    recipient: "customer@example.test",
+    subject: "주간 검색 성과",
+    html: "<p>report</p>",
+    idempotencyKey: "report-email:id:hash",
+    snapshotSha256: "c".repeat(64),
+    attachment: {
+      filename: "report.pdf",
+      content: new TextEncoder().encode("%PDF"),
+      contentType: "application/pdf" as const,
+    },
+  };
+  for (const [name, expected] of [
+    ["invalid_idempotent_request", "REJECTED"],
+    ["concurrent_idempotent_requests", "RETRYABLE"],
+  ] as const) {
+    const sender = new ResendEmailSender({
+      apiKey: "re_test_secret",
+      from: "reports@example.test",
+      fetch: async () => Response.json({ name, message: "hidden provider details" }, { status: 409 }),
+    });
+    await assert.rejects(sender.send(input), (error: unknown) => {
+      assert.ok(error instanceof ResendEmailError);
+      assert.equal(error.code, expected);
+      assert.equal(error.message, `RESEND_${expected}`);
+      return true;
+    });
+  }
+});

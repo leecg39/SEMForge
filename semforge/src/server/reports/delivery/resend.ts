@@ -4,12 +4,13 @@ import type {
   ReportEmailSendInput,
   ReportEmailSender,
 } from "@/server/reports/delivery/service";
+import { ReportEmailSenderError } from "@/server/reports/delivery/service";
 
 const MAX_EMAIL_BYTES_AFTER_BASE64 = 40 * 1024 * 1024;
 
-export class ResendEmailError extends Error {
+export class ResendEmailError extends ReportEmailSenderError {
   constructor(readonly code: "INVALID_INPUT" | "RETRYABLE" | "REJECTED") {
-    super(`RESEND_${code}`);
+    super(code === "RETRYABLE" ? "retryable" : "rejected", `RESEND_${code}`);
     this.name = "ResendEmailError";
   }
 }
@@ -82,7 +83,17 @@ export class ResendEmailSender implements ReportEmailSender {
       clearTimeout(timer);
     }
     if (!response.ok) {
-      const retryable = response.status === 408 || response.status === 409 ||
+      let conflictName: string | null = null;
+      if (response.status === 409) {
+        try {
+          const body = await response.json() as { name?: unknown } | null;
+          conflictName = typeof body?.name === "string" ? body.name : null;
+        } catch {
+          conflictName = null;
+        }
+      }
+      const retryable = response.status === 408 ||
+        (response.status === 409 && conflictName === "concurrent_idempotent_requests") ||
         response.status === 425 || response.status === 429 || response.status >= 500;
       throw new ResendEmailError(retryable ? "RETRYABLE" : "REJECTED");
     }

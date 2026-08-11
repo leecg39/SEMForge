@@ -119,3 +119,22 @@ test("24시간 provider 멱등 창이 끝난 delivery는 중복 위험 없이 te
   );
   assert.deepEqual(result, { status: "dead", error: "REPORT_EMAIL_IDEMPOTENCY_EXPIRED" });
 });
+
+test("Resend idempotency payload 충돌은 재시도하지 않고 terminal 처리한다", async () => {
+  const handler = createReportEmailDeliveryJobHandler(service({
+    deliverEmail: async () => { throw new ReportDeliveryError("EMAIL_PROVIDER_REJECTED"); },
+  }));
+  const result = await handler(
+    {
+      id: "job-email-rejected",
+      workspaceId,
+      type: REPORT_EMAIL_DELIVERY_JOB,
+      payload: { reportId, recipient: "customer@example.test" },
+      idempotencyKey: `report-email:${reportId}`,
+      attempt: 1,
+      maxAttempts: 5,
+    },
+    context(),
+  );
+  assert.deepEqual(result, { status: "dead", error: "REPORT_EMAIL_PROVIDER_REJECTED" });
+});

@@ -2,7 +2,10 @@
 // @SPEC docs/planning/06-tasks.md#p3-r1-t1--주간-불변-리포트-스냅샷
 // @TEST src/server/reports/reports.integration.test.ts
 import { buildWeeklyReportSchedule } from "@/server/reports/schedule";
-import { enqueueReportDeliveryOutbox } from "@/server/reports/delivery/outbox";
+import {
+  enqueueReportDeliveryOutbox,
+  loadReportOwnerRecipients,
+} from "@/server/reports/delivery/outbox";
 import {
   REPORT_SECTION_KEYS,
   type GenerateWeeklyReportInput,
@@ -427,8 +430,11 @@ async function collectSections(
 export async function generateWeeklyReport(
   source: ReportSqlSource,
   input: GenerateWeeklyReportInput,
+  options: { readonly ownerRecipients?: readonly string[] } = {},
 ): Promise<ReportDetail> {
   const schedule = buildWeeklyReportSchedule(input.cycleMonday);
+  const ownerRecipients = options.ownerRecipients ??
+    await loadReportOwnerRecipients(source, input.workspaceId);
   return withTransaction(source, input.workspaceId, async (db) => {
     const replay = await existingForPeriod(
       db,
@@ -440,6 +446,7 @@ export async function generateWeeklyReport(
       await enqueueReportDeliveryOutbox(db, {
         workspaceId: input.workspaceId,
         reportId: replay.id,
+        ownerRecipients,
       });
       return replay;
     }
@@ -536,6 +543,7 @@ export async function generateWeeklyReport(
     await enqueueReportDeliveryOutbox(db, {
       workspaceId: input.workspaceId,
       reportId: created.id,
+      ownerRecipients,
     });
     return created;
   });
@@ -602,8 +610,17 @@ export async function getReport(
   return withTransaction(source, workspaceId, (db) => loadReport(db, workspaceId, reportId));
 }
 
-export function createPostgresWeeklyReportGenerator(source: ReportSqlSource): WeeklyReportGenerator {
+export function createPostgresWeeklyReportGenerator(
+  source: ReportSqlSource,
+  options: {
+    readonly loadOwnerRecipients?: (workspaceId: string) => Promise<readonly string[]>;
+  } = {},
+): WeeklyReportGenerator {
   return {
-    generate: (input) => generateWeeklyReport(source, input),
+    async generate(input) {
+      const ownerRecipients = await (options.loadOwnerRecipients ??
+        ((workspaceId: string) => loadReportOwnerRecipients(source, workspaceId)))(input.workspaceId);
+      return generateWeeklyReport(source, input, { ownerRecipients });
+    },
   };
 }

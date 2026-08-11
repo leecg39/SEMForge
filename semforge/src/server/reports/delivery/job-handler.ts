@@ -33,6 +33,9 @@ function deliveryFailure(error: unknown, prefix: "PDF" | "EMAIL") {
     if (error.code === "EMAIL_IDEMPOTENCY_EXPIRED") {
       return jobDead("REPORT_EMAIL_IDEMPOTENCY_EXPIRED");
     }
+    if (error.code === "EMAIL_PROVIDER_REJECTED") {
+      return jobDead("REPORT_EMAIL_PROVIDER_REJECTED");
+    }
   }
   if (error instanceof ReportDeliveryStoreError && error.code === "NOT_FOUND") {
     return jobDead("REPORT_NOT_FOUND");

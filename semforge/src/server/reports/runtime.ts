@@ -11,11 +11,15 @@ import {
   createPostgresWeeklyReportGenerator,
   type ReportSqlSource,
 } from "@/server/reports/store";
+import { loadReportOwnerRecipients } from "@/server/reports/delivery/outbox";
 
 /** Worker registry가 직접 호출할 수 있으며 worker 내부 구현에는 의존하지 않는다. */
 export function createRuntimeReportGenerationJobHandler(): JobHandler<ReportGenerationPayload> {
   const source = getPool("worker") as unknown as ReportSqlSource;
-  return createReportGenerationJobHandler(createPostgresWeeklyReportGenerator(source));
+  const authSource = getPool("auth") as unknown as ReportSqlSource;
+  return createReportGenerationJobHandler(createPostgresWeeklyReportGenerator(source, {
+    loadOwnerRecipients: (workspaceId) => loadReportOwnerRecipients(authSource, workspaceId),
+  }));
 }
 
 /** Worker entrypoint가 수동 갱신 없이 report snapshot→PDF/email jobs를 등록하는 고정 registry. */

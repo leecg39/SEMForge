@@ -8,6 +8,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 
+import { loadReportOwnerRecipients } from "@/server/reports/delivery/outbox";
 import { generateWeeklyReport } from "@/server/reports/store";
 
 const database = new PGlite();
@@ -68,4 +69,40 @@ test("snapshot 생성은 PDF와 owner email delivery outbox를 자동·멱등 �
   assert.doesNotMatch(outbox.rows[0]!.idempotency_key, /owner@example\.test/);
   assert.match(outbox.rows[0]!.idempotency_key, new RegExp(`^report-email:${first.id}:`));
   assert.equal(outbox.rows[1]!.idempotency_key, `report-pdf:${first.id}`);
+});
+
+test("auth가 해석한 owner 수신자로 worker role도 users 접근 없이 delivery를 예약한다", async () => {
+  await database.query("begin");
+  let recipients: readonly string[];
+  try {
+    await database.query("set local role semforge_auth");
+    recipients = await loadReportOwnerRecipients(database, workspaceId);
+    await database.query("commit");
+  } catch (error) {
+    await database.query("rollback");
+    throw error;
+  }
+  assert.deepEqual(recipients, ["owner@example.test"]);
+
+  await database.query(
+    "delete from outbox where workspace_id = $1 and topic = 'report.email.deliver'",
+    [workspaceId],
+  );
+  await database.query("set role semforge_worker");
+  try {
+    await assert.rejects(database.query("select email from users"));
+    await generateWeeklyReport(
+      database,
+      { workspaceId, siteId, cycleMonday: "2026-08-10" },
+      { ownerRecipients: recipients },
+    );
+  } finally {
+    await database.query("reset role");
+  }
+
+  const queued = await database.query<{ payload: Record<string, unknown> }>(
+    "select payload from outbox where workspace_id = $1 and topic = 'report.email.deliver'",
+    [workspaceId],
+  );
+  assert.deepEqual(queued.rows, [{ payload: { reportId: queued.rows[0]!.payload.reportId, recipient: "owner@example.test" } }]);
 });

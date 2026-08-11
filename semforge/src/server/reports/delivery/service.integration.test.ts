@@ -12,6 +12,7 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 import {
   createReportDeliveryService,
   type ReportEmailSendInput,
+  ReportEmailSenderError,
 } from "@/server/reports/delivery/service";
 import { PostgresReportDeliveryStore } from "@/server/reports/delivery/store";
 import type { ReportDeliveryStore } from "@/server/reports/delivery/store";
@@ -201,6 +202,43 @@ test("Resend 수락 직후 crash가 나도 retry/duplicate는 같은 snapshot과
     delivery_count: 1,
     asset_count: 1,
     report_status: "delivered",
+  }]);
+});
+
+test("provider가 idempotency payload를 거부하면 terminal 상태를 보존한다", async () => {
+  const database = await databaseWithReport();
+  const service = createReportDeliveryService({
+    store: new PostgresReportDeliveryStore(database),
+    storage: new MemoryStorage(),
+    renderer: {
+      async render(value) {
+        const hash = snapshotSha256(value);
+        return {
+          pdf: new TextEncoder().encode("%PDF-1.7 terminal"),
+          html: `<html data-snapshot-sha256="${hash}"></html>`,
+          snapshotSha256: hash,
+        };
+      },
+    },
+    email: {
+      async send() {
+        throw new ReportEmailSenderError("rejected");
+      },
+    },
+    appPublicUrl: "https://app.semforge.example",
+  });
+
+  await assert.rejects(
+    service.deliverEmail({ workspaceId, reportId, recipient: "customer@example.test" }),
+    /REPORT_EMAIL_PROVIDER_REJECTED/,
+  );
+  const state = await database.query<{ status: string; last_error: string }>(
+    "select status, last_error from deliveries where workspace_id = $1",
+    [workspaceId],
+  );
+  assert.deepEqual(state.rows, [{
+    status: "failed",
+    last_error: "REPORT_EMAIL_PROVIDER_REJECTED",
   }]);
 });
 
