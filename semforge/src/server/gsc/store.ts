@@ -136,19 +136,33 @@ async function inWorkspaceTransaction<T>(
   const leasedClient = typeof connect === "function" ? await connect.call(db) : null;
   const client = leasedClient ?? db;
   let transactionStarted = false;
+  let result: T | undefined;
+  let failure: { error: unknown } | null = null;
   try {
     await client.query("begin");
     transactionStarted = true;
     await client.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
-    const result = await operation(client);
+    result = await operation(client);
     await client.query("commit");
-    return result;
   } catch (error) {
-    if (transactionStarted) await client.query("rollback");
-    throw error;
-  } finally {
-    leasedClient?.release();
+    failure = { error };
+    if (transactionStarted) {
+      try {
+        await client.query("rollback");
+      } catch {
+        // Preserve the operation/commit error; rollback is best-effort cleanup.
+      }
+    }
   }
+  if (leasedClient) {
+    try {
+      leasedClient.release();
+    } catch (error) {
+      failure ??= { error };
+    }
+  }
+  if (failure) throw failure.error;
+  return result as T;
 }
 
 function mapConnectionError(error: unknown): never {
