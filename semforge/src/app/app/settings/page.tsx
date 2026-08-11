@@ -15,8 +15,8 @@ export default function SettingsPage() {
       />
       <div className="sf-page-stack">
         <DataEndpointBoundary
-          endpoint="/api/v1/settings/workspace"
-          resourceLabel="워크스페이스 설정"
+          endpoint="/api/v1/reports/branding"
+          resourceLabel="리포트 브랜드"
           emptyTitle="워크스페이스 브랜드를 설정해 주세요"
           emptyDescription="대행사 이름, 로고와 강조색은 리포트 생성 시점의 스냅샷에 고정됩니다."
         />

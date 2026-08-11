@@ -954,8 +954,26 @@ export function createBillingService(options: BillingServiceOptions): BillingSer
       const queriedByPaymentKey = await options.toss.queryPaymentByPaymentKey(
         input.event.data.paymentKey,
       );
-      if (queriedByPaymentKey && queriedByPaymentKey.orderId !== attempt.orderId) {
+      if (
+        queriedByPaymentKey &&
+        (queriedByPaymentKey.orderId !== attempt.orderId ||
+          queriedByPaymentKey.paymentKey !== input.event.data.paymentKey)
+      ) {
         return { outcome: "ignored", reason: "payment_fingerprint_mismatch" };
+      }
+      const queriedByOrderId = queriedByPaymentKey
+        ? null
+        : await options.toss.queryPaymentByOrderId(attempt.orderId);
+      if (
+        queriedByOrderId &&
+        (queriedByOrderId.orderId !== attempt.orderId ||
+          queriedByOrderId.paymentKey !== input.event.data.paymentKey)
+      ) {
+        return { outcome: "ignored", reason: "payment_fingerprint_mismatch" };
+      }
+      const providerPayment = queriedByPaymentKey ?? queriedByOrderId;
+      if (!providerPayment) {
+        return { outcome: "ignored", reason: "provider_payment_unverified" };
       }
       const claim = await options.store.claimProviderEvent({
         provider: "toss",
@@ -975,19 +993,7 @@ export function createBillingService(options: BillingServiceOptions): BillingSer
       await settleFromProvider({
         account,
         attempt,
-        payment:
-          queriedByPaymentKey ??
-          (await options.toss.queryPaymentByOrderId(attempt.orderId)) ??
-          {
-            paymentKey: input.event.data.paymentKey,
-            orderId: attempt.orderId,
-            status: input.event.data.status,
-            totalAmount: attempt.amountKrw,
-            requestedAt: input.event.createdAt,
-            approvedAt: null,
-            method: "unknown",
-            card: null,
-          },
+        payment: providerPayment,
         actorUserId: null,
         requestId: input.transmissionId,
         occurredAt: input.receivedAt,
