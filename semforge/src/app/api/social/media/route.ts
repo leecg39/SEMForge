@@ -1,4 +1,4 @@
-import { ApiError, jsonOk, route } from "@/lib/api";
+import { ApiError, jsonOk, parseFormData, route } from "@/lib/api";
 import { assertCan } from "@/lib/rbac";
 import { requireAuth } from "@/lib/session";
 import { socialFid } from "@/server/social/http";
@@ -9,7 +9,7 @@ export const POST = route(async (request: Request) => {
   const auth = await requireAuth(request);
   assertCan(auth, "create");
   const project = await ensureSocialProject(auth, socialFid(request));
-  const form = await request.formData();
+  const form = await parseFormData(request);
   const file = form.get("file");
   if (!(file instanceof File))
     throw new ApiError(

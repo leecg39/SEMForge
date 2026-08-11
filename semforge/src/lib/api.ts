@@ -114,6 +114,35 @@ export async function parseBody<T>(
   return result.data;
 }
 
+const FORM_CONTENT_TYPES = [
+  "multipart/form-data",
+  "application/x-www-form-urlencoded",
+] as const;
+
+/**
+ * 업로드 요청 본문을 폼 데이터로 검증한다.
+ * request.formData() 는 폼이 아닌 콘텐츠 타입이나 깨진 본문에 TypeError 를 던지는데,
+ * 그대로 두면 route() 가 500 INTERNAL("다시 시도해 주세요") 로 축약해
+ * 재시도로 절대 해결되지 않는 입력 오류를 일시적 장애로 안내하게 된다.
+ */
+export async function parseFormData(request: Request): Promise<FormData> {
+  const contentType = (request.headers.get("content-type") ?? "").toLowerCase();
+  if (!FORM_CONTENT_TYPES.some((type) => contentType.includes(type))) {
+    throw new ApiError(
+      "VALIDATION_ERROR",
+      "파일 업로드는 multipart/form-data 형식으로 보내야 합니다."
+    );
+  }
+  try {
+    return await request.formData();
+  } catch {
+    throw new ApiError(
+      "VALIDATION_ERROR",
+      "업로드 본문을 읽을 수 없습니다. 파일을 다시 선택해 주세요."
+    );
+  }
+}
+
 /**
  * 모든 Route Handler 를 감싸 오류를 단일 형식으로 변환한다.
  * 예상하지 못한 예외는 내부 메시지를 노출하지 않고 500 으로 축약한다.
