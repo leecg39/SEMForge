@@ -1,6 +1,7 @@
 // @TASK P1-F1-T1 - Toss billing boundary page
 // @SPEC SEMForge paid beta plan#toss-recurring-billing
 import { AppShell } from "@/components/core-shell/app-shell";
+import { BillingCheckout } from "@/components/core-shell/billing-checkout";
 import { DataEndpointBoundary } from "@/components/core-shell/data-endpoint-boundary";
 import { ContentCard, PageHeader } from "@/components/core-shell/page-structure";
 
@@ -20,6 +21,7 @@ export default function BillingPage() {
           </div>
           <p className="sf-body-copy">사이트 3개와 사이트별 순위 키워드·AI Overview 프롬프트 각 20개가 포함됩니다.</p>
         </ContentCard>
+        <BillingCheckout />
         <DataEndpointBoundary
           endpoint="/api/v1/billing/subscription"
           resourceLabel="구독"
