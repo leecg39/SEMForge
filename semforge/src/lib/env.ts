@@ -27,6 +27,9 @@ const rawServerEnvSchema = z.object({
   APP_SECRET_CURRENT_KEY_ID: keyIdSchema.optional(),
   APP_SECRET_PREVIOUS_KEYS: z.string().optional(),
   TOSS_SECRET_KEY: z.string().trim().min(1).optional(),
+  GOOGLE_CLIENT_ID: z.string().trim().min(1).optional(),
+  GOOGLE_CLIENT_SECRET: z.string().trim().min(1).optional(),
+  GSC_REDIRECT_URI: z.string().trim().url().optional(),
   BILLING_FINGERPRINT_SECRET: secretSchema.optional(),
   PGPOOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
   PGPOOL_CONNECTION_TIMEOUT_MS: z.coerce.number().int().min(100).max(60_000).default(5_000),
@@ -100,10 +103,19 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
       "APP_SECRET",
       "APP_SECRET_CURRENT_KEY_ID",
       "TOSS_SECRET_KEY",
+      "GOOGLE_CLIENT_ID",
+      "GOOGLE_CLIENT_SECRET",
       "BILLING_FINGERPRINT_SECRET",
     ] as const) {
       if (!parsed.data[required]) issues.push(`${required} is required in production`);
     }
+  }
+  if (
+    parsed.data.NODE_ENV === "production" &&
+    parsed.data.GSC_REDIRECT_URI &&
+    !parsed.data.GSC_REDIRECT_URI.startsWith("https://")
+  ) {
+    issues.push("GSC_REDIRECT_URI must use https in production");
   }
   if (
     parsed.data.NODE_ENV === "production" &&
