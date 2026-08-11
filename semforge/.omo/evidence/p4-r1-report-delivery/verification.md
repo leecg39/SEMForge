@@ -6,7 +6,7 @@
 - PDF: A4, 23 pages, 315,378 bytes, tagged, no JavaScript, not encrypted
 - Font inspection: embedded/subset/Unicode `NotoSansKRThin-Regular` CID TrueType
 - Text extraction: Korean title, long Korean keyword rows, partial sections, snapshot SHA-256 all extracted successfully
-- Full verification: lint + typecheck + 391 tests passed
+- Full verification: lint + typecheck + 396 tests passed
 - Production build: passed with the `/api/v1/reports/[reportId]/pdf` dynamic route in the manifest
 - Dependency audit: `found 0 vulnerabilities` (including development dependencies)
 
