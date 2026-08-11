@@ -643,7 +643,8 @@ GRANT UPDATE (accepted_at, accepted_workspace_id, accepted_by_user_id) ON invite
 GRANT SELECT, INSERT, UPDATE, DELETE ON sessions TO semforge_auth;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE ON password_resets TO semforge_auth;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON auth_action_throttles TO semforge_auth;--> statement-breakpoint
-GRANT SELECT, INSERT ON workspaces, memberships, billing_customers, subscriptions TO semforge_auth;--> statement-breakpoint
+GRANT SELECT, INSERT ON workspaces, memberships TO semforge_auth;--> statement-breakpoint
+GRANT INSERT ON billing_customers, subscriptions TO semforge_auth;--> statement-breakpoint
 GRANT INSERT (workspace_id, topic, payload, idempotency_key, available_at, created_at) ON outbox TO semforge_auth;--> statement-breakpoint
 GRANT SELECT ON invites TO semforge_operator;--> statement-breakpoint
 GRANT INSERT (email, token_hash, workspace_name, workspace_slug, expires_at) ON invites TO semforge_operator;--> statement-breakpoint
@@ -697,9 +698,7 @@ $$;--> statement-breakpoint
 CREATE POLICY memberships_auth_select ON memberships FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
 CREATE POLICY memberships_auth_insert ON memberships FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY memberships_billing_select ON memberships FOR SELECT TO semforge_billing USING (true);--> statement-breakpoint
-CREATE POLICY billing_customers_auth_select ON billing_customers FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
 CREATE POLICY billing_customers_auth_insert ON billing_customers FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
-CREATE POLICY subscriptions_auth_select ON subscriptions FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
 CREATE POLICY subscriptions_auth_insert ON subscriptions FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE users FORCE ROW LEVEL SECURITY;--> statement-breakpoint

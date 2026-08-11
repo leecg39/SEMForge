@@ -1,6 +1,8 @@
 // @TASK P2-A1-T1 - PostgreSQL invite-only auth adapter
 // @SPEC docs/planning/06-tasks.md#p2-a1-t1--초대-전용-인증과-세션
 // @TEST src/server/auth/postgres-store.test.ts
+import { randomUUID } from "node:crypto";
+
 import { and, asc, eq, gt, isNull, or, sql } from "drizzle-orm";
 
 import { getDatabase, type SemforgeDatabase } from "@/db/client";
@@ -282,31 +284,30 @@ export class PostgresAuthStore implements AuthStore {
           .returning({ role: memberships.role });
         if (!membership) throw new AuthAtomicConflictError();
 
-        const [billingCustomer] = await tx
+        const billingCustomerId = randomUUID();
+        await tx
           .insert(billingCustomers)
           .values({
+            id: billingCustomerId,
             workspaceId: workspace.id,
             tossCustomerKey: deriveTossCustomerKey(workspace.id),
             createdAt: input.now,
             updatedAt: input.now,
           })
-          .onConflictDoNothing()
-          .returning({ id: billingCustomers.id });
-        if (!billingCustomer) throw new AuthAtomicConflictError();
+          .onConflictDoNothing();
 
-        const [subscription] = await tx
+        await tx
           .insert(subscriptions)
           .values({
+            id: randomUUID(),
             workspaceId: workspace.id,
-            billingCustomerId: billingCustomer.id,
+            billingCustomerId,
             status: "account_created",
             amountKrw: 49_000,
             createdAt: input.now,
             updatedAt: input.now,
           })
-          .onConflictDoNothing()
-          .returning({ id: subscriptions.id });
-        if (!subscription) throw new AuthAtomicConflictError();
+          .onConflictDoNothing();
 
         const consumed = await tx
           .update(invites)
