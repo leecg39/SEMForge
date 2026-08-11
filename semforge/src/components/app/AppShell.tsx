@@ -17,6 +17,7 @@ interface AppShellProps {
   activeHref?: string;
   children: ReactNode;
   hideSideNav?: boolean;
+  projectContext?: { label: string; href: string; projectId?: string };
 }
 
 /**

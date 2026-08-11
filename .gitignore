@@ -12,4 +12,9 @@ _staging/
 
 # env
 .env*
+!.env.example
+!**/.env.example
 .gstack/
+
+# loop engineering 런타임 상태 (오케스트레이터 전용, 커밋 금지)
+.loop/

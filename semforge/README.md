@@ -211,7 +211,8 @@ GET    /api/{resource}/export/          # CSV
 ## 검증
 
 ```bash
-npx tsc --noEmit        # 타입 검사
+npm run verify          # ESLint + 타입 검사 + 전체 .test.ts
+npm run typecheck       # 타입 검사
 npm run lint            # ESLint
 npm run test:talordata  # TalorData 클라이언트/수집
 npm run test:naver      # NAVER 공급자·캐시·API·UI·handoff 계약
@@ -222,6 +223,9 @@ npm run test:backlinks  # Bing·Common Crawl·Ahrefs·캐시·URL 범위 계약
 npm run test:content    # 글·이미지·영상 콘텐츠 계약과 실행
 npx tsx --test src/server/position-tracking/*.test.ts  # 순위 분포/스케줄
 ```
+
+반복 검증 루프는 `npm run loop:bootstrap`, `npm run loop:verify`,
+`npm run loop:smoke`로 실행하며 세부 절차는 `docs/loop-engineering.md`를 따릅니다.
 
 ## 언어 전환
 

@@ -7,10 +7,18 @@
  * 재시도를 두고, 타임아웃(AbortError)은 재시도하지 않는다.
  */
 
-export const FIRECRAWL_API_BASE = "https://api.firecrawl.dev/v1";
+/** 현재 공식 API 버전. FIRECRAWL_API_BASE_URL 로 셀프호스트/호환 엔드포인트를 지정할 수 있다. */
+export const FIRECRAWL_API_BASE =
+  process.env.FIRECRAWL_API_BASE_URL?.trim().replace(/\/$/, "") ||
+  "https://api.firecrawl.dev/v2";
 export const MAP_TIMEOUT_MS = 30_000;
 export const SCRAPE_TIMEOUT_MS = 45_000;
 const RATE_LIMIT_RETRIES = 2;
+
+export interface FirecrawlClientOptions {
+  fetchImpl?: typeof fetch;
+  sleep?: (milliseconds: number) => Promise<void>;
+}
 
 export interface FirecrawlMapResponse {
   success?: boolean;
@@ -38,14 +46,19 @@ export async function firecrawlFetch<T extends { error?: string }>(
   path: string,
   apiKey: string,
   body: Record<string, unknown>,
-  timeoutMs: number
+  timeoutMs: number,
+  options: FirecrawlClientOptions = {},
 ): Promise<T> {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const sleep =
+    options.sleep ??
+    ((milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
   let lastError: Error | null = null;
   for (let attempt = 0; attempt <= RATE_LIMIT_RETRIES; attempt += 1) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetch(`${FIRECRAWL_API_BASE}${path}`, {
+      const response = await fetchImpl(`${FIRECRAWL_API_BASE}${path}`, {
         method: "POST",
         signal: controller.signal,
         headers: {
@@ -57,7 +70,7 @@ export async function firecrawlFetch<T extends { error?: string }>(
       const payload = (await response.json().catch(() => null)) as T | null;
       if (response.status === 429 && attempt < RATE_LIMIT_RETRIES) {
         // 레이트 리밋: 2s, 4s 백오프 후 같은 요청을 재시도한다.
-        await new Promise((resolve) => setTimeout(resolve, 2_000 * (attempt + 1)));
+        await sleep(2_000 * (attempt + 1));
         continue;
       }
       if (!response.ok) {
@@ -79,24 +92,38 @@ export async function firecrawlFetch<T extends { error?: string }>(
   throw lastError ?? new Error(`Firecrawl ${path} 요청 실패`);
 }
 
-/** /v1/map: 사이트의 URL 목록을 최대 limit 개 수집한다. */
+/** /v2/map: 사이트의 URL 목록을 최대 limit 개 수집한다. */
 export async function firecrawlMapUrls(
   startUrl: string,
   limit: number,
   includeSubdomains: boolean,
-  apiKey: string
+  apiKey: string,
+  options: FirecrawlClientOptions = {},
 ): Promise<string[]> {
   const payload = await firecrawlFetch<FirecrawlMapResponse>(
     "/map",
     apiKey,
     { url: startUrl, limit, includeSubdomains },
-    MAP_TIMEOUT_MS
+    MAP_TIMEOUT_MS,
+    options,
   );
   if (payload.success === false) {
     throw new Error(`Firecrawl /map 실패${payload.error ? `: ${payload.error}` : ""}`);
   }
   if (!Array.isArray(payload.links)) return [];
-  return payload.links.filter((link): link is string => typeof link === "string");
+  // v1은 string[], v2는 { url, title, description }[]를 반환한다.
+  return payload.links.flatMap((link) => {
+    if (typeof link === "string") return [link];
+    if (
+      typeof link === "object" &&
+      link !== null &&
+      "url" in link &&
+      typeof link.url === "string"
+    ) {
+      return [link.url];
+    }
+    return [];
+  });
 }
 
 export interface FirecrawlScrapedHtml {
@@ -106,16 +133,18 @@ export interface FirecrawlScrapedHtml {
   html: string | null;
 }
 
-/** /v1/scrape: 단일 페이지의 원본 HTML 을 가져온다. 실패 시 예외를 던진다. */
+/** /v2/scrape: 단일 페이지의 원본 HTML 을 가져온다. 실패 시 예외를 던진다. */
 export async function firecrawlScrapeHtml(
   url: string,
-  apiKey: string
+  apiKey: string,
+  options: FirecrawlClientOptions = {},
 ): Promise<FirecrawlScrapedHtml> {
   const payload = await firecrawlFetch<FirecrawlScrapeResponse>(
     "/scrape",
     apiKey,
     { url, formats: ["rawHtml"], onlyMainContent: false },
-    SCRAPE_TIMEOUT_MS
+    SCRAPE_TIMEOUT_MS,
+    options,
   );
   if (payload.success === false || !payload.data) {
     throw new Error(payload.error ?? "Firecrawl scrape 실패");

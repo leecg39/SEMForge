@@ -58,6 +58,43 @@ export const folders = sqliteTable(
   ]
 );
 
+/**
+ * SEO 대시보드의 프로젝트별 조회 범위와 위젯 배치 설정.
+ * 프로젝트 자체의 단일 출처는 folders이고, 이 테이블은 folder_id 당 한 행만 둔다.
+ */
+export const seoProjectSettings = sqliteTable(
+  "seo_project_settings",
+  {
+    id: text("id").primaryKey(),
+    ...scoped,
+    folderId: text("folder_id")
+      .notNull()
+      .references(() => folders.id, { onDelete: "cascade" }),
+    countryCode: text("country_code").notNull().default("US"),
+    device: text("device", { enum: ["desktop", "mobile"] })
+      .notNull()
+      .default("desktop"),
+    searchEngine: text("search_engine", { enum: ["google", "bing"] })
+      .notNull()
+      .default("google"),
+    resultScope: text("result_scope", { enum: ["domain", "subdomain", "path"] })
+      .notNull()
+      .default("domain"),
+    /** 숨긴 위젯 키의 JSON 문자열. API 경계에서 허용 키만 검증한다. */
+    hiddenWidgets: text("hidden_widgets").notNull().default("[]"),
+    updatedAt: timestampMs("updated_at")
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedBy: text("updated_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+  },
+  (t) => [
+    uniqueIndex("seo_project_settings_folder_unique").on(t.folderId),
+    index("seo_project_settings_workspace_idx").on(t.workspaceId),
+  ]
+);
+
 export const sites = sqliteTable(
   "sites",
   {

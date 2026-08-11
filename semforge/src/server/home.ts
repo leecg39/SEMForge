@@ -379,10 +379,10 @@ export async function getFolderMetricStrips(
         projectAiStats?.updatedAt ?? aiStats?.updatedAt?.toISOString() ?? null,
       siteHealth: siteHealthByFolder.get(folder.id) ?? null,
       visibility: visibilityByFolder.get(folder.id) ?? null,
-      organicTraffic: report?.metrics.organicTrafficEstimate.value ?? null,
+      organicTraffic: report?.metrics.organicTrafficEstimate?.value ?? null,
       organicKeywords: report?.metrics.organicKeywords ?? null,
       backlinks: report?.metrics.backlinks ?? null,
-      authorityScore: report?.metrics.authorityScore.value ?? null,
+      authorityScore: report?.metrics.authorityScore?.value ?? null,
     };
   });
 }

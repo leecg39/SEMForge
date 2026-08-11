@@ -75,6 +75,7 @@ export const appToolkits: Record<string, AppToolkit> = {
         heading: "Competitive Analysis",
         tools: [
           { label: "Domain Overview", href: "/analytics/overview/" },
+          { label: "Organic Research", href: "/analytics/organic/overview" },
           { label: "Top Pages", href: "/analytics/toppages/" },
           { label: "Compare Domains", href: "/analytics/comparedomains/" },
           { label: "Keyword Gap", href: "/analytics/keywordgap/" },
@@ -111,7 +112,13 @@ export const appToolkits: Record<string, AppToolkit> = {
         heading: "More tools",
         tools: [
           { label: "Sensor", href: "/sensor/" },
+          { label: "SEOquake", href: "https://www.seoquake.com/" },
           { label: "SEMForge Rank", href: "/analytics/ranks/rank/" },
+        ],
+      },
+      {
+        heading: "Other",
+        tools: [
           { label: "On Page SEO Checker", href: "/on-page-seo-checker/" },
           {
             label: "Organic Traffic Insights",

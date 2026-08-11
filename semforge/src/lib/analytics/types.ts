@@ -132,6 +132,68 @@ export interface LinkedPageRow {
   referringDomains: number;
 }
 
+export type DomainProviderStatus = "live" | "unavailable" | "error";
+
+/** 브라우저에 노출해도 되는 공급자 상태. 키·인증 헤더는 절대 포함하지 않는다. */
+export interface DomainProviderState {
+  status: DomainProviderStatus;
+  source: "talordata" | "firecrawl" | "pagespeed-insights";
+  fetchedAt: string;
+  reason?: string;
+  records?: number;
+}
+
+export interface DomainSiteProfile {
+  requestedUrl: string;
+  finalUrl: string;
+  title: string | null;
+  metaDescription: string | null;
+  pagesDiscovered: number;
+  pagesAnalyzed: number;
+  successfulPages: number;
+  headings: string[];
+  keywordCandidates: string[];
+  hasStructuredData: boolean;
+  imagesTotal: number;
+  imagesMissingAlt: number;
+}
+
+export interface DomainPerformanceProfile {
+  url: string;
+  strategy: AnalyticsDevice;
+  scores: {
+    performance: number;
+    accessibility: number;
+    bestPractices: number;
+    seo: number;
+  };
+  cwv: {
+    lcpMs?: number;
+    cls?: number;
+    inpMs?: number;
+    fcpMs?: number;
+    tbtMs?: number;
+    source: "field" | "lab" | "none";
+    originLevel?: boolean;
+  };
+}
+
+/** Firecrawl + TalorData + PageSpeed의 실제 호출 결과를 묶은 보존 스냅샷. */
+export interface DomainExternalAnalysis {
+  domain: string;
+  countryCode: string;
+  device: AnalyticsDevice;
+  capturedAt: string;
+  keywordCandidates: string[];
+  providers: {
+    talordata: DomainProviderState;
+    firecrawl: DomainProviderState;
+    pagespeed: DomainProviderState;
+  };
+  site: DomainSiteProfile | null;
+  performance: DomainPerformanceProfile | null;
+}
+
 export interface DomainAnalyticsReport {
   query: {
     domain: string;
@@ -144,40 +206,42 @@ export interface DomainAnalyticsReport {
    * 서버 저장소 경계(getDomainAnalytics)에서 채우며 순수 계산 레이어는 건드리지 않는다.
    */
   provenance?: "demo" | "live" | "mixed";
+  /** 마지막 외부 API 수집 스냅샷. 미수집 도메인은 undefined. */
+  external?: DomainExternalAnalysis;
   availableDomains: string[];
   metrics: {
-    authorityScore: MetricEstimate;
-    organicTrafficEstimate: MetricEstimate;
-    visitsEstimate: MetricEstimate;
-    uniqueVisitorsEstimate: MetricEstimate;
+    authorityScore: MetricEstimate | null;
+    organicTrafficEstimate: MetricEstimate | null;
+    visitsEstimate: MetricEstimate | null;
+    uniqueVisitorsEstimate: MetricEstimate | null;
     organicKeywords: number;
-    backlinks: number;
-    referringDomains: number;
-    pagesPerVisit: number;
-    bounceRate: number;
-    followShare: number;
+    backlinks: number | null;
+    referringDomains: number | null;
+    pagesPerVisit: number | null;
+    bounceRate: number | null;
+    followShare: number | null;
   };
   trend: Array<{
     period: string;
-    organicTrafficEstimate: number;
-    visitsEstimate: number;
+    organicTrafficEstimate: number | null;
+    visitsEstimate: number | null;
     /** 해당 월에 상위 10위 안에 든 키워드 수 */
     keywords: number;
   }>;
   topKeywords: Array<{
     keyword: string;
-    intent: AnalyticsIntent;
+    intent: AnalyticsIntent | null;
     position: number;
-    volume: number;
-    difficulty: number;
-    trafficContribution: number;
+    volume: number | null;
+    difficulty: number | null;
+    trafficContribution: number | null;
     url: string;
-    cpcCents: number;
+    cpcCents: number | null;
   }>;
   intentDistribution: IntentShare[];
   serpFeatures: SerpFeatureShare[];
   positionDistribution: PositionBucket[];
-  brandedSplit: BrandedSplit;
+  brandedSplit: BrandedSplit | null;
   refDomainsByAuthority: AuthorityBucket[];
   topLinkedPages: LinkedPageRow[];
   channels: Array<{

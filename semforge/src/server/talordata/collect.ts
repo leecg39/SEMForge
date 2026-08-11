@@ -603,6 +603,8 @@ export async function collectDomainSeedKeywords(input: {
   countryCode: string;
   device: "desktop" | "mobile";
   keywords?: string[];
+  /** 도메인 발견 정확도를 높이기 위한 SERP 깊이 (기본 100). */
+  num?: number;
 }): Promise<DomainSeedCollectReport> {
   const domain = normalizeDomain(input.domain);
   if (!domain || !domain.includes(".")) {
@@ -629,6 +631,7 @@ export async function collectDomainSeedKeywords(input: {
         keyword,
         countryCode: input.countryCode,
         device: input.device,
+        num: input.num ?? 100,
       });
       capturedAt = collection.capturedAt;
       const found = findDomainPosition(collection.results, domain);
