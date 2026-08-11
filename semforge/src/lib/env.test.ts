@@ -1,5 +1,7 @@
 // @TASK P1-D1-T1 - Production startup environment validation contract
 // @SPEC docs/planning/06-tasks.md#p1-d1-t1--postgresql-16-핵심-스키마와-암호화-기반
+// @TASK P3-C2-T1 - NAVER production runtime credential validation contract
+// @SPEC docs/planning/06-tasks.md#p3-c2-t1--naver와-gsc-주간-수집
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
@@ -17,10 +19,17 @@ const productionEnv = {
   APP_SECRET: "production-secret-material-that-is-at-least-32-bytes",
   APP_SECRET_CURRENT_KEY_ID: "key-2026-08",
   TOSS_SECRET_KEY: "test_sk_semforge_toss_secret",
+  GOOGLE_CLIENT_ID: "test-google-client-id",
+  GOOGLE_CLIENT_SECRET: "test-google-client-secret",
+  NAVER_OPEN_API_CLIENT_ID: "test-naver-open-api-client-id",
+  NAVER_OPEN_API_CLIENT_SECRET: "test-naver-open-api-client-secret",
+  NAVER_SEARCH_AD_ACCESS_LICENSE: "test-naver-search-ad-access-license",
+  NAVER_SEARCH_AD_SECRET_KEY: "test-naver-search-ad-secret-key",
+  NAVER_SEARCH_AD_CUSTOMER_ID: "test-naver-search-ad-customer-id",
   BILLING_FINGERPRINT_SECRET: "billing-fingerprint-secret-at-least-32-bytes",
 };
 
-test("production은 database, public URL, current encryption key를 모두 요구한다", () => {
+test("production은 database, encryption, billing, Google, NAVER 자격증명을 모두 요구한다", () => {
   for (const missing of [
     "DATABASE_URL",
     "AUTH_DATABASE_URL",
@@ -32,11 +41,25 @@ test("production은 database, public URL, current encryption key를 모두 요�
     "APP_SECRET",
     "APP_SECRET_CURRENT_KEY_ID",
     "TOSS_SECRET_KEY",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "NAVER_OPEN_API_CLIENT_ID",
+    "NAVER_OPEN_API_CLIENT_SECRET",
+    "NAVER_SEARCH_AD_ACCESS_LICENSE",
+    "NAVER_SEARCH_AD_SECRET_KEY",
+    "NAVER_SEARCH_AD_CUSTOMER_ID",
     "BILLING_FINGERPRINT_SECRET",
   ] as const) {
     const candidate = { ...productionEnv };
     delete candidate[missing];
-    assert.throws(() => parseServerEnv(candidate), EnvironmentValidationError, missing);
+    assert.throws(
+      () => parseServerEnv(candidate),
+      (error: unknown) => {
+        assert.ok(error instanceof EnvironmentValidationError);
+        assert.deepEqual(error.issues, [`${missing} is required in production`]);
+        return true;
+      },
+    );
   }
 });
 
@@ -45,6 +68,15 @@ test("test mode는 외부 키 없이 명시적으로 실행할 수 있다", () =
   assert.equal(env.NODE_ENV, "test");
   assert.equal(env.DATABASE_URL, undefined);
   assert.equal(env.AUTH_TRUST_PROXY_HEADERS, false);
+  for (const optional of [
+    "NAVER_OPEN_API_CLIENT_ID",
+    "NAVER_OPEN_API_CLIENT_SECRET",
+    "NAVER_SEARCH_AD_ACCESS_LICENSE",
+    "NAVER_SEARCH_AD_SECRET_KEY",
+    "NAVER_SEARCH_AD_CUSTOMER_ID",
+  ] as const) {
+    assert.equal(env[optional], undefined);
+  }
 });
 
 test("AUTH_TRUST_PROXY_HEADERS는 명시적인 true/false만 허용한다", () => {

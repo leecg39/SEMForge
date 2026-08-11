@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test \"src/**/*.test.ts\" \"src/**/*.test.tsx\" \"scripts/**/*.test.ts\"",
     "test:db": "tsx --test src/db/**/*.test.ts src/lib/crypto.test.ts src/lib/env.test.ts",
-    "test:providers": "tsx --test src/server/talordata/client.test.ts src/server/naver-api-hub/client.test.ts src/server/naver-search-ads/client.test.ts",
+    "test:providers": "tsx --test src/server/talordata/client.test.ts src/server/providers/naver/*.test.ts src/server/naver-search-ads/client.test.ts",
     "verify": "npm run lint && npm run typecheck && npm run test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts"
