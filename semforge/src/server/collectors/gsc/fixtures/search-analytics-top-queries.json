@@ -1,0 +1,19 @@
+{
+  "rows": [
+    {
+      "keys": ["semforge"],
+      "clicks": 21,
+      "impressions": 105,
+      "ctr": 0.2,
+      "position": 3.75
+    },
+    {
+      "keys": ["주간 검색 리포트"],
+      "clicks": 8,
+      "impressions": 80,
+      "ctr": 0.1,
+      "position": 6.5
+    }
+  ],
+  "responseAggregationType": "byProperty"
+}
