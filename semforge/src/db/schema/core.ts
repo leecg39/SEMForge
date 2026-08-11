@@ -756,6 +756,7 @@ export const paymentMethods = pgTable(
     workspaceId: uuid("workspace_id").notNull(),
     billingCustomerId: uuid("billing_customer_id").notNull(),
     billingKeyEncrypted: text("billing_key_encrypted").notNull(),
+    billingKeyFingerprint: text("billing_key_fingerprint").notNull(),
     cardBrand: text("card_brand"),
     cardLast4: text("card_last4"),
     active: boolean("active").notNull().default(true),
@@ -764,8 +765,10 @@ export const paymentMethods = pgTable(
   },
   (table) => [
     unique("payment_methods_workspace_id_uq").on(table.workspaceId, table.id),
+    unique("payment_methods_fingerprint_uq").on(table.billingKeyFingerprint),
     foreignKey({ columns: [table.workspaceId, table.billingCustomerId], foreignColumns: [billingCustomers.workspaceId, billingCustomers.id], name: "payment_methods_customer_fk" }).onDelete("cascade"),
     uniqueIndex("payment_methods_active_customer_uq").on(table.workspaceId, table.billingCustomerId).where(sql`${table.active}`),
+    check("payment_methods_fingerprint_ck", sql`${table.billingKeyFingerprint} ~ '^[0-9a-f]{64}$'`),
     check("payment_methods_last4_ck", sql`${table.cardLast4} is null or ${table.cardLast4} ~ '^[0-9]{4}$'`),
   ],
 );
@@ -848,6 +851,42 @@ export const providerEvents = pgTable(
   ],
 );
 
+export const billingLedgerEvents = pgTable(
+  "billing_ledger_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    entityId: text("entity_id").notNull(),
+    actorUserId: uuid("actor_user_id"),
+    requestId: text("request_id"),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    amountKrw: integer("amount_krw"),
+    orderId: text("order_id"),
+    paymentStatus: paymentStatusEnum("payment_status"),
+    providerCode: text("provider_code"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("billing_ledger_events_workspace_id_uq").on(table.workspaceId, table.id),
+    index("billing_ledger_events_workspace_time_idx").on(table.workspaceId, table.occurredAt),
+    check("billing_ledger_events_amount_ck", sql`${table.amountKrw} is null or ${table.amountKrw} = 49000`),
+    check("billing_ledger_events_type_ck", sql`${table.type} in (
+      'payment_method.authorized',
+      'charge.requested',
+      'charge.succeeded',
+      'charge.failed',
+      'charge.canceled',
+      'payment.refunded',
+      'subscription.cancel_scheduled',
+      'subscription.canceled'
+    )`),
+  ],
+);
+
 export const preTenantTables = [
   users,
   sessions,
@@ -882,4 +921,5 @@ export const tenantTables = [
   subscriptions,
   payments,
   providerEvents,
+  billingLedgerEvents,
 ] as const;

@@ -9,6 +9,7 @@ export type ApiErrorCode =
   | "FORBIDDEN"
   | "NOT_FOUND"
   | "METHOD_NOT_ALLOWED"
+  | "IDEMPOTENCY_KEY_REQUIRED"
   | "DUPLICATE"
   | "CONFLICT"
   | "PLAN_LIMIT"
@@ -23,6 +24,7 @@ const STATUS_BY_CODE = {
   FORBIDDEN: 403,
   NOT_FOUND: 404,
   METHOD_NOT_ALLOWED: 405,
+  IDEMPOTENCY_KEY_REQUIRED: 400,
   DUPLICATE: 409,
   CONFLICT: 409,
   PLAN_LIMIT: 402,
@@ -38,6 +40,7 @@ const DEFAULT_MESSAGE_BY_CODE = {
   FORBIDDEN: "이 요청을 수행할 권한이 없습니다.",
   NOT_FOUND: "요청한 리소스를 찾을 수 없습니다.",
   METHOD_NOT_ALLOWED: "지원하지 않는 요청 방식입니다.",
+  IDEMPOTENCY_KEY_REQUIRED: "Idempotency-Key 헤더가 필요합니다.",
   DUPLICATE: "이미 존재하는 값입니다.",
   CONFLICT: "현재 상태에서는 요청을 처리할 수 없습니다.",
   PLAN_LIMIT: "이용 한도를 초과했습니다.",

@@ -42,6 +42,7 @@ const requiredTenantTables = [
   "subscriptions",
   "payments",
   "provider_events",
+  "billing_ledger_events",
 ] as const;
 
 test("공개 상태 enum은 제품 계약과 정확히 일치한다", () => {

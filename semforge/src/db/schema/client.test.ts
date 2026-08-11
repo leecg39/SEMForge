@@ -13,6 +13,7 @@ test("auth runtime은 AUTH_DATABASE_URL만 사용하고 migration owner URL을 �
     AUTH_DATABASE_URL: "postgresql://semforge_auth_login:secret@localhost/semforge",
     OPERATOR_DATABASE_URL: "postgresql://semforge_operator_login:secret@localhost/semforge",
     WORKER_DATABASE_URL: "postgresql://semforge_worker_login:secret@localhost/semforge",
+    BILLING_DATABASE_URL: "postgresql://semforge_billing_login:secret@localhost/semforge",
     MIGRATION_DATABASE_URL: "postgresql://semforge_owner_login:secret@localhost/semforge",
   });
 
@@ -20,6 +21,8 @@ test("auth runtime은 AUTH_DATABASE_URL만 사용하고 migration owner URL을 �
   assert.equal(resolveDatabaseUrl("auth", env), env.AUTH_DATABASE_URL);
   assert.equal(resolveDatabaseUrl("operator", env), env.OPERATOR_DATABASE_URL);
   assert.equal(resolveDatabaseUrl("worker", env), env.WORKER_DATABASE_URL);
+  assert.equal(resolveDatabaseUrl("billing", env), env.BILLING_DATABASE_URL);
   assert.notEqual(resolveDatabaseUrl("auth", env), env.MIGRATION_DATABASE_URL);
   assert.notEqual(resolveDatabaseUrl("operator", env), env.MIGRATION_DATABASE_URL);
+  assert.notEqual(resolveDatabaseUrl("billing", env), env.MIGRATION_DATABASE_URL);
 });

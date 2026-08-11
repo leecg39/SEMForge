@@ -101,11 +101,12 @@ test("web role은 transaction-local workspace 밖의 row를 볼 수 없다", asy
   }
 });
 
-test("web과 worker role은 BYPASSRLS가 아니며 web 정책은 명시적으로 role에 한정된다", async () => {
+test("web, worker, billing role은 BYPASSRLS가 아니며 web 정책은 명시적으로 role에 한정된다", async () => {
   const roles = await pg.query<{ rolname: string; rolbypassrls: boolean }>(
-    "select rolname, rolbypassrls from pg_roles where rolname in ('semforge_web', 'semforge_worker') order by rolname",
+    "select rolname, rolbypassrls from pg_roles where rolname in ('semforge_billing', 'semforge_web', 'semforge_worker') order by rolname",
   );
   assert.deepEqual(roles.rows, [
+    { rolname: "semforge_billing", rolbypassrls: false },
     { rolname: "semforge_web", rolbypassrls: false },
     { rolname: "semforge_worker", rolbypassrls: false },
   ]);
@@ -118,6 +119,68 @@ test("web과 worker role은 BYPASSRLS가 아니며 web 정책은 명시적으로
       (policy) => policy.policyname === "sites_tenant_isolation" && policy.roles.includes("semforge_web"),
     ),
   );
+});
+
+test("billing role은 fingerprint 결제수단과 append-only ledger만 변경한다", async () => {
+  const workspaceId = "00000000-0000-4000-8000-0000000000d1";
+  const customerId = "00000000-0000-4000-8000-0000000000d2";
+  const subscriptionId = "00000000-0000-4000-8000-0000000000d3";
+  const paymentMethodId = "00000000-0000-4000-8000-0000000000d4";
+  const ledgerId = "00000000-0000-4000-8000-0000000000d5";
+  await pg.query("insert into workspaces (id, name, slug) values ($1, 'Billing', 'billing')", [
+    workspaceId,
+  ]);
+  await pg.query(
+    "insert into billing_customers (id, workspace_id, toss_customer_key) values ($1, $2, 'customer_billing')",
+    [customerId, workspaceId],
+  );
+  await pg.query(
+    "insert into subscriptions (id, workspace_id, billing_customer_id, status) values ($1, $2, $3, 'account_created')",
+    [subscriptionId, workspaceId, customerId],
+  );
+
+  await pg.query("begin");
+  try {
+    await pg.query("set local role semforge_billing");
+    await pg.query(
+      `insert into payment_methods
+        (id, workspace_id, billing_customer_id, billing_key_encrypted, billing_key_fingerprint, card_last4)
+       values ($1, $2, $3, 'enc:v1:key:iviviviviviviviv:tagtagtagtagtagtagta:cipher', repeat('a', 64), '1234')`,
+      [paymentMethodId, workspaceId, customerId],
+    );
+    await pg.query("savepoint billing_plain_key_rejected");
+    await assert.rejects(
+      pg.query(
+        `insert into payment_methods
+          (workspace_id, billing_customer_id, billing_key_encrypted, billing_key_fingerprint)
+         values ($1, $2, 'plain-billing-key', repeat('b', 64))`,
+        [workspaceId, customerId],
+      ),
+    );
+    await pg.query("rollback to savepoint billing_plain_key_rejected");
+    await pg.query(
+      `insert into billing_ledger_events
+        (id, workspace_id, type, entity_id, occurred_at, amount_krw, payment_status)
+       values ($1, $2, 'payment_method.authorized', $3, now(), 49000, 'authorized')`,
+      [ledgerId, workspaceId, paymentMethodId],
+    );
+    await pg.query("savepoint billing_ledger_update_rejected");
+    await assert.rejects(
+      pg.query("update billing_ledger_events set provider_code = 'changed' where id = $1", [
+        ledgerId,
+      ]),
+    );
+    await pg.query("rollback to savepoint billing_ledger_update_rejected");
+    await pg.query("savepoint billing_ledger_delete_rejected");
+    await assert.rejects(
+      pg.query("delete from billing_ledger_events where id = $1", [ledgerId]),
+    );
+    await pg.query("rollback to savepoint billing_ledger_delete_rejected");
+    await pg.query("commit");
+  } catch (error) {
+    await pg.query("rollback");
+    throw error;
+  }
 });
 
 test("DB도 GSC token과 Toss billing key의 평문 저장을 거부한다", async () => {

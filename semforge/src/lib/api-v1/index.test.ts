@@ -488,7 +488,7 @@ test("production 상태 변경 요청은 HTTPS trusted origin이 없으면 fail 
       });
 
     await t.test("missing APP_PUBLIC_URL", async () => {
-      delete process.env.APP_PUBLIC_URL;
+      delete mutableEnv.APP_PUBLIC_URL;
       const handler = withApiV1(async () => apiSuccess(null));
       assert.equal((await handler(request(), undefined)).status, 403);
     });

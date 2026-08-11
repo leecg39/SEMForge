@@ -11,10 +11,13 @@ const productionEnv = {
   AUTH_DATABASE_URL: "postgresql://semforge_auth_login:test@db.example.com:5432/semforge",
   OPERATOR_DATABASE_URL: "postgresql://semforge_operator_login:test@db.example.com:5432/semforge",
   WORKER_DATABASE_URL: "postgresql://semforge_worker_login:test@db.example.com:5432/semforge",
+  BILLING_DATABASE_URL: "postgresql://semforge_billing_login:test@db.example.com:5432/semforge",
   MIGRATION_DATABASE_URL: "postgresql://semforge_owner_login:test@db.example.com:5432/semforge",
   APP_PUBLIC_URL: "https://app.semforge.example",
   APP_SECRET: "production-secret-material-that-is-at-least-32-bytes",
   APP_SECRET_CURRENT_KEY_ID: "key-2026-08",
+  TOSS_SECRET_KEY: "test_sk_semforge_toss_secret",
+  BILLING_FINGERPRINT_SECRET: "billing-fingerprint-secret-at-least-32-bytes",
 };
 
 test("production은 database, public URL, current encryption key를 모두 요구한다", () => {
@@ -23,10 +26,13 @@ test("production은 database, public URL, current encryption key를 모두 요�
     "AUTH_DATABASE_URL",
     "OPERATOR_DATABASE_URL",
     "WORKER_DATABASE_URL",
+    "BILLING_DATABASE_URL",
     "MIGRATION_DATABASE_URL",
     "APP_PUBLIC_URL",
     "APP_SECRET",
     "APP_SECRET_CURRENT_KEY_ID",
+    "TOSS_SECRET_KEY",
+    "BILLING_FINGERPRINT_SECRET",
   ] as const) {
     const candidate = { ...productionEnv };
     delete candidate[missing];
