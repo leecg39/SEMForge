@@ -1437,6 +1437,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "request_hash": {
+          "name": "request_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
         "priority": {
           "name": "priority",
           "type": "integer",
@@ -2125,6 +2132,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "request_hash": {
+          "name": "request_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
         },
         "available_at": {
           "name": "available_at",
@@ -2826,7 +2840,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "provider_calls_status_ck": {
+          "name": "provider_calls_status_ck",
+          "value": "\"provider_calls\".\"status\" in ('started', 'in_doubt', 'retryable', 'succeeded', 'failed')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.provider_events": {

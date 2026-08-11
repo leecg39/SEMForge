@@ -13,6 +13,8 @@ const productionEnv = {
   AUTH_DATABASE_URL: "postgresql://semforge_auth_login:test@db.example.com:5432/semforge",
   OPERATOR_DATABASE_URL: "postgresql://semforge_operator_login:test@db.example.com:5432/semforge",
   WORKER_DATABASE_URL: "postgresql://semforge_worker_login:test@db.example.com:5432/semforge",
+  DISPATCHER_DATABASE_URL: "postgresql://semforge_dispatcher_login:test@db.example.com:5432/semforge",
+  SCHEDULER_DATABASE_URL: "postgresql://semforge_scheduler_login:test@db.example.com:5432/semforge",
   BILLING_DATABASE_URL: "postgresql://semforge_billing_login:test@db.example.com:5432/semforge",
   MIGRATION_DATABASE_URL: "postgresql://semforge_owner_login:test@db.example.com:5432/semforge",
   APP_PUBLIC_URL: "https://app.semforge.example",
@@ -21,6 +23,7 @@ const productionEnv = {
   TOSS_SECRET_KEY: "test_sk_semforge_toss_secret",
   GOOGLE_CLIENT_ID: "test-google-client-id",
   GOOGLE_CLIENT_SECRET: "test-google-client-secret",
+  TALORDATA_API_TOKEN: "test-talordata-api-token",
   NAVER_OPEN_API_CLIENT_ID: "test-naver-open-api-client-id",
   NAVER_OPEN_API_CLIENT_SECRET: "test-naver-open-api-client-secret",
   NAVER_SEARCH_AD_ACCESS_LICENSE: "test-naver-search-ad-access-license",
@@ -35,6 +38,8 @@ test("production은 database, encryption, billing, Google, NAVER 자격증명을
     "AUTH_DATABASE_URL",
     "OPERATOR_DATABASE_URL",
     "WORKER_DATABASE_URL",
+    "DISPATCHER_DATABASE_URL",
+    "SCHEDULER_DATABASE_URL",
     "BILLING_DATABASE_URL",
     "MIGRATION_DATABASE_URL",
     "APP_PUBLIC_URL",
@@ -43,6 +48,7 @@ test("production은 database, encryption, billing, Google, NAVER 자격증명을
     "TOSS_SECRET_KEY",
     "GOOGLE_CLIENT_ID",
     "GOOGLE_CLIENT_SECRET",
+    "TALORDATA_API_TOKEN",
     "NAVER_OPEN_API_CLIENT_ID",
     "NAVER_OPEN_API_CLIENT_SECRET",
     "NAVER_SEARCH_AD_ACCESS_LICENSE",
@@ -126,11 +132,13 @@ test("migrate profile은 migration owner DSN과 verify-full TLS만으로 시작�
   assert.equal(env.MIGRATION_DATABASE_URL?.includes("owner"), true);
 });
 
-test("worker profile은 worker DB와 collector secret만 요구한다", () => {
+test("worker profile은 dispatcher claim DB와 tenant worker DB를 분리해 요구한다", () => {
   const workerEnv = {
     NODE_ENV: "production",
     SEMFORGE_SERVICE: "worker",
     WORKER_DATABASE_URL: "postgresql://worker:test@db.example.com:5432/semforge",
+    DISPATCHER_DATABASE_URL: "postgresql://dispatcher:test@db.example.com:5432/semforge",
+    APP_PUBLIC_URL: "https://app.semforge.example",
     APP_SECRET: "production-secret-material-that-is-at-least-32-bytes",
     APP_SECRET_CURRENT_KEY_ID: "key-2026-08",
     GOOGLE_CLIENT_ID: "test-google-client-id",
@@ -144,6 +152,17 @@ test("worker profile은 worker DB와 collector secret만 요구한다", () => {
     PGSSLMODE: "verify-full",
   };
   assert.equal(parseServerEnv(workerEnv).SEMFORGE_SERVICE, "worker");
+
+  const missingDispatcher: Record<string, string | undefined> = { ...workerEnv };
+  delete missingDispatcher.DISPATCHER_DATABASE_URL;
+  assert.throws(
+    () => parseServerEnv(missingDispatcher),
+    (error: unknown) => {
+      assert.ok(error instanceof EnvironmentValidationError);
+      assert.deepEqual(error.issues, ["DISPATCHER_DATABASE_URL is required in production"]);
+      return true;
+    },
+  );
 
   const missingToken: Record<string, string | undefined> = { ...workerEnv };
   delete missingToken.TALORDATA_API_TOKEN;
@@ -170,6 +189,28 @@ test("worker profile은 worker DB와 collector secret만 요구한다", () => {
       return true;
     },
   );
+});
+
+test("relay와 scheduler profile은 각자의 최소권한 PostgreSQL 역할만 요구한다", () => {
+  const relay = parseServerEnv({
+    NODE_ENV: "production",
+    SEMFORGE_SERVICE: "relay",
+    DISPATCHER_DATABASE_URL: "postgresql://dispatcher:test@db.example.com:5432/semforge",
+    PGSSLMODE: "verify-full",
+  });
+  assert.equal(relay.SEMFORGE_SERVICE, "relay");
+  assert.equal(relay.WORKER_DATABASE_URL, undefined);
+  assert.equal(relay.SCHEDULER_DATABASE_URL, undefined);
+
+  const scheduler = parseServerEnv({
+    NODE_ENV: "production",
+    SEMFORGE_SERVICE: "scheduler",
+    SCHEDULER_DATABASE_URL: "postgresql://scheduler:test@db.example.com:5432/semforge",
+    PGSSLMODE: "verify-full",
+  });
+  assert.equal(scheduler.SEMFORGE_SERVICE, "scheduler");
+  assert.equal(scheduler.WORKER_DATABASE_URL, undefined);
+  assert.equal(scheduler.DISPATCHER_DATABASE_URL, undefined);
 });
 
 test("build profile은 image build 중 운영 secret을 읽지 않는다", () => {

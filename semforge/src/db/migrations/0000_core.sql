@@ -152,6 +152,7 @@ CREATE TABLE "jobs" (
 	"status" "job_status" DEFAULT 'queued' NOT NULL,
 	"payload" jsonb NOT NULL,
 	"idempotency_key" text NOT NULL,
+	"request_hash" text DEFAULT '' NOT NULL,
 	"priority" integer DEFAULT 100 NOT NULL,
 	"available_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"lease_owner" text,
@@ -234,6 +235,7 @@ CREATE TABLE "outbox" (
 	"topic" text NOT NULL,
 	"payload" jsonb NOT NULL,
 	"idempotency_key" text NOT NULL,
+	"request_hash" text DEFAULT '' NOT NULL,
 	"available_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"lease_owner" text,
 	"lease_token" uuid,
@@ -248,6 +250,32 @@ CREATE TABLE "outbox" (
 	CONSTRAINT "outbox_idempotency_uq" UNIQUE("workspace_id","topic","idempotency_key")
 );
 --> statement-breakpoint
+-- @TASK P3-P1-FIX - Canonical job/outbox idempotency request hashes
+CREATE FUNCTION set_job_request_hash() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = public, pg_temp AS $$
+BEGIN
+  NEW.request_hash := encode(sha256(convert_to(
+    NEW.type || chr(31) || NEW.payload::text || chr(31) ||
+    NEW.max_attempts::text || chr(31) || NEW.priority::text,
+    'UTF8'
+  )), 'hex');
+  RETURN NEW;
+END;
+$$;--> statement-breakpoint
+CREATE TRIGGER jobs_request_hash BEFORE INSERT OR UPDATE
+ON jobs FOR EACH ROW EXECUTE FUNCTION set_job_request_hash();--> statement-breakpoint
+CREATE FUNCTION set_outbox_request_hash() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = public, pg_temp AS $$
+BEGIN
+  NEW.request_hash := encode(sha256(convert_to(
+    NEW.topic || chr(31) || NEW.payload::text || chr(31) || NEW.max_attempts::text,
+    'UTF8'
+  )), 'hex');
+  RETURN NEW;
+END;
+$$;--> statement-breakpoint
+CREATE TRIGGER outbox_request_hash BEFORE INSERT OR UPDATE
+ON outbox FOR EACH ROW EXECUTE FUNCTION set_outbox_request_hash();--> statement-breakpoint
 CREATE TABLE "password_resets" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" uuid NOT NULL,
@@ -315,7 +343,8 @@ CREATE TABLE "provider_calls" (
 	"started_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"completed_at" timestamp with time zone,
 	CONSTRAINT "provider_calls_workspace_id_uq" UNIQUE("workspace_id","id"),
-	CONSTRAINT "provider_calls_idempotency_uq" UNIQUE("workspace_id","provider","idempotency_key")
+	CONSTRAINT "provider_calls_idempotency_uq" UNIQUE("workspace_id","provider","idempotency_key"),
+	CONSTRAINT "provider_calls_status_ck" CHECK ("provider_calls"."status" in ('started', 'in_doubt', 'retryable', 'succeeded', 'failed'))
 );
 --> statement-breakpoint
 CREATE TABLE "provider_events" (
@@ -703,13 +732,15 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_web') THEN CREATE ROLE semforge_web NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_auth') THEN CREATE ROLE semforge_auth NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_operator') THEN CREATE ROLE semforge_operator NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_dispatcher') THEN CREATE ROLE semforge_dispatcher NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_scheduler') THEN CREATE ROLE semforge_scheduler NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_worker') THEN CREATE ROLE semforge_worker NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_billing') THEN CREATE ROLE semforge_billing NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
 END
 $$;--> statement-breakpoint
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC;--> statement-breakpoint
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;--> statement-breakpoint
-GRANT USAGE ON SCHEMA public TO semforge_web, semforge_auth, semforge_operator, semforge_worker, semforge_billing;--> statement-breakpoint
+GRANT USAGE ON SCHEMA public TO semforge_web, semforge_auth, semforge_operator, semforge_dispatcher, semforge_scheduler, semforge_worker, semforge_billing;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON
   workspaces, memberships, sites, tracked_queries,
   gsc_connections, oauth_states, gsc_property_bindings,
@@ -731,9 +762,21 @@ GRANT INSERT (workspace_id, topic, payload, idempotency_key, available_at, creat
 GRANT SELECT ON invites TO semforge_operator;--> statement-breakpoint
 GRANT INSERT (email, token_hash, workspace_name, workspace_slug, expires_at) ON invites TO semforge_operator;--> statement-breakpoint
 GRANT UPDATE (superseded_at) ON invites TO semforge_operator;--> statement-breakpoint
+GRANT SELECT ON jobs TO semforge_dispatcher;--> statement-breakpoint
+GRANT INSERT (workspace_id, type, payload, idempotency_key, priority, available_at, max_attempts)
+  ON jobs TO semforge_dispatcher;--> statement-breakpoint
+GRANT UPDATE (status, available_at, lease_owner, lease_token, lease_generation,
+  lease_expires_at, attempts, last_error, updated_at) ON jobs TO semforge_dispatcher;--> statement-breakpoint
+GRANT SELECT ON outbox TO semforge_dispatcher;--> statement-breakpoint
+GRANT UPDATE (available_at, lease_owner, lease_token, lease_generation,
+  lease_expires_at, attempts, published_at, last_error) ON outbox TO semforge_dispatcher;--> statement-breakpoint
+GRANT INSERT ON audit_events TO semforge_dispatcher;--> statement-breakpoint
+GRANT SELECT ON sites, tracked_queries, gsc_property_bindings TO semforge_scheduler;--> statement-breakpoint
+GRANT INSERT (workspace_id, topic, payload, idempotency_key, available_at, created_at)
+  ON outbox TO semforge_scheduler;--> statement-breakpoint
 GRANT SELECT ON workspaces, memberships, sites, tracked_queries, gsc_connections,
   gsc_property_bindings, billing_customers, payment_methods, subscriptions TO semforge_worker;--> statement-breakpoint
-GRANT SELECT, INSERT, UPDATE, DELETE ON provider_calls, usage_reservations, jobs, outbox,
+GRANT SELECT, INSERT, UPDATE, DELETE ON provider_calls, usage_reservations,
   rank_observations, aio_observations, aio_citations, naver_observations, naver_observation_sources, gsc_observations,
   weekly_reports, report_sections, report_assets, deliveries, payments, provider_events
 TO semforge_worker;--> statement-breakpoint
@@ -756,7 +799,7 @@ CREATE POLICY workspaces_tenant_isolation ON workspaces
 CREATE POLICY workspaces_auth_select ON workspaces FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
 CREATE POLICY workspaces_auth_insert ON workspaces FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY workspaces_worker_read ON workspaces FOR SELECT TO semforge_worker
-  USING (true);--> statement-breakpoint
+  USING (id = nullif(current_setting('app.workspace_id', true), '')::uuid);--> statement-breakpoint
 DO $$
 DECLARE tenant_table text;
 BEGIN
@@ -815,6 +858,8 @@ CREATE POLICY password_resets_auth_update ON password_resets FOR UPDATE TO semfo
 CREATE POLICY outbox_auth_insert ON outbox FOR INSERT TO semforge_auth
   WITH CHECK (topic = 'email.password_reset');--> statement-breakpoint
 CREATE POLICY audit_events_worker_insert ON audit_events FOR INSERT TO semforge_worker
+  WITH CHECK (workspace_id = nullif(current_setting('app.workspace_id', true), '')::uuid);--> statement-breakpoint
+CREATE POLICY audit_events_dispatcher_insert ON audit_events FOR INSERT TO semforge_dispatcher
   WITH CHECK (true);--> statement-breakpoint
 ALTER TABLE auth_action_throttles ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE auth_action_throttles FORCE ROW LEVEL SECURITY;--> statement-breakpoint
@@ -827,17 +872,26 @@ DECLARE worker_table text;
 BEGIN
   FOREACH worker_table IN ARRAY ARRAY[
     'memberships', 'sites', 'tracked_queries', 'gsc_connections', 'gsc_property_bindings',
-    'provider_calls', 'usage_reservations', 'jobs', 'outbox',
+    'provider_calls', 'usage_reservations',
     'rank_observations', 'aio_observations', 'aio_citations', 'naver_observations', 'naver_observation_sources', 'gsc_observations',
     'weekly_reports', 'report_sections', 'report_assets', 'deliveries',
     'billing_customers', 'payment_methods', 'subscriptions', 'payments', 'provider_events', 'billing_ledger_events'
   ] LOOP
-    EXECUTE format('CREATE POLICY %I ON %I TO semforge_worker USING (true) WITH CHECK (true)',
+    EXECUTE format('CREATE POLICY %I ON %I TO semforge_worker USING (workspace_id = nullif(current_setting(''app.workspace_id'', true), '''')::uuid) WITH CHECK (workspace_id = nullif(current_setting(''app.workspace_id'', true), '''')::uuid)',
       worker_table || '_worker_access', worker_table);
   END LOOP;
 END
 $$;
 --> statement-breakpoint
+CREATE POLICY jobs_dispatcher_access ON jobs TO semforge_dispatcher
+  USING (true) WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY outbox_dispatcher_access ON outbox TO semforge_dispatcher
+  USING (true) WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY sites_scheduler_read ON sites FOR SELECT TO semforge_scheduler USING (true);--> statement-breakpoint
+CREATE POLICY tracked_queries_scheduler_read ON tracked_queries FOR SELECT TO semforge_scheduler USING (true);--> statement-breakpoint
+CREATE POLICY gsc_property_bindings_scheduler_read ON gsc_property_bindings FOR SELECT TO semforge_scheduler USING (true);--> statement-breakpoint
+CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+  WITH CHECK (topic in ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly'));--> statement-breakpoint
 DO $$
 DECLARE billing_table text;
 BEGIN

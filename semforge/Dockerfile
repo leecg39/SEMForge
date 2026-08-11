@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-# @TASK P4-O1-T1 - Node 24 standalone web, worker, and migration images
+# @TASK P4-O1-T1 - Node 24 standalone web, pipeline, and migration images
 # @SPEC docs/planning/06-tasks.md#p4-o1-t1--node-24-docker와-운영-도구
 
 FROM node:24-bookworm-slim AS base
@@ -54,14 +54,28 @@ HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \
   CMD ["node", "-e", "fetch('http://127.0.0.1:3000/health/ready/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
 CMD ["web"]
 
-FROM runtime-base AS worker
-ENV SEMFORGE_SERVICE=worker
+FROM runtime-base AS pipeline-runtime
 COPY --from=production-dependencies --chown=semforge:semforge /app/node_modules ./node_modules
 COPY --from=builder --chown=semforge:semforge /app/package.json /app/tsconfig.json ./
 COPY --from=builder --chown=semforge:semforge /app/src ./src
-COPY --from=builder --chown=semforge:semforge /app/scripts/ops/worker.ts ./scripts/ops/worker.ts
+COPY --from=builder --chown=semforge:semforge \
+  /app/scripts/ops/worker.ts \
+  /app/scripts/ops/relay.ts \
+  /app/scripts/ops/scheduler.ts \
+  ./scripts/ops/
 USER semforge
+
+FROM pipeline-runtime AS worker
+ENV SEMFORGE_SERVICE=worker
 CMD ["worker"]
+
+FROM pipeline-runtime AS relay
+ENV SEMFORGE_SERVICE=relay
+CMD ["relay"]
+
+FROM pipeline-runtime AS scheduler
+ENV SEMFORGE_SERVICE=scheduler
+CMD ["scheduler"]
 
 FROM runtime-base AS migrator
 ENV SEMFORGE_SERVICE=migrate

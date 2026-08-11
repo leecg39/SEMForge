@@ -19,6 +19,8 @@ const validWebEnvironment = {
   AUTH_DATABASE_URL: "postgresql://auth:password@db.example.com/semforge",
   OPERATOR_DATABASE_URL: "postgresql://operator:password@db.example.com/semforge",
   WORKER_DATABASE_URL: "postgresql://worker:password@db.example.com/semforge",
+  DISPATCHER_DATABASE_URL: "postgresql://dispatcher:password@db.example.com/semforge",
+  SCHEDULER_DATABASE_URL: "postgresql://scheduler:password@db.example.com/semforge",
   BILLING_DATABASE_URL: "postgresql://billing:password@db.example.com/semforge",
   MIGRATION_DATABASE_URL: "postgresql://owner:password@db.example.com/semforge",
   APP_PUBLIC_URL: "https://app.semforge.example",
@@ -94,6 +96,41 @@ test("migration preflight는 owner DSN만 요구하고 서비스 secret을 요�
     SEMFORGE_SERVICE: "migrate",
     PGSSLMODE: "verify-full",
     MIGRATION_DATABASE_URL: "postgresql://owner:password@db.example.com/semforge",
+  }));
+});
+
+test("worker preflight는 dispatcher와 tenant DB를 요구하지만 scheduler DB는 요구하지 않는다", () => {
+  const workerEnvironment = {
+    ...validWebEnvironment,
+    SEMFORGE_SERVICE: "worker",
+  };
+  delete workerEnvironment.SCHEDULER_DATABASE_URL;
+
+  assert.doesNotThrow(() => validateRuntimeEnvironment("worker", workerEnvironment));
+
+  delete workerEnvironment.DISPATCHER_DATABASE_URL;
+  assert.throws(
+    () => validateRuntimeEnvironment("worker", workerEnvironment),
+    (error) => {
+      assert.ok(error instanceof RuntimeConfigurationError);
+      assert.deepEqual(error.issues, ["DISPATCHER_DATABASE_URL is required"]);
+      return true;
+    },
+  );
+});
+
+test("relay와 scheduler preflight는 분리된 DB role만으로 시작한다", () => {
+  assert.doesNotThrow(() => validateRuntimeEnvironment("relay", {
+    NODE_ENV: "production",
+    SEMFORGE_SERVICE: "relay",
+    PGSSLMODE: "verify-full",
+    DISPATCHER_DATABASE_URL: "postgresql://dispatcher:password@db.example.com/semforge",
+  }));
+  assert.doesNotThrow(() => validateRuntimeEnvironment("scheduler", {
+    NODE_ENV: "production",
+    SEMFORGE_SERVICE: "scheduler",
+    PGSSLMODE: "verify-full",
+    SCHEDULER_DATABASE_URL: "postgresql://scheduler:password@db.example.com/semforge",
   }));
 });
 

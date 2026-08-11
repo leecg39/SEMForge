@@ -13,6 +13,12 @@ case "$profile" in
   worker)
     exec node --import tsx scripts/ops/worker.ts
     ;;
+  relay)
+    exec node --import tsx scripts/ops/relay.ts
+    ;;
+  scheduler)
+    exec node --import tsx scripts/ops/scheduler.ts
+    ;;
   migrate)
     exec node --import tsx src/db/migrate.ts
     ;;

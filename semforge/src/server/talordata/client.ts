@@ -67,6 +67,11 @@ export interface SerpResult {
   query: string;
   engine: "google";
   organic: SerpOrganicItem[];
+  organicCoverage: {
+    requested: number;
+    validatedThrough: number;
+    complete: boolean;
+  };
   /** AIO 출현/인용 정보. AIO가 없으면 present=false. */
   aiOverview: AiOverviewInfo;
   /** 제공사 원본 메타 (응답 id, 소요 시간) */
@@ -102,6 +107,8 @@ export interface TalordataMetadata {
 
 /** 테스트와 운영 튜닝을 위한 선택적 의존성. 일반 호출부는 기본값을 사용한다. */
 export interface TalordataClientOptions {
+  /** Production callers inject the validated secret instead of reading process.env. */
+  token?: string;
   fetchImpl?: typeof fetch;
   sleep?: (milliseconds: number) => Promise<void>;
   signal?: AbortSignal;
@@ -128,8 +135,10 @@ export class RetryableTalordataError extends Error {
   }
 }
 
-function getToken(): string {
-  const token = process.env.TALORDATA_API_TOKEN?.trim();
+function getToken(explicitToken: string | undefined): string {
+  const token = (explicitToken === undefined
+    ? process.env.TALORDATA_API_TOKEN
+    : explicitToken)?.trim();
   if (!token) {
     throw new ApiError(
       "INTERNAL",
@@ -399,7 +408,7 @@ export async function fetchSerp(
   query: SerpQuery,
   options: TalordataClientOptions = {}
 ): Promise<SerpResult> {
-  const token = getToken();
+  const token = getToken(options.token);
   const engine = query.engine ?? "google";
   const body = new URLSearchParams({
     engine,
@@ -450,6 +459,15 @@ export async function fetchSerp(
           displayLink: item.display_link ?? null,
           description: item.description ?? null,
         }));
+      const requested = Math.min(100, Math.max(1, query.num ?? 10));
+      const validatedThrough = organic.reduce(
+        (maximum, item) => Math.max(maximum, item.position),
+        0,
+      );
+      const explicitCoverage = isRecord(data.organic_coverage)
+        ? data.organic_coverage
+        : null;
+      const providerComplete = data.organic_complete === true || explicitCoverage?.complete === true;
 
       // 오가닉 0건은 "순위권 밖"이 아니라 제공사 차단/일시 오류 신호다.
       // 그대로 진행하면 순위가 null 로 덮여 이력이 오염되므로 재시도한다.
@@ -473,6 +491,11 @@ export async function fetchSerp(
         query: query.q,
         engine,
         organic,
+        organicCoverage: {
+          requested,
+          validatedThrough,
+          complete: validatedThrough >= requested || providerComplete,
+        },
         aiOverview,
         provider: {
           id: metadata?.id ?? taskId,

@@ -7,14 +7,15 @@
 
 ## 0. 이미지 계약
 
-- `Dockerfile`은 Node 24의 `web`, `worker`, `migrator` target을 제공한다. 세 target 모두 UID/GID 10001 `semforge`로 실행한다.
-- web은 Next standalone 서버만 포함한다. worker와 migrator는 production dependency만 설치하며 `SEMFORGE_SERVICE`가 각각 `web`, `worker`, `migrate`와 일치하지 않으면 시작하지 않는다.
+- `Dockerfile`은 Node 24의 `web`, `worker`, `relay`, `scheduler`, `migrator` target을 제공한다. 모든 target은 UID/GID 10001 `semforge`로 실행한다.
+- web은 Next standalone 서버만 포함한다. pipeline/migrator 이미지는 production dependency만 설치하며 `SEMFORGE_SERVICE`가 image 역할과 일치하지 않으면 시작하지 않는다.
+- worker에는 dispatcher claim DSN과 tenant RLS DSN만, relay에는 dispatcher DSN만, scheduler에는 scheduler DSN만 주입한다. `deploy/env/README.md`의 파일을 분리하고 공유 secret bundle을 사용하지 않는다.
 - runtime base의 `/usr/bin/chromium`과 Noto Sans CJK KR은 후속 PDF renderer가 동일한 실행 자산을 사용하도록 고정한다. Chromium sandbox 설정을 약화하는 플래그는 배포 설정에 하드코딩하지 않는다.
-- staging에서는 `docker compose build web worker release`로 세 target을 만들고 `docker compose up`의 release 완료 조건을 확인한다. 운영에서는 각 image를 registry digest로 고정한다.
+- staging에서는 `docker compose build web worker relay scheduler release`로 target을 만들고 `docker compose up`의 release 완료 조건을 확인한다. 운영에서는 각 image를 registry digest로 고정한다.
 
 ## 1. Release gate와 migration-first 순서
 
-1. web/worker/migrator 이미지를 같은 커밋에서 만들고 immutable digest와 SBOM을 기록한다. 태그만으로 배포하지 않는다.
+1. web/worker/relay/scheduler/migrator 이미지를 같은 커밋에서 만들고 immutable digest와 SBOM을 기록한다. 태그만으로 배포하지 않는다.
 2. PostgreSQL 자동 백업 성공, 최신 복구 가능 시각, WAL 연속 보관, object versioning 상태를 확인한다.
 3. 모든 PostgreSQL URL은 `PGSSLMODE=verify-full`로 연결하고 신뢰할 CA를 이미지 trust store에 설치한다. `sslmode=disable|prefer|require`로 우회하지 않는다.
 4. 현재 스키마에서 아래 logical backup을 별도 암호화 저장소에 생성하고 checksum을 기록한다.
@@ -24,8 +25,8 @@
    sha256sum semforge-pre-release.dump
    ```
 
-5. 새 migrator digest로 `deploy/kubernetes/release-job.yaml`의 one-shot Job을 실행한다. exit 0과 migration 로그를 확인하기 전에는 web/worker를 변경하지 않는다.
-6. worker를 먼저 정지하거나 drain한 뒤 web을 소수 인스턴스로 교체한다. `/health/live/` 200과 `/health/ready/` 200을 확인한 후 worker를 시작하고 전체 rollout을 완료한다.
+5. 새 migrator digest로 `deploy/kubernetes/release-job.yaml`의 one-shot Job을 실행한다. exit 0과 migration 로그를 확인하기 전에는 web/worker/relay/scheduler를 변경하지 않는다.
+6. scheduler CronJob을 suspend하고 relay와 worker를 drain한 뒤 web을 소수 인스턴스로 교체한다. `/health/live/` 200과 `/health/ready/` 200을 확인한 후 relay, worker 순으로 시작하고 scheduler를 재개해 전체 rollout을 완료한다.
 7. 로그에서 `requestId`, `workspaceId`, `jobId`, `provider`로 오류를 추적하되 token, billing key, PII 원문을 저장하지 않는다.
 
 ## 2. PostgreSQL TLS, backup, PITR
@@ -51,15 +52,15 @@
 ## 4. previous image rollback
 
 1. 실패한 release digest와 마지막 정상 previous image digest를 고정한다. migration은 항상 이전 앱과 호환되는 forward-compatible 변경이어야 하며 자동 down migration을 실행하지 않는다.
-2. worker를 0으로 줄여 신규 job claim을 막고 실행 중 작업의 30초 grace 종료를 기다린다.
-3. web과 worker를 previous image digest로 교체한다. liveness/readiness, 로그인, 읽기 전용 핵심 API와 queue lag를 확인한다.
+2. scheduler를 suspend하고 relay와 worker를 0으로 줄여 신규 publish/claim을 막은 뒤 실행 중 작업의 45초 grace 종료를 기다린다.
+3. web, relay, worker, scheduler를 previous image digest로 교체한다. liveness/readiness, 로그인, 읽기 전용 핵심 API, queue/outbox lag를 확인한다.
 4. 코드 rollback만으로 해결되지 않는 데이터 손상일 때만 별도 PITR 인스턴스 또는 검증된 `pg_restore` 결과로 전환한다. 원본을 즉시 덮어쓰지 않는다.
 5. 실패 원인, 영향 시간, digest, migration version, 검증 결과를 사고 기록에 남긴다.
 
 ## 5. 복구 증거 체크리스트
 
 - 변경 승인/사고 번호와 운영자·검토자
-- web/worker/migrator immutable digest, Git SHA, migration journal
+- web/worker/relay/scheduler/migrator immutable digest, Git SHA, migration journal
 - backup checksum, 관리형 PITR 목표/완료 시각, 복구 인스턴스 ID
 - object versioning의 key/version/checksum 표본
 - `/health/live/`, `/health/ready/`, worker drain·재시작 결과

@@ -7,6 +7,7 @@ import type {
   JobHandlerResult,
 } from "@/server/jobs/contracts";
 import { PostgresProviderCallCoordinator } from "@/server/jobs/provider-calls";
+import { withWorkerTransaction } from "@/server/jobs/connection";
 import {
   JobQueueError,
   type LeasedJob,
@@ -17,7 +18,10 @@ import {
 type RegisteredJobHandler = (...arguments_: never[]) => Promise<JobHandlerResult>;
 
 export interface WorkerRuntimeOptions {
+  /** Global queue-only dispatcher connection. */
   readonly database: SqlQueryable;
+  /** Tenant-RLS worker connection. Defaults to database for tests only. */
+  readonly tenantDatabase?: SqlQueryable;
   readonly handlers: Readonly<Record<string, RegisteredJobHandler>>;
   readonly workerId: string;
   readonly concurrency?: number;
@@ -96,6 +100,7 @@ function abortableDelay(milliseconds: number, signal?: AbortSignal): Promise<voi
 
 export class WorkerRuntime {
   private readonly database: SqlQueryable;
+  private readonly tenantDatabase: SqlQueryable;
   private readonly handlers: Readonly<Record<string, RegisteredJobHandler>>;
   private readonly workerId: string;
   private readonly concurrency: number;
@@ -112,6 +117,7 @@ export class WorkerRuntime {
 
   constructor(options: WorkerRuntimeOptions) {
     this.database = options.database;
+    this.tenantDatabase = options.tenantDatabase ?? options.database;
     this.handlers = options.handlers;
     this.workerId = requireNonBlank(options.workerId, "workerId");
     this.concurrency = requireInteger(options.concurrency ?? 1, 1, 100, "concurrency");
@@ -261,7 +267,7 @@ export class WorkerRuntime {
         maxAttempts: initialJob.maxAttempts,
         lease: initialJob.lease,
         signal: controller.signal,
-        providerCalls: new PostgresProviderCallCoordinator(this.database, {
+        providerCalls: new PostgresProviderCallCoordinator(this.tenantDatabase, {
           workspaceId: initialJob.workspaceId,
           jobId: initialJob.id,
           workerId: this.workerId,
@@ -270,18 +276,20 @@ export class WorkerRuntime {
         now: this.clock,
         audit: async (action, metadata = {}) => {
           const normalizedAction = safeErrorCode(action, "worker.audit.invalid_action");
-          await this.database.query(
-            `insert into audit_events
-               (workspace_id, action, entity_type, entity_id, request_id, metadata)
-             values ($1, $2, 'job', $3, $4, $5::jsonb)`,
-            [
-              initialJob.workspaceId,
-              normalizedAction,
-              initialJob.id,
-              this.workerId,
-              JSON.stringify(metadata),
-            ],
-          );
+          await withWorkerTransaction(this.tenantDatabase, async (transaction) => {
+            await transaction.query(
+              `insert into audit_events
+                 (workspace_id, action, entity_type, entity_id, request_id, metadata)
+               values ($1, $2, 'job', $3, $4, $5::jsonb)`,
+              [
+                initialJob.workspaceId,
+                normalizedAction,
+                initialJob.id,
+                this.workerId,
+                JSON.stringify(metadata),
+              ],
+            );
+          }, initialJob.workspaceId);
         },
       };
       const runtimeHandler = handler as unknown as JobHandler;

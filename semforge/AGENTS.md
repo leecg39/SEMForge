@@ -31,3 +31,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - **원인**: 복합 FK의 기본 `SET NULL` 대상은 nullable child 컬럼 하나가 아니라 FK 전체 컬럼이다.
 - **해결**: append-only 관측값의 FK를 `ON DELETE RESTRICT`로 고정하고, site/query/type도 하나의 복합 FK로 묶었다.
 - **교훈**: tenant key가 포함된 복합 FK에는 전체 `SET NULL`을 사용하지 말고 RESTRICT/CASCADE 또는 명시적 column-list SQL을 선택한다.
+
+### [2026-08-12] jsonb canonical hash와 generated column (PostgreSQL, idempotency, migration)
+- **상황**: job/outbox 요청의 중요 필드를 DB에서 canonical SHA-256으로 고정하려 했다.
+- **문제**: `jsonb::text`가 들어간 generated column은 PostgreSQL 16에서 expression immutable 오류로 거부됐다.
+- **원인**: PostgreSQL은 stored generated expression 전체가 immutable이길 요구하지만 `jsonb`의 text 변환은 immutable로 선언되지 않았다.
+- **해결**: BEFORE INSERT/UPDATE trigger가 정규화된 `jsonb::text`와 주요 필드로 `request_hash`를 항상 덮어쓰도록 만들었다.
+- **교훈**: PostgreSQL canonical serialization을 generated column에 넣기 전 함수 volatility를 확인하고, DB 강제가 필요하면 trigger와 drift 테스트를 함께 사용한다.

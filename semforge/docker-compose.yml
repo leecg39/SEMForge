@@ -1,11 +1,8 @@
-# @TASK P4-O1-T1 - Migration-first local/staging container orchestration example
+# @TASK P4-O1-T1 - Migration-first, least-privilege container orchestration example
 # @SPEC docs/planning/06-tasks.md#p4-o1-t1--node-24-docker와-운영-도구
 name: semforge
 
 x-runtime: &runtime
-  env_file:
-    - path: ${SEMFORGE_ENV_FILE:-.env.production}
-      required: true
   init: true
   networks: [backend]
 
@@ -16,6 +13,9 @@ services:
     build:
       context: .
       target: migrator
+    env_file:
+      - path: ${SEMFORGE_MIGRATION_ENV_FILE:-deploy/env/migration.env}
+        required: true
     environment:
       SEMFORGE_SERVICE: migrate
     restart: "no"
@@ -26,6 +26,9 @@ services:
     build:
       context: .
       target: web
+    env_file:
+      - path: ${SEMFORGE_WEB_ENV_FILE:-deploy/env/web.env}
+        required: true
     environment:
       SEMFORGE_SERVICE: web
     depends_on:
@@ -51,6 +54,9 @@ services:
     build:
       context: .
       target: worker
+    env_file:
+      - path: ${SEMFORGE_WORKER_ENV_FILE:-deploy/env/worker.env}
+        required: true
     environment:
       SEMFORGE_SERVICE: worker
     depends_on:
@@ -58,6 +64,40 @@ services:
         condition: service_completed_successfully
     stop_grace_period: 45s
     restart: unless-stopped
+
+  relay:
+    <<: *runtime
+    image: ${SEMFORGE_RELAY_IMAGE:-semforge-relay:local}
+    build:
+      context: .
+      target: relay
+    env_file:
+      - path: ${SEMFORGE_RELAY_ENV_FILE:-deploy/env/relay.env}
+        required: true
+    environment:
+      SEMFORGE_SERVICE: relay
+    depends_on:
+      release:
+        condition: service_completed_successfully
+    stop_grace_period: 45s
+    restart: unless-stopped
+
+  scheduler:
+    <<: *runtime
+    profiles: [scheduled]
+    image: ${SEMFORGE_SCHEDULER_IMAGE:-semforge-scheduler:local}
+    build:
+      context: .
+      target: scheduler
+    env_file:
+      - path: ${SEMFORGE_SCHEDULER_ENV_FILE:-deploy/env/scheduler.env}
+        required: true
+    environment:
+      SEMFORGE_SERVICE: scheduler
+    depends_on:
+      release:
+        condition: service_completed_successfully
+    restart: "no"
 
 networks:
   backend:

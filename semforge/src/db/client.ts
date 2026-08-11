@@ -8,7 +8,14 @@ import * as schema from "@/db/schema";
 import { getServerEnv, type ServerEnv } from "@/lib/env";
 
 // @TASK P1-D3 - Dedicated pre-tenant auth and operator runtime roles
-export type DatabaseRole = "web" | "auth" | "operator" | "worker" | "billing";
+export type DatabaseRole =
+  | "web"
+  | "auth"
+  | "operator"
+  | "dispatcher"
+  | "scheduler"
+  | "worker"
+  | "billing";
 export type SemforgeDatabase = NodePgDatabase<typeof schema>;
 
 const globalPools = globalThis as unknown as {
@@ -26,6 +33,8 @@ export function resolveDatabaseUrl(role: DatabaseRole, env: ServerEnv): string {
     web: "DATABASE_URL",
     auth: "AUTH_DATABASE_URL",
     operator: "OPERATOR_DATABASE_URL",
+    dispatcher: "DISPATCHER_DATABASE_URL",
+    scheduler: "SCHEDULER_DATABASE_URL",
     worker: "WORKER_DATABASE_URL",
     billing: "BILLING_DATABASE_URL",
   } as const satisfies Record<DatabaseRole, keyof ServerEnv>;

@@ -432,6 +432,10 @@ export const providerCalls = pgTable(
     unique("provider_calls_workspace_id_uq").on(table.workspaceId, table.id),
     unique("provider_calls_idempotency_uq").on(table.workspaceId, table.provider, table.idempotencyKey),
     index("provider_calls_workspace_started_idx").on(table.workspaceId, table.startedAt),
+    check(
+      "provider_calls_status_ck",
+      sql`${table.status} in ('started', 'in_doubt', 'retryable', 'succeeded', 'failed')`,
+    ),
   ],
 );
 
@@ -476,6 +480,7 @@ export const jobs = pgTable(
     status: jobStatusEnum("status").notNull().default("queued"),
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
+    requestHash: text("request_hash").notNull().default(""),
     priority: integer("priority").notNull().default(100),
     availableAt: timestamp("available_at", { withTimezone: true }).notNull().defaultNow(),
     leaseOwner: text("lease_owner"),
@@ -510,6 +515,7 @@ export const outbox = pgTable(
     topic: text("topic").notNull(),
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
+    requestHash: text("request_hash").notNull().default(""),
     availableAt: timestamp("available_at", { withTimezone: true }).notNull().defaultNow(),
     leaseOwner: text("lease_owner"),
     leaseToken: uuid("lease_token"),
