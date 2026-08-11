@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import type { Pool } from "pg";
 
 import { getPool } from "@/db/client";
-import { ApiError } from "@/lib/api-v1";
+import { ApiError, assertSameOrigin } from "@/lib/api-v1";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { getServerEnv } from "@/lib/env";
 import { createBillingKeyVault } from "@/server/billing/domain";
@@ -18,8 +18,6 @@ import { createBillingService } from "@/server/billing/service";
 import { createTossBillingClient } from "@/server/billing/toss-client";
 
 const SESSION_COOKIE = "semforge_session";
-const CSRF_COOKIE = "semforge_csrf";
-const CSRF_HEADER = "x-csrf-token";
 
 function cookie(request: Request, name: string): string | null {
   const header = request.headers.get("cookie");
@@ -35,14 +33,13 @@ function sha256(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
-function timingSafeTextEqual(left: string | null, right: string | null): boolean {
-  return typeof left === "string" && left.length > 0 && left === right;
-}
-
-export function createSessionRequireAuth(pool: Pool = getPool("billing")): RequireAuth {
+export function createSessionRequireAuth(
+  pool: Pool = getPool("billing"),
+  trustedOrigin?: string,
+): RequireAuth {
   return async (request, options) => {
-    if (options.csrf && !timingSafeTextEqual(cookie(request, CSRF_COOKIE), request.headers.get(CSRF_HEADER))) {
-      throw new ApiError("FORBIDDEN", "요청 위조 방지 토큰을 확인할 수 없습니다.");
+    if (options.csrf) {
+      assertSameOrigin(request, trustedOrigin);
     }
 
     const sessionToken = cookie(request, SESSION_COOKIE);
@@ -102,7 +99,7 @@ export function createBillingHandlers() {
   });
 
   return createBillingHttpHandlers({
-    requireAuth: createSessionRequireAuth(),
+    requireAuth: createSessionRequireAuth(undefined, env.APP_PUBLIC_URL),
     getService: () => service,
   });
 }
