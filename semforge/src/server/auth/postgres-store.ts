@@ -84,10 +84,28 @@ export class PostgresOperatorInviteStore implements OperatorInviteStore {
 
   async createInvite(input: CreateInviteInput): Promise<AuthInvite> {
     const now = input.now ?? new Date();
-    const parsed = createInviteInputSchema.parse(input);
-    const email = normalizeEmail(parsed.email);
-    const workspaceName = normalizeWorkspaceName(parsed.workspaceName);
-    const workspaceSlug = parsed.workspaceSlug
+    const validation = createInviteInputSchema.safeParse({
+      email: input.email,
+      workspaceName: input.workspaceName,
+      workspaceSlug: input.workspaceSlug,
+    });
+    if (!validation.success) {
+      const issue = validation.error.issues[0];
+      const field = issue?.path[0];
+      if (field === "email") {
+        throw new TypeError("유효한 초대 이메일을 입력하세요.");
+      }
+      if (field === "workspaceName") {
+        throw new TypeError("유효한 workspace name을 입력하세요.");
+      }
+      if (field === "workspaceSlug") {
+        throw new TypeError("유효한 workspace slug를 입력하세요.");
+      }
+      throw new TypeError("초대 입력값이 올바르지 않습니다.");
+    }
+    const email = normalizeEmail(validation.data.email);
+    const workspaceName = normalizeWorkspaceName(validation.data.workspaceName);
+    const workspaceSlug = validation.data.workspaceSlug
       .normalize("NFKC")
       .trim()
       .toLocaleLowerCase("en-US");
@@ -273,6 +291,19 @@ export class PostgresAuthStore implements AuthStore {
           )
           .returning({ id: invites.id });
         if (consumed.length !== 1) throw new AuthAtomicConflictError();
+
+        if (input.currentSessionTokenHash) {
+          await tx
+            .update(sessions)
+            .set({ revokedAt: input.now })
+            .where(
+              and(
+                eq(sessions.tokenHash, input.currentSessionTokenHash),
+                eq(sessions.userId, user.id),
+                isNull(sessions.revokedAt),
+              ),
+            );
+        }
 
         const [session] = await tx
           .insert(sessions)

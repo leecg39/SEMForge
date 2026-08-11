@@ -10,6 +10,8 @@ import {
   withApiV1,
 } from "@/lib/api-v1";
 
+const mutableEnv = process.env as NodeJS.ProcessEnv & { NODE_ENV?: string };
+
 async function readJson(response: Response): Promise<unknown> {
   return response.json();
 }
@@ -470,9 +472,9 @@ test("APP_PUBLIC_URL이 설정되면 Host-derived Request URL로 신뢰 origin�
 });
 
 test("production 상태 변경 요청은 HTTPS trusted origin이 없으면 fail closed한다", async (t) => {
-  const previousNodeEnv = process.env.NODE_ENV;
+  const previousNodeEnv = mutableEnv.NODE_ENV;
   const previousPublicUrl = process.env.APP_PUBLIC_URL;
-  process.env.NODE_ENV = "production";
+  mutableEnv.NODE_ENV = "production";
   try {
     const request = () =>
       new Request("https://app.semforge.test/api/v1/auth/logout", {
@@ -505,8 +507,8 @@ test("production 상태 변경 요청은 HTTPS trusted origin이 없으면 fail 
       assert.equal((await handler(request(), undefined)).status, 200);
     });
   } finally {
-    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
-    else process.env.NODE_ENV = previousNodeEnv;
+    if (previousNodeEnv === undefined) Reflect.deleteProperty(mutableEnv, "NODE_ENV");
+    else mutableEnv.NODE_ENV = previousNodeEnv;
     if (previousPublicUrl === undefined) delete process.env.APP_PUBLIC_URL;
     else process.env.APP_PUBLIC_URL = previousPublicUrl;
   }
