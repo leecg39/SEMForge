@@ -5,6 +5,7 @@ import type {
   ProviderCallCoordinator,
   ProviderCallFailure,
   ProviderCallRequest,
+  ProviderCallReconciliation,
   ProviderCallReservation,
   ProviderCallSuccess,
 } from "@/server/jobs/contracts";
@@ -111,6 +112,8 @@ function sameInstant(value: Date | string, expected: Date): boolean {
 function validStatePair(callStatus: string, usageStatus: string): boolean {
   return (
     (callStatus === "started" && usageStatus === "reserved") ||
+    (callStatus === "in_doubt" && usageStatus === "reserved") ||
+    (callStatus === "retryable" && usageStatus === "released") ||
     (callStatus === "succeeded" && usageStatus === "consumed") ||
     (callStatus === "failed" && usageStatus === "released")
   );
@@ -228,8 +231,7 @@ export class PostgresProviderCallCoordinator implements ProviderCallCoordinator 
         usage.usage_units !== units ||
         usage.usage_idempotency_key !== usageIdempotencyKey ||
         !sameInstant(usage.usage_period_start, request.periodStart) ||
-        !sameInstant(usage.usage_period_end, request.periodEnd) ||
-        !sameInstant(usage.usage_expires_at, request.reservationExpiresAt)
+        !sameInstant(usage.usage_period_end, request.periodEnd)
       ) {
         throw new ProviderCallCoordinatorError("IDEMPOTENCY_CONFLICT");
       }
@@ -256,7 +258,37 @@ export class PostgresProviderCallCoordinator implements ProviderCallCoordinator 
         );
       }
 
-      const disposition = callInserted
+      if (!callInserted && call.call_status === "retryable") {
+        await transaction.query(
+          `update provider_calls
+              set status = 'started', response_metadata = jsonb_build_object('jobId', $3::text),
+                  started_at = $4, completed_at = null
+            where workspace_id = $1 and id = $2 and status = 'retryable'`,
+          [this.workspaceId, call.provider_call_id, this.jobId, now],
+        );
+        await transaction.query(
+          `update usage_reservations
+              set status = 'reserved', expires_at = $4, updated_at = $5
+            where workspace_id = $1 and id = $2 and provider_call_id = $3
+              and status = 'released'`,
+          [
+            this.workspaceId,
+            usage.usage_reservation_id,
+            call.provider_call_id,
+            request.reservationExpiresAt,
+            now,
+          ],
+        );
+        await transaction.query(
+          `insert into audit_events
+             (workspace_id, action, entity_type, entity_id, request_id, metadata)
+           values ($1, 'provider_call.retried', 'provider_call', $2, $3,
+                   jsonb_build_object('jobId', $4::text))`,
+          [this.workspaceId, call.provider_call_id, this.workerId, this.jobId],
+        );
+      }
+
+      const disposition = callInserted || call.call_status === "retryable"
         ? "execute"
         : call.call_status === "succeeded"
           ? "replay"
@@ -267,7 +299,7 @@ export class PostgresProviderCallCoordinator implements ProviderCallCoordinator 
         usageReservationId: usage.usage_reservation_id,
         responseMetadata: disposition === "replay" ? parseMetadata(call.response_metadata) : null,
       };
-    });
+    }, this.workspaceId);
   }
 
   async succeed(result: ProviderCallSuccess): Promise<void> {
@@ -311,7 +343,7 @@ export class PostgresProviderCallCoordinator implements ProviderCallCoordinator 
           costUnits,
         ],
       );
-    });
+    }, this.workspaceId);
   }
 
   async fail(result: ProviderCallFailure): Promise<void> {
@@ -319,6 +351,7 @@ export class PostgresProviderCallCoordinator implements ProviderCallCoordinator 
     const usageReservationId = requireNonBlank(result.usageReservationId, "usageReservationId");
     const errorCode = requireNonBlank(result.errorCode, "errorCode");
     const responseMetadata = result.responseMetadata ?? {};
+    const disposition = result.disposition ?? "terminal";
     const now = this.clock();
 
     await withWorkerTransaction(this.database, async (transaction) => {
@@ -329,22 +362,34 @@ export class PostgresProviderCallCoordinator implements ProviderCallCoordinator 
       );
       await transaction.query(
         `update provider_calls
-            set status = 'failed',
-                response_metadata = $4::jsonb || jsonb_build_object('errorCode', $3::text),
+            set status = $3,
+                response_metadata = $4::jsonb,
                 completed_at = $5
           where workspace_id = $1 and id = $2`,
-        [this.workspaceId, providerCallId, errorCode, JSON.stringify(responseMetadata), now],
+        [
+          this.workspaceId,
+          providerCallId,
+          disposition === "outcome_unknown"
+            ? "in_doubt"
+            : disposition === "retryable"
+              ? "retryable"
+              : "failed",
+          JSON.stringify({ ...responseMetadata, errorCode }),
+          now,
+        ],
       );
-      await transaction.query(
-        `update usage_reservations
-            set status = 'released', updated_at = $4
-          where workspace_id = $1 and id = $2 and provider_call_id = $3`,
-        [this.workspaceId, usageReservationId, providerCallId, now],
-      );
+      if (disposition !== "outcome_unknown") {
+        await transaction.query(
+          `update usage_reservations
+              set status = 'released', updated_at = $4
+            where workspace_id = $1 and id = $2 and provider_call_id = $3`,
+          [this.workspaceId, usageReservationId, providerCallId, now],
+        );
+      }
       await transaction.query(
         `insert into audit_events
            (workspace_id, action, entity_type, entity_id, request_id, metadata)
-         values ($1, 'provider_call.failed', 'provider_call', $2, $3,
+         values ($1, $7, 'provider_call', $2, $3,
                  jsonb_build_object('provider', $4::text, 'operation', $5::text,
                                     'errorCode', $6::text))`,
         [
@@ -354,9 +399,68 @@ export class PostgresProviderCallCoordinator implements ProviderCallCoordinator 
           matched.provider,
           matched.operation,
           errorCode,
+          disposition === "outcome_unknown" ? "provider_call.in_doubt" : "provider_call.failed",
         ],
       );
-    });
+    }, this.workspaceId);
+  }
+
+  async reconcile(result: ProviderCallReconciliation): Promise<void> {
+    const providerCallId = requireNonBlank(result.providerCallId, "providerCallId");
+    const usageReservationId = requireNonBlank(result.usageReservationId, "usageReservationId");
+    const reason = requireNonBlank(result.reason, "reason");
+    const now = this.clock();
+    await withWorkerTransaction(this.database, async (transaction) => {
+      const matched = await transaction.query<MatchedReservationRow>(
+        `select provider_call.id::text as provider_call_id,
+                provider_call.provider, provider_call.operation
+           from provider_calls as provider_call
+           join usage_reservations as usage
+             on usage.workspace_id = provider_call.workspace_id
+            and usage.provider_call_id = provider_call.id
+          where provider_call.workspace_id = $1 and provider_call.id = $2 and usage.id = $3
+            and provider_call.status in ('started', 'in_doubt') and usage.status = 'reserved'
+          for update of provider_call, usage`,
+        [this.workspaceId, providerCallId, usageReservationId],
+      );
+      if (!matched.rows[0]) {
+        throw new ProviderCallCoordinatorError("PROVIDER_CALL_STATE_CONFLICT");
+      }
+      const succeeded = result.outcome === "succeeded";
+      await transaction.query(
+        `update provider_calls
+            set status = $3, response_metadata = $4::jsonb,
+                cost_units = $5, completed_at = $6
+          where workspace_id = $1 and id = $2`,
+        [
+          this.workspaceId,
+          providerCallId,
+          succeeded ? "succeeded" : result.outcome,
+          JSON.stringify(result.responseMetadata ?? { reconciliationReason: reason }),
+          requireCostUnits(result.costUnits),
+          now,
+        ],
+      );
+      await transaction.query(
+        `update usage_reservations
+            set status = $4, updated_at = $5
+          where workspace_id = $1 and id = $2 and provider_call_id = $3`,
+        [
+          this.workspaceId,
+          usageReservationId,
+          providerCallId,
+          succeeded ? "consumed" : "released",
+          now,
+        ],
+      );
+      await transaction.query(
+        `insert into audit_events
+           (workspace_id, action, entity_type, entity_id, request_id, metadata)
+         values ($1, 'provider_call.reconciled', 'provider_call', $2, $3,
+                 jsonb_build_object('outcome', $4::text, 'reason', $5::text))`,
+        [this.workspaceId, providerCallId, this.workerId, result.outcome, reason],
+      );
+    }, this.workspaceId);
   }
 
   private async lockReservation(

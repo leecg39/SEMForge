@@ -31,7 +31,7 @@ async function createDatabase(workspaceId: string, slug: string): Promise<PGlite
   return database;
 }
 
-test("enqueue replay는 기존 payload를 보존하고 claim은 workspace가 고정된 lease를 반환한다", async () => {
+test("동일한 canonical enqueue replay와 claim은 workspace가 고정된 lease를 반환한다", async () => {
   const workspaceId = "50000000-0000-4000-8000-000000000001";
   const database = await createDatabase(workspaceId, "queue-enqueue");
   const queue = new PostgresJobQueue(database);
@@ -47,7 +47,7 @@ test("enqueue replay는 기존 payload를 보존하고 claim은 workspace가 고
   const replay = await queue.enqueue({
     workspaceId,
     type: "collect.google",
-    payload: { siteId: "site-overwrite" },
+    payload: { siteId: "site-original" },
     idempotencyKey: "weekly:site-1:2026-08-10",
     availableAt,
   });
@@ -188,4 +188,30 @@ test("retryable 작업은 backoff 뒤 재시도하고 max attempts와 crash expi
       reason: "LEASE_EXPIRED",
     },
   }]);
+});
+
+test("같은 idempotency key의 canonical 요청이 다르면 기존 job을 재사용하지 않는다", async () => {
+  const workspaceId = "50000000-0000-4000-8000-000000000004";
+  const database = await createDatabase(workspaceId, "queue-idempotency-conflict");
+  const queue = new PostgresJobQueue(database);
+  const input = {
+    workspaceId,
+    type: "collect.google",
+    payload: { siteId: "site-original", observedAt: "2026-08-12T00:00:00.000Z" },
+    idempotencyKey: "weekly:site-1:2026-08-10",
+    maxAttempts: 5,
+    priority: 100,
+  } as const;
+  const first = await queue.enqueue(input);
+  assert.match(first.requestHash, /^[0-9a-f]{64}$/u);
+
+  await assert.rejects(
+    queue.enqueue({ ...input, payload: { ...input.payload, siteId: "site-conflict" } }),
+    /IDEMPOTENCY_CONFLICT/u,
+  );
+  await assert.rejects(
+    queue.enqueue({ ...input, maxAttempts: 6 }),
+    /IDEMPOTENCY_CONFLICT/u,
+  );
+  assert.deepEqual((await queue.get(workspaceId, first.id))?.payload, input.payload);
 });

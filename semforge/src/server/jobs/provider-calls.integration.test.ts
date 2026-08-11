@@ -316,3 +316,94 @@ test("usage reservation의 provider call 복합 FK는 cross-workspace 연결을 
     /usage_reservations_provider_call_fk/,
   );
 });
+
+test("known retryable 실패는 다음 job attempt에서 정확히 한 번 다시 execute할 수 있다", async () => {
+  const workspaceId = "52000000-0000-4000-8000-000000000008";
+  const database = await createDatabase(workspaceId);
+  const firstAttempt = new PostgresProviderCallCoordinator(database, {
+    workspaceId,
+    jobId: "job-provider-retry-1",
+    workerId: "worker-retry-1",
+  });
+  const request = {
+    provider: "talordata",
+    operation: "google.serp",
+    idempotencyKey: "google:known-retryable",
+    requestHash: "sha256:known-retryable",
+    resource: "serp",
+    units: 1,
+    periodStart: new Date("2026-08-01T00:00:00.000Z"),
+    periodEnd: new Date("2026-09-01T00:00:00.000Z"),
+    reservationExpiresAt: new Date("2026-08-13T00:00:00.000Z"),
+  } as const;
+  const reserved = await firstAttempt.reserve(request);
+  await firstAttempt.fail({
+    providerCallId: reserved.providerCallId,
+    usageReservationId: reserved.usageReservationId,
+    errorCode: "rate_limit",
+    disposition: "retryable",
+  });
+
+  const secondAttempt = new PostgresProviderCallCoordinator(database, {
+    workspaceId,
+    jobId: "job-provider-retry-2",
+    workerId: "worker-retry-2",
+  });
+  const competing = await Promise.all([
+    secondAttempt.reserve({
+      ...request,
+      reservationExpiresAt: new Date("2026-08-14T00:00:00.000Z"),
+    }),
+    secondAttempt.reserve({
+      ...request,
+      reservationExpiresAt: new Date("2026-08-14T00:00:00.000Z"),
+    }),
+  ]);
+  assert.deepEqual(competing.map((result) => result.disposition).sort(), ["execute", "in_doubt"]);
+  assert.equal(competing[0]!.providerCallId, reserved.providerCallId);
+});
+
+test("aged started와 outcome unknown은 자동 재실행하지 않고 명시적 reconciliation 뒤에만 execute한다", async () => {
+  const workspaceId = "52000000-0000-4000-8000-000000000009";
+  const database = await createDatabase(workspaceId);
+  let now = new Date("2026-08-12T00:00:00.000Z");
+  const coordinator = new PostgresProviderCallCoordinator(database, {
+    workspaceId,
+    jobId: "job-provider-unknown",
+    workerId: "worker-unknown",
+    clock: () => now,
+  });
+  const request = {
+    provider: "talordata",
+    operation: "google.serp",
+    idempotencyKey: "google:outcome-unknown",
+    requestHash: "sha256:outcome-unknown",
+    resource: "serp",
+    units: 1,
+    periodStart: new Date("2026-08-01T00:00:00.000Z"),
+    periodEnd: new Date("2026-09-01T00:00:00.000Z"),
+    reservationExpiresAt: new Date("2026-08-12T00:05:00.000Z"),
+  } as const;
+  const reserved = await coordinator.reserve(request);
+  now = new Date("2026-08-20T00:00:00.000Z");
+
+  assert.equal((await coordinator.reserve(request)).disposition, "in_doubt");
+  await coordinator.fail({
+    providerCallId: reserved.providerCallId,
+    usageReservationId: reserved.usageReservationId,
+    errorCode: "timeout",
+    disposition: "outcome_unknown",
+  });
+  assert.equal((await coordinator.reserve(request)).disposition, "in_doubt");
+
+  await coordinator.reconcile({
+    providerCallId: reserved.providerCallId,
+    usageReservationId: reserved.usageReservationId,
+    outcome: "retryable",
+    reason: "provider confirmed no result",
+  });
+  assert.equal((await coordinator.reserve({
+    ...request,
+    reservationExpiresAt: new Date("2026-08-20T00:05:00.000Z"),
+  })).disposition, "execute");
+});

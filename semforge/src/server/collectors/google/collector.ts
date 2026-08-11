@@ -91,6 +91,11 @@ const TalordataReplayResultSchema = z.object({
       description: z.string().nullable(),
     }),
   ),
+  organicCoverage: z.object({
+    requested: z.literal(100),
+    validatedThrough: z.number().int().nonnegative(),
+    complete: z.boolean(),
+  }),
   aiOverview: z.object({
     present: z.boolean(),
     presenceAvailable: z.boolean(),
@@ -280,6 +285,15 @@ function responseMetadata(result: TalordataGoogleSearchResult): Readonly<Record<
   };
 }
 
+function providerFailureDisposition(
+  failure: TalordataProviderFailure,
+): "retryable" | "terminal" | "outcome_unknown" {
+  if (failure.disposition === "terminal") return "terminal";
+  return ["timeout", "network", "aborted"].includes(failure.reason)
+    ? "outcome_unknown"
+    : "retryable";
+}
+
 function makeBatch(input: {
   workspaceId: string;
   siteId: string;
@@ -420,11 +434,26 @@ export function createGoogleCollectionJobHandler(
             providerCallId: reservation.providerCallId,
             usageReservationId: reservation.usageReservationId,
             errorCode: failure.reason,
+            disposition: providerFailureDisposition(failure),
             responseMetadata: { disposition: failure.disposition },
           });
           return failure.disposition === "retryable"
             ? jobRetryable(`TALORDATA_${failure.reason.toUpperCase()}`)
             : jobDead(`TALORDATA_${failure.reason.toUpperCase()}`);
+        }
+
+        if (
+          group.queries.some((query) => query.type === "rank") &&
+          (!result.organicCoverage.complete || result.organicCoverage.validatedThrough < 100)
+        ) {
+          await context.providerCalls.fail({
+            providerCallId: reservation.providerCallId,
+            usageReservationId: reservation.usageReservationId,
+            errorCode: "partial_organic_coverage",
+            disposition: "retryable",
+            responseMetadata: { organicCoverage: result.organicCoverage },
+          });
+          return jobRetryable("TALORDATA_PARTIAL_ORGANIC_COVERAGE");
         }
 
         await context.providerCalls.succeed({

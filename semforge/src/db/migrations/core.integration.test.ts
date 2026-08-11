@@ -101,12 +101,14 @@ test("web role은 transaction-local workspace 밖의 row를 볼 수 없다", asy
   }
 });
 
-test("web, worker, billing role은 BYPASSRLS가 아니며 web 정책은 명시적으로 role에 한정된다", async () => {
+test("web, dispatcher, scheduler, worker, billing role은 BYPASSRLS가 아니다", async () => {
   const roles = await pg.query<{ rolname: string; rolbypassrls: boolean }>(
-    "select rolname, rolbypassrls from pg_roles where rolname in ('semforge_billing', 'semforge_web', 'semforge_worker') order by rolname",
+    "select rolname, rolbypassrls from pg_roles where rolname in ('semforge_billing', 'semforge_dispatcher', 'semforge_scheduler', 'semforge_web', 'semforge_worker') order by rolname",
   );
   assert.deepEqual(roles.rows, [
     { rolname: "semforge_billing", rolbypassrls: false },
+    { rolname: "semforge_dispatcher", rolbypassrls: false },
+    { rolname: "semforge_scheduler", rolbypassrls: false },
     { rolname: "semforge_web", rolbypassrls: false },
     { rolname: "semforge_worker", rolbypassrls: false },
   ]);
@@ -143,6 +145,7 @@ test("worker role은 audit_events에 INSERT만 허용하고 기록을 읽을 수
   await pg.query("begin");
   try {
     await pg.query("set local role semforge_worker");
+    await pg.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
     await pg.query(
       `insert into audit_events (workspace_id, action, entity_type, entity_id, request_id, metadata)
        values ($1, 'job.leased', 'job', 'job-1', 'worker-1', '{"attempt":1}'::jsonb)`,
@@ -162,6 +165,146 @@ test("worker role은 audit_events에 INSERT만 허용하고 기록을 읽을 수
     [workspaceId],
   );
   assert.deepEqual(stored.rows, [{ action: "job.leased" }]);
+});
+
+test("worker role은 transaction-local workspace 밖 tenant row와 global queue에 접근하지 못한다", async () => {
+  const tenantA = "00000000-0000-4000-8000-000000000111";
+  const tenantB = "00000000-0000-4000-8000-000000000112";
+  await pg.query(
+    "insert into workspaces (id, name, slug) values ($1, 'Worker A', 'worker-rls-a'), ($2, 'Worker B', 'worker-rls-b')",
+    [tenantA, tenantB],
+  );
+  await pg.query(
+    "insert into sites (workspace_id, name, domain) values ($1, 'A', 'worker-a.example'), ($2, 'B', 'worker-b.example')",
+    [tenantA, tenantB],
+  );
+  await pg.query(
+    `insert into jobs (workspace_id, type, payload, idempotency_key)
+     values ($1, 'collect.test', '{}'::jsonb, 'worker-rls-job')`,
+    [tenantB],
+  );
+
+  await pg.query("begin");
+  try {
+    await pg.query("set local role semforge_worker");
+    await pg.query("select set_config('app.workspace_id', $1, true)", [tenantA]);
+    const visible = await pg.query<{ workspace_id: string }>("select workspace_id from sites");
+    assert.deepEqual(visible.rows, [{ workspace_id: tenantA }]);
+    await pg.query("savepoint worker_cross_workspace");
+    await assert.rejects(
+      pg.query(
+        "insert into sites (workspace_id, name, domain) values ($1, 'Escape', 'worker-escape.example')",
+        [tenantB],
+      ),
+    );
+    await pg.query("rollback to savepoint worker_cross_workspace");
+    await pg.query("savepoint worker_global_queue");
+    await assert.rejects(pg.query("select id from jobs"));
+    await pg.query("rollback to savepoint worker_global_queue");
+  } finally {
+    await pg.query("rollback");
+  }
+});
+
+test("dispatcher role은 jobs/outbox만 전역 처리하고 tenant domain row는 읽지 못한다", async () => {
+  await pg.query("begin");
+  try {
+    await pg.query("set local role semforge_dispatcher");
+    const jobs = await pg.query<{ count: number }>("select count(*)::int as count from jobs");
+    assert.ok(jobs.rows[0]!.count >= 1);
+    await pg.query("savepoint dispatcher_payload_denied");
+    await assert.rejects(pg.query("update jobs set payload = '{}'::jsonb"));
+    await pg.query("rollback to savepoint dispatcher_payload_denied");
+    await pg.query("savepoint dispatcher_hash_denied");
+    await assert.rejects(pg.query("update jobs set request_hash = repeat('0', 64)"));
+    await pg.query("rollback to savepoint dispatcher_hash_denied");
+    await pg.query("savepoint dispatcher_site_denied");
+    await assert.rejects(pg.query("select id from sites"));
+    await pg.query("rollback to savepoint dispatcher_site_denied");
+    await pg.query("savepoint dispatcher_provider_denied");
+    await assert.rejects(pg.query("select id from provider_calls"));
+    await pg.query("rollback to savepoint dispatcher_provider_denied");
+  } finally {
+    await pg.query("rollback");
+  }
+});
+
+test("scheduler role은 canonical collection outbox 입력 컬럼만 사용한다", async () => {
+  const workspaceId = "00000000-0000-4000-8000-000000000114";
+  await pg.query(
+    "insert into workspaces (id, name, slug) values ($1, 'Scheduler Guard', 'scheduler-guard')",
+    [workspaceId],
+  );
+  await pg.query("begin");
+  try {
+    await pg.query("set local role semforge_scheduler");
+    await pg.query(
+      `insert into outbox (workspace_id, topic, payload, idempotency_key)
+       values ($1, 'collection.google.weekly', '{}'::jsonb, 'scheduler-valid')`,
+      [workspaceId],
+    );
+    await pg.query("savepoint scheduler_published_denied");
+    await assert.rejects(
+      pg.query(
+        `insert into outbox (workspace_id, topic, payload, idempotency_key, published_at)
+         values ($1, 'collection.google.weekly', '{}'::jsonb, 'scheduler-forged', now())`,
+        [workspaceId],
+      ),
+    );
+    await pg.query("rollback to savepoint scheduler_published_denied");
+    await pg.query("savepoint scheduler_non_collection_denied");
+    await assert.rejects(
+      pg.query(
+        `insert into outbox (workspace_id, topic, payload, idempotency_key)
+         values ($1, 'email.password_reset', '{}'::jsonb, 'scheduler-wrong-topic')`,
+        [workspaceId],
+      ),
+    );
+    await pg.query("rollback to savepoint scheduler_non_collection_denied");
+  } finally {
+    await pg.query("rollback");
+  }
+});
+
+test("job/outbox request hash는 직접 변조해도 canonical 중요 필드에서 다시 계산된다", async () => {
+  const workspaceId = "00000000-0000-4000-8000-000000000113";
+  await pg.query(
+    "insert into workspaces (id, name, slug) values ($1, 'Hash Guard', 'hash-guard')",
+    [workspaceId],
+  );
+  await pg.query(
+    `insert into jobs (workspace_id, type, payload, idempotency_key, max_attempts, priority)
+     values ($1, 'hash.guard', '{"canonical":true}'::jsonb, 'hash-job', 7, 42)`,
+    [workspaceId],
+  );
+  await pg.query(
+    `insert into outbox (workspace_id, topic, payload, idempotency_key, max_attempts)
+     values ($1, 'hash.guard', '{"canonical":true}'::jsonb, 'hash-outbox', 7)`,
+    [workspaceId],
+  );
+  const before = await pg.query<{ job_hash: string; outbox_hash: string }>(
+    `select
+       (select request_hash from jobs where workspace_id = $1 and idempotency_key = 'hash-job') as job_hash,
+       (select request_hash from outbox where workspace_id = $1 and idempotency_key = 'hash-outbox') as outbox_hash`,
+    [workspaceId],
+  );
+  await pg.query(
+    "update jobs set request_hash = repeat('0', 64) where workspace_id = $1 and idempotency_key = 'hash-job'",
+    [workspaceId],
+  );
+  await pg.query(
+    "update outbox set request_hash = repeat('0', 64) where workspace_id = $1 and idempotency_key = 'hash-outbox'",
+    [workspaceId],
+  );
+  const after = await pg.query<{ job_hash: string; outbox_hash: string }>(
+    `select
+       (select request_hash from jobs where workspace_id = $1 and idempotency_key = 'hash-job') as job_hash,
+       (select request_hash from outbox where workspace_id = $1 and idempotency_key = 'hash-outbox') as outbox_hash`,
+    [workspaceId],
+  );
+  assert.deepEqual(after.rows, before.rows);
+  assert.match(after.rows[0]!.job_hash, /^[0-9a-f]{64}$/);
+  assert.match(after.rows[0]!.outbox_hash, /^[0-9a-f]{64}$/);
 });
 
 test("NAVER/GSC provenance schema는 source/status와 tenant 복합 FK를 실제 DB에서 강제한다", async () => {

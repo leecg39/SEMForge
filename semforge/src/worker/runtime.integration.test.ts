@@ -10,7 +10,10 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 
 import { defineJobHandler, jobRetryable, jobSucceeded } from "@/server/jobs/contracts";
+import { createGoogleCollectionJobHandler } from "@/server/collectors/google/collector";
+import { createPostgresGoogleObservationRepository } from "@/server/collectors/google/observation-store";
 import { PostgresJobQueue } from "@/server/jobs/queue";
+import { TalordataProviderFailure } from "@/server/providers/talordata/provider";
 import { WorkerRuntime } from "@/worker/runtime";
 
 const databases: PGlite[] = [];
@@ -446,4 +449,113 @@ test("crashed worker의 만료 lease를 다음 runtime이 회수해 성공시킨
   const stored = await queue.get(workspaceId, job.id);
   assert.equal(stored?.status, "succeeded");
   assert.equal(stored?.attempts, 2);
+});
+
+test("실제 runtime은 TalorData 429를 known retryable로 보존하고 다음 attempt에서 성공한다", async () => {
+  const workspaceId = "53000000-0000-4000-8000-000000000010";
+  const siteId = "53000000-0000-4000-8000-000000000011";
+  const trackedQueryId = "53000000-0000-4000-8000-000000000012";
+  const database = await createDatabase(workspaceId, "runtime-talordata-429");
+  await database.query(
+    "insert into sites (id, workspace_id, name, domain) values ($1, $2, 'Runtime', 'example.com')",
+    [siteId, workspaceId],
+  );
+  await database.query(
+    `insert into tracked_queries
+       (id, workspace_id, site_id, type, query, normalized_query)
+     values ($1, $2, $3, 'rank', 'runtime rate limit', 'runtime rate limit')`,
+    [trackedQueryId, workspaceId, siteId],
+  );
+  let now = new Date("2026-08-12T15:00:00.000Z");
+  let providerCalls = 0;
+  const handler = createGoogleCollectionJobHandler({
+    provider: {
+      async search(input) {
+        providerCalls += 1;
+        if (providerCalls === 1) {
+          throw new TalordataProviderFailure("retryable", "rate_limit", "Too Many Requests");
+        }
+        return {
+          query: input.query,
+          organic: [{
+            position: 1,
+            title: "Runtime target",
+            link: "https://example.com/runtime",
+            domain: "example.com",
+            displayLink: null,
+            description: null,
+          }, {
+            position: 100,
+            title: "Coverage proof",
+            link: "https://other.example/100",
+            domain: "other.example",
+            displayLink: null,
+            description: null,
+          }],
+          organicCoverage: { requested: 100, validatedThrough: 100, complete: true },
+          aiOverview: {
+            present: false,
+            presenceAvailable: false,
+            citationsAvailable: false,
+            citations: [],
+          },
+          providerRequestId: "runtime-provider-call",
+          collectedAt: now.toISOString(),
+          provenance: {
+            source: "talordata",
+            engine: "google",
+            country: "kr",
+            language: "ko",
+            device: "desktop",
+            window: 100,
+          },
+        };
+      },
+    },
+    observations: createPostgresGoogleObservationRepository(database),
+  });
+  const queue = new PostgresJobQueue(database);
+  const job = await queue.enqueue({
+    workspaceId,
+    type: "collect.google",
+    idempotencyKey: "runtime-talordata-429",
+    maxAttempts: 3,
+    availableAt: now,
+    payload: {
+      siteId,
+      siteDomain: "example.com",
+      observedAt: now.toISOString(),
+      periodStart: "2026-08-01T00:00:00.000Z",
+      periodEnd: "2026-09-01T00:00:00.000Z",
+      reservationExpiresAt: "2026-08-13T15:00:00.000Z",
+      maxProviderCalls: 1,
+      maxBillableUnits: 1,
+      queries: [{ workspaceId, siteId, trackedQueryId, type: "rank", query: "runtime rate limit" }],
+    },
+  });
+  const runtime = new WorkerRuntime({
+    database,
+    handlers: { "collect.google": handler },
+    workerId: "runtime-talordata-429",
+    retryBackoffMs: 100,
+    maxRetryBackoffMs: 100,
+    clock: () => now,
+  });
+
+  assert.equal((await runtime.runOnce()).retryable, 1);
+  const failedCall = await database.query<{ status: string }>(
+    "select status from provider_calls where workspace_id = $1",
+    [workspaceId],
+  );
+  assert.deepEqual(failedCall.rows, [{ status: "retryable" }]);
+
+  now = new Date("2026-08-12T15:00:00.100Z");
+  assert.equal((await runtime.runOnce()).succeeded, 1);
+  assert.equal(providerCalls, 2);
+  assert.equal((await queue.get(workspaceId, job.id))?.status, "succeeded");
+  const observation = await database.query<{ position: number }>(
+    "select position from rank_observations where workspace_id = $1 and tracked_query_id = $2",
+    [workspaceId, trackedQueryId],
+  );
+  assert.deepEqual(observation.rows, [{ position: 1 }]);
 });
