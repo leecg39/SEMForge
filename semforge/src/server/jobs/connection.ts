@@ -1,9 +1,15 @@
 // @TASK P3-W1-T1 - Dedicated connection boundary for worker transactions
 // @SPEC docs/planning/06-tasks.md#p3-w1-t1--lease-기반-작업-큐와-transactional-outbox
 // @TEST src/server/jobs/connection.test.ts
-import type { SqlQueryable } from "@/server/jobs/queue";
 
-export interface WorkerSqlClient extends SqlQueryable {
+export interface WorkerSqlQueryable {
+  query<T = unknown>(
+    text: string,
+    values?: readonly unknown[],
+  ): Promise<{ rows: T[] }>;
+}
+
+export interface WorkerSqlClient extends WorkerSqlQueryable {
   release(): void;
 }
 

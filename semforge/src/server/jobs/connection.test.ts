@@ -2,9 +2,19 @@
 // @SPEC docs/planning/06-tasks.md#p3-w1-t1--lease-기반-작업-큐와-transactional-outbox
 // @TEST src/server/jobs/connection.ts
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { test } from "node:test";
 
 import { withDedicatedWorkerConnection } from "@/server/jobs/connection";
+
+test("connection helper는 아직 통합되지 않은 queue 모듈에 의존하지 않는다", async () => {
+  const source = await readFile(
+    path.join(process.cwd(), "src", "server", "jobs", "connection.ts"),
+    "utf8",
+  );
+  assert.doesNotMatch(source, /@\/server\/jobs\/queue/);
+});
 
 test("job callback은 하나의 connected client를 쓰고 성공·실패 모두 release한다", async () => {
   const events: string[] = [];
