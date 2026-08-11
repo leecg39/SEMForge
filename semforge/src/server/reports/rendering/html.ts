@@ -18,6 +18,8 @@ const SECTION_LABELS = {
 const SENSITIVE_KEY = /(access.?token|refresh.?token|api.?key|secret|password|authorization|cookie|email)/i;
 const EMAIL = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
 const BEARER = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;
+const URL_SECRET = /([?&](?:access_token|refresh_token|token|api_key|apikey|key|secret|authorization)=)[^&#\s]+/gi;
+const INLINE_SECRET = /\b((?:access_token|refresh_token|token|api_key|apikey|secret|authorization)\s*[=:]\s*)[^\s&#]+/gi;
 
 export interface RenderReportHtmlOptions {
   readonly fontDataUri: string;
@@ -64,7 +66,11 @@ function escapeHtml(value: unknown): string {
 }
 
 function redactText(value: string): string {
-  return value.replace(EMAIL, "[이메일 보호됨]").replace(BEARER, "Bearer [보호됨]");
+  return value
+    .replace(EMAIL, "[이메일 보호됨]")
+    .replace(BEARER, "Bearer [보호됨]")
+    .replace(URL_SECRET, "$1[보호됨]")
+    .replace(INLINE_SECRET, "$1[보호됨]");
 }
 
 function redact(value: unknown, key = ""): unknown {

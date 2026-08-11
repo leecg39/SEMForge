@@ -10,7 +10,7 @@ import type {
 } from "@/server/reports/delivery/store";
 import { snapshotSha256 } from "@/server/reports/rendering/html";
 import type { ReportPdfRenderer } from "@/server/reports/rendering/pdf";
-import type { WeeklyReportSnapshot } from "@/server/reports/types";
+import { REPORT_SECTION_KEYS, type WeeklyReportSnapshot } from "@/server/reports/types";
 import type { PrivateObjectStorage } from "@/server/storage/s3";
 
 const EmailSchema = z.string().trim().toLowerCase().max(320).pipe(z.email());
@@ -89,11 +89,14 @@ function emailHtml(
   hash: string,
   reportUrl: string,
 ): string {
-  const sections = Object.values(snapshot.sections)
+  const sections = REPORT_SECTION_KEYS.map((key) => snapshot.sections[key])
     .map((section) => `<li><strong>${escapeHtml(section.key.toUpperCase())}</strong> — ${section.available ? "수집 완료" : "확인 불가"}</li>`)
     .join("");
+  const accent = /^#[0-9a-f]{6}$/i.test(snapshot.brand.accentColor)
+    ? snapshot.brand.accentColor
+    : "#155eef";
   return `<!doctype html><html lang="ko" data-snapshot-sha256="${hash}"><body style="font-family:Arial,sans-serif;color:#162033">
-    <p style="color:#155eef;font-weight:700">SEMFORGE WEEKLY REPORT</p>
+    <p style="color:${accent};font-weight:700">SEMFORGE WEEKLY REPORT</p>
     <h1>${escapeHtml(snapshot.brand.name)} 주간 검색 성과</h1>
     <p>${escapeHtml(snapshot.period.current.start)} — ${escapeHtml(snapshot.period.current.end)}</p>
     <ul>${sections}</ul>

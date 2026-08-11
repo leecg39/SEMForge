@@ -37,7 +37,7 @@ function snapshot(): WeeklyReportSnapshot {
             query: "한글 검색 순위",
             position: 3,
             resultTitle: "주간 성과",
-            resultUrl: "https://example.test/result",
+            resultUrl: "https://example.test/result?token=secret-url-token",
             accessToken: "secret-token-must-never-render",
           }],
         },
@@ -73,15 +73,16 @@ test("동일 snapshot HTML은 한글·partial·빈 데이터를 표현하고 비
     logoDataUri: null,
   });
 
-  assert.equal(rendered.snapshotSha256, "8fbdc756b6139f9486cb2e2c7d8f38d6f5dbb06ecc5d0ec965b13274202c9ada");
+  assert.equal(rendered.snapshotSha256, "2a56b64470a9b6aab1ee297a566d083e1a9b0369ec4c2189e0c985f4a64e380f");
   assert.match(rendered.html, /lang="ko"/);
   assert.match(rendered.html, /서울 검색 연구소 &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.match(rendered.html, /한글 검색 순위/);
   assert.match(rendered.html, /확인 불가/);
   assert.match(rendered.html, /데이터가 없습니다/);
-  assert.match(rendered.html, /data-snapshot-sha256="8fbdc756/);
+  assert.match(rendered.html, /data-snapshot-sha256="2a56b644/);
   assert.match(rendered.html, /Noto Sans KR/);
   assert.match(rendered.html, /sf-logo-fallback/);
   assert.doesNotMatch(rendered.html, /secret-token-must-never-render/);
+  assert.doesNotMatch(rendered.html, /secret-url-token/);
   assert.doesNotMatch(rendered.html, /<script>alert/);
 });

@@ -56,7 +56,7 @@ function snapshot(): WeeklyReportSnapshot {
       current: { start: "2026-07-31", end: "2026-08-06" },
       comparison: { start: "2026-07-24", end: "2026-07-30" },
     },
-    brand: { name: "서울 검색 연구소", logoUrl: null, accentColor: "#155eef" },
+    brand: { name: "서울 검색 연구소", logoUrl: null, accentColor: "#123456" },
     sections: {
       rank: {
         key: "rank",
@@ -173,6 +173,7 @@ test("Resend 수락 직후 crash가 나도 retry/duplicate는 같은 snapshot과
   assert.equal(new Set(sendCalls.map((call) => call.snapshotSha256)).size, 1);
   assert.equal(sendCalls[0]!.snapshotSha256, snapshotSha256(snapshot()));
   assert.match(sendCalls[0]!.html, new RegExp(sendCalls[0]!.snapshotSha256));
+  assert.match(sendCalls[0]!.html, /#123456/);
   assert.match(Buffer.from(sendCalls[0]!.attachment.content).toString(), /%PDF-1\.7/);
   assert.deepEqual(pdfHashes, [snapshotSha256(snapshot())]);
 

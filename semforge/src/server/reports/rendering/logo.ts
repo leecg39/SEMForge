@@ -1,5 +1,6 @@
 // @TASK P4-R1-T1 - Bounded report logo loader
 // @SPEC docs/planning/06-tasks.md#p4-r1-t1--한글-pdf이메일객체-저장소
+import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 
 import sharp from "sharp";
@@ -9,7 +10,12 @@ const ALLOWED_CONTENT_TYPES = new Set(["image/png", "image/jpeg", "image/webp", 
 
 export interface ReportLogoLoadOptions {
   readonly fetch?: typeof globalThis.fetch;
+  readonly resolveHostname?: (hostname: string) => Promise<readonly string[]>;
   readonly timeoutMs?: number;
+}
+
+async function resolveHostname(hostname: string): Promise<readonly string[]> {
+  return (await lookup(hostname, { all: true, verbatim: true })).map(({ address }) => address);
 }
 
 function isPrivateIp(hostname: string): boolean {
@@ -77,6 +83,8 @@ export async function loadReportLogo(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 3_000);
   try {
+    const addresses = await (options.resolveHostname ?? resolveHostname)(url.hostname);
+    if (addresses.length === 0 || addresses.some(isPrivateIp)) return null;
     const response = await (options.fetch ?? globalThis.fetch)(url, {
       headers: { accept: "image/png,image/jpeg,image/webp,image/gif" },
       redirect: "error",
