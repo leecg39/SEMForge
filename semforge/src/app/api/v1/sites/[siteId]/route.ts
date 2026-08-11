@@ -4,4 +4,5 @@ import { createSitesRouteHandlers } from "@/server/sites/routes";
 
 const handlers = createSitesRouteHandlers();
 
+export const GET = handlers.siteById.GET;
 export const PATCH = handlers.siteById.PATCH;

@@ -19,6 +19,7 @@ import {
   createTrackedQuery,
   disableSite,
   disableTrackedQuery,
+  getSiteDetail,
   listSites,
   reactivateSite,
   reactivateTrackedQuery,
@@ -149,6 +150,15 @@ export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
   };
 
   const siteById = {
+    GET: withApiV1(async (request, context: SiteParamsContext) => {
+      const session = await resolveSessionForRoute(request);
+      const { siteId } = await context.params;
+      const detail = await withRouteDb(deps, (db) =>
+        getSiteDetail(db, { workspaceId: session.workspaceId, siteId }),
+      );
+      if (!detail) throw new ApiError("NOT_FOUND");
+      return apiSuccess(detail);
+    }),
     PATCH: withApiV1(async (request, context: SiteParamsContext, apiContext) => {
       const session = await resolveSessionForRoute(request);
       const idempotencyKey = requireMutationIdempotencyKey(request);
