@@ -8,31 +8,35 @@ import { Pool } from "pg";
 
 import { getServerEnv } from "@/lib/env";
 
-const env = getServerEnv();
-const connectionString = env.MIGRATION_DATABASE_URL ??
-  (env.NODE_ENV === "production" ? undefined : env.DATABASE_URL);
-if (!connectionString) throw new Error("MIGRATION_DATABASE_URL이 필요합니다.");
+async function main(): Promise<void> {
+  const env = getServerEnv();
+  const connectionString = env.MIGRATION_DATABASE_URL ??
+    (env.NODE_ENV === "production" ? undefined : env.DATABASE_URL);
+  if (!connectionString) throw new Error("MIGRATION_DATABASE_URL이 필요합니다.");
 
-const pool = new Pool({
-  connectionString,
-  max: 1,
-  connectionTimeoutMillis: env.PGPOOL_CONNECTION_TIMEOUT_MS,
-  idleTimeoutMillis: env.PGPOOL_IDLE_TIMEOUT_MS,
-  statement_timeout: env.PG_STATEMENT_TIMEOUT_MS,
-  application_name: "semforge-migrator",
-  ssl:
-    env.PGSSLMODE === "disable"
-      ? false
-      : env.PGSSLMODE === "verify-full"
-        ? { rejectUnauthorized: true }
-        : { rejectUnauthorized: false },
-});
-
-try {
-  await migrate(drizzle(pool), {
-    migrationsFolder: path.join(process.cwd(), "src", "db", "migrations"),
+  const pool = new Pool({
+    connectionString,
+    max: 1,
+    connectionTimeoutMillis: env.PGPOOL_CONNECTION_TIMEOUT_MS,
+    idleTimeoutMillis: env.PGPOOL_IDLE_TIMEOUT_MS,
+    statement_timeout: env.PG_STATEMENT_TIMEOUT_MS,
+    application_name: "semforge-migrator",
+    ssl:
+      env.PGSSLMODE === "disable"
+        ? false
+        : env.PGSSLMODE === "verify-full"
+          ? { rejectUnauthorized: true }
+          : { rejectUnauthorized: false },
   });
-  console.log("[db] PostgreSQL migrations applied");
-} finally {
-  await pool.end();
+
+  try {
+    await migrate(drizzle(pool), {
+      migrationsFolder: path.join(process.cwd(), "src", "db", "migrations"),
+    });
+    console.log("[db] PostgreSQL migrations applied");
+  } finally {
+    await pool.end();
+  }
 }
+
+void main();

@@ -529,6 +529,155 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.billing_ledger_events": {
+      "name": "billing_ledger_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_user_id": {
+          "name": "actor_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount_krw": {
+          "name": "amount_krw",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "order_id": {
+          "name": "order_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "payment_status": {
+          "name": "payment_status",
+          "type": "payment_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provider_code": {
+          "name": "provider_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "billing_ledger_events_workspace_time_idx": {
+          "name": "billing_ledger_events_workspace_time_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "billing_ledger_events_workspace_id_workspaces_id_fk": {
+          "name": "billing_ledger_events_workspace_id_workspaces_id_fk",
+          "tableFrom": "billing_ledger_events",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "billing_ledger_events_workspace_id_uq": {
+          "name": "billing_ledger_events_workspace_id_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "billing_ledger_events_amount_ck": {
+          "name": "billing_ledger_events_amount_ck",
+          "value": "\"billing_ledger_events\".\"amount_krw\" is null or \"billing_ledger_events\".\"amount_krw\" = 49000"
+        },
+        "billing_ledger_events_type_ck": {
+          "name": "billing_ledger_events_type_ck",
+          "value": "\"billing_ledger_events\".\"type\" in (\n      'payment_method.authorized',\n      'charge.requested',\n      'charge.succeeded',\n      'charge.failed',\n      'charge.canceled',\n      'payment.refunded',\n      'subscription.cancel_scheduled',\n      'subscription.canceled'\n    )"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.deliveries": {
       "name": "deliveries",
       "schema": "",
@@ -783,6 +932,18 @@
           "primaryKey": false,
           "notNull": true
         },
+        "provider_call_id": {
+          "name": "provider_call_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "collected_at": {
+          "name": "collected_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
         "data_date": {
           "name": "data_date",
           "type": "date",
@@ -878,6 +1039,21 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "gsc_observations_provider_call_fk": {
+          "name": "gsc_observations_provider_call_fk",
+          "tableFrom": "gsc_observations",
+          "tableTo": "provider_calls",
+          "columnsFrom": [
+            "workspace_id",
+            "provider_call_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "restrict",
           "onUpdate": "no action"
         }
       },
@@ -1261,6 +1437,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "request_hash": {
+          "name": "request_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
         "priority": {
           "name": "priority",
           "type": "integer",
@@ -1537,6 +1720,118 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.naver_observation_sources": {
+      "name": "naver_observation_sources",
+      "schema": "",
+      "columns": {
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "observation_id": {
+          "name": "observation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider_call_id": {
+          "name": "provider_call_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "collected_at": {
+          "name": "collected_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error_code": {
+          "name": "error_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "naver_observation_sources_observation_fk": {
+          "name": "naver_observation_sources_observation_fk",
+          "tableFrom": "naver_observation_sources",
+          "tableTo": "naver_observations",
+          "columnsFrom": [
+            "workspace_id",
+            "observation_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "naver_observation_sources_provider_call_fk": {
+          "name": "naver_observation_sources_provider_call_fk",
+          "tableFrom": "naver_observation_sources",
+          "tableTo": "provider_calls",
+          "columnsFrom": [
+            "workspace_id",
+            "provider_call_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "naver_observation_sources_workspace_observation_source_uq": {
+          "name": "naver_observation_sources_workspace_observation_source_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "observation_id",
+            "source"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "naver_observation_sources_source_ck": {
+          "name": "naver_observation_sources_source_ck",
+          "value": "\"naver_observation_sources\".\"source\" in ('search_ads_monthly_volume', 'datalab_trend', 'datalab_gender', 'datalab_age', 'search_api_blog_total')"
+        },
+        "naver_observation_sources_status_ck": {
+          "name": "naver_observation_sources_status_ck",
+          "value": "\"naver_observation_sources\".\"status\" in ('succeeded', 'unavailable', 'retryable', 'failed')"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.naver_observations": {
       "name": "naver_observations",
       "schema": "",
@@ -1576,6 +1871,12 @@
         },
         "observed_at": {
           "name": "observed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "collected_at": {
+          "name": "collected_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
@@ -1831,6 +2132,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "request_hash": {
+          "name": "request_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
         },
         "available_at": {
           "name": "available_at",
@@ -2100,6 +2408,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "billing_key_fingerprint": {
+          "name": "billing_key_fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "card_brand": {
           "name": "card_brand",
           "type": "text",
@@ -2190,10 +2504,21 @@
             "workspace_id",
             "id"
           ]
+        },
+        "payment_methods_fingerprint_uq": {
+          "name": "payment_methods_fingerprint_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "billing_key_fingerprint"
+          ]
         }
       },
       "policies": {},
       "checkConstraints": {
+        "payment_methods_fingerprint_ck": {
+          "name": "payment_methods_fingerprint_ck",
+          "value": "\"payment_methods\".\"billing_key_fingerprint\" ~ '^[0-9a-f]{64}$'"
+        },
         "payment_methods_last4_ck": {
           "name": "payment_methods_last4_ck",
           "value": "\"payment_methods\".\"card_last4\" is null or \"payment_methods\".\"card_last4\" ~ '^[0-9]{4}$'"
@@ -2515,7 +2840,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "provider_calls_status_ck": {
+          "name": "provider_calls_status_ck",
+          "value": "\"provider_calls\".\"status\" in ('started', 'in_doubt', 'retryable', 'succeeded', 'failed')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.provider_events": {
@@ -3015,7 +3345,16 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "report_sections_key_ck": {
+          "name": "report_sections_key_ck",
+          "value": "\"report_sections\".\"key\" in ('rank', 'aio', 'naver', 'gsc')"
+        },
+        "report_sections_availability_ck": {
+          "name": "report_sections_availability_ck",
+          "value": "(\"report_sections\".\"available\" and \"report_sections\".\"unavailable_reason\" is null) or (not \"report_sections\".\"available\" and \"report_sections\".\"unavailable_reason\" is not null)"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.sessions": {
@@ -3568,6 +3907,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "provider_call_id": {
+          "name": "provider_call_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
         "provider": {
           "name": "provider",
           "type": "text",
@@ -3635,17 +3980,19 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "usage_reservations_workspace_id_workspaces_id_fk": {
-          "name": "usage_reservations_workspace_id_workspaces_id_fk",
+        "usage_reservations_provider_call_fk": {
+          "name": "usage_reservations_provider_call_fk",
           "tableFrom": "usage_reservations",
-          "tableTo": "workspaces",
+          "tableTo": "provider_calls",
           "columnsFrom": [
-            "workspace_id"
+            "workspace_id",
+            "provider_call_id"
           ],
           "columnsTo": [
+            "workspace_id",
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "restrict",
           "onUpdate": "no action"
         }
       },
@@ -3665,6 +4012,14 @@
           "columns": [
             "workspace_id",
             "idempotency_key"
+          ]
+        },
+        "usage_reservations_provider_call_uq": {
+          "name": "usage_reservations_provider_call_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "provider_call_id"
           ]
         }
       },
@@ -3911,6 +4266,10 @@
         "weekly_reports_period_ck": {
           "name": "weekly_reports_period_ck",
           "value": "\"weekly_reports\".\"period_end\" >= \"weekly_reports\".\"period_start\" and \"weekly_reports\".\"comparison_end\" >= \"weekly_reports\".\"comparison_start\""
+        },
+        "weekly_reports_snapshot_state_ck": {
+          "name": "weekly_reports_snapshot_state_ck",
+          "value": "\"weekly_reports\".\"status\" in ('collecting', 'failed') or (\"weekly_reports\".\"snapshot\" is not null and \"weekly_reports\".\"snapshot_ready_at\" is not null)"
         }
       },
       "isRLSEnabled": false

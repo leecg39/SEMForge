@@ -432,6 +432,10 @@ export const providerCalls = pgTable(
     unique("provider_calls_workspace_id_uq").on(table.workspaceId, table.id),
     unique("provider_calls_idempotency_uq").on(table.workspaceId, table.provider, table.idempotencyKey),
     index("provider_calls_workspace_started_idx").on(table.workspaceId, table.startedAt),
+    check(
+      "provider_calls_status_ck",
+      sql`${table.status} in ('started', 'in_doubt', 'retryable', 'succeeded', 'failed')`,
+    ),
   ],
 );
 
@@ -439,9 +443,8 @@ export const usageReservations = pgTable(
   "usage_reservations",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    workspaceId: uuid("workspace_id")
-      .notNull()
-      .references(() => workspaces.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull(),
+    providerCallId: uuid("provider_call_id").notNull(),
     provider: text("provider").notNull(),
     resource: text("resource").notNull(),
     units: integer("units").notNull(),
@@ -455,6 +458,12 @@ export const usageReservations = pgTable(
   (table) => [
     unique("usage_reservations_workspace_id_uq").on(table.workspaceId, table.id),
     unique("usage_reservations_idempotency_uq").on(table.workspaceId, table.idempotencyKey),
+    unique("usage_reservations_provider_call_uq").on(table.workspaceId, table.providerCallId),
+    foreignKey({
+      columns: [table.workspaceId, table.providerCallId],
+      foreignColumns: [providerCalls.workspaceId, providerCalls.id],
+      name: "usage_reservations_provider_call_fk",
+    }).onDelete("restrict"),
     check("usage_reservations_units_ck", sql`${table.units} > 0`),
     check("usage_reservations_period_ck", sql`${table.periodEnd} > ${table.periodStart}`),
   ],
@@ -471,6 +480,7 @@ export const jobs = pgTable(
     status: jobStatusEnum("status").notNull().default("queued"),
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
+    requestHash: text("request_hash").notNull().default(""),
     priority: integer("priority").notNull().default(100),
     availableAt: timestamp("available_at", { withTimezone: true }).notNull().defaultNow(),
     leaseOwner: text("lease_owner"),
@@ -505,6 +515,7 @@ export const outbox = pgTable(
     topic: text("topic").notNull(),
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
+    requestHash: text("request_hash").notNull().default(""),
     availableAt: timestamp("available_at", { withTimezone: true }).notNull().defaultNow(),
     leaseOwner: text("lease_owner"),
     leaseToken: uuid("lease_token"),
@@ -602,6 +613,7 @@ export const naverObservations = pgTable(
     trackedQueryId: uuid("tracked_query_id").notNull(),
     queryType: trackedQueryTypeEnum("query_type").notNull().default("rank"),
     observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
+    collectedAt: timestamp("collected_at", { withTimezone: true }).notNull(),
     monthlyPcSearchVolume: integer("monthly_pc_search_volume"),
     monthlyMobileSearchVolume: integer("monthly_mobile_search_volume"),
     blogResultCount: bigint("blog_result_count", { mode: "number" }),
@@ -618,6 +630,45 @@ export const naverObservations = pgTable(
   ],
 );
 
+export const naverObservationSources = pgTable(
+  "naver_observation_sources",
+  {
+    workspaceId: uuid("workspace_id").notNull(),
+    observationId: uuid("observation_id").notNull(),
+    source: text("source").notNull(),
+    status: text("status").notNull(),
+    providerCallId: uuid("provider_call_id"),
+    collectedAt: timestamp("collected_at", { withTimezone: true }),
+    errorCode: text("error_code"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  },
+  (table) => [
+    unique("naver_observation_sources_workspace_observation_source_uq").on(
+      table.workspaceId,
+      table.observationId,
+      table.source,
+    ),
+    foreignKey({
+      columns: [table.workspaceId, table.observationId],
+      foreignColumns: [naverObservations.workspaceId, naverObservations.id],
+      name: "naver_observation_sources_observation_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.workspaceId, table.providerCallId],
+      foreignColumns: [providerCalls.workspaceId, providerCalls.id],
+      name: "naver_observation_sources_provider_call_fk",
+    }).onDelete("restrict"),
+    check(
+      "naver_observation_sources_source_ck",
+      sql`${table.source} in ('search_ads_monthly_volume', 'datalab_trend', 'datalab_gender', 'datalab_age', 'search_api_blog_total')`,
+    ),
+    check(
+      "naver_observation_sources_status_ck",
+      sql`${table.status} in ('succeeded', 'unavailable', 'retryable', 'failed')`,
+    ),
+  ],
+);
+
 export const gscObservations = pgTable(
   "gsc_observations",
   {
@@ -625,6 +676,8 @@ export const gscObservations = pgTable(
     workspaceId: uuid("workspace_id").notNull(),
     siteId: uuid("site_id").notNull(),
     bindingId: uuid("binding_id").notNull(),
+    providerCallId: uuid("provider_call_id").notNull(),
+    collectedAt: timestamp("collected_at", { withTimezone: true }).notNull(),
     dataDate: date("data_date", { mode: "string" }).notNull(),
     dimensionHash: text("dimension_hash").notNull(),
     dimensions: jsonb("dimensions").$type<Record<string, string>>().notNull(),
@@ -638,6 +691,7 @@ export const gscObservations = pgTable(
     unique("gsc_observations_workspace_id_uq").on(table.workspaceId, table.id),
     unique("gsc_observations_dimension_uq").on(table.workspaceId, table.bindingId, table.dataDate, table.dimensionHash),
     foreignKey({ columns: [table.workspaceId, table.siteId, table.bindingId], foreignColumns: [gscPropertyBindings.workspaceId, gscPropertyBindings.siteId, gscPropertyBindings.id], name: "gsc_observations_binding_fk" }).onDelete("cascade"),
+    foreignKey({ columns: [table.workspaceId, table.providerCallId], foreignColumns: [providerCalls.workspaceId, providerCalls.id], name: "gsc_observations_provider_call_fk" }).onDelete("restrict"),
     check("gsc_observations_metrics_ck", sql`${table.clicks} >= 0 and ${table.impressions} >= 0 and ${table.ctr} between 0 and 1 and ${table.position} >= 0`),
     index("gsc_observations_site_date_idx").on(table.workspaceId, table.siteId, table.dataDate),
   ],
@@ -667,6 +721,10 @@ export const weeklyReports = pgTable(
     unique("weekly_reports_site_period_uq").on(table.workspaceId, table.siteId, table.periodStart, table.periodEnd),
     foreignKey({ columns: [table.workspaceId, table.siteId], foreignColumns: [sites.workspaceId, sites.id], name: "weekly_reports_site_fk" }).onDelete("cascade"),
     check("weekly_reports_period_ck", sql`${table.periodEnd} >= ${table.periodStart} and ${table.comparisonEnd} >= ${table.comparisonStart}`),
+    check(
+      "weekly_reports_snapshot_state_ck",
+      sql`${table.status} in ('collecting', 'failed') or (${table.snapshot} is not null and ${table.snapshotReadyAt} is not null)`,
+    ),
   ],
 );
 
@@ -686,6 +744,11 @@ export const reportSections = pgTable(
     unique("report_sections_workspace_id_uq").on(table.workspaceId, table.id),
     unique("report_sections_report_key_uq").on(table.workspaceId, table.reportId, table.key),
     foreignKey({ columns: [table.workspaceId, table.reportId], foreignColumns: [weeklyReports.workspaceId, weeklyReports.id], name: "report_sections_report_fk" }).onDelete("cascade"),
+    check("report_sections_key_ck", sql`${table.key} in ('rank', 'aio', 'naver', 'gsc')`),
+    check(
+      "report_sections_availability_ck",
+      sql`(${table.available} and ${table.unavailableReason} is null) or (not ${table.available} and ${table.unavailableReason} is not null)`,
+    ),
   ],
 );
 
@@ -911,6 +974,7 @@ export const tenantTables = [
   aioObservations,
   aioCitations,
   naverObservations,
+  naverObservationSources,
   gscObservations,
   weeklyReports,
   reportSections,

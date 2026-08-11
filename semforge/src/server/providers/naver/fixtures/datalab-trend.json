@@ -1,0 +1,15 @@
+{
+  "startDate": "2026-07-01",
+  "endDate": "2026-07-07",
+  "timeUnit": "date",
+  "results": [
+    {
+      "title": "tracked-query",
+      "keywords": ["검색엔진최적화"],
+      "data": [
+        { "period": "2026-07-01", "ratio": 42.5 },
+        { "period": "2026-07-02", "ratio": 100 }
+      ]
+    }
+  ]
+}

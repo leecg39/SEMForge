@@ -1,5 +1,8 @@
 // @TASK P1-D1-T1 - Fail-fast server environment validation
 // @SPEC docs/planning/06-tasks.md#p1-d1-t1--postgresql-16-핵심-스키마와-암호화-기반
+// @TASK P3-C2-T1 - NAVER production runtime credential validation
+// @SPEC docs/planning/06-tasks.md#p3-c2-t1--naver와-gsc-주간-수집
+// @TEST src/lib/env.test.ts
 import { z } from "zod";
 
 const keyIdSchema = z.string().trim().min(1).max(64).regex(/^[A-Za-z0-9._-]+$/);
@@ -19,6 +22,8 @@ const rawServerEnvSchema = z.object({
   AUTH_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   OPERATOR_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   WORKER_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
+  DISPATCHER_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
+  SCHEDULER_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   BILLING_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   MIGRATION_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   APP_PUBLIC_URL: z.string().trim().url().optional(),
@@ -29,7 +34,15 @@ const rawServerEnvSchema = z.object({
   TOSS_SECRET_KEY: z.string().trim().min(1).optional(),
   GOOGLE_CLIENT_ID: z.string().trim().min(1).optional(),
   GOOGLE_CLIENT_SECRET: z.string().trim().min(1).optional(),
+  TALORDATA_API_TOKEN: z.string().trim().min(1).optional(),
   GSC_REDIRECT_URI: z.string().trim().url().optional(),
+  // @TASK P3-C2-T1 - Official NAVER Open API and Search Ads runtime credentials.
+  // @SPEC docs/planning/06-tasks.md#p3-c2-t1--naver와-gsc-주간-수집
+  NAVER_OPEN_API_CLIENT_ID: z.string().trim().min(1).optional(),
+  NAVER_OPEN_API_CLIENT_SECRET: z.string().trim().min(1).optional(),
+  NAVER_SEARCH_AD_ACCESS_LICENSE: z.string().trim().min(1).optional(),
+  NAVER_SEARCH_AD_SECRET_KEY: z.string().trim().min(1).optional(),
+  NAVER_SEARCH_AD_CUSTOMER_ID: z.string().trim().min(1).optional(),
   BILLING_FINGERPRINT_SECRET: secretSchema.optional(),
   PGPOOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
   PGPOOL_CONNECTION_TIMEOUT_MS: z.coerce.number().int().min(100).max(60_000).default(5_000),
@@ -97,6 +110,8 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
       "AUTH_DATABASE_URL",
       "OPERATOR_DATABASE_URL",
       "WORKER_DATABASE_URL",
+      "DISPATCHER_DATABASE_URL",
+      "SCHEDULER_DATABASE_URL",
       "BILLING_DATABASE_URL",
       "MIGRATION_DATABASE_URL",
       "APP_PUBLIC_URL",
@@ -105,6 +120,12 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
       "TOSS_SECRET_KEY",
       "GOOGLE_CLIENT_ID",
       "GOOGLE_CLIENT_SECRET",
+      "TALORDATA_API_TOKEN",
+      "NAVER_OPEN_API_CLIENT_ID",
+      "NAVER_OPEN_API_CLIENT_SECRET",
+      "NAVER_SEARCH_AD_ACCESS_LICENSE",
+      "NAVER_SEARCH_AD_SECRET_KEY",
+      "NAVER_SEARCH_AD_CUSTOMER_ID",
       "BILLING_FINGERPRINT_SECRET",
     ] as const) {
       if (!parsed.data[required]) issues.push(`${required} is required in production`);

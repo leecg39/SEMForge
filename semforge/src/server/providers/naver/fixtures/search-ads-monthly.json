@@ -1,0 +1,15 @@
+{
+  "keywordList": [
+    {
+      "relKeyword": "검색엔진최적화",
+      "monthlyPcQcCnt": "< 10",
+      "monthlyMobileQcCnt": "120",
+      "monthlyAvePcClkCnt": 8.2,
+      "monthlyAveMobileClkCnt": 31.4,
+      "monthlyAvePcCtr": 1.7,
+      "monthlyAveMobileCtr": 2.9,
+      "plAvgDepth": 7,
+      "compIdx": "높음"
+    }
+  ]
+}

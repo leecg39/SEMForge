@@ -1,6 +1,8 @@
 // @TASK P1-D1-T1 - Canonical PostgreSQL schema contract
 // @SPEC docs/planning/06-tasks.md#p1-d1-t1--postgresql-16-핵심-스키마와-암호화-기반
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { test } from "node:test";
 
 import { getTableConfig } from "drizzle-orm/pg-core";
@@ -8,12 +10,19 @@ import { getTableConfig } from "drizzle-orm/pg-core";
 import {
   authActionThrottles,
   aioPresenceEnum,
+  gscObservations,
+  jobs,
   jobStatusEnum,
   invites,
+  naverObservationSources,
+  naverObservations,
+  outbox,
+  providerCalls,
   reportStatusEnum,
   subscriptionStatusEnum,
   tenantTables,
   trackedQueries,
+  usageReservations,
 } from "@/db/schema/core";
 
 const requiredTenantTables = [
@@ -32,6 +41,7 @@ const requiredTenantTables = [
   "aio_observations",
   "aio_citations",
   "naver_observations",
+  "naver_observation_sources",
   "gsc_observations",
   "weekly_reports",
   "report_sections",
@@ -96,6 +106,120 @@ test("tracked_queries는 workspace와 site를 함께 참조한다", () => {
         key.columns.map((column) => column.name).join(",") === "workspace_id,site_id" &&
         key.foreignColumns.map((column) => column.name).join(",") === "workspace_id,id",
     ),
+  );
+});
+
+test("usage reservation은 provider call을 같은 workspace 복합 FK로 고정한다", () => {
+  const config = getTableConfig(usageReservations);
+  assert.equal(config.columns.find((column) => column.name === "provider_call_id")?.notNull, true);
+  assert.ok(
+    config.foreignKeys.some((key) => {
+      const reference = key.reference();
+      return (
+        getTableConfig(reference.foreignTable).name === getTableConfig(providerCalls).name &&
+        reference.columns.map((column) => column.name).join(",") ===
+          "workspace_id,provider_call_id" &&
+        reference.foreignColumns.map((column) => column.name).join(",") === "workspace_id,id"
+      );
+    }),
+  );
+});
+
+test("migration snapshot도 provider call 연결 컬럼을 usage reservation에 기록한다", () => {
+  const snapshot = JSON.parse(
+    readFileSync(
+      path.join(process.cwd(), "src", "db", "migrations", "meta", "0000_snapshot.json"),
+      "utf8",
+    ),
+  ) as { tables: Record<string, { columns: Record<string, unknown> }> };
+  assert.equal(
+    Object.hasOwn(snapshot.tables["public.usage_reservations"]!.columns, "provider_call_id"),
+    true,
+  );
+  assert.equal(
+    Object.hasOwn(snapshot.tables["public.provider_calls"]!.columns, "provider_call_id"),
+    false,
+  );
+});
+
+test("job/outbox canonical request hash는 schema와 migration snapshot에 함께 존재한다", () => {
+  assert.equal(
+    getTableConfig(jobs).columns.find((column) => column.name === "request_hash")?.notNull,
+    true,
+  );
+  assert.equal(
+    getTableConfig(outbox).columns.find((column) => column.name === "request_hash")?.notNull,
+    true,
+  );
+  const snapshot = JSON.parse(
+    readFileSync(
+      path.join(process.cwd(), "src", "db", "migrations", "meta", "0000_snapshot.json"),
+      "utf8",
+    ),
+  ) as { tables: Record<string, { columns: Record<string, unknown> }> };
+  assert.equal(Object.hasOwn(snapshot.tables["public.jobs"]!.columns, "request_hash"), true);
+  assert.equal(Object.hasOwn(snapshot.tables["public.outbox"]!.columns, "request_hash"), true);
+});
+
+test("NAVER와 GSC 관측값은 수집 provenance를 tenant 복합 FK로 고정한다", () => {
+  const naverConfig = getTableConfig(naverObservations);
+  const naverCollectedAt = naverConfig.columns.find((column) => column.name === "collected_at");
+  assert.equal(naverCollectedAt?.notNull, true);
+
+  const sourcesConfig = getTableConfig(naverObservationSources);
+  assert.deepEqual(
+    sourcesConfig.columns.map((column) => column.name),
+    [
+      "workspace_id",
+      "observation_id",
+      "source",
+      "status",
+      "provider_call_id",
+      "collected_at",
+      "error_code",
+      "metadata",
+    ],
+  );
+  assert.ok(
+    sourcesConfig.foreignKeys.some((key) => {
+      const reference = key.reference();
+      return (
+        getTableConfig(reference.foreignTable).name === "naver_observations" &&
+        reference.columns.map((column) => column.name).join(",") ===
+          "workspace_id,observation_id" &&
+        reference.foreignColumns.map((column) => column.name).join(",") === "workspace_id,id"
+      );
+    }),
+  );
+  assert.ok(
+    sourcesConfig.foreignKeys.some((key) => {
+      const reference = key.reference();
+      return (
+        getTableConfig(reference.foreignTable).name === "provider_calls" &&
+        reference.columns.map((column) => column.name).join(",") ===
+          "workspace_id,provider_call_id" &&
+        reference.foreignColumns.map((column) => column.name).join(",") === "workspace_id,id"
+      );
+    }),
+  );
+  assert.deepEqual(
+    sourcesConfig.checks.map((constraint) => constraint.name).sort(),
+    ["naver_observation_sources_source_ck", "naver_observation_sources_status_ck"],
+  );
+
+  const gscConfig = getTableConfig(gscObservations);
+  assert.equal(gscConfig.columns.find((column) => column.name === "provider_call_id")?.notNull, true);
+  assert.equal(gscConfig.columns.find((column) => column.name === "collected_at")?.notNull, true);
+  assert.ok(
+    gscConfig.foreignKeys.some((key) => {
+      const reference = key.reference();
+      return (
+        getTableConfig(reference.foreignTable).name === "provider_calls" &&
+        reference.columns.map((column) => column.name).join(",") ===
+          "workspace_id,provider_call_id" &&
+        reference.foreignColumns.map((column) => column.name).join(",") === "workspace_id,id"
+      );
+    }),
   );
 });
 
