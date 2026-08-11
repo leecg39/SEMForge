@@ -7,6 +7,10 @@ const secretSchema = z
   .string()
   .min(32)
   .refine((value) => value === value.trim(), "must not contain leading or trailing whitespace");
+const booleanStringSchema = z
+  .enum(["true", "false"])
+  .default("false")
+  .transform((value) => value === "true");
 
 const rawServerEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -15,11 +19,18 @@ const rawServerEnvSchema = z.object({
   AUTH_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   OPERATOR_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   WORKER_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
+  BILLING_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   MIGRATION_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   APP_PUBLIC_URL: z.string().trim().url().optional(),
+  AUTH_TRUST_PROXY_HEADERS: booleanStringSchema,
   APP_SECRET: secretSchema.optional(),
   APP_SECRET_CURRENT_KEY_ID: keyIdSchema.optional(),
   APP_SECRET_PREVIOUS_KEYS: z.string().optional(),
+  TOSS_SECRET_KEY: z.string().trim().min(1).optional(),
+  GOOGLE_CLIENT_ID: z.string().trim().min(1).optional(),
+  GOOGLE_CLIENT_SECRET: z.string().trim().min(1).optional(),
+  GSC_REDIRECT_URI: z.string().trim().url().optional(),
+  BILLING_FINGERPRINT_SECRET: secretSchema.optional(),
   PGPOOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
   PGPOOL_CONNECTION_TIMEOUT_MS: z.coerce.number().int().min(100).max(60_000).default(5_000),
   PGPOOL_IDLE_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(600_000).default(30_000),
@@ -86,13 +97,25 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
       "AUTH_DATABASE_URL",
       "OPERATOR_DATABASE_URL",
       "WORKER_DATABASE_URL",
+      "BILLING_DATABASE_URL",
       "MIGRATION_DATABASE_URL",
       "APP_PUBLIC_URL",
       "APP_SECRET",
       "APP_SECRET_CURRENT_KEY_ID",
+      "TOSS_SECRET_KEY",
+      "GOOGLE_CLIENT_ID",
+      "GOOGLE_CLIENT_SECRET",
+      "BILLING_FINGERPRINT_SECRET",
     ] as const) {
       if (!parsed.data[required]) issues.push(`${required} is required in production`);
     }
+  }
+  if (
+    parsed.data.NODE_ENV === "production" &&
+    parsed.data.GSC_REDIRECT_URI &&
+    !parsed.data.GSC_REDIRECT_URI.startsWith("https://")
+  ) {
+    issues.push("GSC_REDIRECT_URI must use https in production");
   }
   if (
     parsed.data.NODE_ENV === "production" &&

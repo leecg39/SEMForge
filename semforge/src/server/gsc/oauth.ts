@@ -1,4 +1,6 @@
-import { ApiError } from "@/lib/api";
+import { createHash, randomBytes } from "node:crypto";
+
+import { ApiError } from "@/lib/api-v1";
 
 /**
  * Google OAuth 2.0 (Search Console 연동용).
@@ -13,6 +15,12 @@ const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 export const GSC_SCOPE = "https://www.googleapis.com/auth/webmasters.readonly";
 const DEFAULT_REDIRECT_URI = "http://localhost:3000/api/v1/integrations/gsc/callback";
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const ALLOWED_RETURN_PATHS = [
+  /^\/app$/,
+  /^\/app\/settings$/,
+  /^\/app\/sites$/,
+  /^\/app\/sites\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+] as const;
 
 export interface GscOAuthConfig {
   clientId: string;
@@ -48,6 +56,30 @@ export function buildGscAuthorizationUrl(
   url.searchParams.set("prompt", "consent select_account");
   if (state) url.searchParams.set("state", state);
   return url.toString();
+}
+
+export function newOAuthState(): string {
+  return randomBytes(32).toString("base64url");
+}
+
+export function hashOAuthState(rawState: string): string {
+  return createHash("sha256").update(rawState, "utf8").digest("hex");
+}
+
+export function safeGscReturnPath(input: string | null | undefined): string {
+  if (!input) return "/app/settings";
+  if (!input.startsWith("/") || input.startsWith("//")) return "/app/settings";
+  let path: string;
+  try {
+    const url = new URL(input, "https://semforge.local");
+    if (url.origin !== "https://semforge.local") return "/app/settings";
+    path = `${url.pathname}${url.search}`;
+  } catch {
+    return "/app/settings";
+  }
+  const pathname = path.split("?", 1)[0] ?? "";
+  if (ALLOWED_RETURN_PATHS.some((pattern) => pattern.test(pathname))) return path;
+  return "/app/settings";
 }
 
 export interface GscTokenSet {
@@ -98,7 +130,7 @@ async function postTokenRequest(
       controller.signal.aborted
         ? "Google 인증 서버 응답이 시간 초과되었습니다. 잠시 후 다시 시도해 주세요."
         : "Google 인증 서버에 연결하지 못했습니다.",
-      { details: error instanceof Error ? error.message : String(error) }
+      { cause: error }
     );
   } finally {
     clearTimeout(timer);

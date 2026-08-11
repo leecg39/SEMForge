@@ -101,11 +101,12 @@ test("web role은 transaction-local workspace 밖의 row를 볼 수 없다", asy
   }
 });
 
-test("web과 worker role은 BYPASSRLS가 아니며 web 정책은 명시적으로 role에 한정된다", async () => {
+test("web, worker, billing role은 BYPASSRLS가 아니며 web 정책은 명시적으로 role에 한정된다", async () => {
   const roles = await pg.query<{ rolname: string; rolbypassrls: boolean }>(
-    "select rolname, rolbypassrls from pg_roles where rolname in ('semforge_web', 'semforge_worker') order by rolname",
+    "select rolname, rolbypassrls from pg_roles where rolname in ('semforge_billing', 'semforge_web', 'semforge_worker') order by rolname",
   );
   assert.deepEqual(roles.rows, [
+    { rolname: "semforge_billing", rolbypassrls: false },
     { rolname: "semforge_web", rolbypassrls: false },
     { rolname: "semforge_worker", rolbypassrls: false },
   ]);
@@ -118,6 +119,68 @@ test("web과 worker role은 BYPASSRLS가 아니며 web 정책은 명시적으로
       (policy) => policy.policyname === "sites_tenant_isolation" && policy.roles.includes("semforge_web"),
     ),
   );
+});
+
+test("billing role은 fingerprint 결제수단과 append-only ledger만 변경한다", async () => {
+  const workspaceId = "00000000-0000-4000-8000-0000000000d1";
+  const customerId = "00000000-0000-4000-8000-0000000000d2";
+  const subscriptionId = "00000000-0000-4000-8000-0000000000d3";
+  const paymentMethodId = "00000000-0000-4000-8000-0000000000d4";
+  const ledgerId = "00000000-0000-4000-8000-0000000000d5";
+  await pg.query("insert into workspaces (id, name, slug) values ($1, 'Billing', 'billing')", [
+    workspaceId,
+  ]);
+  await pg.query(
+    "insert into billing_customers (id, workspace_id, toss_customer_key) values ($1, $2, 'customer_billing')",
+    [customerId, workspaceId],
+  );
+  await pg.query(
+    "insert into subscriptions (id, workspace_id, billing_customer_id, status) values ($1, $2, $3, 'account_created')",
+    [subscriptionId, workspaceId, customerId],
+  );
+
+  await pg.query("begin");
+  try {
+    await pg.query("set local role semforge_billing");
+    await pg.query(
+      `insert into payment_methods
+        (id, workspace_id, billing_customer_id, billing_key_encrypted, billing_key_fingerprint, card_last4)
+       values ($1, $2, $3, 'enc:v1:key:iviviviviviviviv:tagtagtagtagtagtagta:cipher', repeat('a', 64), '1234')`,
+      [paymentMethodId, workspaceId, customerId],
+    );
+    await pg.query("savepoint billing_plain_key_rejected");
+    await assert.rejects(
+      pg.query(
+        `insert into payment_methods
+          (workspace_id, billing_customer_id, billing_key_encrypted, billing_key_fingerprint)
+         values ($1, $2, 'plain-billing-key', repeat('b', 64))`,
+        [workspaceId, customerId],
+      ),
+    );
+    await pg.query("rollback to savepoint billing_plain_key_rejected");
+    await pg.query(
+      `insert into billing_ledger_events
+        (id, workspace_id, type, entity_id, occurred_at, amount_krw, payment_status)
+       values ($1, $2, 'payment_method.authorized', $3, now(), 49000, 'authorized')`,
+      [ledgerId, workspaceId, paymentMethodId],
+    );
+    await pg.query("savepoint billing_ledger_update_rejected");
+    await assert.rejects(
+      pg.query("update billing_ledger_events set provider_code = 'changed' where id = $1", [
+        ledgerId,
+      ]),
+    );
+    await pg.query("rollback to savepoint billing_ledger_update_rejected");
+    await pg.query("savepoint billing_ledger_delete_rejected");
+    await assert.rejects(
+      pg.query("delete from billing_ledger_events where id = $1", [ledgerId]),
+    );
+    await pg.query("rollback to savepoint billing_ledger_delete_rejected");
+    await pg.query("commit");
+  } catch (error) {
+    await pg.query("rollback");
+    throw error;
+  }
 });
 
 test("DB도 GSC token과 Toss billing key의 평문 저장을 거부한다", async () => {
@@ -159,6 +222,7 @@ test("auth role은 pre-tenant 인증 트랜잭션에 필요한 최소 권한과 
     "auth_action_throttles:INSERT",
     "auth_action_throttles:SELECT",
     "auth_action_throttles:UPDATE",
+    "billing_customers:INSERT",
     "invites:SELECT",
     "memberships:INSERT",
     "memberships:SELECT",
@@ -169,12 +233,21 @@ test("auth role은 pre-tenant 인증 트랜잭션에 필요한 최소 권한과 
     "sessions:INSERT",
     "sessions:SELECT",
     "sessions:UPDATE",
+    "subscriptions:INSERT",
     "users:INSERT",
     "users:SELECT",
     "users:UPDATE",
     "workspaces:INSERT",
     "workspaces:SELECT",
   ]);
+
+  const authBillingSelectColumns = await pg.query<{ table_name: string; column_name: string }>(
+    "select table_name, column_name from information_schema.role_column_grants where grantee = 'semforge_auth' and table_schema = 'public' and table_name in ('billing_customers', 'subscriptions') and privilege_type = 'SELECT' order by table_name, column_name",
+  );
+  assert.deepEqual(
+    authBillingSelectColumns.rows.map((grant) => `${grant.table_name}.${grant.column_name}`),
+    [],
+  );
 
   const inviteUpdateColumns = await pg.query<{ column_name: string }>(
     "select column_name from information_schema.role_column_grants where grantee = 'semforge_auth' and table_schema = 'public' and table_name = 'invites' and privilege_type = 'UPDATE' order by column_name",
@@ -184,21 +257,184 @@ test("auth role은 pre-tenant 인증 트랜잭션에 필요한 최소 권한과 
     ["accepted_at", "accepted_by_user_id", "accepted_workspace_id"],
   );
 
-  const policies = await pg.query<{ tablename: string; roles: string[] }>(
-    "select distinct tablename, roles from pg_policies where 'semforge_auth' = any(roles) order by tablename",
+  const outboxInsertColumns = await pg.query<{ column_name: string }>(
+    "select column_name from information_schema.role_column_grants where grantee = 'semforge_auth' and table_schema = 'public' and table_name = 'outbox' and privilege_type = 'INSERT' order by column_name",
   );
   assert.deepEqual(
-    policies.rows.map((policy) => policy.tablename),
+    outboxInsertColumns.rows.map((grant) => grant.column_name),
+    ["available_at", "created_at", "idempotency_key", "payload", "topic", "workspace_id"],
+  );
+
+  const policies = await pg.query<{ policyname: string; cmd: string; roles: string[] }>(
+    "select policyname, cmd, roles from pg_policies where 'semforge_auth' = any(roles) order by policyname",
+  );
+  assert.deepEqual(
+    policies.rows.map((policy) => `${policy.policyname}:${policy.cmd}`),
     [
-      "auth_action_throttles",
-      "invites",
-      "memberships",
-      "password_resets",
-      "sessions",
-      "users",
-      "workspaces",
+      "auth_action_throttles_auth_delete:DELETE",
+      "auth_action_throttles_auth_insert:INSERT",
+      "auth_action_throttles_auth_select:SELECT",
+      "auth_action_throttles_auth_update:UPDATE",
+      "billing_customers_auth_insert:INSERT",
+      "invites_auth_select:SELECT",
+      "invites_auth_update:UPDATE",
+      "memberships_auth_insert:INSERT",
+      "memberships_auth_select:SELECT",
+      "outbox_auth_insert:INSERT",
+      "password_resets_auth_insert:INSERT",
+      "password_resets_auth_select:SELECT",
+      "password_resets_auth_update:UPDATE",
+      "sessions_auth_delete:DELETE",
+      "sessions_auth_insert:INSERT",
+      "sessions_auth_select:SELECT",
+      "sessions_auth_update:UPDATE",
+      "subscriptions_auth_insert:INSERT",
+      "users_auth_insert:INSERT",
+      "users_auth_select:SELECT",
+      "users_auth_update:UPDATE",
+      "workspaces_auth_insert:INSERT",
+      "workspaces_auth_select:SELECT",
     ],
   );
+});
+
+test("auth role은 password reset outbox를 INSERT만 할 수 있고 tenant outbox payload를 SELECT할 수 없다", async () => {
+  const workspaceId = "00000000-0000-4000-8000-0000000000e1";
+  const userId = "00000000-0000-4000-8000-0000000000e2";
+  const otherWorkspaceId = "00000000-0000-4000-8000-0000000000e3";
+  await pg.query(
+    "insert into workspaces (id, name, slug) values ($1, 'Auth Outbox', 'auth-outbox'), ($2, 'Other Outbox', 'other-outbox')",
+    [workspaceId, otherWorkspaceId],
+  );
+  await pg.query(
+    "insert into users (id, email, password_hash) values ($1, 'reset-outbox-auth@example.com', 'password-hash')",
+    [userId],
+  );
+  await pg.query(
+    "insert into memberships (workspace_id, user_id, role) values ($1, $2, 'owner')",
+    [workspaceId, userId],
+  );
+  await pg.query(
+    `insert into outbox (workspace_id, topic, payload, idempotency_key)
+     values ($1, 'email.password_reset', '{"secret":"other-workspace"}'::jsonb, 'other-secret')`,
+    [otherWorkspaceId],
+  );
+
+  await pg.query("begin");
+  try {
+    await pg.query("set local role semforge_auth");
+    await pg.query(
+      `insert into password_resets (user_id, token_hash, expires_at)
+       values ($1, repeat('c', 64), now() + interval '1 hour')`,
+      [userId],
+    );
+    await pg.query(
+      `insert into outbox (workspace_id, topic, payload, idempotency_key)
+       values ($1, 'email.password_reset', '{"kind":"password_reset"}'::jsonb, 'password-reset-test')`,
+      [workspaceId],
+    );
+
+    await pg.query("savepoint outbox_wrong_topic_denied");
+    await assert.rejects(
+      pg.query(
+        `insert into outbox (workspace_id, topic, payload, idempotency_key)
+         values ($1, 'billing.charge', '{"kind":"wrong_topic"}'::jsonb, 'wrong-topic')`,
+        [workspaceId],
+      ),
+    );
+    await pg.query("rollback to savepoint outbox_wrong_topic_denied");
+
+    await pg.query("savepoint outbox_select_denied");
+    await assert.rejects(
+      pg.query("select payload from outbox where workspace_id in ($1, $2)", [
+        workspaceId,
+        otherWorkspaceId,
+      ]),
+    );
+    await pg.query("rollback to savepoint outbox_select_denied");
+    await pg.query("commit");
+  } catch (error) {
+    await pg.query("rollback");
+    throw error;
+  }
+
+  const visibleToOwner = await pg.query<{ idempotency_key: string }>(
+    "select idempotency_key from outbox where workspace_id = $1 and idempotency_key = 'password-reset-test'",
+    [workspaceId],
+  );
+  assert.deepEqual(visibleToOwner.rows, [{ idempotency_key: "password-reset-test" }]);
+});
+
+test("auth role은 billing provisioning INSERT만 허용하고 billing SELECT를 노출하지 않는다", async () => {
+  const authWorkspaceId = "00000000-0000-4000-8000-0000000000e4";
+  const otherWorkspaceId = "00000000-0000-4000-8000-0000000000e5";
+  const billingCustomerId = "00000000-0000-4000-8000-0000000000e6";
+  const subscriptionId = "00000000-0000-4000-8000-0000000000e7";
+  await pg.query(
+    "insert into workspaces (id, name, slug) values ($1, 'Auth Billing', 'auth-billing'), ($2, 'Other Billing', 'other-billing')",
+    [authWorkspaceId, otherWorkspaceId],
+  );
+  await pg.query(
+    "insert into billing_customers (workspace_id, toss_customer_key) values ($1, 'customer_other_billing')",
+    [otherWorkspaceId],
+  );
+
+  await pg.query("begin");
+  try {
+    await pg.query("set local role semforge_auth");
+
+    await pg.query("savepoint auth_billing_returning_rejected");
+    await assert.rejects(
+      pg.query(
+        "insert into billing_customers (workspace_id, toss_customer_key) values ($1, 'customer_auth_billing_returning') returning id::text",
+        [authWorkspaceId],
+      ),
+    );
+    await pg.query("rollback to savepoint auth_billing_returning_rejected");
+
+    await pg.query(
+      "insert into billing_customers (id, workspace_id, toss_customer_key) values ($1, $2, 'customer_auth_billing')",
+      [billingCustomerId, authWorkspaceId],
+    );
+    await pg.query(
+      "insert into subscriptions (id, workspace_id, billing_customer_id, status, amount_krw) values ($1, $2, $3, 'account_created', 49000)",
+      [subscriptionId, authWorkspaceId, billingCustomerId],
+    );
+
+    await pg.query("savepoint auth_billing_other_tenant_select");
+    await assert.rejects(
+      pg.query("select id::text from billing_customers where workspace_id = $1", [
+        otherWorkspaceId,
+      ]),
+    );
+    await pg.query("rollback to savepoint auth_billing_other_tenant_select");
+
+    await pg.query("savepoint auth_billing_own_id_select");
+    await assert.rejects(
+      pg.query("select id::text from billing_customers"),
+    );
+    await pg.query("rollback to savepoint auth_billing_own_id_select");
+
+    await pg.query("savepoint auth_billing_subscription_id_select");
+    await assert.rejects(
+      pg.query("select id::text from subscriptions"),
+    );
+    await pg.query("rollback to savepoint auth_billing_subscription_id_select");
+
+    await pg.query("savepoint auth_billing_sensitive_customer_select");
+    await assert.rejects(
+      pg.query("select workspace_id, toss_customer_key from billing_customers"),
+    );
+    await pg.query("rollback to savepoint auth_billing_sensitive_customer_select");
+
+    await pg.query("savepoint auth_billing_sensitive_subscription_select");
+    await assert.rejects(
+      pg.query("select workspace_id, billing_customer_id, status, amount_krw from subscriptions"),
+    );
+    await pg.query("rollback to savepoint auth_billing_sensitive_subscription_select");
+  } finally {
+    await pg.query("rollback");
+  }
 });
 
 test("auth role은 초대 intent에서 신규 workspace·owner membership·session을 원자 생성한다", async () => {

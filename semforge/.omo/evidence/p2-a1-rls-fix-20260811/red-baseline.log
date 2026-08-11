@@ -1,0 +1,58 @@
+✖ auth role은 pre-tenant 인증 트랜잭션에 필요한 최소 권한과 RLS 정책만 가진다 (954.183667ms)
+✖ auth role은 password reset outbox를 INSERT만 할 수 있고 tenant outbox payload를 SELECT할 수 없다 (9.55ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 0
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1303.465958
+
+✖ failing tests:
+
+test at src/db/migrations/core.integration.test.ts:8:1264
+✖ auth role은 pre-tenant 인증 트랜잭션에 필요한 최소 권한과 RLS 정책만 가진다 (954.183667ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  ... Skipped lines
+  
+    [
+      'auth_action_throttles:DELETE',
+      'auth_action_throttles:INSERT',
+      'auth_action_throttles:SELECT',
+      'auth_action_throttles:UPDATE',
+  ...
+      'memberships:SELECT',
+  +   'outbox:INSERT',
+  +   'outbox:SELECT',
+      'password_resets:INSERT',
+      'password_resets:SELECT',
+      'password_resets:UPDATE',
+      'sessions:DELETE',
+      'sessions:INSERT',
+  
+      at TestContext.<anonymous> (/private/tmp/semforge-rls-red-m4oOmW/src/db/migrations/core.integration.test.ts:220:10)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'auth_action_throttles:DELETE', 'auth_action_throttles:INSERT', 'auth_action_throttles:SELECT', 'auth_action_throttles:UPDATE', 'invites:SELECT', 'memberships:INSERT', 'memberships:SELECT', 'outbox:INSERT', 'outbox:SELECT', 'password_resets:INSERT', 'password_resets:SELECT', 'password_resets:UPDATE', 'sessions:DELETE', 'sessions:INSERT', 'sessions:SELECT', 'sessions:UPDATE', 'users:INSERT', 'users:SELECT', 'users:UPDATE', 'workspaces:INSERT', 'workspaces:SELECT' ],
+    expected: [ 'auth_action_throttles:DELETE', 'auth_action_throttles:INSERT', 'auth_action_throttles:SELECT', 'auth_action_throttles:UPDATE', 'invites:SELECT', 'memberships:INSERT', 'memberships:SELECT', 'password_resets:INSERT', 'password_resets:SELECT', 'password_resets:UPDATE', 'sessions:DELETE', 'sessions:INSERT', 'sessions:SELECT', 'sessions:UPDATE', 'users:INSERT', 'users:SELECT', 'users:UPDATE', 'workspaces:INSERT', 'workspaces:SELECT' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at src/db/migrations/core.integration.test.ts:8:3963
+✖ auth role은 password reset outbox를 INSERT만 할 수 있고 tenant outbox payload를 SELECT할 수 없다 (9.55ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at async TestContext.<anonymous> (/private/tmp/semforge-rls-red-m4oOmW/src/db/migrations/core.integration.test.ts:326:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'rejects',
+    diff: 'simple'
+  }

@@ -246,6 +246,7 @@ CREATE TABLE "payment_methods" (
 	"workspace_id" uuid NOT NULL,
 	"billing_customer_id" uuid NOT NULL,
 	"billing_key_encrypted" text NOT NULL,
+	"billing_key_fingerprint" text NOT NULL,
 	"card_brand" text,
 	"card_last4" text,
 	"active" boolean DEFAULT true NOT NULL,
@@ -253,6 +254,8 @@ CREATE TABLE "payment_methods" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "payment_methods_workspace_id_uq" UNIQUE("workspace_id","id"),
+	CONSTRAINT "payment_methods_fingerprint_uq" UNIQUE("billing_key_fingerprint"),
+	CONSTRAINT "payment_methods_fingerprint_ck" CHECK ("payment_methods"."billing_key_fingerprint" ~ '^[0-9a-f]{64}$'),
 	CONSTRAINT "payment_methods_last4_ck" CHECK ("payment_methods"."card_last4" is null or "payment_methods"."card_last4" ~ '^[0-9]{4}$')
 );
 --> statement-breakpoint
@@ -310,6 +313,34 @@ CREATE TABLE "provider_events" (
 	"processing_error" text,
 	CONSTRAINT "provider_events_workspace_id_uq" UNIQUE("workspace_id","id"),
 	CONSTRAINT "provider_events_dedupe_uq" UNIQUE("provider","provider_event_id")
+);
+--> statement-breakpoint
+CREATE TABLE "billing_ledger_events" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"workspace_id" uuid NOT NULL,
+	"type" text NOT NULL,
+	"entity_id" text NOT NULL,
+	"actor_user_id" uuid,
+	"request_id" text,
+	"occurred_at" timestamp with time zone NOT NULL,
+	"amount_krw" integer,
+	"order_id" text,
+	"payment_status" "payment_status",
+	"provider_code" text,
+	"metadata" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "billing_ledger_events_workspace_id_uq" UNIQUE("workspace_id","id"),
+	CONSTRAINT "billing_ledger_events_amount_ck" CHECK ("billing_ledger_events"."amount_krw" is null or "billing_ledger_events"."amount_krw" = 49000),
+	CONSTRAINT "billing_ledger_events_type_ck" CHECK ("billing_ledger_events"."type" in (
+      'payment_method.authorized',
+      'charge.requested',
+      'charge.succeeded',
+      'charge.failed',
+      'charge.canceled',
+      'payment.refunded',
+      'subscription.cancel_scheduled',
+      'subscription.canceled'
+    ))
 );
 --> statement-breakpoint
 CREATE TABLE "rank_observations" (
@@ -501,6 +532,7 @@ ALTER TABLE "payment_methods" ADD CONSTRAINT "payment_methods_customer_fk" FOREI
 ALTER TABLE "payments" ADD CONSTRAINT "payments_subscription_fk" FOREIGN KEY ("workspace_id","subscription_id") REFERENCES "public"."subscriptions"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "provider_calls" ADD CONSTRAINT "provider_calls_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "provider_events" ADD CONSTRAINT "provider_events_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "billing_ledger_events" ADD CONSTRAINT "billing_ledger_events_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "rank_observations" ADD CONSTRAINT "rank_observations_query_fk" FOREIGN KEY ("workspace_id","site_id","tracked_query_id","query_type") REFERENCES "public"."tracked_queries"("workspace_id","site_id","id","type") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "rank_observations" ADD CONSTRAINT "rank_observations_provider_call_fk" FOREIGN KEY ("workspace_id","provider_call_id") REFERENCES "public"."provider_calls"("workspace_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "report_assets" ADD CONSTRAINT "report_assets_report_fk" FOREIGN KEY ("workspace_id","report_id") REFERENCES "public"."weekly_reports"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -526,6 +558,7 @@ CREATE INDEX "outbox_claim_idx" ON "outbox" USING btree ("published_at","availab
 CREATE INDEX "outbox_expired_lease_idx" ON "outbox" USING btree ("lease_expires_at") WHERE "outbox"."published_at" is null;--> statement-breakpoint
 CREATE INDEX "password_resets_user_expiry_idx" ON "password_resets" USING btree ("user_id","expires_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "payment_methods_active_customer_uq" ON "payment_methods" USING btree ("workspace_id","billing_customer_id") WHERE "payment_methods"."active";--> statement-breakpoint
+CREATE INDEX "billing_ledger_events_workspace_time_idx" ON "billing_ledger_events" USING btree ("workspace_id","occurred_at");--> statement-breakpoint
 CREATE INDEX "provider_calls_workspace_started_idx" ON "provider_calls" USING btree ("workspace_id","started_at");--> statement-breakpoint
 CREATE INDEX "provider_events_pending_idx" ON "provider_events" USING btree ("provider","received_at") WHERE "provider_events"."processed_at" is null;--> statement-breakpoint
 CREATE INDEX "rank_observations_site_time_idx" ON "rank_observations" USING btree ("workspace_id","site_id","observed_at");--> statement-breakpoint
@@ -589,11 +622,12 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_auth') THEN CREATE ROLE semforge_auth NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_operator') THEN CREATE ROLE semforge_operator NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_worker') THEN CREATE ROLE semforge_worker NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_billing') THEN CREATE ROLE semforge_billing NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
 END
 $$;--> statement-breakpoint
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC;--> statement-breakpoint
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;--> statement-breakpoint
-GRANT USAGE ON SCHEMA public TO semforge_web, semforge_auth, semforge_operator, semforge_worker;--> statement-breakpoint
+GRANT USAGE ON SCHEMA public TO semforge_web, semforge_auth, semforge_operator, semforge_worker, semforge_billing;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON
   workspaces, memberships, sites, tracked_queries,
   gsc_connections, oauth_states, gsc_property_bindings,
@@ -602,7 +636,7 @@ TO semforge_web;--> statement-breakpoint
 GRANT SELECT, INSERT ON audit_events, provider_calls, usage_reservations, jobs, outbox TO semforge_web;--> statement-breakpoint
 GRANT SELECT ON rank_observations, aio_observations, aio_citations, naver_observations,
   gsc_observations, weekly_reports, report_sections, report_assets, deliveries,
-  payments, provider_events TO semforge_web;--> statement-breakpoint
+  payments, provider_events, billing_ledger_events TO semforge_web;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE ON users TO semforge_auth;--> statement-breakpoint
 GRANT SELECT ON invites TO semforge_auth;--> statement-breakpoint
 GRANT UPDATE (accepted_at, accepted_workspace_id, accepted_by_user_id) ON invites TO semforge_auth;--> statement-breakpoint
@@ -610,6 +644,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON sessions TO semforge_auth;--> statement-
 GRANT SELECT, INSERT, UPDATE ON password_resets TO semforge_auth;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON auth_action_throttles TO semforge_auth;--> statement-breakpoint
 GRANT SELECT, INSERT ON workspaces, memberships TO semforge_auth;--> statement-breakpoint
+GRANT INSERT ON billing_customers, subscriptions TO semforge_auth;--> statement-breakpoint
+GRANT INSERT (workspace_id, topic, payload, idempotency_key, available_at, created_at) ON outbox TO semforge_auth;--> statement-breakpoint
 GRANT SELECT ON invites TO semforge_operator;--> statement-breakpoint
 GRANT INSERT (email, token_hash, workspace_name, workspace_slug, expires_at) ON invites TO semforge_operator;--> statement-breakpoint
 GRANT UPDATE (superseded_at) ON invites TO semforge_operator;--> statement-breakpoint
@@ -619,6 +655,9 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON provider_calls, usage_reservations, jobs
   rank_observations, aio_observations, aio_citations, naver_observations, gsc_observations,
   weekly_reports, report_sections, report_assets, deliveries, payments, provider_events
 TO semforge_worker;--> statement-breakpoint
+GRANT SELECT ON sessions, memberships TO semforge_billing;--> statement-breakpoint
+GRANT SELECT, INSERT, UPDATE ON billing_customers, payment_methods, subscriptions, payments, provider_events TO semforge_billing;--> statement-breakpoint
+GRANT INSERT ON billing_ledger_events TO semforge_billing;--> statement-breakpoint
 
 ALTER TABLE gsc_connections ADD CONSTRAINT gsc_connections_encrypted_tokens_ck
   CHECK (access_token_encrypted ~ '^enc:v[0-9]+:' AND refresh_token_encrypted ~ '^enc:v[0-9]+:');--> statement-breakpoint
@@ -645,7 +684,7 @@ BEGIN
     'rank_observations', 'aio_observations', 'aio_citations',
     'naver_observations', 'gsc_observations',
     'weekly_reports', 'report_sections', 'report_assets', 'deliveries',
-    'billing_customers', 'payment_methods', 'subscriptions', 'payments', 'provider_events'
+    'billing_customers', 'payment_methods', 'subscriptions', 'payments', 'provider_events', 'billing_ledger_events'
   ] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', tenant_table);
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', tenant_table);
@@ -658,6 +697,9 @@ END
 $$;--> statement-breakpoint
 CREATE POLICY memberships_auth_select ON memberships FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
 CREATE POLICY memberships_auth_insert ON memberships FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY memberships_billing_select ON memberships FOR SELECT TO semforge_billing USING (true);--> statement-breakpoint
+CREATE POLICY billing_customers_auth_insert ON billing_customers FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY subscriptions_auth_insert ON subscriptions FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE users FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY users_auth_select ON users FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
@@ -681,11 +723,14 @@ CREATE POLICY sessions_auth_select ON sessions FOR SELECT TO semforge_auth USING
 CREATE POLICY sessions_auth_insert ON sessions FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY sessions_auth_update ON sessions FOR UPDATE TO semforge_auth USING (true) WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY sessions_auth_delete ON sessions FOR DELETE TO semforge_auth USING (true);--> statement-breakpoint
+CREATE POLICY sessions_billing_select ON sessions FOR SELECT TO semforge_billing USING (true);--> statement-breakpoint
 ALTER TABLE password_resets ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE password_resets FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY password_resets_auth_select ON password_resets FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
 CREATE POLICY password_resets_auth_insert ON password_resets FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY password_resets_auth_update ON password_resets FOR UPDATE TO semforge_auth USING (true) WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY outbox_auth_insert ON outbox FOR INSERT TO semforge_auth
+  WITH CHECK (topic = 'email.password_reset');--> statement-breakpoint
 ALTER TABLE auth_action_throttles ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE auth_action_throttles FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY auth_action_throttles_auth_select ON auth_action_throttles FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
@@ -700,10 +745,23 @@ BEGIN
     'provider_calls', 'usage_reservations', 'jobs', 'outbox',
     'rank_observations', 'aio_observations', 'aio_citations', 'naver_observations', 'gsc_observations',
     'weekly_reports', 'report_sections', 'report_assets', 'deliveries',
-    'billing_customers', 'payment_methods', 'subscriptions', 'payments', 'provider_events'
+    'billing_customers', 'payment_methods', 'subscriptions', 'payments', 'provider_events', 'billing_ledger_events'
   ] LOOP
     EXECUTE format('CREATE POLICY %I ON %I TO semforge_worker USING (true) WITH CHECK (true)',
       worker_table || '_worker_access', worker_table);
   END LOOP;
 END
 $$;
+--> statement-breakpoint
+DO $$
+DECLARE billing_table text;
+BEGIN
+  FOREACH billing_table IN ARRAY ARRAY[
+    'billing_customers', 'payment_methods', 'subscriptions', 'payments', 'provider_events', 'billing_ledger_events'
+  ] LOOP
+    EXECUTE format('CREATE POLICY %I ON %I TO semforge_billing USING (true) WITH CHECK (true)',
+      billing_table || '_billing_access', billing_table);
+  END LOOP;
+END
+$$;--> statement-breakpoint
+REVOKE UPDATE, DELETE ON billing_ledger_events FROM semforge_billing, semforge_web, semforge_worker;--> statement-breakpoint
