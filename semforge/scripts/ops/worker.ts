@@ -22,6 +22,7 @@ import { createPostgresNaverObservationStore } from "@/server/collectors/naver/p
 import { createNaverProductionProvider } from "@/server/providers/naver/production";
 import { createTalordataGoogleProvider } from "@/server/providers/talordata/provider";
 import { createJsonLogger } from "@/server/observability/logger";
+import { createRuntimeReportGenerationJobHandler } from "@/server/reports/runtime";
 import { WorkerRuntime } from "@/worker/runtime";
 
 import { installShutdownSignalBridge } from "./runtime.mjs";
@@ -78,12 +79,14 @@ async function main(): Promise<void> {
       observationStore: createPostgresGscObservationStore(client),
     }),
   });
+  const reportHandler = createRuntimeReportGenerationJobHandler();
   const runtime = new WorkerRuntime({
     database: pool,
     handlers: {
       "collect.google": googleHandler,
       "collect.naver": naverHandler,
       [GSC_WEEKLY_COLLECTION_JOB]: gscHandler,
+      "report.snapshot": reportHandler,
     },
     workerId: process.env.WORKER_ID?.trim() || process.env.HOSTNAME?.trim() || randomUUID(),
     concurrency: positiveInteger("WORKER_CONCURRENCY", 2, 100),

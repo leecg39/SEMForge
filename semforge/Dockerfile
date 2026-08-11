@@ -11,6 +11,8 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 FROM dependencies AS builder
+ENV SEMFORGE_SERVICE=build \
+    PGSSLMODE=verify-full
 COPY . .
 RUN npm run build
 
@@ -24,7 +26,6 @@ ENV NODE_ENV=production \
     PGSSLMODE=verify-full \
     CHROMIUM_PATH=/usr/bin/chromium \
     CHROME_BIN=/usr/bin/chromium \
-    HOSTNAME=0.0.0.0 \
     PORT=3000
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -43,7 +44,8 @@ ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 STOPSIGNAL SIGTERM
 
 FROM runtime-base AS web
-ENV SEMFORGE_SERVICE=web
+ENV SEMFORGE_SERVICE=web \
+    HOSTNAME=0.0.0.0
 COPY --from=builder --chown=semforge:semforge /app/.next/standalone ./
 COPY --from=builder --chown=semforge:semforge /app/.next/static ./.next/static
 USER semforge

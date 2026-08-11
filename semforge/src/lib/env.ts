@@ -18,7 +18,7 @@ const booleanStringSchema = z
 const rawServerEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   // @TASK P4-O1-T1 - Keep web, worker, and migration containers least-privileged.
-  SEMFORGE_SERVICE: z.enum(["web", "worker", "migrate", "all"]).default("all"),
+  SEMFORGE_SERVICE: z.enum(["web", "worker", "migrate", "build", "all"]).default("all"),
   DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   // @TASK P1-D3 - Never reuse the migration owner DSN for auth or operator runtime access.
   AUTH_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
@@ -143,10 +143,20 @@ const productionRequiredByService = {
     "TALORDATA_API_TOKEN",
   ],
   migrate: ["MIGRATION_DATABASE_URL"],
+  build: [],
 } as const satisfies Record<
   z.infer<typeof rawServerEnvSchema>["SEMFORGE_SERVICE"],
   readonly (keyof z.infer<typeof rawServerEnvSchema>)[]
 >;
+
+const databaseUrlKeys = [
+  "DATABASE_URL",
+  "AUTH_DATABASE_URL",
+  "OPERATOR_DATABASE_URL",
+  "WORKER_DATABASE_URL",
+  "BILLING_DATABASE_URL",
+  "MIGRATION_DATABASE_URL",
+] as const satisfies readonly (keyof z.infer<typeof rawServerEnvSchema>)[];
 
 export function parseServerEnv(source: Record<string, string | undefined>): ServerEnv {
   const parsed = rawServerEnvSchema.safeParse(source);
@@ -163,6 +173,18 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
     }
     if (parsed.data.PGSSLMODE !== "verify-full") {
       issues.push("PGSSLMODE must be verify-full in production");
+    }
+    for (const key of databaseUrlKeys) {
+      const value = parsed.data[key];
+      if (typeof value !== "string") continue;
+      try {
+        const sslMode = new URL(value).searchParams.get("sslmode");
+        if (sslMode !== null && sslMode !== "verify-full") {
+          issues.push(`${key} sslmode must be verify-full when present`);
+        }
+      } catch {
+        issues.push(`${key} must be a valid PostgreSQL URL`);
+      }
     }
   }
   if (

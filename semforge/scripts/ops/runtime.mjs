@@ -62,6 +62,9 @@ export function validateRuntimeEnvironment(profile, environment) {
   if (environment.NODE_ENV !== "production") {
     issues.push("NODE_ENV must be production");
   }
+  if (environment.SEMFORGE_SERVICE !== profile) {
+    issues.push(`SEMFORGE_SERVICE must equal ${profile}`);
+  }
   if ((environment.PGSSLMODE ?? "verify-full") !== "verify-full") {
     issues.push("PGSSLMODE must be verify-full in production");
   }
@@ -73,6 +76,17 @@ export function validateRuntimeEnvironment(profile, environment) {
     }
     if (DATABASE_KEYS.has(key) && !value.trim().startsWith("postgresql://")) {
       issues.push(`${key} must use postgresql://`);
+      continue;
+    }
+    if (DATABASE_KEYS.has(key)) {
+      try {
+        const sslMode = new URL(value).searchParams.get("sslmode");
+        if (sslMode !== null && sslMode !== "verify-full") {
+          issues.push(`${key} sslmode must be verify-full when present`);
+        }
+      } catch {
+        issues.push(`${key} must be a valid PostgreSQL URL`);
+      }
     }
   }
   if (

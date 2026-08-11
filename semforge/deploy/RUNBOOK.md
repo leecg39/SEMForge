@@ -5,6 +5,13 @@
 
 이 문서는 관리형 PostgreSQL·S3 호환 객체 저장소·컨테이너 플랫폼에 적용할 절차 예시다. 저장소의 명령은 외부 시스템을 생성하거나 변경하지 않는다. 운영자는 실제 공급자 문서와 변경 승인을 함께 사용해야 한다.
 
+## 0. 이미지 계약
+
+- `Dockerfile`은 Node 24의 `web`, `worker`, `migrator` target을 제공한다. 세 target 모두 UID/GID 10001 `semforge`로 실행한다.
+- web은 Next standalone 서버만 포함한다. worker와 migrator는 production dependency만 설치하며 `SEMFORGE_SERVICE`가 각각 `web`, `worker`, `migrate`와 일치하지 않으면 시작하지 않는다.
+- runtime base의 `/usr/bin/chromium`과 Noto Sans CJK KR은 후속 PDF renderer가 동일한 실행 자산을 사용하도록 고정한다. Chromium sandbox 설정을 약화하는 플래그는 배포 설정에 하드코딩하지 않는다.
+- staging에서는 `docker compose build web worker release`로 세 target을 만들고 `docker compose up`의 release 완료 조건을 확인한다. 운영에서는 각 image를 registry digest로 고정한다.
+
 ## 1. Release gate와 migration-first 순서
 
 1. web/worker/migrator 이미지를 같은 커밋에서 만들고 immutable digest와 SBOM을 기록한다. 태그만으로 배포하지 않는다.

@@ -14,7 +14,9 @@ test("JSON 로그는 상관관계 필드를 고정하고 token, billing key, PII
     write: (line) => output.push(line),
   });
 
-  logger.error("provider request failed for owner@example.com", {
+  logger.error(
+    "provider request failed access_token=message-token-must-not-leak for owner@example.com",
+    {
     requestId: "req-01234567",
     workspaceId: "53000000-0000-4000-8000-000000000001",
     jobId: "73000000-0000-4000-8000-000000000001",
@@ -29,7 +31,8 @@ test("JSON 로그는 상관관계 필드를 고정하고 token, billing key, PII
       phone: "010-1234-5678",
       ipAddress: "203.0.113.44",
     },
-  });
+    },
+  );
 
   assert.equal(output.length, 1);
   const record = JSON.parse(output[0]!) as Record<string, unknown>;
@@ -56,6 +59,7 @@ test("JSON 로그는 상관관계 필드를 고정하고 token, billing key, PII
   const serialized = output[0]!;
   for (const secret of [
     "provider-token-must-not-leak",
+    "message-token-must-not-leak",
     "bearer-token-must-not-leak",
     "db-password-must-not-leak",
     "billing-key-must-not-leak",

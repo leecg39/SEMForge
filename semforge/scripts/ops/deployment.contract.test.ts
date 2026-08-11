@@ -26,6 +26,16 @@ test("Dockerfile은 Node 24 web/worker/migrator target과 non-root Chromium/Noto
   assert.match(dockerfile, /ENTRYPOINT \["\/usr\/bin\/tini"/u);
   assert.match(dockerfile, /USER semforge/u);
   assert.match(dockerfile, /\.next\/standalone/u);
+  const commonRuntime = dockerfile.split("FROM runtime-base AS web", 1)[0]!;
+  assert.doesNotMatch(commonRuntime, /HOSTNAME=0\.0\.0\.0/u);
+  assert.match(dockerfile, /FROM runtime-base AS web[\s\S]*HOSTNAME=0\.0\.0\.0/u);
+});
+
+test("production worker registry는 collectors와 immutable report snapshot을 모두 실행한다", async () => {
+  const worker = await source("scripts/ops/worker.ts");
+
+  assert.match(worker, /createRuntimeReportGenerationJobHandler/u);
+  assert.match(worker, /"report\.snapshot"/u);
 });
 
 test("entrypoint와 compose는 migration 성공 뒤 web/worker를 exec하고 readiness로 승격한다", async () => {

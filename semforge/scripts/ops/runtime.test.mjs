@@ -13,6 +13,7 @@ import {
 
 const validWebEnvironment = {
   NODE_ENV: "production",
+  SEMFORGE_SERVICE: "web",
   PGSSLMODE: "verify-full",
   DATABASE_URL: "postgresql://web:password@db.example.com/semforge",
   AUTH_DATABASE_URL: "postgresql://auth:password@db.example.com/semforge",
@@ -58,6 +59,7 @@ test("production preflight는 PostgreSQL verify-full 외 TLS 설정을 거부한
   assert.throws(
     () => validateRuntimeEnvironment("worker", {
       ...validWebEnvironment,
+      SEMFORGE_SERVICE: "worker",
       PGSSLMODE: "require",
     }),
     (error) => {
@@ -68,12 +70,42 @@ test("production preflight는 PostgreSQL verify-full 외 TLS 설정을 거부한
   );
 });
 
+test("production preflight는 DSN query의 sslmode 우회를 거부한다", () => {
+  assert.throws(
+    () => validateRuntimeEnvironment("worker", {
+      ...validWebEnvironment,
+      SEMFORGE_SERVICE: "worker",
+      WORKER_DATABASE_URL:
+        "postgresql://worker:password@db.example.com/semforge?sslmode=disable",
+    }),
+    (error) => {
+      assert.ok(error instanceof RuntimeConfigurationError);
+      assert.deepEqual(error.issues, [
+        "WORKER_DATABASE_URL sslmode must be verify-full when present",
+      ]);
+      return true;
+    },
+  );
+});
+
 test("migration preflight는 owner DSN만 요구하고 서비스 secret을 요구하지 않는다", () => {
   assert.doesNotThrow(() => validateRuntimeEnvironment("migrate", {
     NODE_ENV: "production",
+    SEMFORGE_SERVICE: "migrate",
     PGSSLMODE: "verify-full",
     MIGRATION_DATABASE_URL: "postgresql://owner:password@db.example.com/semforge",
   }));
+});
+
+test("preflight는 image profile과 SEMFORGE_SERVICE 불일치를 거부한다", () => {
+  assert.throws(
+    () => validateRuntimeEnvironment("worker", validWebEnvironment),
+    (error) => {
+      assert.ok(error instanceof RuntimeConfigurationError);
+      assert.deepEqual(error.issues, ["SEMFORGE_SERVICE must equal worker"]);
+      return true;
+    },
+  );
 });
 
 test("SIGTERM과 SIGINT는 worker AbortSignal을 한 번만 중단하고 listener를 정리한다", () => {

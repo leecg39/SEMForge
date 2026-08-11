@@ -35,7 +35,7 @@ function redactText(value: string): string {
       `$1${REDACTED}@`,
     )
     .replace(
-      /\b(token|api[_-]?key|billing[_-]?key|password|secret)=([^&\s]+)/giu,
+      /((?:(?:access|refresh|id)[_-]?)?token|api[_-]?key|billing[_-]?key|client[_-]?secret|password|secret)=([^&\s]+)/giu,
       `$1=${REDACTED}`,
     )
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/giu, REDACTED)

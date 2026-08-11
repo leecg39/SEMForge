@@ -155,4 +155,30 @@ test("worker profile은 worker DB와 collector secret만 요구한다", () => {
       return true;
     },
   );
+
+  assert.throws(
+    () => parseServerEnv({
+      ...workerEnv,
+      WORKER_DATABASE_URL:
+        "postgresql://worker:test@db.example.com:5432/semforge?sslmode=disable",
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof EnvironmentValidationError);
+      assert.deepEqual(error.issues, [
+        "WORKER_DATABASE_URL sslmode must be verify-full when present",
+      ]);
+      return true;
+    },
+  );
+});
+
+test("build profile은 image build 중 운영 secret을 읽지 않는다", () => {
+  const env = parseServerEnv({
+    NODE_ENV: "production",
+    SEMFORGE_SERVICE: "build",
+    PGSSLMODE: "verify-full",
+  });
+
+  assert.equal(env.SEMFORGE_SERVICE, "build");
+  assert.equal(env.DATABASE_URL, undefined);
 });
