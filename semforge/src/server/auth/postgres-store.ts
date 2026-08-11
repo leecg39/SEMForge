@@ -534,7 +534,7 @@ export class PostgresAuthStore implements AuthStore {
           throw new Error("비밀번호 재설정 outbox workspace를 찾을 수 없습니다.");
         }
 
-        const [delivery] = await tx
+        await tx
           .insert(outbox)
           .values({
             workspaceId: membership.workspaceId,
@@ -548,11 +548,7 @@ export class PostgresAuthStore implements AuthStore {
             idempotencyKey: `password-reset:${reset.id}`,
             availableAt: input.now,
             createdAt: input.now,
-          })
-          .returning({ id: outbox.id });
-        if (!delivery) {
-          throw new Error("비밀번호 재설정 outbox를 예약하지 못했습니다.");
-        }
+          });
       }
       return reset;
     });

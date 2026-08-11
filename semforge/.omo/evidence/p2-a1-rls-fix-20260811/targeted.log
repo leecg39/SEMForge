@@ -1,0 +1,11 @@
+✔ auth role은 pre-tenant 인증 트랜잭션에 필요한 최소 권한과 RLS 정책만 가진다 (4599.240667ms)
+✔ auth role은 password reset outbox를 INSERT만 할 수 있고 tenant outbox payload를 SELECT할 수 없다 (45.439875ms)
+✔ password reset 생성은 reset token row와 이메일 outbox를 같은 auth transaction에 예약한다 (4545.092334ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5909.206333

@@ -225,8 +225,6 @@ test("auth role은 pre-tenant 인증 트랜잭션에 필요한 최소 권한과 
     "invites:SELECT",
     "memberships:INSERT",
     "memberships:SELECT",
-    "outbox:INSERT",
-    "outbox:SELECT",
     "password_resets:INSERT",
     "password_resets:SELECT",
     "password_resets:UPDATE",
@@ -249,22 +247,110 @@ test("auth role은 pre-tenant 인증 트랜잭션에 필요한 최소 권한과 
     ["accepted_at", "accepted_by_user_id", "accepted_workspace_id"],
   );
 
-  const policies = await pg.query<{ tablename: string; roles: string[] }>(
-    "select distinct tablename, roles from pg_policies where 'semforge_auth' = any(roles) order by tablename",
+  const outboxInsertColumns = await pg.query<{ column_name: string }>(
+    "select column_name from information_schema.role_column_grants where grantee = 'semforge_auth' and table_schema = 'public' and table_name = 'outbox' and privilege_type = 'INSERT' order by column_name",
   );
   assert.deepEqual(
-    policies.rows.map((policy) => policy.tablename),
+    outboxInsertColumns.rows.map((grant) => grant.column_name),
+    ["available_at", "created_at", "idempotency_key", "payload", "topic", "workspace_id"],
+  );
+
+  const policies = await pg.query<{ tablename: string; cmd: string; roles: string[] }>(
+    "select distinct tablename, cmd, roles from pg_policies where 'semforge_auth' = any(roles) order by tablename, cmd",
+  );
+  assert.deepEqual(
+    policies.rows.map((policy) => `${policy.tablename}:${policy.cmd}`),
     [
-      "auth_action_throttles",
-      "invites",
-      "memberships",
-      "outbox",
-      "password_resets",
-      "sessions",
-      "users",
-      "workspaces",
+      "auth_action_throttles:DELETE",
+      "auth_action_throttles:INSERT",
+      "auth_action_throttles:SELECT",
+      "auth_action_throttles:UPDATE",
+      "invites:SELECT",
+      "invites:UPDATE",
+      "memberships:INSERT",
+      "memberships:SELECT",
+      "outbox:INSERT",
+      "password_resets:INSERT",
+      "password_resets:SELECT",
+      "password_resets:UPDATE",
+      "sessions:DELETE",
+      "sessions:INSERT",
+      "sessions:SELECT",
+      "sessions:UPDATE",
+      "users:INSERT",
+      "users:SELECT",
+      "users:UPDATE",
+      "workspaces:INSERT",
+      "workspaces:SELECT",
     ],
   );
+});
+
+test("auth role은 password reset outbox를 INSERT만 할 수 있고 tenant outbox payload를 SELECT할 수 없다", async () => {
+  const workspaceId = "00000000-0000-4000-8000-0000000000e1";
+  const userId = "00000000-0000-4000-8000-0000000000e2";
+  const otherWorkspaceId = "00000000-0000-4000-8000-0000000000e3";
+  await pg.query(
+    "insert into workspaces (id, name, slug) values ($1, 'Auth Outbox', 'auth-outbox'), ($2, 'Other Outbox', 'other-outbox')",
+    [workspaceId, otherWorkspaceId],
+  );
+  await pg.query(
+    "insert into users (id, email, password_hash) values ($1, 'reset-outbox-auth@example.com', 'password-hash')",
+    [userId],
+  );
+  await pg.query(
+    "insert into memberships (workspace_id, user_id, role) values ($1, $2, 'owner')",
+    [workspaceId, userId],
+  );
+  await pg.query(
+    `insert into outbox (workspace_id, topic, payload, idempotency_key)
+     values ($1, 'email.password_reset', '{"secret":"other-workspace"}'::jsonb, 'other-secret')`,
+    [otherWorkspaceId],
+  );
+
+  await pg.query("begin");
+  try {
+    await pg.query("set local role semforge_auth");
+    await pg.query(
+      `insert into password_resets (user_id, token_hash, expires_at)
+       values ($1, repeat('c', 64), now() + interval '1 hour')`,
+      [userId],
+    );
+    await pg.query(
+      `insert into outbox (workspace_id, topic, payload, idempotency_key)
+       values ($1, 'email.password_reset', '{"kind":"password_reset"}'::jsonb, 'password-reset-test')`,
+      [workspaceId],
+    );
+
+    await pg.query("savepoint outbox_wrong_topic_denied");
+    await assert.rejects(
+      pg.query(
+        `insert into outbox (workspace_id, topic, payload, idempotency_key)
+         values ($1, 'billing.charge', '{"kind":"wrong_topic"}'::jsonb, 'wrong-topic')`,
+        [workspaceId],
+      ),
+    );
+    await pg.query("rollback to savepoint outbox_wrong_topic_denied");
+
+    await pg.query("savepoint outbox_select_denied");
+    await assert.rejects(
+      pg.query("select payload from outbox where workspace_id in ($1, $2)", [
+        workspaceId,
+        otherWorkspaceId,
+      ]),
+    );
+    await pg.query("rollback to savepoint outbox_select_denied");
+    await pg.query("commit");
+  } catch (error) {
+    await pg.query("rollback");
+    throw error;
+  }
+
+  const visibleToOwner = await pg.query<{ idempotency_key: string }>(
+    "select idempotency_key from outbox where workspace_id = $1 and idempotency_key = 'password-reset-test'",
+    [workspaceId],
+  );
+  assert.deepEqual(visibleToOwner.rows, [{ idempotency_key: "password-reset-test" }]);
 });
 
 test("auth role은 초대 intent에서 신규 workspace·owner membership·session을 원자 생성한다", async () => {

@@ -644,7 +644,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON sessions TO semforge_auth;--> statement-
 GRANT SELECT, INSERT, UPDATE ON password_resets TO semforge_auth;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON auth_action_throttles TO semforge_auth;--> statement-breakpoint
 GRANT SELECT, INSERT ON workspaces, memberships TO semforge_auth;--> statement-breakpoint
-GRANT SELECT, INSERT ON outbox TO semforge_auth;--> statement-breakpoint
+GRANT INSERT (workspace_id, topic, payload, idempotency_key, available_at, created_at) ON outbox TO semforge_auth;--> statement-breakpoint
 GRANT SELECT ON invites TO semforge_operator;--> statement-breakpoint
 GRANT INSERT (email, token_hash, workspace_name, workspace_slug, expires_at) ON invites TO semforge_operator;--> statement-breakpoint
 GRANT UPDATE (superseded_at) ON invites TO semforge_operator;--> statement-breakpoint
@@ -726,8 +726,8 @@ ALTER TABLE password_resets FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY password_resets_auth_select ON password_resets FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
 CREATE POLICY password_resets_auth_insert ON password_resets FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY password_resets_auth_update ON password_resets FOR UPDATE TO semforge_auth USING (true) WITH CHECK (true);--> statement-breakpoint
-CREATE POLICY outbox_auth_select ON outbox FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
-CREATE POLICY outbox_auth_insert ON outbox FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY outbox_auth_insert ON outbox FOR INSERT TO semforge_auth
+  WITH CHECK (topic = 'email.password_reset');--> statement-breakpoint
 ALTER TABLE auth_action_throttles ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE auth_action_throttles FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY auth_action_throttles_auth_select ON auth_action_throttles FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
