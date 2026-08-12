@@ -108,6 +108,10 @@
       "route": "/api/v1/billing/subscription"
     },
     {
+      "file": "src/app/api/v1/insights/naver/route.ts",
+      "route": "/api/v1/insights/naver"
+    },
+    {
       "file": "src/app/api/v1/integrations/gsc/bindings/route.ts",
       "route": "/api/v1/integrations/gsc/bindings"
     },
@@ -164,6 +168,10 @@
       "route": "/api/v1/tracking/[trackingId]"
     },
     {
+      "file": "src/app/api/v1/visibility/aio/route.ts",
+      "route": "/api/v1/visibility/aio"
+    },
+    {
       "file": "src/app/api/v1/webhooks/toss/route.ts",
       "route": "/api/v1/webhooks/toss"
     },
@@ -177,5 +185,5 @@
     }
   ],
   "pageCount": 14,
-  "routeCount": 29
+  "routeCount": 31
 }
