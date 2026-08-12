@@ -630,7 +630,7 @@ test("인증 사용자 요청은 tenant service, Toss webhook은 global service�
 });
 
 for (const state of ["blocking", "erased"] as const) {
-  test(`${state} privacy fence는 checkout/authorize/retry/cancel 전체를 409로 막고 tenant service를 호출하지 않는다`, async (t) => {
+  test(`${state} privacy fence는 checkout/summary/authorize/retry/cancel 전체를 409로 막고 tenant service를 호출하지 않는다`, async (t) => {
     let serviceCalls = 0;
     let fenceCalls = 0;
     const blockedService = serviceStub({
@@ -679,6 +679,7 @@ for (const state of ["blocking", "erased"] as const) {
     };
     const requests = [
       ["checkout", () => handlers.checkout(new Request("https://app.semforge.example/api/v1/billing/checkout"))],
+      ["summary", () => handlers.summary(new Request("https://app.semforge.example/api/v1/billing/subscription"))],
       ["authorize", () => handlers.authorize(new Request("https://app.semforge.example/api/v1/billing/authorize", {
         method: "POST",
         headers: jsonHeaders,
@@ -756,7 +757,7 @@ test("canonical workspace를 찾지 못한 webhook은 lookup race를 재시도�
   assert.equal(webhookCalls, 0);
 });
 
-test("billing summary는 fence 없이 읽고 active canonical webhook만 fence 안에서 법정 ledger 경로를 유지한다", async () => {
+test("active billing summary는 fence 안에서 읽고 canonical webhook도 fence 안에서 법정 ledger 경로를 유지한다", async () => {
   let fenceCalls = 0;
   let summaryCalls = 0;
   let webhookCalls = 0;
@@ -802,7 +803,7 @@ test("billing summary는 fence 없이 읽고 active canonical webhook만 fence �
   assert.equal(webhook.status, 200);
   assert.equal(summaryCalls, 1);
   assert.equal(webhookCalls, 1);
-  assert.equal(fenceCalls, 1);
+  assert.equal(fenceCalls, 2);
 });
 
 for (const state of ["blocking", "erased"] as const) {

@@ -353,7 +353,7 @@ test("account_created는 GSC read/write 직접 API 우회를 차단하고 servic
 });
 
 for (const state of ["blocking", "erased"] as const) {
-  test(`${state} privacy fence는 GSC provider/write API를 409로 막고 service 호출을 0으로 유지한다`, async (t) => {
+  test(`${state} privacy fence는 GSC read/provider/write API를 409로 막고 service 호출을 0으로 유지한다`, async (t) => {
     let serviceCalls = 0;
     let fenceCalls = 0;
     const handlers = createGscRouteHandlers({
@@ -373,6 +373,10 @@ for (const state of ["blocking", "erased"] as const) {
             userId: principal.userId,
             label: "blocked",
           });
+        },
+        async listConnections() {
+          serviceCalls += 1;
+          return [];
         },
         async completeCallback(input) {
           serviceCalls += 1;
@@ -398,6 +402,7 @@ for (const state of ["blocking", "erased"] as const) {
         headers: { "content-type": "application/json", origin: "https://semforge.example" },
         body: JSON.stringify({ label: "Blocked GSC" }),
       }), undefined)],
+      ["connections", () => handlers.connections.GET(new Request("https://semforge.example/api/v1/integrations/gsc/connections"), undefined)],
       ["callback", () => handlers.callback.GET(new Request("https://semforge.example/api/v1/integrations/gsc/callback?code=code&state=state"), undefined)],
       ["properties", () => handlers.properties.GET(new Request(`https://semforge.example/api/v1/integrations/gsc/connections/${connectionId}/properties`), { params: Promise.resolve({ connectionId }) })],
       ["binding", () => handlers.bindings.POST(new Request("https://semforge.example/api/v1/integrations/gsc/bindings", {
@@ -427,16 +432,16 @@ for (const state of ["blocking", "erased"] as const) {
   });
 }
 
-test("privacy blocking 중에도 GSC connection 목록 read-only API는 shared fence 없이 조회한다", async () => {
+test("active privacy fence 안에서 GSC connection 목록 read-only API를 조회한다", async () => {
   let fenceCalls = 0;
   let listCalls = 0;
   const handlers = createGscRouteHandlers({
     requireAuth: async () => principal,
     authorizeBilling: allowBillingAccess,
     workspaceOperations: {
-      async withShared() {
+      async withShared(_workspaceId, operation) {
         fenceCalls += 1;
-        return { disposition: "skipped", state: "blocking" };
+        return { disposition: "executed", value: await operation() };
       },
     },
     getService: () => service({
@@ -454,5 +459,5 @@ test("privacy blocking 중에도 GSC connection 목록 read-only API는 shared f
 
   assert.equal(response.status, 200);
   assert.equal(listCalls, 1);
-  assert.equal(fenceCalls, 0);
+  assert.equal(fenceCalls, 1);
 });

@@ -363,11 +363,13 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
         csrf: false,
         roles: ["owner", "admin", "member"],
       });
-      const summary = await options.getService("tenant").getSummary({
-        workspaceId: principal.workspaceId,
-      });
       const requestId = requestIdFor(principal, apiContextRequestId);
-      return { data: serializeSummary(summary), requestId };
+      return runWorkspaceOperation(principal.workspaceId, async () => {
+        const summary = await options.getService("tenant").getSummary({
+          workspaceId: principal.workspaceId,
+        });
+        return { data: serializeSummary(summary), requestId };
+      });
     }),
 
     authorize: (request: Request) => api(request, async (apiContextRequestId) => {

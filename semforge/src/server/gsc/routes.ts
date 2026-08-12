@@ -208,10 +208,15 @@ export function createGscRouteHandlers(options: GscRouteHandlerOptions) {
           requestId: apiContext.requestId,
         });
         await requireBilling(principal.workspaceId, "workspace:read");
-        const connections = await options.getService().listConnections({
-          workspaceId: principal.workspaceId,
-        });
-        return apiSuccess({ items: connections.map(publicConnection) });
+        try {
+          const connections = await runWorkspaceOperation(principal.workspaceId, () =>
+            options.getService().listConnections({
+              workspaceId: principal.workspaceId,
+            }));
+          return apiSuccess({ items: connections.map(publicConnection) });
+        } catch (error) {
+          mapGscError(error);
+        }
       }),
     },
 
