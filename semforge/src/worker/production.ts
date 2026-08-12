@@ -7,6 +7,7 @@ import type { Pool } from "pg";
 import { getPool } from "@/db/client";
 import { decryptSecret, decryptSecretOrThrow, encryptSecret, type SecretCrypto } from "@/lib/crypto";
 import { getServerEnv, type ServerEnv } from "@/lib/env";
+import type { JobHandler } from "@/server/jobs/contracts";
 import { createGscSearchAnalyticsClient } from "@/server/collectors/gsc/client";
 import { createGscWeeklyCollector } from "@/server/collectors/gsc/collector";
 import { createDedicatedGscCollectionJobHandler } from "@/server/collectors/gsc/handler";
@@ -19,9 +20,14 @@ import { createNaverCollectionJobHandler } from "@/server/collectors/naver/handl
 import { createPostgresNaverObservationStore } from "@/server/collectors/naver/postgres-store";
 import { createNaverProductionProvider } from "@/server/providers/naver/production";
 import { createTalordataGoogleProvider } from "@/server/providers/talordata/provider";
+import { createRuntimeReportJobHandlers } from "@/server/reports/runtime";
 import { CollectionOutboxRelayRuntime } from "@/worker/relay-runtime";
-import { PostgresWeeklyCollectionScheduler } from "@/worker/scheduler";
-import { WorkerRuntime } from "@/worker/runtime";
+import { createBillingAccessGuardedJobHandler } from "@/worker/billing-gate";
+import {
+  PostgresWeeklyCollectionScheduler,
+  PostgresWeeklyReportScheduler,
+} from "@/worker/scheduler";
+import { WorkerRuntime, type WorkerRuntimeOptions } from "@/worker/runtime";
 
 function requireEnv<K extends keyof ServerEnv>(env: ServerEnv, key: K): NonNullable<ServerEnv[K]> {
   const value = env[key];
@@ -43,14 +49,32 @@ function processIdentity(kind: string): string {
 
 export interface ProductionWorkerComposition {
   readonly runtime: WorkerRuntime;
+  readonly authPool: Pool;
   readonly dispatcherPool: Pool;
   readonly workerPool: Pool;
   close(): Promise<void>;
 }
 
+type ProductionJobHandler = WorkerRuntimeOptions["handlers"][string];
+
+export function composeProductionWorkerJobHandlers(input: {
+  readonly google: ProductionJobHandler;
+  readonly naver: ProductionJobHandler;
+  readonly gsc: ProductionJobHandler;
+  readonly reports: Readonly<Record<string, ProductionJobHandler>>;
+}) {
+  return {
+    "collect.google": input.google,
+    "collect.naver": input.naver,
+    "collect.gsc.weekly": input.gsc,
+    ...input.reports,
+  };
+}
+
 export function createProductionWorkerComposition(
   env: ServerEnv = getServerEnv(),
 ): ProductionWorkerComposition {
+  const authPool = getPool("auth");
   const dispatcherPool = getPool("dispatcher");
   const workerPool = getPool("worker");
   const google = createGoogleCollectionJobHandler({
@@ -93,23 +117,36 @@ export function createProductionWorkerComposition(
       observationStore: createPostgresGscObservationStore(client),
     }),
   });
+  const reports = createRuntimeReportJobHandlers({
+    workerDatabase: workerPool,
+    authDatabase: authPool,
+    env,
+  });
+  const billingGuard = <TPayload extends Record<string, unknown>>(delegate: JobHandler<TPayload>) =>
+    createBillingAccessGuardedJobHandler({ database: workerPool, delegate });
+  const handlers = composeProductionWorkerJobHandlers({
+    google: billingGuard(google),
+    naver: billingGuard(naver),
+    gsc: billingGuard(gsc),
+    reports: {
+      ...reports,
+      "report.snapshot": billingGuard(reports["report.snapshot"]),
+    },
+  });
   const runtime = new WorkerRuntime({
     database: dispatcherPool,
     tenantDatabase: workerPool,
-    handlers: {
-      "collect.google": google,
-      "collect.naver": naver,
-      "collect.gsc.weekly": gsc,
-    },
+    handlers,
     workerId: processIdentity("worker"),
     concurrency: Math.min(10, env.PGPOOL_MAX),
   });
   return {
     runtime,
+    authPool,
     dispatcherPool,
     workerPool,
     async close() {
-      await Promise.all([dispatcherPool.end(), workerPool.end()]);
+      await Promise.all([authPool.end(), dispatcherPool.end(), workerPool.end()]);
     },
   };
 }
@@ -131,6 +168,15 @@ export function createProductionSchedulerComposition(env: ServerEnv = getServerE
   const schedulerPool = getPool("scheduler");
   return {
     scheduler: new PostgresWeeklyCollectionScheduler(schedulerPool),
+    async close() { await schedulerPool.end(); },
+  };
+}
+
+export function createProductionReportSchedulerComposition(env: ServerEnv = getServerEnv()) {
+  void env;
+  const schedulerPool = getPool("scheduler");
+  return {
+    scheduler: new PostgresWeeklyReportScheduler(schedulerPool),
     async close() { await schedulerPool.end(); },
   };
 }

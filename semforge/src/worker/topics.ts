@@ -12,3 +12,20 @@ export type CollectionOutboxTopic = keyof typeof COLLECTION_TOPIC_TO_JOB_TYPE;
 export const COLLECTION_OUTBOX_TOPICS = Object.freeze(
   Object.keys(COLLECTION_TOPIC_TO_JOB_TYPE) as CollectionOutboxTopic[],
 );
+
+export const REPORT_TOPIC_TO_JOB_TYPE = {
+  "report.snapshot": "report.snapshot",
+  "report.pdf.render": "report.pdf.render",
+  "report.email.deliver": "report.email.deliver",
+} as const;
+
+export const PRODUCTION_TOPIC_TO_JOB_TYPE = {
+  ...COLLECTION_TOPIC_TO_JOB_TYPE,
+  ...REPORT_TOPIC_TO_JOB_TYPE,
+} as const;
+
+export type ProductionOutboxTopic = keyof typeof PRODUCTION_TOPIC_TO_JOB_TYPE;
+
+export const PRODUCTION_OUTBOX_TOPICS = Object.freeze(
+  Object.keys(PRODUCTION_TOPIC_TO_JOB_TYPE) as ProductionOutboxTopic[],
+);

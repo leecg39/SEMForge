@@ -1,0 +1,39 @@
+{
+  "workspaces": 3,
+  "sites": 9,
+  "collection": {
+    "google": 9,
+    "naver": 9,
+    "gsc": 0
+  },
+  "outbox": [
+    {
+      "topic": "collection.google.weekly",
+      "count": 9
+    },
+    {
+      "topic": "collection.naver.weekly",
+      "count": 9
+    }
+  ],
+  "reportSnapshots": 0
+}
+node:internal/process/promises:394
+    triggerUncaughtException(err, true /* fromPromise */);
+    ^
+
+AssertionError [ERR_ASSERTION]: active site마다 report.snapshot outbox가 1건이어야 한다
+
+0 !== 9
+
+    at main (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/.omo/evidence/phase4-final-pg-docker-qa/red-report-scheduler-repro.ts:63:10)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 0,
+  expected: 9,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v24.19.0

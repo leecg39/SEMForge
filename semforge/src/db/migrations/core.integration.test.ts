@@ -123,6 +123,92 @@ test("web, dispatcher, scheduler, worker, billing role은 BYPASSRLS가 아니다
   );
 });
 
+test("web role은 billing 고객·결제수단·구독 테이블 권한을 전혀 갖지 않는다", async () => {
+  const grants = await pg.query<{ table_name: string; privilege_type: string }>(
+    `select table_name, privilege_type
+       from information_schema.role_table_grants
+      where grantee = 'semforge_web'
+        and table_schema = 'public'
+        and table_name in ('billing_customers', 'payment_methods', 'subscriptions')
+      order by table_name, privilege_type`,
+  );
+  assert.deepEqual(grants.rows, []);
+
+  const workspaceId = "00000000-0000-4000-8000-0000000000f1";
+  const customerId = "00000000-0000-4000-8000-0000000000f2";
+  const subscriptionId = "00000000-0000-4000-8000-0000000000f3";
+  await pg.query(
+    "insert into workspaces (id, name, slug) values ($1, 'Web Billing Denied', 'web-billing-denied')",
+    [workspaceId],
+  );
+  await pg.query(
+    "insert into billing_customers (id, workspace_id, toss_customer_key) values ($1, $2, 'web-denied')",
+    [customerId, workspaceId],
+  );
+  await pg.query(
+    "insert into subscriptions (id, workspace_id, billing_customer_id, status) values ($1, $2, $3, 'active')",
+    [subscriptionId, workspaceId, customerId],
+  );
+
+  await pg.query("begin");
+  try {
+    await pg.query("set local role semforge_web");
+    await pg.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
+    const statements = [
+      "select status from subscriptions",
+      `insert into subscriptions (workspace_id, billing_customer_id, status)
+       values ('${workspaceId}', '${customerId}', 'active')`,
+      `update subscriptions set status = 'past_due' where id = '${subscriptionId}'`,
+      `delete from subscriptions where id = '${subscriptionId}'`,
+    ];
+    for (const [index, statement] of statements.entries()) {
+      await pg.query(`savepoint web_billing_denied_${index}`);
+      await assert.rejects(pg.query(statement), /permission denied/i);
+      await pg.query(`rollback to savepoint web_billing_denied_${index}`);
+    }
+  } finally {
+    await pg.query("rollback");
+  }
+});
+
+test("scheduler role은 최소 subscription/outbox 컬럼과 제한된 topic 정책만 가진다", async () => {
+  const subscriptionColumns = await pg.query<{ column_name: string }>(
+    `select column_name from information_schema.role_column_grants
+      where grantee = 'semforge_scheduler' and table_schema = 'public'
+        and table_name = 'subscriptions' and privilege_type = 'SELECT'
+      order by column_name`,
+  );
+  assert.deepEqual(subscriptionColumns.rows.map((row) => row.column_name), [
+    "current_period_end",
+    "status",
+    "workspace_id",
+  ]);
+
+  const outboxSelectColumns = await pg.query<{ column_name: string }>(
+    `select column_name from information_schema.role_column_grants
+      where grantee = 'semforge_scheduler' and table_schema = 'public'
+        and table_name = 'outbox' and privilege_type = 'SELECT'
+      order by column_name`,
+  );
+  assert.deepEqual(outboxSelectColumns.rows.map((row) => row.column_name), [
+    "idempotency_key",
+    "topic",
+    "workspace_id",
+  ]);
+
+  const policies = await pg.query<{ policyname: string; cmd: string }>(
+    `select policyname, cmd from pg_policies
+      where 'semforge_scheduler' = any(roles)
+        and tablename in ('outbox', 'subscriptions')
+      order by policyname`,
+  );
+  assert.deepEqual(policies.rows, [
+    { policyname: "outbox_scheduler_insert", cmd: "INSERT" },
+    { policyname: "outbox_scheduler_select", cmd: "SELECT" },
+    { policyname: "subscriptions_scheduler_read", cmd: "SELECT" },
+  ]);
+});
+
 test("worker role은 audit_events에 INSERT만 허용하고 기록을 읽을 수 없다", async () => {
   const workspaceId = "00000000-0000-4000-8000-0000000000cb";
   await pg.query(
@@ -206,6 +292,99 @@ test("worker role은 transaction-local workspace 밖 tenant row와 global queue�
   }
 });
 
+test("worker role은 자기 workspace report outbox 최소 컬럼만 INSERT하고 조회·수정·tenant 이탈은 거부된다", async () => {
+  const tenantA = "00000000-0000-4000-8000-000000000121";
+  const tenantB = "00000000-0000-4000-8000-000000000122";
+  await pg.query(
+    "insert into workspaces (id, name, slug) values ($1, 'Report Outbox A', 'report-outbox-a'), ($2, 'Report Outbox B', 'report-outbox-b')",
+    [tenantA, tenantB],
+  );
+
+  const insertColumns = await pg.query<{ column_name: string }>(
+    "select column_name from information_schema.role_column_grants where grantee = 'semforge_worker' and table_schema = 'public' and table_name = 'outbox' and privilege_type = 'INSERT' order by column_name",
+  );
+  assert.deepEqual(insertColumns.rows.map(({ column_name }) => column_name), [
+    "idempotency_key",
+    "payload",
+    "topic",
+    "workspace_id",
+  ]);
+  const tablePrivileges = await pg.query<{ privilege_type: string }>(
+    "select privilege_type from information_schema.role_table_grants where grantee = 'semforge_worker' and table_schema = 'public' and table_name = 'outbox' order by privilege_type",
+  );
+  assert.deepEqual(tablePrivileges.rows, []);
+  const policies = await pg.query<{ policyname: string; cmd: string; with_check: string | null }>(
+    "select policyname, cmd, with_check from pg_policies where tablename = 'outbox' and 'semforge_worker' = any(roles) order by policyname",
+  );
+  assert.equal(policies.rows.length, 1);
+  assert.equal(policies.rows[0]!.policyname, "outbox_worker_insert");
+  assert.equal(policies.rows[0]!.cmd, "INSERT");
+  assert.match(
+    policies.rows[0]!.with_check ?? "",
+    /workspace_id.*current_setting.*topic.*report\.pdf\.render.*report\.email\.deliver/u,
+  );
+
+  await pg.query("begin");
+  try {
+    await pg.query("set local role semforge_worker");
+    await pg.query("select set_config('app.workspace_id', $1, true)", [tenantA]);
+    await pg.query(
+      `insert into outbox (workspace_id, topic, payload, idempotency_key)
+       values ($1, 'report.pdf.render', '{"reportId":"00000000-0000-4000-8000-000000000123"}'::jsonb, 'report-outbox-own')`,
+      [tenantA],
+    );
+    await pg.query(
+      `insert into outbox (workspace_id, topic, payload, idempotency_key)
+       values ($1, 'report.email.deliver', '{"reportId":"00000000-0000-4000-8000-000000000123","recipient":"owner@example.test"}'::jsonb, 'report-outbox-email-own')`,
+      [tenantA],
+    );
+    await pg.query("savepoint worker_outbox_arbitrary_topic");
+    await assert.rejects(
+      pg.query(
+        `insert into outbox (workspace_id, topic, payload, idempotency_key)
+         values ($1, 'arbitrary.worker.topic', '{}'::jsonb, 'report-outbox-arbitrary')`,
+        [tenantA],
+      ),
+    );
+    await pg.query("rollback to savepoint worker_outbox_arbitrary_topic");
+    await pg.query("savepoint worker_outbox_cross_tenant");
+    await assert.rejects(
+      pg.query(
+        `insert into outbox (workspace_id, topic, payload, idempotency_key)
+         values ($1, 'report.pdf.render', '{}'::jsonb, 'report-outbox-cross')`,
+        [tenantB],
+      ),
+    );
+    await pg.query("rollback to savepoint worker_outbox_cross_tenant");
+    await pg.query("savepoint worker_outbox_select");
+    await assert.rejects(pg.query("select payload from outbox where workspace_id = $1", [tenantA]));
+    await pg.query("rollback to savepoint worker_outbox_select");
+    await pg.query("savepoint worker_outbox_update");
+    await assert.rejects(
+      pg.query(
+        "update outbox set last_error = 'forbidden' where workspace_id = $1 and idempotency_key = 'report-outbox-own'",
+        [tenantA],
+      ),
+    );
+    await pg.query("rollback to savepoint worker_outbox_update");
+    await pg.query("commit");
+  } catch (error) {
+    await pg.query("rollback");
+    throw error;
+  }
+
+  const stored = await pg.query<{ workspace_id: string; idempotency_key: string }>(
+    "select workspace_id, idempotency_key from outbox where idempotency_key like 'report-outbox-%' order by idempotency_key",
+  );
+  assert.deepEqual(stored.rows, [{
+    workspace_id: tenantA,
+    idempotency_key: "report-outbox-email-own",
+  }, {
+    workspace_id: tenantA,
+    idempotency_key: "report-outbox-own",
+  }]);
+});
+
 test("dispatcher role은 jobs/outbox만 전역 처리하고 tenant domain row는 읽지 못한다", async () => {
   await pg.query("begin");
   try {
@@ -231,17 +410,28 @@ test("dispatcher role은 jobs/outbox만 전역 처리하고 tenant domain row는
 
 test("scheduler role은 canonical collection outbox 입력 컬럼만 사용한다", async () => {
   const workspaceId = "00000000-0000-4000-8000-000000000114";
+  const siteId = "00000000-0000-4000-8000-000000000115";
+  const otherWorkspaceId = "00000000-0000-4000-8000-000000000116";
+  const otherSiteId = "00000000-0000-4000-8000-000000000117";
   await pg.query(
-    "insert into workspaces (id, name, slug) values ($1, 'Scheduler Guard', 'scheduler-guard')",
-    [workspaceId],
+    `insert into workspaces (id, name, slug)
+     values ($1, 'Scheduler Guard', 'scheduler-guard'),
+            ($2, 'Scheduler Other', 'scheduler-other')`,
+    [workspaceId, otherWorkspaceId],
+  );
+  await pg.query(
+    `insert into sites (id, workspace_id, name, domain)
+     values ($1, $2, 'Scheduler Guard', 'scheduler-guard.example'),
+            ($3, $4, 'Scheduler Other', 'scheduler-other.example')`,
+    [siteId, workspaceId, otherSiteId, otherWorkspaceId],
   );
   await pg.query("begin");
   try {
     await pg.query("set local role semforge_scheduler");
     await pg.query(
       `insert into outbox (workspace_id, topic, payload, idempotency_key)
-       values ($1, 'collection.google.weekly', '{}'::jsonb, 'scheduler-valid')`,
-      [workspaceId],
+       values ($1, 'collection.google.weekly', jsonb_build_object('siteId', $2::text), 'scheduler-valid')`,
+      [workspaceId, siteId],
     );
     await pg.query("savepoint scheduler_published_denied");
     await assert.rejects(
@@ -261,6 +451,15 @@ test("scheduler role은 canonical collection outbox 입력 컬럼만 사용한�
       ),
     );
     await pg.query("rollback to savepoint scheduler_non_collection_denied");
+    await pg.query("savepoint scheduler_cross_tenant_denied");
+    await assert.rejects(
+      pg.query(
+        `insert into outbox (workspace_id, topic, payload, idempotency_key)
+         values ($1, 'report.snapshot', jsonb_build_object('siteId', $2::text, 'cycleMonday', '2026-08-17'), 'scheduler-cross-tenant')`,
+        [workspaceId, otherSiteId],
+      ),
+    );
+    await pg.query("rollback to savepoint scheduler_cross_tenant_denied");
   } finally {
     await pg.query("rollback");
   }

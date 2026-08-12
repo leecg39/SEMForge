@@ -6,6 +6,7 @@ import { test } from "node:test";
 
 import {
   buildWeeklyReportSchedule,
+  cycleMondayForReportSnapshotRun,
   nextCollectionRetryAt,
 } from "@/server/reports/schedule";
 
@@ -42,4 +43,22 @@ test("수집 retry는 월요일 07:00 KST 이전에만 예약된다", () => {
   );
   assert.equal(nextCollectionRetryAt(new Date("2026-08-09T21:59:00.000Z"), 2 * 60_000, schedule), null);
   assert.equal(nextCollectionRetryAt(schedule.retryCutoffAt, 1, schedule), null);
+});
+
+test("report snapshot 실행은 KST 월요일의 cycleMonday를 지연 재실행에도 유지한다", () => {
+  assert.deepEqual(
+    [
+      "2026-08-16T23:00:00.000Z",
+      "2026-08-17T00:00:00.000Z",
+      "2026-08-17T14:59:59.999Z",
+    ].map((value) => cycleMondayForReportSnapshotRun(new Date(value))),
+    ["2026-08-17", "2026-08-17", "2026-08-17"],
+  );
+});
+
+test("report snapshot 실행은 KST 월요일이 아닌 시각을 거부한다", () => {
+  assert.throws(
+    () => cycleMondayForReportSnapshotRun(new Date("2026-08-16T22:59:59.999Z")),
+    /KST Monday/u,
+  );
 });

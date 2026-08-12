@@ -1,0 +1,122 @@
+# @TASK P4-O1-T1 - Migration-first, least-privilege container orchestration example
+# @SPEC docs/planning/06-tasks.md#p4-o1-t1--node-24-docker와-운영-도구
+name: semforge
+
+x-runtime: &runtime
+  init: true
+  networks: [backend]
+
+services:
+  release:
+    <<: *runtime
+    image: ${SEMFORGE_MIGRATOR_IMAGE:-semforge-migrator:local}
+    build:
+      context: .
+      target: migrator
+    env_file:
+      - path: ${SEMFORGE_MIGRATION_ENV_FILE:-deploy/env/migration.env}
+        required: true
+    environment:
+      SEMFORGE_SERVICE: migrate
+    restart: "no"
+
+  web:
+    <<: *runtime
+    image: ${SEMFORGE_WEB_IMAGE:-semforge-web:local}
+    build:
+      context: .
+      target: web
+    env_file:
+      - path: ${SEMFORGE_WEB_ENV_FILE:-deploy/env/web.env}
+        required: true
+    environment:
+      SEMFORGE_SERVICE: web
+    depends_on:
+      release:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:${SEMFORGE_PORT:-3000}:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/health/ready/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 15s
+      timeout: 3s
+      start_period: 20s
+      retries: 3
+    restart: unless-stopped
+
+  worker:
+    <<: *runtime
+    image: ${SEMFORGE_WORKER_IMAGE:-semforge-worker:local}
+    build:
+      context: .
+      target: worker
+    env_file:
+      - path: ${SEMFORGE_WORKER_ENV_FILE:-deploy/env/worker.env}
+        required: true
+    environment:
+      SEMFORGE_SERVICE: worker
+    depends_on:
+      release:
+        condition: service_completed_successfully
+    stop_grace_period: 45s
+    restart: unless-stopped
+
+  relay:
+    <<: *runtime
+    image: ${SEMFORGE_RELAY_IMAGE:-semforge-relay:local}
+    build:
+      context: .
+      target: relay
+    env_file:
+      - path: ${SEMFORGE_RELAY_ENV_FILE:-deploy/env/relay.env}
+        required: true
+    environment:
+      SEMFORGE_SERVICE: relay
+    depends_on:
+      release:
+        condition: service_completed_successfully
+    stop_grace_period: 45s
+    restart: unless-stopped
+
+  scheduler:
+    <<: *runtime
+    profiles: [scheduled]
+    image: ${SEMFORGE_SCHEDULER_IMAGE:-semforge-scheduler:local}
+    build:
+      context: .
+      target: scheduler
+    env_file:
+      - path: ${SEMFORGE_SCHEDULER_ENV_FILE:-deploy/env/scheduler.env}
+        required: true
+    environment:
+      SEMFORGE_SERVICE: scheduler
+    depends_on:
+      release:
+        condition: service_completed_successfully
+    restart: "no"
+
+  report-scheduler:
+    <<: *runtime
+    profiles: [scheduled]
+    image: ${SEMFORGE_SCHEDULER_IMAGE:-semforge-scheduler:local}
+    build:
+      context: .
+      target: scheduler
+    env_file:
+      - path: ${SEMFORGE_SCHEDULER_ENV_FILE:-deploy/env/scheduler.env}
+        required: true
+    environment:
+      SEMFORGE_SERVICE: scheduler
+    command: ["report-scheduler"]
+    depends_on:
+      release:
+        condition: service_completed_successfully
+    restart: "no"
+
+networks:
+  backend:
+    driver: bridge

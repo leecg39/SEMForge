@@ -1,0 +1,389 @@
+{
+  "fixture": "CDP Fetch interception for same-origin billing APIs; official SDK loader receives mocked window.TossPayments namespace; no Toss/Google provider request is allowed",
+  "ready": {
+    "network": {
+      "calls": [
+        {
+          "label": "ready",
+          "path": "/api/v1/billing/subscription",
+          "method": "GET",
+          "headers": {
+            "Accept": "application/json",
+            "Referer": "http://127.0.0.1:3474/app/billing/",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+            "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"macOS\""
+          },
+          "body": null
+        }
+      ],
+      "pending": null
+    },
+    "state": {
+      "url": "http://127.0.0.1:3474/app/billing/",
+      "alerts": [],
+      "bodyHasProviderMessage": false
+    },
+    "page": {
+      "url": "http://127.0.0.1:3474/app/billing/",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "w": 1440,
+      "h": 1000,
+      "sx": 0,
+      "sy": 0,
+      "pw": 1425,
+      "ph": 1250
+    }
+  },
+  "launch": {
+    "network": {
+      "calls": [
+        {
+          "label": "launch",
+          "path": "/api/v1/billing/checkout",
+          "method": "GET",
+          "headers": {
+            "Accept": "application/json",
+            "Referer": "http://127.0.0.1:3474/app/billing/",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+            "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"macOS\""
+          },
+          "body": null
+        }
+      ],
+      "pending": null
+    },
+    "toss": [
+      {
+        "op": "load",
+        "clientKey": "test_ck_browser_qa_mock"
+      },
+      {
+        "op": "payment",
+        "customerKey": "semforge_0198f06a1b4270008000000000000002"
+      },
+      {
+        "op": "requestBillingAuth",
+        "input": {
+          "method": "CARD",
+          "successUrl": "http://127.0.0.1:3474/app/billing?billing=success",
+          "failUrl": "http://127.0.0.1:3474/app/billing?billing=fail"
+        }
+      }
+    ],
+    "state": {
+      "alerts": [],
+      "button": "Toss 결제창 여는 중…",
+      "providerResources": []
+    }
+  },
+  "launchShot": "/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-browser-qa/semforge/.omo/evidence/phase4-final-browser-qa/screenshots/billing-cdp-sdk-launch.png",
+  "fail": {
+    "network": {
+      "calls": [
+        {
+          "label": "fail",
+          "path": "/api/v1/billing/subscription",
+          "method": "GET",
+          "headers": {
+            "Accept": "application/json",
+            "Referer": "http://127.0.0.1:3474/app/billing",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+            "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"macOS\""
+          },
+          "body": null
+        }
+      ],
+      "pending": null
+    },
+    "state": {
+      "url": "http://127.0.0.1:3474/app/billing",
+      "alerts": [
+        "카드 인증이 완료되지 않았습니다. 준비되면 다시 시도해 주세요."
+      ],
+      "bodyHasProviderMessage": false
+    },
+    "page": {
+      "url": "http://127.0.0.1:3474/app/billing",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "w": 1440,
+      "h": 1000,
+      "sx": 0,
+      "sy": 0,
+      "pw": 1425,
+      "ph": 1250
+    }
+  },
+  "success1": {
+    "network": {
+      "calls": [
+        {
+          "label": "success1",
+          "path": "/api/v1/billing/checkout",
+          "method": "GET",
+          "headers": {
+            "Accept": "application/json",
+            "Referer": "http://127.0.0.1:3474/app/billing",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+            "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"macOS\""
+          },
+          "body": null
+        },
+        {
+          "label": "success1",
+          "path": "/api/v1/billing/subscription",
+          "method": "GET",
+          "headers": {
+            "Accept": "application/json",
+            "Referer": "http://127.0.0.1:3474/app/billing",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+            "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"macOS\""
+          },
+          "body": null
+        },
+        {
+          "label": "success1",
+          "path": "/api/v1/billing/authorize",
+          "method": "POST",
+          "headers": {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Idempotency-Key": "semforge-billing-auth-v1_a633efc2851bd29728335a74c936562460e24aae6677dd3c480eb82026268584",
+            "Origin": "http://127.0.0.1:3474",
+            "Referer": "http://127.0.0.1:3474/app/billing",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+            "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"macOS\""
+          },
+          "body": "{\"authKey\":\"one-time-auth-key\",\"customerKey\":\"semforge_0198f06a1b4270008000000000000002\"}"
+        },
+        {
+          "label": "success1",
+          "path": "/api/v1/billing/subscription",
+          "method": "GET",
+          "headers": {
+            "Accept": "application/json",
+            "Referer": "http://127.0.0.1:3474/app/billing/",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+            "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"macOS\""
+          },
+          "body": null
+        }
+      ],
+      "pending": {
+        "url": "http://127.0.0.1:3474/app/billing",
+        "buttons": [
+          "첫 결제 확인 중…",
+          "기간 말 해지 예약"
+        ],
+        "alerts": []
+      }
+    },
+    "state": {
+      "url": "http://127.0.0.1:3474/app/billing/",
+      "alerts": [],
+      "bodyHasProviderMessage": false
+    },
+    "page": {
+      "url": "http://127.0.0.1:3474/app/billing/",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "w": 1440,
+      "h": 1000,
+      "sx": 0,
+      "sy": 0,
+      "pw": 1425,
+      "ph": 1250
+    }
+  },
+  "success2": {
+    "network": {
+      "calls": [
+        {
+          "label": "success2",
+          "path": "/api/v1/billing/checkout",
+          "method": "GET",
+          "headers": {
+            "Accept": "application/json",
+            "Referer": "http://127.0.0.1:3474/app/billing",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+            "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"macOS\""
+          },
+          "body": null
+        },
+        {
+          "label": "success2",
+          "path": "/api/v1/billing/subscription",
+          "method": "GET",
+          "headers": {
+            "Accept": "application/json",
+            "Referer": "http://127.0.0.1:3474/app/billing",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+            "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"macOS\""
+          },
+          "body": null
+        },
+        {
+          "label": "success2",
+          "path": "/api/v1/billing/authorize",
+          "method": "POST",
+          "headers": {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Idempotency-Key": "semforge-billing-auth-v1_a633efc2851bd29728335a74c936562460e24aae6677dd3c480eb82026268584",
+            "Origin": "http://127.0.0.1:3474",
+            "Referer": "http://127.0.0.1:3474/app/billing",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+            "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"macOS\""
+          },
+          "body": "{\"authKey\":\"one-time-auth-key\",\"customerKey\":\"semforge_0198f06a1b4270008000000000000002\"}"
+        },
+        {
+          "label": "success2",
+          "path": "/api/v1/billing/subscription",
+          "method": "GET",
+          "headers": {
+            "Accept": "application/json",
+            "Referer": "http://127.0.0.1:3474/app/billing/",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+            "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"macOS\""
+          },
+          "body": null
+        }
+      ],
+      "pending": {
+        "url": "http://127.0.0.1:3474/app/billing",
+        "buttons": [
+          "첫 결제 확인 중…",
+          "기간 말 해지 예약"
+        ],
+        "alerts": []
+      }
+    },
+    "state": {
+      "url": "http://127.0.0.1:3474/app/billing/",
+      "alerts": [],
+      "bodyHasProviderMessage": false
+    },
+    "page": {
+      "url": "http://127.0.0.1:3474/app/billing/",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "w": 1440,
+      "h": 1000,
+      "sx": 0,
+      "sy": 0,
+      "pw": 1425,
+      "ph": 1250
+    }
+  },
+  "mismatch": {
+    "network": {
+      "calls": [
+        {
+          "label": "mismatch",
+          "path": "/api/v1/billing/checkout",
+          "method": "GET",
+          "headers": {
+            "Accept": "application/json",
+            "Referer": "http://127.0.0.1:3474/app/billing",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+            "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"macOS\""
+          },
+          "body": null
+        },
+        {
+          "label": "mismatch",
+          "path": "/api/v1/billing/subscription",
+          "method": "GET",
+          "headers": {
+            "Accept": "application/json",
+            "Referer": "http://127.0.0.1:3474/app/billing",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+            "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"macOS\""
+          },
+          "body": null
+        }
+      ],
+      "pending": null
+    },
+    "state": {
+      "url": "http://127.0.0.1:3474/app/billing",
+      "alerts": [
+        "결제 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요."
+      ],
+      "bodyHasProviderMessage": false
+    },
+    "page": {
+      "url": "http://127.0.0.1:3474/app/billing",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "w": 1440,
+      "h": 1000,
+      "sx": 0,
+      "sy": 0,
+      "pw": 1425,
+      "ph": 1250
+    }
+  },
+  "duplicate": {
+    "network": {
+      "calls": [
+        {
+          "label": "duplicate",
+          "path": "/api/v1/billing/subscription",
+          "method": "GET",
+          "headers": {
+            "Accept": "application/json",
+            "Referer": "http://127.0.0.1:3474/app/billing",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+            "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"macOS\""
+          },
+          "body": null
+        }
+      ],
+      "pending": null
+    },
+    "state": {
+      "url": "http://127.0.0.1:3474/app/billing",
+      "alerts": [
+        "결제 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요."
+      ],
+      "bodyHasProviderMessage": false
+    },
+    "page": {
+      "url": "http://127.0.0.1:3474/app/billing",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "w": 1440,
+      "h": 1000,
+      "sx": 0,
+      "sy": 0,
+      "pw": 1425,
+      "ph": 1250
+    }
+  },
+  "providerNetworkEvents": []
+}

@@ -18,6 +18,12 @@ const principal = {
 
 function serviceStub(overrides: Partial<BillingHttpService> = {}): BillingHttpService {
   return {
+    async getCheckoutIdentity() {
+      return {
+        customerKey: "semforge_0198f06a1b4270008000000000000002",
+        subscriptionStatus: "account_created",
+      };
+    },
     async getSummary() {
       return { status: "active", amountKrw: 49_000 };
     },
@@ -45,6 +51,82 @@ function serviceStub(overrides: Partial<BillingHttpService> = {}): BillingHttpSe
     ...overrides,
   };
 }
+
+test("checkout GET은 owner/admin session tenant의 public clientKey·customerKey·고정 callback URL만 반환한다", async () => {
+  let authOptions: Parameters<RequireAuth>[1] | undefined;
+  let serviceInput: unknown;
+  const handlers = createBillingHttpHandlers({
+    requireAuth: async (_request, options) => {
+      authOptions = options;
+      return principal;
+    },
+    getService: () =>
+      serviceStub({
+        async getCheckoutIdentity(input) {
+          serviceInput = input;
+          return {
+            customerKey: "semforge_0198f06a1b4270008000000000000002",
+            subscriptionStatus: "account_created",
+          };
+        },
+      }),
+    checkout: {
+      clientKey: "test_ck_semforge_client",
+      appPublicUrl: "https://app.semforge.example",
+    },
+  });
+
+  const response = await handlers.checkout(
+    new Request("https://app.semforge.example/api/v1/billing/checkout"),
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(authOptions, { csrf: false, roles: ["owner", "admin"] });
+  assert.deepEqual(serviceInput, { workspaceId: principal.workspaceId });
+  assert.deepEqual(body.data, {
+    clientKey: "test_ck_semforge_client",
+    customerKey: "semforge_0198f06a1b4270008000000000000002",
+    method: "CARD",
+    successUrl: "https://app.semforge.example/app/billing?billing=success",
+    failUrl: "https://app.semforge.example/app/billing?billing=fail",
+    subscriptionStatus: "account_created",
+  });
+});
+
+test("checkout GET은 query/body workspace override를 받지 않는다", async () => {
+  let authCalls = 0;
+  let serviceCalls = 0;
+  const handlers = createBillingHttpHandlers({
+    requireAuth: async () => {
+      authCalls += 1;
+      return principal;
+    },
+    getService: () =>
+      serviceStub({
+        async getCheckoutIdentity() {
+          serviceCalls += 1;
+          return {
+            customerKey: "should-not-return",
+            subscriptionStatus: "account_created",
+          };
+        },
+      }),
+    checkout: {
+      clientKey: "test_ck_semforge_client",
+      appPublicUrl: "https://app.semforge.example",
+    },
+  });
+
+  const response = await handlers.checkout(
+    new Request(
+      `https://app.semforge.example/api/v1/billing/checkout?workspaceId=${principal.workspaceId}`,
+    ),
+  );
+  assert.equal(response.status, 400);
+  assert.equal(authCalls, 0);
+  assert.equal(serviceCalls, 0);
+});
 
 test("빌링 callback POST는 CSRF·owner/admin RequireAuth 경계와 필수 멱등키를 지난다", async () => {
   let authOptions: Parameters<RequireAuth>[1] | undefined;

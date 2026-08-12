@@ -1,0 +1,34 @@
+^D✔ fresh migration과 두 번째 migration 실행이 모두 성공한다 (1653.367208ms)
+✔ workspace당 네 번째 site를 거부한다 (9.435208ms)
+✔ site당 active rank와 aio query를 각각 20개까지만 허용한다 (33.5725ms)
+✔ web role은 transaction-local workspace 밖의 row를 볼 수 없다 (7.544958ms)
+✔ web, dispatcher, scheduler, worker, billing role은 BYPASSRLS가 아니다 (3.365959ms)
+✔ web role은 billing 고객·결제수단·구독 테이블 권한을 전혀 갖지 않는다 (14.032375ms)
+✔ scheduler role은 최소 subscription/outbox 컬럼과 제한된 topic 정책만 가진다 (20.43475ms)
+✔ worker role은 audit_events에 INSERT만 허용하고 기록을 읽을 수 없다 (7.44725ms)
+✔ worker role은 transaction-local workspace 밖 tenant row와 global queue에 접근하지 못한다 (6.96475ms)
+✔ worker role은 자기 workspace report outbox 최소 컬럼만 INSERT하고 조회·수정·tenant 이탈은 거부된다 (20.199834ms)
+✔ dispatcher role은 jobs/outbox만 전역 처리하고 tenant domain row는 읽지 못한다 (5.707166ms)
+✔ scheduler role은 canonical collection outbox 입력 컬럼만 사용한다 (7.782166ms)
+✔ job/outbox request hash는 직접 변조해도 canonical 중요 필드에서 다시 계산된다 (4.989792ms)
+✔ NAVER/GSC provenance schema는 source/status와 tenant 복합 FK를 실제 DB에서 강제한다 (5.171833ms)
+✔ billing role은 fingerprint 결제수단과 append-only ledger만 변경한다 (8.416459ms)
+✔ DB도 GSC token과 Toss billing key의 평문 저장을 거부한다 (1.448875ms)
+✔ auth role은 pre-tenant 인증 트랜잭션에 필요한 최소 권한과 RLS 정책만 가진다 (34.32075ms)
+✔ auth role은 password reset outbox를 INSERT만 할 수 있고 tenant outbox payload를 SELECT할 수 없다 (9.222292ms)
+✔ auth role은 billing provisioning INSERT만 허용하고 billing SELECT를 노출하지 않는다 (13.772292ms)
+✔ auth role은 초대 intent에서 신규 workspace·owner membership·session을 원자 생성한다 (16.196917ms)
+✔ auth 수락 트랜잭션 중간 실패는 account와 workspace 생성을 전부 rollback한다 (7.420542ms)
+✔ invite provisioning 제약은 잘못된 상태·역할·해시와 pending 중복을 거부한다 (6.867ms)
+✔ auth role은 만료된 invite intent를 잠그거나 수락하지 못한다 (2.84025ms)
+✔ operator는 만료 intent만 supersede하고 경쟁 재발급에서 pending 하나만 남긴다 (9.183041ms)
+✔ operator role은 NOLOGIN 권한 그룹이며 invites SELECT/INSERT 권한만 가진다 (22.224875ms)
+✔ operator는 7일 초대를 발급하지만 인증·사이트·결제 데이터에는 접근하지 못한다 (16.264458ms)
+ℹ tests 26
+ℹ suites 0
+ℹ pass 26
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2363.836459

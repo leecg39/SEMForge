@@ -743,8 +743,7 @@ REVOKE CREATE ON SCHEMA public FROM PUBLIC;--> statement-breakpoint
 GRANT USAGE ON SCHEMA public TO semforge_web, semforge_auth, semforge_operator, semforge_dispatcher, semforge_scheduler, semforge_worker, semforge_billing;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON
   workspaces, memberships, sites, tracked_queries,
-  gsc_connections, oauth_states, gsc_property_bindings,
-  billing_customers, payment_methods, subscriptions
+  gsc_connections, oauth_states, gsc_property_bindings
 TO semforge_web;--> statement-breakpoint
 GRANT SELECT, INSERT ON audit_events, provider_calls, usage_reservations, jobs, outbox TO semforge_web;--> statement-breakpoint
 GRANT SELECT ON rank_observations, aio_observations, aio_citations, naver_observations,
@@ -772,14 +771,18 @@ GRANT UPDATE (available_at, lease_owner, lease_token, lease_generation,
   lease_expires_at, attempts, published_at, last_error) ON outbox TO semforge_dispatcher;--> statement-breakpoint
 GRANT INSERT ON audit_events TO semforge_dispatcher;--> statement-breakpoint
 GRANT SELECT ON sites, tracked_queries, gsc_property_bindings TO semforge_scheduler;--> statement-breakpoint
+GRANT SELECT (workspace_id, status, current_period_end) ON subscriptions TO semforge_scheduler;--> statement-breakpoint
 GRANT INSERT (workspace_id, topic, payload, idempotency_key, available_at, created_at)
   ON outbox TO semforge_scheduler;--> statement-breakpoint
+GRANT SELECT (workspace_id, topic, idempotency_key) ON outbox TO semforge_scheduler;--> statement-breakpoint
 GRANT SELECT ON workspaces, memberships, sites, tracked_queries, gsc_connections,
   gsc_property_bindings, billing_customers, payment_methods, subscriptions TO semforge_worker;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON provider_calls, usage_reservations,
   rank_observations, aio_observations, aio_citations, naver_observations, naver_observation_sources, gsc_observations,
   weekly_reports, report_sections, report_assets, deliveries, payments, provider_events
 TO semforge_worker;--> statement-breakpoint
+GRANT INSERT (workspace_id, topic, payload, idempotency_key)
+  ON outbox TO semforge_worker;--> statement-breakpoint
 GRANT INSERT ON audit_events TO semforge_worker;--> statement-breakpoint
 GRANT SELECT ON sessions, memberships TO semforge_billing;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE ON billing_customers, payment_methods, subscriptions, payments, provider_events TO semforge_billing;--> statement-breakpoint
@@ -814,10 +817,12 @@ BEGIN
   ] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', tenant_table);
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', tenant_table);
-    EXECUTE format(
-      'CREATE POLICY %I ON %I TO semforge_web USING (workspace_id = nullif(current_setting(''app.workspace_id'', true), '''')::uuid) WITH CHECK (workspace_id = nullif(current_setting(''app.workspace_id'', true), '''')::uuid)',
-      tenant_table || '_tenant_isolation', tenant_table
-    );
+    IF tenant_table NOT IN ('billing_customers', 'payment_methods', 'subscriptions') THEN
+      EXECUTE format(
+        'CREATE POLICY %I ON %I TO semforge_web USING (workspace_id = nullif(current_setting(''app.workspace_id'', true), '''')::uuid) WITH CHECK (workspace_id = nullif(current_setting(''app.workspace_id'', true), '''')::uuid)',
+        tenant_table || '_tenant_isolation', tenant_table
+      );
+    END IF;
   END LOOP;
 END
 $$;--> statement-breakpoint
@@ -859,6 +864,11 @@ CREATE POLICY outbox_auth_insert ON outbox FOR INSERT TO semforge_auth
   WITH CHECK (topic = 'email.password_reset');--> statement-breakpoint
 CREATE POLICY audit_events_worker_insert ON audit_events FOR INSERT TO semforge_worker
   WITH CHECK (workspace_id = nullif(current_setting('app.workspace_id', true), '')::uuid);--> statement-breakpoint
+CREATE POLICY outbox_worker_insert ON outbox FOR INSERT TO semforge_worker
+  WITH CHECK (
+    workspace_id = nullif(current_setting('app.workspace_id', true), '')::uuid
+    AND topic IN ('report.pdf.render', 'report.email.deliver')
+  );--> statement-breakpoint
 CREATE POLICY audit_events_dispatcher_insert ON audit_events FOR INSERT TO semforge_dispatcher
   WITH CHECK (true);--> statement-breakpoint
 ALTER TABLE auth_action_throttles ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
@@ -890,8 +900,32 @@ CREATE POLICY outbox_dispatcher_access ON outbox TO semforge_dispatcher
 CREATE POLICY sites_scheduler_read ON sites FOR SELECT TO semforge_scheduler USING (true);--> statement-breakpoint
 CREATE POLICY tracked_queries_scheduler_read ON tracked_queries FOR SELECT TO semforge_scheduler USING (true);--> statement-breakpoint
 CREATE POLICY gsc_property_bindings_scheduler_read ON gsc_property_bindings FOR SELECT TO semforge_scheduler USING (true);--> statement-breakpoint
+CREATE POLICY subscriptions_scheduler_read ON subscriptions FOR SELECT TO semforge_scheduler USING (true);--> statement-breakpoint
+CREATE POLICY outbox_scheduler_select ON outbox FOR SELECT TO semforge_scheduler
+  USING (topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot'));--> statement-breakpoint
 CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
-  WITH CHECK (topic in ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly'));--> statement-breakpoint
+  WITH CHECK (
+    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+    AND CASE
+      WHEN jsonb_typeof(payload) = 'object'
+        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+      THEN EXISTS (
+        SELECT 1 FROM sites
+         WHERE sites.id = (payload->>'siteId')::uuid
+           AND sites.workspace_id = outbox.workspace_id
+           AND sites.active
+      )
+      ELSE false
+    END
+    AND (
+      topic <> 'report.snapshot'
+      OR (
+        payload ?& ARRAY['siteId', 'cycleMonday']
+        AND payload - 'siteId' - 'cycleMonday' = '{}'::jsonb
+        AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+      )
+    )
+  );--> statement-breakpoint
 DO $$
 DECLARE billing_table text;
 BEGIN

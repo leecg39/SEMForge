@@ -17,6 +17,10 @@ const booleanStringSchema = z
 
 const rawServerEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  // @TASK P4-O1-T1 - Keep web, worker, and migration containers least-privileged.
+  SEMFORGE_SERVICE: z
+    .enum(["web", "worker", "relay", "scheduler", "migrate", "build", "all"])
+    .default("all"),
   DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   // @TASK P1-D3 - Never reuse the migration owner DSN for auth or operator runtime access.
   AUTH_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
@@ -31,6 +35,7 @@ const rawServerEnvSchema = z.object({
   APP_SECRET: secretSchema.optional(),
   APP_SECRET_CURRENT_KEY_ID: keyIdSchema.optional(),
   APP_SECRET_PREVIOUS_KEYS: z.string().optional(),
+  TOSS_CLIENT_KEY: z.string().trim().min(1).optional(),
   TOSS_SECRET_KEY: z.string().trim().min(1).optional(),
   GOOGLE_CLIENT_ID: z.string().trim().min(1).optional(),
   GOOGLE_CLIENT_SECRET: z.string().trim().min(1).optional(),
@@ -43,6 +48,15 @@ const rawServerEnvSchema = z.object({
   NAVER_SEARCH_AD_ACCESS_LICENSE: z.string().trim().min(1).optional(),
   NAVER_SEARCH_AD_SECRET_KEY: z.string().trim().min(1).optional(),
   NAVER_SEARCH_AD_CUSTOMER_ID: z.string().trim().min(1).optional(),
+  // @TASK P4-R1-T1 - Private report storage, Chromium PDF, and Resend delivery.
+  RESEND_API_KEY: z.string().trim().min(1).max(512).optional(),
+  RESEND_FROM_EMAIL: z.string().trim().min(3).max(320).optional(),
+  S3_ENDPOINT: z.string().trim().url().optional(),
+  S3_REGION: z.string().trim().min(1).max(100).optional(),
+  S3_BUCKET: z.string().trim().regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/).optional(),
+  S3_ACCESS_KEY_ID: z.string().trim().min(1).max(512).optional(),
+  S3_SECRET_ACCESS_KEY: z.string().min(1).max(1024).optional(),
+  CHROMIUM_EXECUTABLE_PATH: z.string().trim().startsWith("/").optional(),
   BILLING_FINGERPRINT_SECRET: secretSchema.optional(),
   PGPOOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
   PGPOOL_CONNECTION_TIMEOUT_MS: z.coerce.number().int().min(100).max(60_000).default(5_000),
@@ -95,6 +109,102 @@ export type ServerEnv = Omit<z.infer<typeof rawServerEnvSchema>, "APP_SECRET_PRE
   APP_SECRET_PREVIOUS_KEYS: PreviousSecretKeys;
 };
 
+const productionRequiredByService = {
+  all: [
+    "DATABASE_URL",
+    "AUTH_DATABASE_URL",
+    "OPERATOR_DATABASE_URL",
+    "WORKER_DATABASE_URL",
+    "DISPATCHER_DATABASE_URL",
+    "SCHEDULER_DATABASE_URL",
+    "BILLING_DATABASE_URL",
+    "MIGRATION_DATABASE_URL",
+    "APP_PUBLIC_URL",
+    "APP_SECRET",
+    "APP_SECRET_CURRENT_KEY_ID",
+    "TOSS_CLIENT_KEY",
+    "TOSS_SECRET_KEY",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "TALORDATA_API_TOKEN",
+    "NAVER_OPEN_API_CLIENT_ID",
+    "NAVER_OPEN_API_CLIENT_SECRET",
+    "NAVER_SEARCH_AD_ACCESS_LICENSE",
+    "NAVER_SEARCH_AD_SECRET_KEY",
+    "NAVER_SEARCH_AD_CUSTOMER_ID",
+    "BILLING_FINGERPRINT_SECRET",
+    "RESEND_API_KEY",
+    "RESEND_FROM_EMAIL",
+    "S3_ENDPOINT",
+    "S3_REGION",
+    "S3_BUCKET",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+    "CHROMIUM_EXECUTABLE_PATH",
+  ],
+  web: [
+    "DATABASE_URL",
+    "AUTH_DATABASE_URL",
+    "OPERATOR_DATABASE_URL",
+    "BILLING_DATABASE_URL",
+    "APP_PUBLIC_URL",
+    "APP_SECRET",
+    "APP_SECRET_CURRENT_KEY_ID",
+    "TOSS_CLIENT_KEY",
+    "TOSS_SECRET_KEY",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "BILLING_FINGERPRINT_SECRET",
+    "S3_ENDPOINT",
+    "S3_REGION",
+    "S3_BUCKET",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+  ],
+  worker: [
+    "AUTH_DATABASE_URL",
+    "WORKER_DATABASE_URL",
+    "DISPATCHER_DATABASE_URL",
+    "APP_PUBLIC_URL",
+    "APP_SECRET",
+    "APP_SECRET_CURRENT_KEY_ID",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "NAVER_OPEN_API_CLIENT_ID",
+    "NAVER_OPEN_API_CLIENT_SECRET",
+    "NAVER_SEARCH_AD_ACCESS_LICENSE",
+    "NAVER_SEARCH_AD_SECRET_KEY",
+    "NAVER_SEARCH_AD_CUSTOMER_ID",
+    "TALORDATA_API_TOKEN",
+    "RESEND_API_KEY",
+    "RESEND_FROM_EMAIL",
+    "S3_ENDPOINT",
+    "S3_REGION",
+    "S3_BUCKET",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+    "CHROMIUM_EXECUTABLE_PATH",
+  ],
+  relay: ["DISPATCHER_DATABASE_URL"],
+  scheduler: ["SCHEDULER_DATABASE_URL"],
+  migrate: ["MIGRATION_DATABASE_URL"],
+  build: [],
+} as const satisfies Record<
+  z.infer<typeof rawServerEnvSchema>["SEMFORGE_SERVICE"],
+  readonly (keyof z.infer<typeof rawServerEnvSchema>)[]
+>;
+
+const databaseUrlKeys = [
+  "DATABASE_URL",
+  "AUTH_DATABASE_URL",
+  "OPERATOR_DATABASE_URL",
+  "WORKER_DATABASE_URL",
+  "DISPATCHER_DATABASE_URL",
+  "SCHEDULER_DATABASE_URL",
+  "BILLING_DATABASE_URL",
+  "MIGRATION_DATABASE_URL",
+] as const satisfies readonly (keyof z.infer<typeof rawServerEnvSchema>)[];
+
 export function parseServerEnv(source: Record<string, string | undefined>): ServerEnv {
   const parsed = rawServerEnvSchema.safeParse(source);
   if (!parsed.success) {
@@ -105,30 +215,23 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
 
   const issues: string[] = [];
   if (parsed.data.NODE_ENV === "production") {
-    for (const required of [
-      "DATABASE_URL",
-      "AUTH_DATABASE_URL",
-      "OPERATOR_DATABASE_URL",
-      "WORKER_DATABASE_URL",
-      "DISPATCHER_DATABASE_URL",
-      "SCHEDULER_DATABASE_URL",
-      "BILLING_DATABASE_URL",
-      "MIGRATION_DATABASE_URL",
-      "APP_PUBLIC_URL",
-      "APP_SECRET",
-      "APP_SECRET_CURRENT_KEY_ID",
-      "TOSS_SECRET_KEY",
-      "GOOGLE_CLIENT_ID",
-      "GOOGLE_CLIENT_SECRET",
-      "TALORDATA_API_TOKEN",
-      "NAVER_OPEN_API_CLIENT_ID",
-      "NAVER_OPEN_API_CLIENT_SECRET",
-      "NAVER_SEARCH_AD_ACCESS_LICENSE",
-      "NAVER_SEARCH_AD_SECRET_KEY",
-      "NAVER_SEARCH_AD_CUSTOMER_ID",
-      "BILLING_FINGERPRINT_SECRET",
-    ] as const) {
+    for (const required of productionRequiredByService[parsed.data.SEMFORGE_SERVICE]) {
       if (!parsed.data[required]) issues.push(`${required} is required in production`);
+    }
+    if (parsed.data.PGSSLMODE !== "verify-full") {
+      issues.push("PGSSLMODE must be verify-full in production");
+    }
+    for (const key of databaseUrlKeys) {
+      const value = parsed.data[key];
+      if (typeof value !== "string") continue;
+      try {
+        const sslMode = new URL(value).searchParams.get("sslmode");
+        if (sslMode !== null && sslMode !== "verify-full") {
+          issues.push(`${key} sslmode must be verify-full when present`);
+        }
+      } catch {
+        issues.push(`${key} must be a valid PostgreSQL URL`);
+      }
     }
   }
   if (
@@ -144,6 +247,13 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
     !parsed.data.APP_PUBLIC_URL.startsWith("https://")
   ) {
     issues.push("APP_PUBLIC_URL must use https in production");
+  }
+  if (
+    parsed.data.NODE_ENV === "production" &&
+    parsed.data.S3_ENDPOINT &&
+    !parsed.data.S3_ENDPOINT.startsWith("https://")
+  ) {
+    issues.push("S3_ENDPOINT must use https in production");
   }
   if (issues.length > 0) throw new EnvironmentValidationError(issues);
 

@@ -223,3 +223,56 @@ test("production relay는 collection topic만 claim하고 canonical job type으�
     { topic: "email.password_reset", published: false },
   ]);
 });
+
+test("production relay는 report PDF·email outbox payload를 그대로 canonical jobs로 publish한다", async () => {
+  const workspaceId = "51000000-0000-4000-8000-000000000006";
+  const database = await createDatabase(workspaceId, "outbox-production-reports");
+  const now = new Date("2026-08-12T08:00:00.000Z");
+  const reportId = "51000000-0000-4000-8000-000000000007";
+  const siteId = "51000000-0000-4000-8000-000000000008";
+  await database.query(
+    `insert into outbox (workspace_id, topic, payload, idempotency_key, available_at)
+     values ($1, 'report.pdf.render', $2::jsonb, 'report-pdf', $4),
+            ($1, 'report.email.deliver', $3::jsonb, 'report-email', $4),
+            ($1, 'report.snapshot', $5::jsonb, 'report-snapshot', $4),
+            ($1, 'arbitrary.worker.topic', '{}'::jsonb, 'arbitrary', $4)`,
+    [
+      workspaceId,
+      JSON.stringify({ reportId }),
+      JSON.stringify({ reportId, recipient: "owner@example.test" }),
+      now,
+      JSON.stringify({ siteId, cycleMonday: "2026-08-17" }),
+    ],
+  );
+  const runtime = new CollectionOutboxRelayRuntime({
+    database,
+    relayId: "relay-production-reports",
+    clock: () => now,
+  });
+
+  assert.deepEqual(await runtime.runOnce(), { claimed: 3, published: 3, failed: 0 });
+  const jobs = await database.query<{ type: string; payload: Record<string, unknown> }>(
+    "select type, payload from jobs where workspace_id = $1 order by type",
+    [workspaceId],
+  );
+  assert.deepEqual(jobs.rows, [{
+    type: "report.email.deliver",
+    payload: { reportId, recipient: "owner@example.test" },
+  }, {
+    type: "report.pdf.render",
+    payload: { reportId },
+  }, {
+    type: "report.snapshot",
+    payload: { siteId, cycleMonday: "2026-08-17" },
+  }]);
+  const events = await database.query<{ topic: string; published: boolean }>(
+    "select topic, published_at is not null as published from outbox where workspace_id = $1 order by topic",
+    [workspaceId],
+  );
+  assert.deepEqual(events.rows, [
+    { topic: "arbitrary.worker.topic", published: false },
+    { topic: "report.email.deliver", published: true },
+    { topic: "report.pdf.render", published: true },
+    { topic: "report.snapshot", published: true },
+  ]);
+});

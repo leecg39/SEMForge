@@ -150,11 +150,13 @@ test("API 경계는 성공 상태의 비 JSON 응답을 빈 데이터로 오인�
   assert.equal(classifyApiEnvelope(envelope), "error");
 });
 
-test("WorkspaceSettingsForm은 워크스페이스 설정 API와 브랜드 입력을 연결한다", () => {
+test("WorkspaceSettingsForm은 reports branding API와 정확한 브랜드 입력을 연결한다", () => {
   const html = render(createElement(WorkspaceSettingsForm));
 
-  assert.match(html, /data-endpoint="\/api\/v1\/settings\/workspace"/);
-  assert.match(html, /name="agencyName"/);
+  assert.match(html, /data-endpoint="\/api\/v1\/reports\/branding"/);
+  assert.doesNotMatch(html, /\/api\/v1\/settings/);
+  assert.match(html, /name="name"/);
+  assert.doesNotMatch(html, /name="agencyName"/);
   assert.match(html, /name="accentColor"/);
   assert.match(html, /type="url"/);
   assert.match(html, /로고 URL/);

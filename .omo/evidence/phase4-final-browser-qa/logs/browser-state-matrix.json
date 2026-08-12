@@ -1,0 +1,729 @@
+[
+  {
+    "case": {
+      "name": "loading-sites",
+      "url": "/app/sites/?qaState=loading",
+      "w": 1440,
+      "h": 1000,
+      "m": false,
+      "settle": 0.15,
+      "wait": 0.15
+    },
+    "state": {
+      "url": "http://127.0.0.1:3474/app/sites/?qaState=loading",
+      "h1": [
+        "사이트"
+      ],
+      "status": [
+        "현재 구독 상태에서는 읽기 전용입니다.",
+        "사이트 데이터를 확인하고 있습니다연결된 공급자의 응답을 기다리는 중입니다."
+      ],
+      "alerts": [],
+      "disabled": [
+        "name",
+        "domain",
+        "사이트 등록"
+      ],
+      "enabledButtons": [],
+      "body": "본문 바로가기\nSEMForge\n주간 검색 가시성\n가시성 개요\n사이트\n주간 리포트\n결제\n설정\n초대 전용 베타\n\n월요일 오전, 지난주 검색 변화를 한 장으로 확인합니다.\n\n측정 대상\n\n사이트\n\n고객 도메인과 사이트별 추적 항목을 관리합니다. 실제 연결 전에는 수치를 표시하지 않습니다.\n\n사이트 추가\n\n실제 도메인 등록\n사이트 이름\n도메인\n사이트 등록\n\n활성 사이트 0 / 3 · 공개 인터넷에서 접근 가능한 도메인만 등록할 수 있습니다.\n\n현재 구독 상태에서는 읽기 전용입니다.\n\n사이트 데이터를 확인하고 있습니다\n\n연결된 공급자의 응답을 기다리는 중입니다.\n\n비공개 베타 한도\n\n작게 시작하고 매주 정확히 확인합니다\n워크스페이스당 사이트\n3\n대행사 고객 사이트 기준\n사이트당 Google 순위 키워드\n20\n한국·한국어·데스크톱\n사이트당 AI Overview 프롬프트\n20\nGoogle AI Overview",
+      "overflow": false,
+      "calls": [
+        {
+          "path": "/api/v1/sites",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        }
+      ]
+    }
+  },
+  {
+    "case": {
+      "name": "empty-sites",
+      "url": "/app/sites/?qaState=empty",
+      "w": 1440,
+      "h": 1000,
+      "m": false
+    },
+    "state": {
+      "url": "http://127.0.0.1:3474/app/sites/?qaState=empty",
+      "h1": [
+        "사이트"
+      ],
+      "status": [
+        "등록된 사이트가 없습니다실제 고객 도메인을 등록하면 추적 항목 설정을 시작할 수 있습니다."
+      ],
+      "alerts": [],
+      "disabled": [],
+      "enabledButtons": [
+        "사이트 등록"
+      ],
+      "body": "본문 바로가기\nSEMForge\n주간 검색 가시성\n가시성 개요\n사이트\n주간 리포트\n결제\n설정\n초대 전용 베타\n\n월요일 오전, 지난주 검색 변화를 한 장으로 확인합니다.\n\n측정 대상\n\n사이트\n\n고객 도메인과 사이트별 추적 항목을 관리합니다. 실제 연결 전에는 수치를 표시하지 않습니다.\n\n사이트 추가\n\n실제 도메인 등록\n사이트 이름\n도메인\n사이트 등록\n\n활성 사이트 0 / 3 · 공개 인터넷에서 접근 가능한 도메인만 등록할 수 있습니다.\n\n등록된 사이트가 없습니다\n\n실제 고객 도메인을 등록하면 추적 항목 설정을 시작할 수 있습니다.\n\n비공개 베타 한도\n\n작게 시작하고 매주 정확히 확인합니다\n워크스페이스당 사이트\n3\n대행사 고객 사이트 기준\n사이트당 Google 순위 키워드\n20\n한국·한국어·데스크톱\n사이트당 AI Overview 프롬프트\n20\nGoogle AI Overview",
+      "overflow": false,
+      "calls": [
+        {
+          "path": "/api/v1/sites",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        }
+      ]
+    }
+  },
+  {
+    "case": {
+      "name": "error-sites",
+      "url": "/app/sites/?qaState=error",
+      "w": 1440,
+      "h": 1000,
+      "m": false
+    },
+    "state": {
+      "url": "http://127.0.0.1:3474/app/sites/?qaState=error",
+      "h1": [
+        "사이트"
+      ],
+      "status": [],
+      "alerts": [
+        "사이트 데이터를 불러오지 못했습니다의도한 오류 상태요청 ID: state-error다시 시도"
+      ],
+      "disabled": [],
+      "enabledButtons": [
+        "사이트 등록",
+        "다시 시도"
+      ],
+      "body": "본문 바로가기\nSEMForge\n주간 검색 가시성\n가시성 개요\n사이트\n주간 리포트\n결제\n설정\n초대 전용 베타\n\n월요일 오전, 지난주 검색 변화를 한 장으로 확인합니다.\n\n측정 대상\n\n사이트\n\n고객 도메인과 사이트별 추적 항목을 관리합니다. 실제 연결 전에는 수치를 표시하지 않습니다.\n\n사이트 추가\n\n실제 도메인 등록\n사이트 이름\n도메인\n사이트 등록\n\n활성 사이트 0 / 3 · 공개 인터넷에서 접근 가능한 도메인만 등록할 수 있습니다.\n\n사이트 데이터를 불러오지 못했습니다\n\n의도한 오류 상태\n\n요청 ID: state-error\n다시 시도\n\n비공개 베타 한도\n\n작게 시작하고 매주 정확히 확인합니다\n워크스페이스당 사이트\n3\n대행사 고객 사이트 기준\n사이트당 Google 순위 키워드\n20\n한국·한국어·데스크톱\n사이트당 AI Overview 프롬프트\n20\nGoogle AI Overview",
+      "overflow": false,
+      "calls": [
+        {
+          "path": "/api/v1/sites",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        }
+      ]
+    }
+  },
+  {
+    "case": {
+      "name": "partial-overview",
+      "url": "/app/?qaState=partial",
+      "w": 1440,
+      "h": 1000,
+      "m": false
+    },
+    "state": {
+      "url": "http://127.0.0.1:3474/app/?qaState=partial",
+      "h1": [
+        "주간 가시성 개요"
+      ],
+      "status": [
+        "일부 현황만 확인되었습니다불러온 실제 응답만 표시하며 실패한 영역은 임의 값으로 채우지 않습니다."
+      ],
+      "alerts": [
+        "리포트 데이터를 불러오지 못했습니다의도한 오류 상태요청 ID: state-error다시 시도"
+      ],
+      "disabled": [],
+      "enabledButtons": [
+        "다시 시도"
+      ],
+      "body": "본문 바로가기\nSEMForge\n주간 검색 가시성\n가시성 개요\n사이트\n주간 리포트\n결제\n설정\n초대 전용 베타\n\n월요일 오전, 지난주 검색 변화를 한 장으로 확인합니다.\n\n이번 주 관측\n\n주간 가시성 개요\n\n같은 기간과 기준으로 확인된 검색 신호만 보여드립니다.\n\n일부 현황만 확인되었습니다\n\n불러온 실제 응답만 표시하며 실패한 영역은 임의 값으로 채우지 않습니다.\n\n사이트 응답 확인 · 1개\n\n리포트 데이터를 불러오지 못했습니다\n\n의도한 오류 상태\n\n요청 ID: state-error\n다시 시도\n\nSearch Console 응답 확인 · 1개",
+      "overflow": false,
+      "calls": [
+        {
+          "path": "/api/v1/sites",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/reports",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/integrations/gsc/connections",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        }
+      ]
+    }
+  },
+  {
+    "case": {
+      "name": "past-due-billing",
+      "url": "/app/billing/?qaState=past_due",
+      "w": 360,
+      "h": 800,
+      "m": true
+    },
+    "state": {
+      "url": "http://127.0.0.1:3474/app/billing/?qaState=past_due",
+      "h1": [
+        "결제"
+      ],
+      "status": [],
+      "alerts": [
+        "결제가 미납되어 읽기 전용입니다.기존 리포트만 확인할 수 있습니다. 유예 종료: 2026. 8. 18. 오전 9:00결제 복구",
+        "정기결제가 미납되었습니다사이트와 추적 설정은 읽기 전용이며, 현재 청구기간보다 앞선 과거 리포트만 읽을 수 있습니다."
+      ],
+      "disabled": [],
+      "enabledButtons": [
+        "카드 연결 또는 변경",
+        "결제 다시 시도",
+        "기간 말 해지 예약"
+      ],
+      "body": "본문 바로가기\nSEMForge\n결제가 미납되어 읽기 전용입니다.\n\n기존 리포트만 확인할 수 있습니다. 유예 종료: 2026. 8. 18. 오전 9:00\n\n결제 복구\n\n구독과 결제\n\n결제\n\nToss 자동결제 상태와 다음 청구 준비 상태를 확인합니다.\n\nTOSS 자동결제\n\n결제 수단 연결\n\n카드 인증이 끝나면 월 49,000원(VAT 포함)의 첫 결제가 진행됩니다. 이후 매월 같은 결제 수단으로 자동 청구됩니다.\n\n카드 연결 또는 변경\n정기결제가 미납되었습니다\n\n사이트와 추적 설정은 읽기 전용이며, 현재 청구기간보다 앞선 과거 리포트만 읽을 수 있습니다.\n\n실제 구독 상태\n\n미납\n49,000원\n월 · VAT 포함\n\n유예 기간에는 과거 리포트만 읽을 수 있습니다.\n\n현재 이용기간\n2026. 8. 1. 오전 9:00 – 2026. 9. 1. 오전 9:00\n다음 재시도\n2026. 8. 13. 오전 9:00\n미납 유예 종료\n2026. 8. 18. 오전 9:00\n결제 다시 시도\n구독 해지\n\n포함 한도\n\n비공개 베타 · 주간 가시성 리포트\n활성 사이트\n3\n워크스페이스 기준\n순위 키워드\n20\n사이트별\nAI Overview 프롬프트\n20\n사이트별\n\n일할 환불은 제공하지 않으며 법정 예외는 적용됩니다.\n\n개요\n사이트\n리포트\n결제\n설정",
+      "overflow": false,
+      "calls": [
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        }
+      ]
+    }
+  },
+  {
+    "case": {
+      "name": "past-due-site-detail",
+      "url": "/app/sites/0198a219-4d49-7dce-9d9a-536822c04da8/?qaState=past_due",
+      "w": 1440,
+      "h": 1000,
+      "m": false
+    },
+    "state": {
+      "url": "http://127.0.0.1:3474/app/sites/0198a219-4d49-7dce-9d9a-536822c04da8/?qaState=past_due",
+      "h1": [
+        "사이트 상세"
+      ],
+      "status": [
+        "읽기 전용현재 결제 상태에서는 사이트와 추적 항목을 변경할 수 없습니다."
+      ],
+      "alerts": [
+        "결제가 미납되어 읽기 전용입니다.기존 리포트만 확인할 수 있습니다. 유예 종료: 2026. 8. 18. 오전 9:00결제 복구"
+      ],
+      "disabled": [
+        "Google 순위 키워드AI Overview 프롬프트",
+        "query",
+        "추적 추가",
+        "사이트 추적 중지",
+        "중지",
+        "중지"
+      ],
+      "enabledButtons": [],
+      "body": "본문 바로가기\nSEMForge\n주간 검색 가시성\n가시성 개요\n사이트\n주간 리포트\n결제\n설정\n초대 전용 베타\n\n월요일 오전, 지난주 검색 변화를 한 장으로 확인합니다.\n\n결제가 미납되어 읽기 전용입니다.\n\n기존 리포트만 확인할 수 있습니다. 유예 종료: 2026. 8. 18. 오전 9:00\n\n결제 복구\n← 사이트 목록\n\n사이트 관측 설정\n\n사이트 상세\n\nGoogle 순위 키워드, AI Overview 프롬프트와 Search Console 속성 연결 상태를 확인합니다.\n\n추적 추가\n\n순위 키워드 또는 AI Overview 프롬프트\n유형\nGoogle 순위 키워드\nAI Overview 프롬프트\n검색어 또는 질문\n추적 추가\n읽기 전용\n\n현재 결제 상태에서는 사이트와 추적 항목을 변경할 수 없습니다.\n\n사이트\n\n서울 공방\n\natelier.example\n\n한국 표준시 · 주간 수집 활성\n사이트 추적 중지\n\n고정 수집 조건\n\n추적 항목\n\nGoogle · 한국 · 한국어 · 데스크톱 · 상위 100개 결과 기준으로만 수집합니다.\n\nGoogle 순위 키워드\n\n활성 1 / 20\n\n성수 수제 가구\n수집 중 · 2026. 8. 2.\n중지\nAI Overview 프롬프트\n\n활성 1 / 20\n\n서울에서 수제 가구를 어디서 사나요?\n수집 중 · 2026. 8. 2.\n중지\n\n읽기 전용 연결\n\nGoogle Search Console 속성\n연결됨\nsc-domain:atelier.example\n2026. 8. 3. 연결\n\n비공개 베타 한도\n\n작게 시작하고 매주 정확히 확인합니다\n워크스페이스당 사이트\n3\n대행사 고객 사이트 기준\n사이트당 Google 순위 키워드\n20\n한국·한국어·데스크톱\n사이트당 AI Overview 프롬프트\n20\nGoogle AI Overview",
+      "overflow": false,
+      "calls": [
+        {
+          "path": "/api/v1/sites/0198a219-4d49-7dce-9d9a-536822c04da8",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        }
+      ]
+    }
+  },
+  {
+    "case": {
+      "name": "past-due-report-detail",
+      "url": "/app/reports/0198a219-4d49-7dce-9d9a-536822c04dc0/?qaState=past_due",
+      "w": 1440,
+      "h": 1000,
+      "m": false
+    },
+    "state": {
+      "url": "http://127.0.0.1:3474/app/reports/0198a219-4d49-7dce-9d9a-536822c04dc0/?qaState=past_due",
+      "h1": [
+        "주간 리포트 상세"
+      ],
+      "status": [],
+      "alerts": [
+        "결제가 미납되어 읽기 전용입니다.기존 리포트만 확인할 수 있습니다. 유예 종료: 2026. 8. 18. 오전 9:00결제 복구",
+        "현재 청구기간 리포트는 열 수 없습니다미납 유예 기간에는 현재 청구기간보다 앞선 불변 리포트만 읽을 수 있습니다."
+      ],
+      "disabled": [],
+      "enabledButtons": [],
+      "body": "본문 바로가기\nSEMForge\n주간 검색 가시성\n가시성 개요\n사이트\n주간 리포트\n결제\n설정\n초대 전용 베타\n\n월요일 오전, 지난주 검색 변화를 한 장으로 확인합니다.\n\n결제가 미납되어 읽기 전용입니다.\n\n기존 리포트만 확인할 수 있습니다. 유예 종료: 2026. 8. 18. 오전 9:00\n\n결제 복구\n← 리포트 목록\n\n발행된 스냅샷\n\n주간 리포트 상세\n\nGoogle 순위, AI Overview, Search Console, NAVER 수요의 확인 상태를 같은 시점 기준으로 보여드립니다.\n\n현재 청구기간 리포트는 열 수 없습니다\n\n미납 유예 기간에는 현재 청구기간보다 앞선 불변 리포트만 읽을 수 있습니다.",
+      "overflow": false,
+      "calls": [
+        {
+          "path": "/api/v1/reports/0198a219-4d49-7dce-9d9a-536822c04dc0",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        }
+      ]
+    }
+  },
+  {
+    "case": {
+      "name": "past-due-settings",
+      "url": "/app/settings/?qaState=past_due",
+      "w": 1440,
+      "h": 1000,
+      "m": false
+    },
+    "state": {
+      "url": "http://127.0.0.1:3474/app/settings/?qaState=past_due",
+      "h1": [
+        "설정"
+      ],
+      "status": [
+        "현재 구독 상태에서는 읽기 전용입니다.",
+        "현재 구독 상태에서는 연결을 변경할 수 없습니다.",
+        "기존 GSC binding 목록 API는 제공되지 않습니다새 속성 연결은 실제 API로 저장되지만, 서버 조회 계약이 반영되기 전에는 사이트 상세에서 임의 연결 상태를 만들지 않습니다."
+      ],
+      "alerts": [
+        "결제가 미납되어 읽기 전용입니다.기존 리포트만 확인할 수 있습니다. 유예 종료: 2026. 8. 18. 오전 9:00결제 복구"
+      ],
+      "disabled": [
+        "name",
+        "리포트 강조색",
+        "logoUrl",
+        "브랜드 설정 저장",
+        "label",
+        "Google 계정 연결",
+        "사이트 속성 선택",
+        "연결 해제"
+      ],
+      "enabledButtons": [],
+      "body": "본문 바로가기\nSEMForge\n주간 검색 가시성\n가시성 개요\n사이트\n주간 리포트\n결제\n설정\n초대 전용 베타\n\n월요일 오전, 지난주 검색 변화를 한 장으로 확인합니다.\n\n결제가 미납되어 읽기 전용입니다.\n\n기존 리포트만 확인할 수 있습니다. 유예 종료: 2026. 8. 18. 오전 9:00\n\n결제 복구\n\n워크스페이스\n\n설정\n\n대행사 브랜드와 데이터 연결 상태를 관리합니다.\n\n고정 템플릿\n\n리포트 브랜드\n대행사 이름\n강조색\nPDF와 이메일 리포트에 적용됩니다.\n로고 URL\nHTTPS 이미지 주소만 사용하세요. 업로드 기능은 베타 이후 제공됩니다.\n브랜드 설정 저장\n\n현재 구독 상태에서는 읽기 전용입니다.\n\n최소 읽기 권한\n\nGoogle Search Console\n\n연결 계정은 사용자가 정한 레이블로 구분하며 Search Console 조회에 필요한 webmasters.readonly 권한만 요청합니다.\n\n연결 레이블\nGoogle 계정 연결\n\n현재 구독 상태에서는 연결을 변경할 수 없습니다.\n\n고객사 Search Console\n읽기 전용\n\nGoogle Search Console · webmasters.readonly\n\n토큰 만료 2026. 8. 13. 오전 9:00\n사이트 속성 선택\n연결 해제\n기존 GSC binding 목록 API는 제공되지 않습니다\n\n새 속성 연결은 실제 API로 저장되지만, 서버 조회 계약이 반영되기 전에는 사이트 상세에서 임의 연결 상태를 만들지 않습니다.",
+      "overflow": false,
+      "calls": [
+        {
+          "path": "/api/v1/reports/branding",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/integrations/gsc/connections",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/sites",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        }
+      ]
+    }
+  },
+  {
+    "case": {
+      "name": "read-only-sites",
+      "url": "/app/sites/?qaState=read_only",
+      "w": 1440,
+      "h": 1000,
+      "m": false
+    },
+    "state": {
+      "url": "http://127.0.0.1:3474/app/sites/?qaState=read_only",
+      "h1": [
+        "사이트"
+      ],
+      "status": [
+        "구독 활성화 전에는 설정을 변경할 수 없습니다.결제 상태를 확인하거나 결제 수단 연결을 완료해 주세요.결제 확인",
+        "현재 구독 상태에서는 읽기 전용입니다."
+      ],
+      "alerts": [],
+      "disabled": [
+        "name",
+        "domain",
+        "사이트 등록",
+        "추적 중지"
+      ],
+      "enabledButtons": [],
+      "body": "본문 바로가기\nSEMForge\n주간 검색 가시성\n가시성 개요\n사이트\n주간 리포트\n결제\n설정\n초대 전용 베타\n\n월요일 오전, 지난주 검색 변화를 한 장으로 확인합니다.\n\n구독 활성화 전에는 설정을 변경할 수 없습니다.\n\n결제 상태를 확인하거나 결제 수단 연결을 완료해 주세요.\n\n결제 확인\n\n측정 대상\n\n사이트\n\n고객 도메인과 사이트별 추적 항목을 관리합니다. 실제 연결 전에는 수치를 표시하지 않습니다.\n\n사이트 추가\n\n실제 도메인 등록\n사이트 이름\n도메인\n사이트 등록\n\n활성 사이트 1 / 3 · 공개 인터넷에서 접근 가능한 도메인만 등록할 수 있습니다.\n\n현재 구독 상태에서는 읽기 전용입니다.\n\n실제 등록 데이터\n\n사이트 · 활성 1 / 3\n서울 공방\n활성\n\natelier.example\n\n등록 2026. 8. 1. · 시간대 Asia/Seoul\n상세 설정\n추적 중지\n\n비공개 베타 한도\n\n작게 시작하고 매주 정확히 확인합니다\n워크스페이스당 사이트\n3\n대행사 고객 사이트 기준\n사이트당 Google 순위 키워드\n20\n한국·한국어·데스크톱\n사이트당 AI Overview 프롬프트\n20\nGoogle AI Overview",
+      "overflow": false,
+      "calls": [
+        {
+          "path": "/api/v1/sites",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/0198a219-4d49-7dce-9d9a-536822c04da8/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/0198a219-4d49-7dce-9d9a-536822c04da8/",
+          "method": "GET"
+        }
+      ]
+    }
+  }
+]

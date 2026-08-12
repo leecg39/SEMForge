@@ -9,6 +9,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 
+import type { BillingAccessAuthorizer } from "@/server/billing/access";
 import { createSitesRouteHandlers } from "@/server/sites/routes";
 
 const pg = new PGlite();
@@ -29,9 +30,20 @@ before(async () => {
 
 after(async () => pg.close());
 
-function handlersFor(workspace = workspaceId) {
+const allowBillingAccess: BillingAccessAuthorizer = async () => ({
+  allowed: true,
+  mode: "full",
+  reason: "active",
+  reportPeriodEndBefore: null,
+});
+
+function handlersFor(
+  workspace = workspaceId,
+  authorizeBilling: BillingAccessAuthorizer = allowBillingAccess,
+) {
   return createSitesRouteHandlers({
     db: pg,
+    authorizeBilling,
     resolveSession: async () => ({
       workspaceId: workspace,
       userId,
@@ -41,6 +53,57 @@ function handlersFor(workspace = workspaceId) {
     resolveDomainAddresses: async () => ["8.8.8.8"],
   });
 }
+
+test("account_created는 sites/tracking read와 write 직접 API 우회를 403 envelope로 차단한다", async () => {
+  const deniedCalls: string[] = [];
+  const handlers = handlersFor(workspaceId, async ({ capability }) => {
+    deniedCalls.push(capability);
+    return {
+      allowed: false,
+      mode: "billing_only",
+      reason: "payment_required",
+      reportPeriodEndBefore: null,
+    };
+  });
+  const create = await handlers.sites.POST(
+    new Request("https://app.semforge.test/api/v1/sites", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://app.semforge.test",
+        "idempotency-key": "unpaid-site-create",
+      },
+      body: JSON.stringify({ name: "Unpaid", domain: "unpaid.example.com" }),
+    }),
+    undefined,
+  );
+  const list = await handlers.sites.GET(
+    new Request("https://app.semforge.test/api/v1/sites"),
+    undefined,
+  );
+  const tracking = await handlers.tracking.POST(
+    new Request("https://app.semforge.test/api/v1/tracking", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://app.semforge.test",
+        "idempotency-key": "unpaid-tracking-create",
+      },
+      body: JSON.stringify({
+        siteId: "20000000-0000-4000-8000-000000000099",
+        type: "rank",
+        query: "Unpaid",
+      }),
+    }),
+    undefined,
+  );
+
+  for (const response of [create, list, tracking]) {
+    assert.equal(response.status, 403);
+    assert.equal((await readEnvelope(response)).error?.code, "FORBIDDEN");
+  }
+  assert.deepEqual(deniedCalls, ["workspace:write", "workspace:read", "workspace:write"]);
+});
 
 async function readEnvelope(response: Response): Promise<{
   data: unknown;
@@ -165,4 +228,100 @@ test("PATCH /api/v1/sites/[siteId]와 /tracking/[trackingId]는 다른 workspace
     { params: Promise.resolve({ trackingId }) },
   );
   assert.equal(trackingPatch.status, 404);
+});
+
+test("GET /api/v1/sites/[siteId]는 비활성 tracking까지 포함한 현재 상태와 활성 GSC binding만 tenant 내에 반환한다", async () => {
+  const siteId = "20000000-0000-4000-8000-000000000011";
+  const connectionId = "20000000-0000-4000-8000-000000000012";
+  const bindingId = "20000000-0000-4000-8000-000000000013";
+  await pg.query(
+    "insert into sites (id, workspace_id, name, domain) values ($1, $2, 'Detail Site', 'detail.example.com')",
+    [siteId, workspaceId],
+  );
+  for (let index = 1; index <= 20; index += 1) {
+    const suffix = index.toString().padStart(2, "0");
+    await pg.query(
+      `insert into tracked_queries
+         (id, workspace_id, site_id, type, query, normalized_query, active)
+       values ($1, $2, $3, 'rank', $4, $5, true)`,
+      [
+        `21000000-0000-4000-8000-0000000000${suffix}`,
+        workspaceId,
+        siteId,
+        `Rank ${index}`,
+        `rank ${index}`,
+      ],
+    );
+  }
+  await pg.query(
+    `insert into tracked_queries
+       (id, workspace_id, site_id, type, query, normalized_query, active)
+     values
+       ('22000000-0000-4000-8000-000000000001', $1, $2, 'rank', 'Disabled Rank', 'disabled rank', false),
+       ('22000000-0000-4000-8000-000000000002', $1, $2, 'aio', 'Disabled AIO', 'disabled aio', false)`,
+    [workspaceId, siteId],
+  );
+  await pg.query(
+    `insert into gsc_connections
+       (id, workspace_id, label, access_token_encrypted, refresh_token_encrypted, token_expires_at)
+     values ($1, $2, 'Detail GSC', 'enc:v1:key:iv:tag:cipher', 'enc:v1:key:iv:tag:cipher', $3)`,
+    [connectionId, workspaceId, new Date("2026-09-01T00:00:00.000Z")],
+  );
+  await pg.query(
+    `insert into gsc_property_bindings
+       (id, workspace_id, site_id, connection_id, property_uri)
+     values ($1, $2, $3, $4, 'sc-domain:detail.example.com')`,
+    [bindingId, workspaceId, siteId, connectionId],
+  );
+
+  const response = await handlersFor().siteById.GET(
+    new Request(`https://app.semforge.test/api/v1/sites/${siteId}`),
+    { params: Promise.resolve({ siteId }) },
+  );
+  assert.equal(response.status, 200);
+  const envelope = await readEnvelope(response);
+  const detail = envelope.data as {
+    site: { id: string };
+    tracking: {
+      rank: Array<{ id: string; active: boolean }>;
+      aio: Array<{ id: string; active: boolean }>;
+    };
+    gscBinding: {
+      id: string;
+      workspaceId: string;
+      siteId: string;
+      connectionId: string;
+      propertyUri: string;
+      createdAt: string;
+    } | null;
+  };
+  assert.equal(detail.site.id, siteId);
+  assert.equal(detail.tracking.rank.length, 21);
+  assert.equal(detail.tracking.rank.filter((item) => item.active).length, 20);
+  assert.equal(detail.tracking.aio.length, 1);
+  assert.equal(detail.tracking.aio[0]?.active, false);
+  assert.deepEqual(detail.gscBinding, {
+    id: bindingId,
+    workspaceId,
+    siteId,
+    connectionId,
+    propertyUri: "sc-domain:detail.example.com",
+    createdAt: detail.gscBinding?.createdAt,
+  });
+
+  const crossTenant = await handlersFor(otherWorkspaceId).siteById.GET(
+    new Request(`https://app.semforge.test/api/v1/sites/${siteId}`),
+    { params: Promise.resolve({ siteId }) },
+  );
+  assert.equal(crossTenant.status, 404);
+
+  await pg.query("update gsc_connections set disconnected_at = now() where id = $1", [connectionId]);
+  const disconnected = await handlersFor().siteById.GET(
+    new Request(`https://app.semforge.test/api/v1/sites/${siteId}`),
+    { params: Promise.resolve({ siteId }) },
+  );
+  assert.equal(
+    ((await readEnvelope(disconnected)).data as { gscBinding: unknown }).gscBinding,
+    null,
+  );
 });

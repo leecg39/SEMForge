@@ -283,6 +283,42 @@ test("PAYMENT_STATUS_CHANGED is an untrusted notification: paymentKey/order fing
   assert.equal(store.account.subscription.status, "past_due");
 });
 
+test("PAYMENT_STATUS_CHANGED는 Toss Query로 검증할 수 없으면 body의 DONE만으로 정산하지 않는다", async () => {
+  const store = new RuntimeBillingStore();
+  const billing = service(
+    store,
+    tossStub({
+      async queryPaymentByPaymentKey() {
+        return null;
+      },
+      async queryPaymentByOrderId() {
+        return null;
+      },
+    }),
+  );
+
+  const result = await billing.handleWebhook({
+    transmissionId: "transmission-unverified-payment",
+    event: {
+      eventType: "PAYMENT_STATUS_CHANGED",
+      createdAt: "2026-08-11T12:00:05+09:00",
+      data: {
+        orderId: store.attempts[0]!.orderId,
+        paymentKey: "attacker-controlled-payment-key",
+        status: "DONE",
+      },
+    },
+    receivedAt: new Date("2026-08-11T03:00:05.000Z"),
+  });
+
+  assert.deepEqual(result, {
+    outcome: "ignored",
+    reason: "provider_payment_unverified",
+  });
+  assert.equal(store.account.subscription.status, "past_due");
+  assert.equal(store.ledger.some((entry) => entry.type === "charge.succeeded"), false);
+});
+
 test("BILLING_DELETED resolves tenant by billing key fingerprint and disables the server-known payment method", async () => {
   const store = new RuntimeBillingStore();
   const billing = service(store);

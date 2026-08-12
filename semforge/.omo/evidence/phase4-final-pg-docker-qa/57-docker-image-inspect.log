@@ -1,0 +1,25 @@
+^DTARGET=web USER=semforge ARCH=arm64 OS=linux ENTRYPOINT=["/usr/bin/tini","--","/usr/local/bin/docker-entrypoint.sh"] CMD=["web"]
+10001
+v24.19.0
+Chromium 151.0.7922.108 built on Debian GNU/Linux 12 (bookworm)
+NotoSansCJK-Regular.ttc: "Noto Sans CJK KR" "Regular"
+TARGET=worker USER=semforge ARCH=arm64 OS=linux ENTRYPOINT=["/usr/bin/tini","--","/usr/local/bin/docker-entrypoint.sh"] CMD=["worker"]
+10001
+v24.19.0
+Chromium 151.0.7922.108 built on Debian GNU/Linux 12 (bookworm)
+NotoSansCJK-Regular.ttc: "Noto Sans CJK KR" "Regular"
+TARGET=relay USER=semforge ARCH=arm64 OS=linux ENTRYPOINT=["/usr/bin/tini","--","/usr/local/bin/docker-entrypoint.sh"] CMD=["relay"]
+10001
+v24.19.0
+Chromium 151.0.7922.108 built on Debian GNU/Linux 12 (bookworm)
+NotoSansCJK-Regular.ttc: "Noto Sans CJK KR" "Regular"
+TARGET=scheduler USER=semforge ARCH=arm64 OS=linux ENTRYPOINT=["/usr/bin/tini","--","/usr/local/bin/docker-entrypoint.sh"] CMD=["scheduler"]
+10001
+v24.19.0
+Chromium 151.0.7922.108 built on Debian GNU/Linux 12 (bookworm)
+NotoSansCJK-Regular.ttc: "Noto Sans CJK KR" "Regular"
+TARGET=migrator USER=semforge ARCH=arm64 OS=linux ENTRYPOINT=["/usr/bin/tini","--","/usr/local/bin/docker-entrypoint.sh"] CMD=["migrate"]
+10001
+v24.19.0
+Chromium 151.0.7922.108 built on Debian GNU/Linux 12 (bookworm)
+NotoSansCJK-Regular.ttc: "Noto Sans CJK KR" "Regular"

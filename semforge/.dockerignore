@@ -1,0 +1,10 @@
+.git
+.github
+.next
+node_modules
+coverage
+.env*
+*.log
+*.tsbuildinfo
+.Codex
+.design-qa

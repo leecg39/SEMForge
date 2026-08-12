@@ -1,0 +1,207 @@
+# @TASK P4-O1-T1 - Least-privilege worker, relay, and weekly scheduler examples
+# @SPEC docs/planning/06-tasks.md#p4-o1-t1--node-24-docker와-운영-도구
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: semforge-worker
+  labels: &worker-labels
+    app.kubernetes.io/name: semforge
+    app.kubernetes.io/component: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels: *worker-labels
+  template:
+    metadata:
+      labels: *worker-labels
+    spec:
+      terminationGracePeriodSeconds: 45
+      securityContext: &pod-security
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: registry.example.com/semforge-worker@sha256:REPLACE_WITH_DIGEST
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: NODE_ENV, value: production }
+            - { name: SEMFORGE_SERVICE, value: worker }
+            - { name: PGSSLMODE, value: verify-full }
+            - { name: APP_PUBLIC_URL, value: "https://app.semforge.example" }
+            - { name: CHROMIUM_EXECUTABLE_PATH, value: "/usr/bin/chromium" }
+            - name: AUTH_DATABASE_URL
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: auth-database-url } }
+            - name: DISPATCHER_DATABASE_URL
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: dispatcher-database-url } }
+            - name: WORKER_DATABASE_URL
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: tenant-database-url } }
+            - name: RESEND_API_KEY
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: resend-api-key } }
+            - name: RESEND_FROM_EMAIL
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: resend-from-email } }
+            - name: S3_ENDPOINT
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: s3-endpoint } }
+            - name: S3_REGION
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: s3-region } }
+            - name: S3_BUCKET
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: s3-bucket } }
+            - name: S3_ACCESS_KEY_ID
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: s3-access-key-id } }
+            - name: S3_SECRET_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: s3-secret-access-key } }
+            - name: APP_SECRET
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: app-secret } }
+            - name: APP_SECRET_CURRENT_KEY_ID
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: app-secret-key-id } }
+            - name: GOOGLE_CLIENT_ID
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: google-client-id } }
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: google-client-secret } }
+            - name: TALORDATA_API_TOKEN
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: talordata-api-token } }
+            - name: NAVER_OPEN_API_CLIENT_ID
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: naver-open-api-client-id } }
+            - name: NAVER_OPEN_API_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: naver-open-api-client-secret } }
+            - name: NAVER_SEARCH_AD_ACCESS_LICENSE
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: naver-search-ad-access-license } }
+            - name: NAVER_SEARCH_AD_SECRET_KEY
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: naver-search-ad-secret-key } }
+            - name: NAVER_SEARCH_AD_CUSTOMER_ID
+              valueFrom: { secretKeyRef: { name: semforge-worker, key: naver-search-ad-customer-id } }
+          securityContext: &container-security
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: semforge-relay
+  labels: &relay-labels
+    app.kubernetes.io/name: semforge
+    app.kubernetes.io/component: relay
+spec:
+  replicas: 1
+  selector:
+    matchLabels: *relay-labels
+  template:
+    metadata:
+      labels: *relay-labels
+    spec:
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: relay
+          image: registry.example.com/semforge-relay@sha256:REPLACE_WITH_DIGEST
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: NODE_ENV, value: production }
+            - name: SEMFORGE_SERVICE
+              value: relay
+            - { name: PGSSLMODE, value: verify-full }
+            - name: DISPATCHER_DATABASE_URL
+              valueFrom: { secretKeyRef: { name: semforge-relay, key: database-url } }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: semforge-weekly-collection-scheduler
+  labels:
+    app.kubernetes.io/name: semforge
+    app.kubernetes.io/component: scheduler
+spec:
+  schedule: "0 9 * * 0"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: semforge
+            app.kubernetes.io/component: scheduler
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: scheduler
+              image: registry.example.com/semforge-scheduler@sha256:REPLACE_WITH_DIGEST
+              imagePullPolicy: IfNotPresent
+              env:
+                - { name: NODE_ENV, value: production }
+                - { name: SEMFORGE_SERVICE, value: scheduler }
+                - { name: PGSSLMODE, value: verify-full }
+                - name: SCHEDULER_DATABASE_URL
+                  valueFrom: { secretKeyRef: { name: semforge-scheduler, key: database-url } }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: semforge-weekly-report-scheduler
+  labels:
+    app.kubernetes.io/name: semforge
+    app.kubernetes.io/component: report-scheduler
+spec:
+  schedule: "0 23 * * 0"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: semforge
+            app.kubernetes.io/component: report-scheduler
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: report-scheduler
+              image: registry.example.com/semforge-scheduler@sha256:REPLACE_WITH_DIGEST
+              imagePullPolicy: IfNotPresent
+              args: ["report-scheduler"]
+              env:
+                - { name: NODE_ENV, value: production }
+                - { name: SEMFORGE_SERVICE, value: scheduler }
+                - { name: PGSSLMODE, value: verify-full }
+                - name: SCHEDULER_DATABASE_URL
+                  valueFrom: { secretKeyRef: { name: semforge-scheduler, key: database-url } }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]

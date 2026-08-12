@@ -1,0 +1,5 @@
+^D
+> semforge@0.1.0 db:migrate
+> tsx src/db/migrate.ts
+
+[db] PostgreSQL migrations applied

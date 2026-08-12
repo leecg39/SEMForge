@@ -1,0 +1,455 @@
+{
+  "fixture": "all /api/v1 requests CDP-fulfilled; accounts.google.com and Toss hosts request-intercepted and failed before network",
+  "siteCreateShot": "/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-browser-qa/semforge/.omo/evidence/phase4-final-browser-qa/screenshots/mutation-site-create.png",
+  "gscConnectState": {
+    "url": "chrome-error://chromewebdata/",
+    "alerts": [],
+    "status": []
+  },
+  "propertiesShot": "/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-browser-qa/semforge/.omo/evidence/phase4-final-browser-qa/screenshots/mutation-gsc-properties.png",
+  "browserTenantOverride": {
+    "note": "mutation utility is module-scoped; browser UI has no workspace/tenant inputs",
+    "tenantInputs": 0,
+    "htmlHasWorkspaceId": false
+  },
+  "calls": [
+    {
+      "label": "sites-ready",
+      "path": "/api/v1/sites",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json",
+        "Referer": "http://127.0.0.1:3474/app/sites/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": null
+    },
+    {
+      "label": "sites-ready",
+      "path": "/api/v1/billing/subscription",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json",
+        "Referer": "http://127.0.0.1:3474/app/sites/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": null
+    },
+    {
+      "label": "site-create",
+      "path": "/api/v1/sites",
+      "method": "POST",
+      "headers": {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Idempotency-Key": "b4aede30-4a67-4619-bf37-f79776b168cf",
+        "Origin": "http://127.0.0.1:3474",
+        "Referer": "http://127.0.0.1:3474/app/sites/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": "{\"name\":\"새 고객사\",\"domain\":\"new-client.example\"}"
+    },
+    {
+      "label": "site-create",
+      "path": "/api/v1/sites",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json",
+        "Referer": "http://127.0.0.1:3474/app/sites/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": null
+    },
+    {
+      "label": "site-toggle",
+      "path": "/api/v1/sites/0198a219-4d49-7dce-9d9a-536822c04da8",
+      "method": "PATCH",
+      "headers": {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Idempotency-Key": "009abbbc-be3c-4f75-b1a6-aa5e8e4106f1",
+        "Origin": "http://127.0.0.1:3474",
+        "Referer": "http://127.0.0.1:3474/app/sites/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": "{\"active\":false}"
+    },
+    {
+      "label": "site-toggle",
+      "path": "/api/v1/sites",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json",
+        "Referer": "http://127.0.0.1:3474/app/sites/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": null
+    },
+    {
+      "label": "site-detail",
+      "path": "/api/v1/sites/0198a219-4d49-7dce-9d9a-536822c04da8",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json",
+        "Referer": "http://127.0.0.1:3474/app/sites/0198a219-4d49-7dce-9d9a-536822c04da8/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": null
+    },
+    {
+      "label": "site-detail",
+      "path": "/api/v1/billing/subscription",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json",
+        "Referer": "http://127.0.0.1:3474/app/sites/0198a219-4d49-7dce-9d9a-536822c04da8/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": null
+    },
+    {
+      "label": "tracking-create",
+      "path": "/api/v1/tracking",
+      "method": "POST",
+      "headers": {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Idempotency-Key": "1b543cf0-e3e2-4647-8e92-829c468b4523",
+        "Origin": "http://127.0.0.1:3474",
+        "Referer": "http://127.0.0.1:3474/app/sites/0198a219-4d49-7dce-9d9a-536822c04da8/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": "{\"siteId\":\"0198a219-4d49-7dce-9d9a-536822c04da8\",\"type\":\"rank\",\"query\":\"수제 의자\"}"
+    },
+    {
+      "label": "tracking-create",
+      "path": "/api/v1/sites/0198a219-4d49-7dce-9d9a-536822c04da8",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json",
+        "Referer": "http://127.0.0.1:3474/app/sites/0198a219-4d49-7dce-9d9a-536822c04da8/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": null
+    },
+    {
+      "label": "tracking-toggle",
+      "path": "/api/v1/tracking/0198a219-4d49-7dce-9d9a-536822c04db0",
+      "method": "PATCH",
+      "headers": {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Idempotency-Key": "f147f0d7-0ef3-4cda-b201-c69b20a56429",
+        "Origin": "http://127.0.0.1:3474",
+        "Referer": "http://127.0.0.1:3474/app/sites/0198a219-4d49-7dce-9d9a-536822c04da8/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": "{\"active\":false}"
+    },
+    {
+      "label": "tracking-toggle",
+      "path": "/api/v1/sites/0198a219-4d49-7dce-9d9a-536822c04da8",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json",
+        "Referer": "http://127.0.0.1:3474/app/sites/0198a219-4d49-7dce-9d9a-536822c04da8/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": null
+    },
+    {
+      "label": "settings",
+      "path": "/api/v1/reports/branding",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json",
+        "Referer": "http://127.0.0.1:3474/app/settings/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": null
+    },
+    {
+      "label": "settings",
+      "path": "/api/v1/integrations/gsc/connections",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json",
+        "Referer": "http://127.0.0.1:3474/app/settings/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": null
+    },
+    {
+      "label": "settings",
+      "path": "/api/v1/sites",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json",
+        "Referer": "http://127.0.0.1:3474/app/settings/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": null
+    },
+    {
+      "label": "settings",
+      "path": "/api/v1/billing/subscription",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json",
+        "Referer": "http://127.0.0.1:3474/app/settings/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": null
+    },
+    {
+      "label": "branding-save",
+      "path": "/api/v1/reports/branding",
+      "method": "PATCH",
+      "headers": {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Idempotency-Key": "a1ac61e7-a67e-4338-9c3d-502db62f0588",
+        "Origin": "http://127.0.0.1:3474",
+        "Referer": "http://127.0.0.1:3474/app/settings/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": "{\"name\":\"변경된 브랜드\",\"accentColor\":\"#0f675f\",\"logoUrl\":null}"
+    },
+    {
+      "label": "branding-save",
+      "path": "/api/v1/reports/branding",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json",
+        "Referer": "http://127.0.0.1:3474/app/settings/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": null
+    },
+    {
+      "label": "gsc-connect",
+      "path": "/api/v1/integrations/gsc/connect",
+      "method": "POST",
+      "headers": {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Idempotency-Key": "9bb874ef-8505-42b8-b94b-5b24b534db23",
+        "Origin": "http://127.0.0.1:3474",
+        "Referer": "http://127.0.0.1:3474/app/settings/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": "{\"label\":\"외부 호출 차단 QA\",\"returnPath\":\"/app/settings\"}"
+    },
+    {
+      "label": "settings-2",
+      "path": "/api/v1/reports/branding",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json",
+        "Referer": "http://127.0.0.1:3474/app/settings/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": null
+    },
+    {
+      "label": "settings-2",
+      "path": "/api/v1/integrations/gsc/connections",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json",
+        "Referer": "http://127.0.0.1:3474/app/settings/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": null
+    },
+    {
+      "label": "settings-2",
+      "path": "/api/v1/sites",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json",
+        "Referer": "http://127.0.0.1:3474/app/settings/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": null
+    },
+    {
+      "label": "settings-2",
+      "path": "/api/v1/billing/subscription",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json",
+        "Referer": "http://127.0.0.1:3474/app/settings/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": null
+    },
+    {
+      "label": "gsc-properties",
+      "path": "/api/v1/integrations/gsc/connections/0198a219-4d49-7dce-9d9a-536822c04db2/properties",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json",
+        "Referer": "http://127.0.0.1:3474/app/settings/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": null
+    },
+    {
+      "label": "gsc-bind",
+      "path": "/api/v1/integrations/gsc/bindings",
+      "method": "POST",
+      "headers": {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Idempotency-Key": "5bb4a843-ca19-4c5b-92d1-04f2a4b33808",
+        "Origin": "http://127.0.0.1:3474",
+        "Referer": "http://127.0.0.1:3474/app/settings/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
+      },
+      "body": "{\"siteId\":\"0198a219-4d49-7dce-9d9a-536822c04da8\",\"connectionId\":\"0198a219-4d49-7dce-9d9a-536822c04db2\",\"propertyUri\":\"sc-domain:atelier.example\"}"
+    }
+  ],
+  "externalBlocked": [
+    {
+      "label": "gsc-connect",
+      "url": "https://accounts.google.com/o/oauth2/v2/auth?client_id=browser-qa-fixture",
+      "method": "GET"
+    }
+  ],
+  "nonV1ApiCalls": [],
+  "tenantLeakBodies": [],
+  "mutationHeaders": [
+    {
+      "label": "site-create",
+      "path": "/api/v1/sites",
+      "method": "POST",
+      "idempotencyKey": "b4aede30-4a67-4619-bf37-f79776b168cf",
+      "contentType": "application/json",
+      "body": "{\"name\":\"새 고객사\",\"domain\":\"new-client.example\"}"
+    },
+    {
+      "label": "site-toggle",
+      "path": "/api/v1/sites/0198a219-4d49-7dce-9d9a-536822c04da8",
+      "method": "PATCH",
+      "idempotencyKey": "009abbbc-be3c-4f75-b1a6-aa5e8e4106f1",
+      "contentType": "application/json",
+      "body": "{\"active\":false}"
+    },
+    {
+      "label": "tracking-create",
+      "path": "/api/v1/tracking",
+      "method": "POST",
+      "idempotencyKey": "1b543cf0-e3e2-4647-8e92-829c468b4523",
+      "contentType": "application/json",
+      "body": "{\"siteId\":\"0198a219-4d49-7dce-9d9a-536822c04da8\",\"type\":\"rank\",\"query\":\"수제 의자\"}"
+    },
+    {
+      "label": "tracking-toggle",
+      "path": "/api/v1/tracking/0198a219-4d49-7dce-9d9a-536822c04db0",
+      "method": "PATCH",
+      "idempotencyKey": "f147f0d7-0ef3-4cda-b201-c69b20a56429",
+      "contentType": "application/json",
+      "body": "{\"active\":false}"
+    },
+    {
+      "label": "branding-save",
+      "path": "/api/v1/reports/branding",
+      "method": "PATCH",
+      "idempotencyKey": "a1ac61e7-a67e-4338-9c3d-502db62f0588",
+      "contentType": "application/json",
+      "body": "{\"name\":\"변경된 브랜드\",\"accentColor\":\"#0f675f\",\"logoUrl\":null}"
+    },
+    {
+      "label": "gsc-connect",
+      "path": "/api/v1/integrations/gsc/connect",
+      "method": "POST",
+      "idempotencyKey": "9bb874ef-8505-42b8-b94b-5b24b534db23",
+      "contentType": "application/json",
+      "body": "{\"label\":\"외부 호출 차단 QA\",\"returnPath\":\"/app/settings\"}"
+    },
+    {
+      "label": "gsc-bind",
+      "path": "/api/v1/integrations/gsc/bindings",
+      "method": "POST",
+      "idempotencyKey": "5bb4a843-ca19-4c5b-92d1-04f2a4b33808",
+      "contentType": "application/json",
+      "body": "{\"siteId\":\"0198a219-4d49-7dce-9d9a-536822c04da8\",\"connectionId\":\"0198a219-4d49-7dce-9d9a-536822c04db2\",\"propertyUri\":\"sc-domain:atelier.example\"}"
+    }
+  ]
+}

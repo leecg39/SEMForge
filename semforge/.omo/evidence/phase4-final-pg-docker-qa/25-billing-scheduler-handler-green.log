@@ -1,0 +1,14 @@
+^D✔ billing gate는 허용된 collection만 provider handler로 전달한다 (1.735167ms)
+✔ billing gate는 past_due collection과 report.snapshot을 provider/generator 호출 없이 terminal-success skip한다 (0.662542ms)
+✔ production worker는 collection과 snapshot·PDF·email report jobs를 모두 등록한다 (0.885ms)
+✔ scheduler는 DB의 active site/query/binding만 canonical payload로 outbox에 멱등 예약한다 (1520.661959ms)
+✔ report scheduler는 KST cycleMonday와 active site로 snapshot outbox를 지연 재실행에도 한 건만 예약한다 (74.21125ms)
+✔ scheduler는 active 또는 아직 만료되지 않은 cancel_at_period_end workspace만 예약한다 (21.242917ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2135.589833

@@ -4,9 +4,9 @@
 import { PostgresOutboxRelay } from "@/server/outbox/relay";
 import type { SqlQueryable } from "@/server/jobs/queue";
 import {
-  COLLECTION_OUTBOX_TOPICS,
-  COLLECTION_TOPIC_TO_JOB_TYPE,
-  type CollectionOutboxTopic,
+  PRODUCTION_OUTBOX_TOPICS,
+  PRODUCTION_TOPIC_TO_JOB_TYPE,
+  type ProductionOutboxTopic,
 } from "@/worker/topics";
 
 export interface CollectionRelayRunResult {
@@ -63,15 +63,15 @@ export class CollectionOutboxRelayRuntime {
       limit: this.batchSize,
       leaseMs: this.leaseMs,
       now,
-      topics: COLLECTION_OUTBOX_TOPICS,
+      topics: PRODUCTION_OUTBOX_TOPICS,
     });
     let published = 0;
     let failed = 0;
     for (const event of events) {
       try {
-        const topic = event.topic as CollectionOutboxTopic;
+        const topic = event.topic as ProductionOutboxTopic;
         await this.relay.publish(event, {
-          jobType: COLLECTION_TOPIC_TO_JOB_TYPE[topic],
+          jobType: PRODUCTION_TOPIC_TO_JOB_TYPE[topic],
           now: this.clock(),
         });
         published += 1;

@@ -1,0 +1,782 @@
+^DBUILD_TARGET=web
+#0 building with "rootless" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 2.98kB 0.0s done
+#1 DONE 0.0s
+
+#2 resolve image config for docker-image://docker.io/docker/dockerfile:1.7
+#2 DONE 1.4s
+
+#3 docker-image://docker.io/docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
+#3 resolve docker.io/docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
+#3 resolve docker.io/docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e 0.2s done
+#3 DONE 0.3s
+
+#3 docker-image://docker.io/docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
+#3 CACHED
+
+#4 [internal] load metadata for docker.io/library/node:24-bookworm-slim
+#4 DONE 1.2s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 125B done
+#5 DONE 0.0s
+
+#6 [runtime-base 1/5] FROM docker.io/library/node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03
+#6 resolve docker.io/library/node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03 0.1s done
+#6 DONE 0.1s
+
+#7 [internal] load build context
+#7 transferring context: 182.40kB 0.2s done
+#7 DONE 0.3s
+
+#8 [runtime-base 2/5] RUN apt-get update     && apt-get install -y --no-install-recommends       ca-certificates       chromium       fontconfig       fonts-noto-cjk       tini     && rm -rf /var/lib/apt/lists/*     && groupadd --gid 10001 semforge     && useradd --uid 10001 --gid semforge --create-home --shell /usr/sbin/nologin semforge
+#8 CACHED
+
+#9 [runtime-base 3/5] WORKDIR /app
+#9 CACHED
+
+#10 [runtime-base 4/5] COPY --chmod=0555 scripts/ops/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+#10 CACHED
+
+#11 [base 2/2] WORKDIR /app
+#11 CACHED
+
+#12 [dependencies 1/2] COPY package.json package-lock.json ./
+#12 CACHED
+
+#13 [runtime-base 5/5] COPY --chown=semforge:semforge scripts/ops/preflight.mjs scripts/ops/runtime.mjs ./scripts/ops/
+#13 CACHED
+
+#14 [dependencies 2/2] RUN npm ci
+#14 CACHED
+
+#15 [builder 1/2] COPY . .
+#15 DONE 0.3s
+
+#16 [builder 2/2] RUN npm run build
+#16 1.234
+#16 1.234 > semforge@0.1.0 build
+#16 1.234 > SEMFORGE_SERVICE=build next build
+#16 1.234
+#16 2.251 ▲ Next.js 16.3.0 (Turbopack)
+#16 2.423 ✓ Running next.config.ts took 169ms
+#16 2.433
+#16 2.479   Creating an optimized production build ...
+#16 26.85 ✓ Compiled successfully in 24.1s
+#16 26.86   Running TypeScript ...
+#16 50.08   Finished TypeScript in 23.2s ...
+#16 50.10   Collecting page data using 3 workers ...
+#16 51.60   Generating static pages using 3 workers (0/33) ...
+#16 51.65   Generating static pages using 3 workers (8/33)
+#16 51.82   Generating static pages using 3 workers (16/33)
+#16 51.84   Generating static pages using 3 workers (24/33)
+#16 52.05 ✓ Generating static pages using 3 workers (33/33) in 452ms
+#16 52.05   Finalizing page optimization ...
+#16 52.49
+#16 52.50 Route (app)
+#16 52.50 ┌ ○ /
+#16 52.50 ├ ○ /_not-found
+#16 52.50 ├ ƒ /api/v1/auth/invites/accept
+#16 52.50 ├ ƒ /api/v1/auth/login
+#16 52.50 ├ ƒ /api/v1/auth/logout
+#16 52.50 ├ ƒ /api/v1/auth/password/forgot
+#16 52.50 ├ ƒ /api/v1/auth/password/reset
+#16 52.50 ├ ƒ /api/v1/auth/session
+#16 52.50 ├ ƒ /api/v1/billing/authorize
+#16 52.50 ├ ƒ /api/v1/billing/cancel
+#16 52.50 ├ ƒ /api/v1/billing/checkout
+#16 52.50 ├ ƒ /api/v1/billing/payment-method
+#16 52.50 ├ ƒ /api/v1/billing/retry
+#16 52.50 ├ ƒ /api/v1/billing/subscription
+#16 52.50 ├ ƒ /api/v1/integrations/gsc/bindings
+#16 52.50 ├ ƒ /api/v1/integrations/gsc/callback
+#16 52.50 ├ ƒ /api/v1/integrations/gsc/connect
+#16 52.50 ├ ƒ /api/v1/integrations/gsc/connections
+#16 52.50 ├ ƒ /api/v1/integrations/gsc/connections/[connectionId]
+#16 52.50 ├ ƒ /api/v1/integrations/gsc/connections/[connectionId]/properties
+#16 52.50 ├ ƒ /api/v1/reports
+#16 52.50 ├ ƒ /api/v1/reports/[reportId]
+#16 52.50 ├ ƒ /api/v1/reports/[reportId]/pdf
+#16 52.50 ├ ƒ /api/v1/reports/branding
+#16 52.50 ├ ƒ /api/v1/sites
+#16 52.50 ├ ƒ /api/v1/sites/[siteId]
+#16 52.50 ├ ƒ /api/v1/tracking
+#16 52.50 ├ ƒ /api/v1/tracking/[trackingId]
+#16 52.50 ├ ƒ /api/v1/webhooks/toss
+#16 52.50 ├ ○ /app
+#16 52.50 ├ ○ /app/billing
+#16 52.50 ├ ○ /app/reports
+#16 52.50 ├ ƒ /app/reports/[reportId]
+#16 52.50 ├ ○ /app/settings
+#16 52.50 ├ ○ /app/sites
+#16 52.50 ├ ƒ /app/sites/[siteId]
+#16 52.50 ├ ○ /forgot-password
+#16 52.50 ├ ƒ /health/live
+#16 52.50 ├ ƒ /health/ready
+#16 52.50 ├ ƒ /invite/[token]
+#16 52.50 ├ ○ /legal/privacy
+#16 52.50 ├ ○ /legal/terms
+#16 52.50 ├ ○ /login
+#16 52.50 └ ƒ /reset-password/[token]
+#16 52.50
+#16 52.50
+#16 52.50 ○  (Static)   prerendered as static content
+#16 52.50 ƒ  (Dynamic)  server-rendered on demand
+#16 52.50
+#16 DONE 52.6s
+
+#17 [web 1/2] COPY --from=builder --chown=semforge:semforge /app/.next/standalone ./
+#17 DONE 0.4s
+
+#18 [web 2/2] COPY --from=builder --chown=semforge:semforge /app/.next/static ./.next/static
+#18 DONE 0.2s
+
+#19 exporting to image
+#19 exporting layers
+#19 exporting layers 2.4s done
+#19 exporting manifest sha256:e8ae2ebc24d685067efbef8196da7fa25083359d6c93a57cdb168e893a41e34a done
+#19 exporting config sha256:fad19e5c7caaa232f01b3f039eccf0fe61e226e5a668f6e74f0f8fd699e9ac4c done
+#19 exporting attestation manifest sha256:dab08cd60221e0ba36221a770eafc5c8f06010c82d788ada9e8d5e13d84ae009 done
+#19 exporting manifest list sha256:c85fcc1f12da9b12bfcf1056c3e964cffe477a1a819e360898e3b7fb269f65c3 done
+#19 naming to docker.io/library/semforge-p4-final-pg-qa-web:afaffac done
+#19 unpacking to docker.io/library/semforge-p4-final-pg-qa-web:afaffac
+#19 unpacking to docker.io/library/semforge-p4-final-pg-qa-web:afaffac 0.6s done
+#19 DONE 3.1s
+BUILD_TARGET=worker
+#0 building with "rootless" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 2.98kB done
+#1 DONE 0.0s
+
+#2 resolve image config for docker-image://docker.io/docker/dockerfile:1.7
+#2 DONE 0.7s
+
+#3 docker-image://docker.io/docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
+#3 resolve docker.io/docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e done
+#3 CACHED
+
+#4 [internal] load metadata for docker.io/library/node:24-bookworm-slim
+#4 DONE 0.7s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 125B done
+#5 DONE 0.0s
+
+#6 [runtime-base 1/5] FROM docker.io/library/node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03
+#6 resolve docker.io/library/node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03 done
+#6 DONE 0.0s
+
+#7 [internal] load build context
+#7 transferring context: 34.94kB 0.1s done
+#7 DONE 0.1s
+
+#8 [base 2/2] WORKDIR /app
+#8 CACHED
+
+#9 [runtime-base 2/5] RUN apt-get update     && apt-get install -y --no-install-recommends       ca-certificates       chromium       fontconfig       fonts-noto-cjk       tini     && rm -rf /var/lib/apt/lists/*     && groupadd --gid 10001 semforge     && useradd --uid 10001 --gid semforge --create-home --shell /usr/sbin/nologin semforge
+#9 CACHED
+
+#10 [runtime-base 3/5] WORKDIR /app
+#10 CACHED
+
+#11 [runtime-base 4/5] COPY --chmod=0555 scripts/ops/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+#11 CACHED
+
+#12 [dependencies 1/2] COPY package.json package-lock.json ./
+#12 CACHED
+
+#13 [dependencies 2/2] RUN npm ci
+#13 CACHED
+
+#14 [runtime-base 5/5] COPY --chown=semforge:semforge scripts/ops/preflight.mjs scripts/ops/runtime.mjs ./scripts/ops/
+#14 CACHED
+
+#15 [builder 1/2] COPY . .
+#15 DONE 0.1s
+
+#16 [builder 2/2] RUN npm run build
+#16 0.202
+#16 0.202 > semforge@0.1.0 build
+#16 0.202 > SEMFORGE_SERVICE=build next build
+#16 0.202
+#16 0.472 ▲ Next.js 16.3.0 (Turbopack)
+#16 0.507 ✓ Running next.config.ts took 34ms
+#16 0.520
+#16 0.560   Creating an optimized production build ...
+#16 ...
+
+#17 [production-dependencies 2/2] RUN npm ci --omit=dev && npm cache clean --force
+#17 ...
+
+#16 [builder 2/2] RUN npm run build
+#16 15.51 ✓ Compiled successfully in 14.8s
+#16 15.52   Running TypeScript ...
+#16 ...
+
+#17 [production-dependencies 2/2] RUN npm ci --omit=dev && npm cache clean --force
+#17 26.02
+#17 26.02 added 83 packages, and audited 84 packages in 26s
+#17 26.02
+#17 26.02 19 packages are looking for funding
+#17 26.02   run `npm fund` for details
+#17 26.02
+#17 26.02 found 0 vulnerabilities
+#17 26.02 npm warn allow-scripts 1 package has install scripts not yet covered by allowScripts:
+#17 26.02 npm warn allow-scripts   esbuild@0.28.1 (postinstall: node install.js)
+#17 26.02 npm warn allow-scripts
+#17 26.02 npm warn allow-scripts Run `npm approve-scripts --allow-scripts-pending` to review, or `npm approve-scripts <pkg>` to allow.
+#17 26.03 npm notice
+#17 26.03 npm notice New major version of npm available! 11.17.0 -> 12.0.2
+#17 26.03 npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.2
+#17 26.03 npm notice To update run: npm install -g npm@12.0.2
+#17 26.03 npm notice
+#17 26.26 npm warn using --force Recommended protections disabled.
+#17 DONE 27.2s
+
+#16 [builder 2/2] RUN npm run build
+#16 ...
+
+#18 [pipeline-runtime 1/4] COPY --from=production-dependencies --chown=semforge:semforge /app/node_modules ./node_modules
+#18 ...
+
+#16 [builder 2/2] RUN npm run build
+#16 31.44   Finished TypeScript in 15.9s ...
+#16 31.46   Collecting page data using 3 workers ...
+#16 33.64   Generating static pages using 3 workers (0/33) ...
+#16 33.69   Generating static pages using 3 workers (8/33)
+#16 33.93   Generating static pages using 3 workers (16/33)
+#16 33.99   Generating static pages using 3 workers (24/33)
+#16 34.35 ✓ Generating static pages using 3 workers (33/33) in 715ms
+#16 34.37   Finalizing page optimization ...
+#16 35.70
+#16 35.70 Route (app)
+#16 35.70 ┌ ○ /
+#16 35.70 ├ ○ /_not-found
+#16 35.70 ├ ƒ /api/v1/auth/invites/accept
+#16 35.70 ├ ƒ /api/v1/auth/login
+#16 35.70 ├ ƒ /api/v1/auth/logout
+#16 35.70 ├ ƒ /api/v1/auth/password/forgot
+#16 35.70 ├ ƒ /api/v1/auth/password/reset
+#16 35.70 ├ ƒ /api/v1/auth/session
+#16 35.70 ├ ƒ /api/v1/billing/authorize
+#16 35.70 ├ ƒ /api/v1/billing/cancel
+#16 35.70 ├ ƒ /api/v1/billing/checkout
+#16 35.70 ├ ƒ /api/v1/billing/payment-method
+#16 35.70 ├ ƒ /api/v1/billing/retry
+#16 35.70 ├ ƒ /api/v1/billing/subscription
+#16 35.70 ├ ƒ /api/v1/integrations/gsc/bindings
+#16 35.70 ├ ƒ /api/v1/integrations/gsc/callback
+#16 35.70 ├ ƒ /api/v1/integrations/gsc/connect
+#16 35.70 ├ ƒ /api/v1/integrations/gsc/connections
+#16 35.70 ├ ƒ /api/v1/integrations/gsc/connections/[connectionId]
+#16 35.70 ├ ƒ /api/v1/integrations/gsc/connections/[connectionId]/properties
+#16 35.70 ├ ƒ /api/v1/reports
+#16 35.70 ├ ƒ /api/v1/reports/[reportId]
+#16 35.70 ├ ƒ /api/v1/reports/[reportId]/pdf
+#16 35.70 ├ ƒ /api/v1/reports/branding
+#16 35.70 ├ ƒ /api/v1/sites
+#16 35.70 ├ ƒ /api/v1/sites/[siteId]
+#16 35.70 ├ ƒ /api/v1/tracking
+#16 35.70 ├ ƒ /api/v1/tracking/[trackingId]
+#16 35.70 ├ ƒ /api/v1/webhooks/toss
+#16 35.70 ├ ○ /app
+#16 35.70 ├ ○ /app/billing
+#16 35.70 ├ ○ /app/reports
+#16 35.70 ├ ƒ /app/reports/[reportId]
+#16 35.70 ├ ○ /app/settings
+#16 35.70 ├ ○ /app/sites
+#16 35.70 ├ ƒ /app/sites/[siteId]
+#16 35.70 ├ ○ /forgot-password
+#16 35.70 ├ ƒ /health/live
+#16 35.70 ├ ƒ /health/ready
+#16 35.70 ├ ƒ /invite/[token]
+#16 35.70 ├ ○ /legal/privacy
+#16 35.70 ├ ○ /legal/terms
+#16 35.70 ├ ○ /login
+#16 35.70 └ ƒ /reset-password/[token]
+#16 35.70
+#16 35.70
+#16 35.70 ○  (Static)   prerendered as static content
+#16 35.70 ƒ  (Dynamic)  server-rendered on demand
+#16 35.70
+#16 DONE 36.8s
+
+#18 [pipeline-runtime 1/4] COPY --from=production-dependencies --chown=semforge:semforge /app/node_modules ./node_modules
+#18 DONE 6.2s
+
+#19 [pipeline-runtime 2/4] COPY --from=builder --chown=semforge:semforge /app/package.json /app/tsconfig.json ./
+#19 DONE 0.2s
+
+#20 [pipeline-runtime 3/4] COPY --from=builder --chown=semforge:semforge /app/src ./src
+#20 DONE 0.1s
+
+#21 [pipeline-runtime 4/4] COPY --from=builder --chown=semforge:semforge   /app/scripts/ops/worker.ts   /app/scripts/ops/relay.ts   /app/scripts/ops/scheduler.ts   /app/scripts/ops/report-scheduler.ts   ./scripts/ops/
+#21 DONE 0.1s
+
+#22 exporting to image
+#22 exporting layers
+#22 exporting layers 53.8s done
+#22 exporting manifest sha256:25759689f856549cde17738e83d5b83971d5e7adb1c27b8b12221959dbfebd3e 0.0s done
+#22 exporting config sha256:0f846c61b7a9a9c7c1197870268f2765f09a638d0079cbaf823af152d130de42 done
+#22 exporting attestation manifest sha256:be1c243143c3c5044cf4010fde79c7f80cee580f0327e18ea057028b0faa5b4e 0.0s done
+#22 exporting manifest list sha256:d7a7041b2e086625320580de585c417088b1ea3984747fcf8bcc35f0894672b0 done
+#22 naming to docker.io/library/semforge-p4-final-pg-qa-worker:afaffac done
+#22 unpacking to docker.io/library/semforge-p4-final-pg-qa-worker:afaffac
+#22 unpacking to docker.io/library/semforge-p4-final-pg-qa-worker:afaffac 16.5s done
+#22 DONE 70.5s
+BUILD_TARGET=relay
+#0 building with "rootless" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 2.98kB 0.0s done
+#1 DONE 0.0s
+
+#2 resolve image config for docker-image://docker.io/docker/dockerfile:1.7
+#2 DONE 0.8s
+
+#3 docker-image://docker.io/docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
+#3 resolve docker.io/docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e 0.0s done
+#3 CACHED
+
+#4 [internal] load metadata for docker.io/library/node:24-bookworm-slim
+#4 DONE 0.7s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 125B 0.0s done
+#5 DONE 0.0s
+
+#6 [base 1/2] FROM docker.io/library/node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03
+#6 resolve docker.io/library/node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03 0.0s done
+#6 DONE 0.0s
+
+#7 [internal] load build context
+#7 transferring context: 42.64kB 0.3s done
+#7 DONE 0.3s
+
+#8 [base 2/2] WORKDIR /app
+#8 CACHED
+
+#9 [dependencies 1/2] COPY package.json package-lock.json ./
+#9 CACHED
+
+#10 [dependencies 2/2] RUN npm ci
+#10 CACHED
+
+#11 [builder 1/2] COPY . .
+#11 DONE 0.6s
+
+#12 [builder 2/2] RUN npm run build
+#12 1.075
+#12 1.075 > semforge@0.1.0 build
+#12 1.075 > SEMFORGE_SERVICE=build next build
+#12 1.075
+#12 2.141 ▲ Next.js 16.3.0 (Turbopack)
+#12 2.634 ✓ Running next.config.ts took 493ms
+#12 2.652
+#12 2.721   Creating an optimized production build ...
+#12 76.11 ✓ Compiled successfully in 73s
+#12 76.27   Running TypeScript ...
+#12 89.58   Finished TypeScript in 13.3s ...
+#12 89.60   Collecting page data using 3 workers ...
+#12 91.16   Generating static pages using 3 workers (0/33) ...
+#12 91.18   Generating static pages using 3 workers (8/33)
+#12 91.28   Generating static pages using 3 workers (16/33)
+#12 91.30   Generating static pages using 3 workers (24/33)
+#12 91.43 ✓ Generating static pages using 3 workers (33/33) in 273ms
+#12 91.43   Finalizing page optimization ...
+#12 91.78
+#12 91.78 Route (app)
+#12 91.78 ┌ ○ /
+#12 91.78 ├ ○ /_not-found
+#12 91.78 ├ ƒ /api/v1/auth/invites/accept
+#12 91.78 ├ ƒ /api/v1/auth/login
+#12 91.78 ├ ƒ /api/v1/auth/logout
+#12 91.78 ├ ƒ /api/v1/auth/password/forgot
+#12 91.78 ├ ƒ /api/v1/auth/password/reset
+#12 91.78 ├ ƒ /api/v1/auth/session
+#12 91.78 ├ ƒ /api/v1/billing/authorize
+#12 91.78 ├ ƒ /api/v1/billing/cancel
+#12 91.78 ├ ƒ /api/v1/billing/checkout
+#12 91.78 ├ ƒ /api/v1/billing/payment-method
+#12 91.78 ├ ƒ /api/v1/billing/retry
+#12 91.78 ├ ƒ /api/v1/billing/subscription
+#12 91.78 ├ ƒ /api/v1/integrations/gsc/bindings
+#12 91.78 ├ ƒ /api/v1/integrations/gsc/callback
+#12 91.78 ├ ƒ /api/v1/integrations/gsc/connect
+#12 91.78 ├ ƒ /api/v1/integrations/gsc/connections
+#12 91.78 ├ ƒ /api/v1/integrations/gsc/connections/[connectionId]
+#12 91.78 ├ ƒ /api/v1/integrations/gsc/connections/[connectionId]/properties
+#12 91.78 ├ ƒ /api/v1/reports
+#12 91.78 ├ ƒ /api/v1/reports/[reportId]
+#12 91.78 ├ ƒ /api/v1/reports/[reportId]/pdf
+#12 91.78 ├ ƒ /api/v1/reports/branding
+#12 91.78 ├ ƒ /api/v1/sites
+#12 91.78 ├ ƒ /api/v1/sites/[siteId]
+#12 91.78 ├ ƒ /api/v1/tracking
+#12 91.78 ├ ƒ /api/v1/tracking/[trackingId]
+#12 91.78 ├ ƒ /api/v1/webhooks/toss
+#12 91.78 ├ ○ /app
+#12 91.78 ├ ○ /app/billing
+#12 91.78 ├ ○ /app/reports
+#12 91.78 ├ ƒ /app/reports/[reportId]
+#12 91.78 ├ ○ /app/settings
+#12 91.78 ├ ○ /app/sites
+#12 91.78 ├ ƒ /app/sites/[siteId]
+#12 91.78 ├ ○ /forgot-password
+#12 91.78 ├ ƒ /health/live
+#12 91.78 ├ ƒ /health/ready
+#12 91.78 ├ ƒ /invite/[token]
+#12 91.78 ├ ○ /legal/privacy
+#12 91.78 ├ ○ /legal/terms
+#12 91.78 ├ ○ /login
+#12 91.78 └ ƒ /reset-password/[token]
+#12 91.78
+#12 91.78
+#12 91.78 ○  (Static)   prerendered as static content
+#12 91.78 ƒ  (Dynamic)  server-rendered on demand
+#12 91.78
+#12 DONE 92.0s
+
+#13 [pipeline-runtime 1/4] COPY --from=production-dependencies --chown=semforge:semforge /app/node_modules ./node_modules
+#13 CACHED
+
+#14 [pipeline-runtime 3/4] COPY --from=builder --chown=semforge:semforge /app/src ./src
+#14 CACHED
+
+#15 [runtime-base 2/5] RUN apt-get update     && apt-get install -y --no-install-recommends       ca-certificates       chromium       fontconfig       fonts-noto-cjk       tini     && rm -rf /var/lib/apt/lists/*     && groupadd --gid 10001 semforge     && useradd --uid 10001 --gid semforge --create-home --shell /usr/sbin/nologin semforge
+#15 CACHED
+
+#16 [runtime-base 3/5] WORKDIR /app
+#16 CACHED
+
+#17 [pipeline-runtime 2/4] COPY --from=builder --chown=semforge:semforge /app/package.json /app/tsconfig.json ./
+#17 CACHED
+
+#18 [runtime-base 4/5] COPY --chmod=0555 scripts/ops/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+#18 CACHED
+
+#19 [runtime-base 5/5] COPY --chown=semforge:semforge scripts/ops/preflight.mjs scripts/ops/runtime.mjs ./scripts/ops/
+#19 CACHED
+
+#20 [production-dependencies 2/2] RUN npm ci --omit=dev && npm cache clean --force
+#20 CACHED
+
+#21 [pipeline-runtime 4/4] COPY --from=builder --chown=semforge:semforge   /app/scripts/ops/worker.ts   /app/scripts/ops/relay.ts   /app/scripts/ops/scheduler.ts   /app/scripts/ops/report-scheduler.ts   ./scripts/ops/
+#21 CACHED
+
+#22 exporting to image
+#22 exporting layers done
+#22 exporting manifest sha256:6a607b0b52f86c877c320c006e45cf5f7d9dc6a6d9c2b5c9a104d300b949dad7 0.1s done
+#22 exporting config sha256:be70571a3547971363cb475d8ff3d6a96c21f1ccef2a7c45548ee643bb885d28 0.1s done
+#22 exporting attestation manifest sha256:33a3c46f85e2bbe72eaf83815796f6b45edf55b85df9b10f0db454c3c86d8040 0.0s done
+#22 exporting manifest list sha256:e8a81aa56e27d2ea91fb9dc2faacc720e23a39e487ad7a5aa1941e0a5a0fab04 done
+#22 naming to docker.io/library/semforge-p4-final-pg-qa-relay:afaffac done
+#22 unpacking to docker.io/library/semforge-p4-final-pg-qa-relay:afaffac 0.0s done
+#22 DONE 0.2s
+BUILD_TARGET=scheduler
+#0 building with "rootless" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 DONE 0.0s
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 2.98kB done
+#1 DONE 0.0s
+
+#2 resolve image config for docker-image://docker.io/docker/dockerfile:1.7
+#2 DONE 1.0s
+
+#3 docker-image://docker.io/docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
+#3 resolve docker.io/docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e 0.0s done
+#3 CACHED
+
+#4 [internal] load metadata for docker.io/library/node:24-bookworm-slim
+#4 DONE 0.7s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 125B done
+#5 DONE 0.0s
+
+#6 [internal] load build context
+#6 DONE 0.0s
+
+#7 [base 1/2] FROM docker.io/library/node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03
+#7 resolve docker.io/library/node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03 0.0s done
+#7 DONE 0.0s
+
+#6 [internal] load build context
+#6 transferring context: 49.25kB 0.1s done
+#6 DONE 0.1s
+
+#8 [base 2/2] WORKDIR /app
+#8 CACHED
+
+#9 [dependencies 1/2] COPY package.json package-lock.json ./
+#9 CACHED
+
+#10 [dependencies 2/2] RUN npm ci
+#10 CACHED
+
+#11 [builder 1/2] COPY . .
+#11 DONE 0.4s
+
+#12 [builder 2/2] RUN npm run build
+#12 0.741
+#12 0.741 > semforge@0.1.0 build
+#12 0.741 > SEMFORGE_SERVICE=build next build
+#12 0.741
+#12 1.204 ▲ Next.js 16.3.0 (Turbopack)
+#12 1.259 ✓ Running next.config.ts took 54ms
+#12 1.266
+#12 1.295   Creating an optimized production build ...
+#12 17.72 ✓ Compiled successfully in 16.2s
+#12 17.73   Running TypeScript ...
+#12 27.50   Finished TypeScript in 9.8s ...
+#12 27.51   Collecting page data using 3 workers ...
+#12 28.29   Generating static pages using 3 workers (0/33) ...
+#12 28.31   Generating static pages using 3 workers (8/33)
+#12 28.40   Generating static pages using 3 workers (16/33)
+#12 28.44   Generating static pages using 3 workers (24/33)
+#12 28.57 ✓ Generating static pages using 3 workers (33/33) in 287ms
+#12 28.58   Finalizing page optimization ...
+#12 28.94
+#12 28.94 Route (app)
+#12 28.94 ┌ ○ /
+#12 28.94 ├ ○ /_not-found
+#12 28.94 ├ ƒ /api/v1/auth/invites/accept
+#12 28.94 ├ ƒ /api/v1/auth/login
+#12 28.94 ├ ƒ /api/v1/auth/logout
+#12 28.94 ├ ƒ /api/v1/auth/password/forgot
+#12 28.94 ├ ƒ /api/v1/auth/password/reset
+#12 28.94 ├ ƒ /api/v1/auth/session
+#12 28.94 ├ ƒ /api/v1/billing/authorize
+#12 28.94 ├ ƒ /api/v1/billing/cancel
+#12 28.94 ├ ƒ /api/v1/billing/checkout
+#12 28.94 ├ ƒ /api/v1/billing/payment-method
+#12 28.94 ├ ƒ /api/v1/billing/retry
+#12 28.94 ├ ƒ /api/v1/billing/subscription
+#12 28.94 ├ ƒ /api/v1/integrations/gsc/bindings
+#12 28.94 ├ ƒ /api/v1/integrations/gsc/callback
+#12 28.94 ├ ƒ /api/v1/integrations/gsc/connect
+#12 28.94 ├ ƒ /api/v1/integrations/gsc/connections
+#12 28.94 ├ ƒ /api/v1/integrations/gsc/connections/[connectionId]
+#12 28.94 ├ ƒ /api/v1/integrations/gsc/connections/[connectionId]/properties
+#12 28.94 ├ ƒ /api/v1/reports
+#12 28.94 ├ ƒ /api/v1/reports/[reportId]
+#12 28.94 ├ ƒ /api/v1/reports/[reportId]/pdf
+#12 28.94 ├ ƒ /api/v1/reports/branding
+#12 28.94 ├ ƒ /api/v1/sites
+#12 28.94 ├ ƒ /api/v1/sites/[siteId]
+#12 28.94 ├ ƒ /api/v1/tracking
+#12 28.94 ├ ƒ /api/v1/tracking/[trackingId]
+#12 28.94 ├ ƒ /api/v1/webhooks/toss
+#12 28.94 ├ ○ /app
+#12 28.94 ├ ○ /app/billing
+#12 28.94 ├ ○ /app/reports
+#12 28.94 ├ ƒ /app/reports/[reportId]
+#12 28.94 ├ ○ /app/settings
+#12 28.94 ├ ○ /app/sites
+#12 28.94 ├ ƒ /app/sites/[siteId]
+#12 28.94 ├ ○ /forgot-password
+#12 28.94 ├ ƒ /health/live
+#12 28.94 ├ ƒ /health/ready
+#12 28.94 ├ ƒ /invite/[token]
+#12 28.94 ├ ○ /legal/privacy
+#12 28.94 ├ ○ /legal/terms
+#12 28.94 ├ ○ /login
+#12 28.94 └ ƒ /reset-password/[token]
+#12 28.94
+#12 28.94
+#12 28.94 ○  (Static)   prerendered as static content
+#12 28.94 ƒ  (Dynamic)  server-rendered on demand
+#12 28.94
+#12 DONE 29.2s
+
+#13 [pipeline-runtime 3/4] COPY --from=builder --chown=semforge:semforge /app/src ./src
+#13 CACHED
+
+#14 [runtime-base 2/5] RUN apt-get update     && apt-get install -y --no-install-recommends       ca-certificates       chromium       fontconfig       fonts-noto-cjk       tini     && rm -rf /var/lib/apt/lists/*     && groupadd --gid 10001 semforge     && useradd --uid 10001 --gid semforge --create-home --shell /usr/sbin/nologin semforge
+#14 CACHED
+
+#15 [runtime-base 4/5] COPY --chmod=0555 scripts/ops/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+#15 CACHED
+
+#16 [runtime-base 5/5] COPY --chown=semforge:semforge scripts/ops/preflight.mjs scripts/ops/runtime.mjs ./scripts/ops/
+#16 CACHED
+
+#17 [production-dependencies 2/2] RUN npm ci --omit=dev && npm cache clean --force
+#17 CACHED
+
+#18 [runtime-base 3/5] WORKDIR /app
+#18 CACHED
+
+#19 [pipeline-runtime 1/4] COPY --from=production-dependencies --chown=semforge:semforge /app/node_modules ./node_modules
+#19 CACHED
+
+#20 [pipeline-runtime 2/4] COPY --from=builder --chown=semforge:semforge /app/package.json /app/tsconfig.json ./
+#20 CACHED
+
+#21 [pipeline-runtime 4/4] COPY --from=builder --chown=semforge:semforge   /app/scripts/ops/worker.ts   /app/scripts/ops/relay.ts   /app/scripts/ops/scheduler.ts   /app/scripts/ops/report-scheduler.ts   ./scripts/ops/
+#21 CACHED
+
+#22 exporting to image
+#22 exporting layers done
+#22 exporting manifest sha256:9d47b797ed2385a4411d32b600189ee303bd2ddba953fe9290cc500daadfe446 done
+#22 exporting config sha256:86df4bf8cef73bc47f695c19a06c462ed871a1461ad409b094247f421cd03e29 done
+#22 exporting attestation manifest sha256:5dcff0846a5ecfa38c38c7026036adf10bde82bb627e617a48da60d4a78dadc8 0.0s done
+#22 exporting manifest list sha256:03890a937b8d20467d4029202a122f9cdb1bedef7e18fda7257fe2e5f476a210 done
+#22 naming to docker.io/library/semforge-p4-final-pg-qa-scheduler:afaffac done
+#22 unpacking to docker.io/library/semforge-p4-final-pg-qa-scheduler:afaffac 0.0s done
+#22 DONE 0.1s
+BUILD_TARGET=migrator
+#0 building with "rootless" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 2.98kB done
+#1 DONE 0.0s
+
+#2 resolve image config for docker-image://docker.io/docker/dockerfile:1.7
+#2 DONE 0.7s
+
+#3 docker-image://docker.io/docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
+#3 resolve docker.io/docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e done
+#3 CACHED
+
+#4 [internal] load metadata for docker.io/library/node:24-bookworm-slim
+#4 DONE 1.0s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 125B done
+#5 DONE 0.0s
+
+#6 [internal] load build context
+#6 DONE 0.0s
+
+#7 [runtime-base 1/5] FROM docker.io/library/node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03
+#7 resolve docker.io/library/node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03 done
+#7 DONE 0.0s
+
+#6 [internal] load build context
+#6 transferring context: 55.45kB 0.1s done
+#6 DONE 0.1s
+
+#8 [base 2/2] WORKDIR /app
+#8 CACHED
+
+#9 [production-dependencies 1/2] COPY package.json package-lock.json ./
+#9 CACHED
+
+#10 [dependencies 2/2] RUN npm ci
+#10 CACHED
+
+#11 [builder 1/2] COPY . .
+#11 DONE 0.1s
+
+#12 [builder 2/2] RUN npm run build
+#12 0.267
+#12 0.267 > semforge@0.1.0 build
+#12 0.267 > SEMFORGE_SERVICE=build next build
+#12 0.267
+#12 0.519 ▲ Next.js 16.3.0 (Turbopack)
+#12 0.554 ✓ Running next.config.ts took 32ms
+#12 0.563
+#12 0.612   Creating an optimized production build ...
+#12 7.927 ✓ Compiled successfully in 7.1s
+#12 7.941   Running TypeScript ...
+#12 16.51   Finished TypeScript in 8.6s ...
+#12 16.52   Collecting page data using 3 workers ...
+#12 19.66   Generating static pages using 3 workers (0/33) ...
+#12 19.77   Generating static pages using 3 workers (8/33)
+#12 20.21   Generating static pages using 3 workers (16/33)
+#12 20.32   Generating static pages using 3 workers (24/33)
+#12 20.64 ✓ Generating static pages using 3 workers (33/33) in 981ms
+#12 20.64   Finalizing page optimization ...
+#12 21.11
+#12 21.11 Route (app)
+#12 21.11 ┌ ○ /
+#12 21.11 ├ ○ /_not-found
+#12 21.11 ├ ƒ /api/v1/auth/invites/accept
+#12 21.11 ├ ƒ /api/v1/auth/login
+#12 21.11 ├ ƒ /api/v1/auth/logout
+#12 21.11 ├ ƒ /api/v1/auth/password/forgot
+#12 21.11 ├ ƒ /api/v1/auth/password/reset
+#12 21.11 ├ ƒ /api/v1/auth/session
+#12 21.11 ├ ƒ /api/v1/billing/authorize
+#12 21.11 ├ ƒ /api/v1/billing/cancel
+#12 21.11 ├ ƒ /api/v1/billing/checkout
+#12 21.11 ├ ƒ /api/v1/billing/payment-method
+#12 21.11 ├ ƒ /api/v1/billing/retry
+#12 21.11 ├ ƒ /api/v1/billing/subscription
+#12 21.11 ├ ƒ /api/v1/integrations/gsc/bindings
+#12 21.11 ├ ƒ /api/v1/integrations/gsc/callback
+#12 21.11 ├ ƒ /api/v1/integrations/gsc/connect
+#12 21.11 ├ ƒ /api/v1/integrations/gsc/connections
+#12 21.11 ├ ƒ /api/v1/integrations/gsc/connections/[connectionId]
+#12 21.11 ├ ƒ /api/v1/integrations/gsc/connections/[connectionId]/properties
+#12 21.11 ├ ƒ /api/v1/reports
+#12 21.11 ├ ƒ /api/v1/reports/[reportId]
+#12 21.11 ├ ƒ /api/v1/reports/[reportId]/pdf
+#12 21.11 ├ ƒ /api/v1/reports/branding
+#12 21.11 ├ ƒ /api/v1/sites
+#12 21.11 ├ ƒ /api/v1/sites/[siteId]
+#12 21.11 ├ ƒ /api/v1/tracking
+#12 21.11 ├ ƒ /api/v1/tracking/[trackingId]
+#12 21.11 ├ ƒ /api/v1/webhooks/toss
+#12 21.11 ├ ○ /app
+#12 21.11 ├ ○ /app/billing
+#12 21.11 ├ ○ /app/reports
+#12 21.11 ├ ƒ /app/reports/[reportId]
+#12 21.11 ├ ○ /app/settings
+#12 21.11 ├ ○ /app/sites
+#12 21.11 ├ ƒ /app/sites/[siteId]
+#12 21.11 ├ ○ /forgot-password
+#12 21.11 ├ ƒ /health/live
+#12 21.11 ├ ƒ /health/ready
+#12 21.11 ├ ƒ /invite/[token]
+#12 21.11 ├ ○ /legal/privacy
+#12 21.11 ├ ○ /legal/terms
+#12 21.11 ├ ○ /login
+#12 21.11 └ ƒ /reset-password/[token]
+#12 21.11
+#12 21.11
+#12 21.11 ○  (Static)   prerendered as static content
+#12 21.11 ƒ  (Dynamic)  server-rendered on demand
+#12 21.11
+#12 DONE 21.9s
+
+#13 [migrator 2/3] COPY --from=builder --chown=semforge:semforge /app/package.json /app/tsconfig.json ./
+#13 CACHED
+
+#14 [runtime-base 2/5] RUN apt-get update     && apt-get install -y --no-install-recommends       ca-certificates       chromium       fontconfig       fonts-noto-cjk       tini     && rm -rf /var/lib/apt/lists/*     && groupadd --gid 10001 semforge     && useradd --uid 10001 --gid semforge --create-home --shell /usr/sbin/nologin semforge
+#14 CACHED
+
+#15 [runtime-base 3/5] WORKDIR /app
+#15 CACHED
+
+#16 [runtime-base 4/5] COPY --chmod=0555 scripts/ops/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+#16 CACHED
+
+#17 [runtime-base 5/5] COPY --chown=semforge:semforge scripts/ops/preflight.mjs scripts/ops/runtime.mjs ./scripts/ops/
+#17 CACHED
+
+#18 [production-dependencies 2/2] RUN npm ci --omit=dev && npm cache clean --force
+#18 CACHED
+
+#19 [migrator 1/3] COPY --from=production-dependencies --chown=semforge:semforge /app/node_modules ./node_modules
+#19 CACHED
+
+#20 [migrator 3/3] COPY --from=builder --chown=semforge:semforge /app/src ./src
+#20 CACHED
+
+#21 exporting to image
+#21 exporting layers done
+#21 exporting manifest sha256:b1693dc3179260955ea5e25b6e4bdaf6b2abe28433ce02b86778cf3e7299c921 done
+#21 exporting config sha256:58e5539222fd955fb6b4ebc9116867246799e0579c8e56fb7186963bd4ec6768 done
+#21 exporting attestation manifest sha256:76a5f442d03258248bb42f6c9be9eb4b8ae65c7b7c40a756ad7bbb825f6f49b5 0.0s done
+#21 exporting manifest list sha256:170b035c133c327e414076bcc1dc74b55b50ef413ea30409f99f1365180bb592 done
+#21 naming to docker.io/library/semforge-p4-final-pg-qa-migrator:afaffac done
+#21 unpacking to docker.io/library/semforge-p4-final-pg-qa-migrator:afaffac 0.0s done
+#21 DONE 0.1s
