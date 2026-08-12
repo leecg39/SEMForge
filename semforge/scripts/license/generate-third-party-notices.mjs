@@ -158,7 +158,9 @@ function markdownTableEscape(value) {
 }
 
 function codeFence(content) {
-  return content.replace(/```/gu, "`\u200b``");
+  return content
+    .replace(/[ \t]+$/gmu, "")
+    .replace(/```/gu, "`\u200b``");
 }
 
 export function renderThirdPartyNotices({ lockfileText, lockfile, nodeModulesPath = "node_modules" }) {
