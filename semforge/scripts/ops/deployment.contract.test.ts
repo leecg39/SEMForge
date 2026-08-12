@@ -198,6 +198,11 @@ test("Docker worker는 dispatcher claim과 tenant DB가 분리된 production com
   assert.match(production, /token:\s*requireEnv\(env,\s*"TALORDATA_API_TOKEN"\)/u);
   assert.match(production, /createRuntimeReportJobHandlers\(\{/u);
   assert.match(production, /workerDatabase:\s*workerPool/u);
+  assert.match(
+    production,
+    /deliveryFenceDatabase:\s*workerPool/u,
+    "password reset recipient fence must use the tenant worker role that can read suppression state",
+  );
   assert.match(production, /authDatabase:\s*authPool/u);
   assert.match(production, /createBillingAccessGuardedJobHandler\(\{ database: workerPool, delegate \}\)/u);
   assert.match(production, /google:\s*billingGuard\(google\)/u);

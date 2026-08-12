@@ -17,6 +17,7 @@ import {
   type JobHandlerInput,
 } from "@/server/jobs/contracts";
 import { createPostgresBillingStore } from "@/server/billing/postgres-store";
+import { PostgresPasswordResetEmailSuppressionPolicy } from "@/server/auth/password-reset-email";
 import { createBillingAccessGuardedJobHandler } from "@/worker/billing-gate";
 import { createInsightRouteHandlers } from "@/server/insights/routes";
 import {
@@ -686,6 +687,44 @@ test("PostgreSQL 16 실제 tenant billing role은 설정된 workspace만 허용�
 
 // @TASK P5-PRIVACY - Privacy erasure database authorization and tenant lifecycle
 // @SPEC docs/ops/privacy-erasure-runbook.md
+test("PostgreSQL 16 password reset delivery fence는 worker 역할로 suppression을 읽고 dispatcher 역할을 거부한다", async () => {
+  const workspaceId = "f5f00000-0000-4000-8000-000000000001";
+  const worker = new Pool({ connectionString: roleDatabaseUrl("semforge_worker"), max: 1, ssl: false });
+  const dispatcher = new Pool({ connectionString: roleDatabaseUrl("semforge_dispatcher"), max: 1, ssl: false });
+  const auth = new Pool({ connectionString: roleDatabaseUrl("semforge_auth"), max: 1, ssl: false });
+  await pool.query(
+    "insert into workspaces (id, name, slug) values ($1, 'Reset fence role', 'reset-fence-role')",
+    [workspaceId],
+  );
+  try {
+    const workerPolicy = new PostgresPasswordResetEmailSuppressionPolicy({
+      identityDatabase: auth,
+      tenantDatabase: worker,
+      deliveryFenceDatabase: worker,
+    });
+    const result = await workerPolicy.withDeliveryFence(
+      { workspaceId, recipient: "reset-role@example.test" },
+      async (_database, state) => state,
+    );
+    assert.deepEqual(result, { suppressed: false });
+
+    const dispatcherPolicy = new PostgresPasswordResetEmailSuppressionPolicy({
+      identityDatabase: auth,
+      tenantDatabase: worker,
+      deliveryFenceDatabase: dispatcher,
+    });
+    await assert.rejects(
+      dispatcherPolicy.withDeliveryFence(
+        { workspaceId, recipient: "reset-role@example.test" },
+        async () => "unexpected",
+      ),
+      /permission denied for table email_suppressions/i,
+    );
+  } finally {
+    await Promise.all([worker.end(), dispatcher.end(), auth.end()]);
+  }
+});
+
 test("PostgreSQL 16 privacy erasure procedure는 PUBLIC과 일반 runtime role을 거부하고 privacy role만 허용한다", async () => {
   const functionAcl = await pool.query<{
     public_execute: boolean;
