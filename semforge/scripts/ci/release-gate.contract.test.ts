@@ -193,3 +193,243 @@ test("release gate runner는 커밋된 release-range whitespace도 실패시킨�
     },
   );
 });
+
+test("release gate summary는 시작 source SHA와 evidence-only 종료 HEAD의 관계를 기록한다", async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "semforge-release-provenance-"));
+  const supplementalPath = path.join(
+    temp,
+    ".omo",
+    "evidence",
+    "final-20260812",
+    "minio-versioning.log",
+  );
+  fs.mkdirSync(path.dirname(supplementalPath), { recursive: true });
+  fs.writeFileSync(path.join(temp, "source.txt"), "release source\n");
+  fs.writeFileSync(supplementalPath, "tests 17\npass 17\nfail 0\n");
+  execFileSync("git", ["init"], { cwd: temp, stdio: "ignore" });
+  execFileSync("git", ["add", "."], { cwd: temp, stdio: "ignore" });
+  execFileSync(
+    "git",
+    ["-c", "user.email=test@example.invalid", "-c", "user.name=Test", "commit", "-m", "source"],
+    { cwd: temp, stdio: "ignore" },
+  );
+  const sourceGitSha = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: temp,
+    encoding: "utf8",
+  }).trim();
+  const sourceTreeSha = execFileSync("git", ["rev-parse", "HEAD^{tree}"], {
+    cwd: temp,
+    encoding: "utf8",
+  }).trim();
+  const evidenceDir = path.join(temp, ".omo", "evidence", "phase5-ci", "latest");
+
+  const { runReleaseGate } = await import(
+    pathToFileURL(path.join(projectRoot, "scripts/ci/run-release-gate.mjs")).href
+  ) as {
+    runReleaseGate: (options: {
+      projectRoot: string;
+      evidenceDir: string;
+      steps: Array<[string, string, string[]]>;
+      supplementalEvidence: Array<{ name: string; path: string }>;
+    }) => Promise<{
+      schemaVersion?: string;
+      status: string;
+      provenance?: {
+        source: { gitSha: string; treeSha: string };
+        completion: { gitSha: string; relationshipToSource: string };
+      };
+      artifacts?: {
+        stepLogs: Array<{ name: string; path: string }>;
+        supplemental: Array<{ name: string; path: string }>;
+      };
+    }>;
+  };
+  const commitEvidenceScript = [
+    "const fs=require('node:fs')",
+    "const cp=require('node:child_process')",
+    "fs.mkdirSync('.omo/evidence/committed',{recursive:true})",
+    "fs.writeFileSync('.omo/evidence/committed/marker.txt','evidence only\\n')",
+    "cp.execFileSync('git',['add','.omo/evidence/committed/marker.txt'])",
+    "cp.execFileSync('git',['-c','user.email=test@example.invalid','-c','user.name=Test','commit','-m','evidence only'])",
+  ].join(";");
+
+  const summary = await runReleaseGate({
+    projectRoot: temp,
+    evidenceDir,
+    steps: [["commit-evidence", process.execPath, ["-e", commitEvidenceScript]]],
+    supplementalEvidence: [
+      { name: "minio-versioning", path: supplementalPath },
+      { name: "missing-acceptance", path: path.join(temp, "missing-acceptance.log") },
+    ],
+  });
+  const completionGitSha = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: temp,
+    encoding: "utf8",
+  }).trim();
+
+  assert.equal(summary.status, "passed");
+  assert.equal(summary.schemaVersion, "semforge.release-gate-evidence.v2");
+  assert.equal(summary.provenance?.source.gitSha, sourceGitSha);
+  assert.equal(summary.provenance?.source.treeSha, sourceTreeSha);
+  assert.equal(summary.provenance?.completion.gitSha, completionGitSha);
+  assert.equal(
+    summary.provenance?.completion.relationshipToSource,
+    "evidence-only-descendant",
+  );
+  assert.deepEqual(
+    summary.artifacts?.stepLogs.map(({ name, path: artifactPath }) => ({ name, path: artifactPath })),
+    [{
+      name: "commit-evidence",
+      path: ".omo/evidence/phase5-ci/latest/commit-evidence.log",
+    }],
+  );
+  assert.deepEqual(
+    summary.artifacts?.supplemental.map(({ name, path: artifactPath }) => ({
+      name,
+      path: artifactPath,
+    })),
+    [{
+      name: "minio-versioning",
+      path: ".omo/evidence/final-20260812/minio-versioning.log",
+    }],
+  );
+
+  const markdown = fs.readFileSync(path.join(evidenceDir, "summary.md"), "utf8");
+  assert.match(markdown, new RegExp(sourceGitSha));
+  assert.match(markdown, new RegExp(completionGitSha));
+  assert.match(markdown, /evidence-only-descendant/);
+  assert.match(markdown, /\.omo\/evidence\/phase5-ci\/latest\/commit-evidence\.log/);
+  assert.match(markdown, /\.omo\/evidence\/final-20260812\/minio-versioning\.log/);
+  assert.doesNotMatch(markdown, /missing-acceptance\.log/);
+  assert.doesNotMatch(markdown, /npm-verify-after-tenant-read\.log/);
+});
+
+test("release gate는 source SHA로 식별할 수 없는 dirty source에서 실행하지 않는다", async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "semforge-release-dirty-source-"));
+  fs.writeFileSync(path.join(temp, "source.txt"), "committed source\n");
+  execFileSync("git", ["init"], { cwd: temp, stdio: "ignore" });
+  execFileSync("git", ["add", "."], { cwd: temp, stdio: "ignore" });
+  execFileSync(
+    "git",
+    ["-c", "user.email=test@example.invalid", "-c", "user.name=Test", "commit", "-m", "source"],
+    { cwd: temp, stdio: "ignore" },
+  );
+  fs.writeFileSync(path.join(temp, "source.txt"), "uncommitted source change\n");
+  const markerPath = path.join(temp, "step-ran.txt");
+
+  const { runReleaseGate } = await import(
+    pathToFileURL(path.join(projectRoot, "scripts/ci/run-release-gate.mjs")).href
+  ) as {
+    runReleaseGate: (options: {
+      projectRoot: string;
+      steps: Array<[string, string, string[]]>;
+      supplementalEvidence: [];
+    }) => Promise<{
+      status: string;
+      failedStep?: string;
+      steps: Array<{ name: string }>;
+    }>;
+  };
+  const summary = await runReleaseGate({
+    projectRoot: temp,
+    steps: [[
+      "must-not-run",
+      process.execPath,
+      ["-e", `require('node:fs').writeFileSync(${JSON.stringify(markerPath)}, 'ran')`],
+    ]],
+    supplementalEvidence: [],
+  });
+
+  assert.equal(summary.status, "failed");
+  assert.equal(summary.failedStep, "source-provenance");
+  assert.deepEqual(summary.steps, []);
+  assert.equal(fs.existsSync(markerPath), false);
+});
+
+test("release gate 도중 source-changing HEAD로 이동하면 provenance 단계에서 실패한다", async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "semforge-release-source-moved-"));
+  fs.writeFileSync(path.join(temp, "source.txt"), "source before gate\n");
+  execFileSync("git", ["init"], { cwd: temp, stdio: "ignore" });
+  execFileSync("git", ["add", "."], { cwd: temp, stdio: "ignore" });
+  execFileSync(
+    "git",
+    ["-c", "user.email=test@example.invalid", "-c", "user.name=Test", "commit", "-m", "source"],
+    { cwd: temp, stdio: "ignore" },
+  );
+
+  const { runReleaseGate } = await import(
+    pathToFileURL(path.join(projectRoot, "scripts/ci/run-release-gate.mjs")).href
+  ) as {
+    runReleaseGate: (options: {
+      projectRoot: string;
+      steps: Array<[string, string, string[]]>;
+      supplementalEvidence: [];
+    }) => Promise<{
+      status: string;
+      failedStep?: string;
+      provenance?: {
+        completion: { relationshipToSource: string };
+      };
+    }>;
+  };
+  const commitSourceScript = [
+    "const fs=require('node:fs')",
+    "const cp=require('node:child_process')",
+    "fs.writeFileSync('source.txt','source changed during gate\\n')",
+    "cp.execFileSync('git',['add','source.txt'])",
+    "cp.execFileSync('git',['-c','user.email=test@example.invalid','-c','user.name=Test','commit','-m','source changed'])",
+  ].join(";");
+
+  const summary = await runReleaseGate({
+    projectRoot: temp,
+    steps: [["commit-source", process.execPath, ["-e", commitSourceScript]]],
+    supplementalEvidence: [],
+  });
+
+  assert.equal(summary.status, "failed");
+  assert.equal(summary.failedStep, "source-provenance");
+  assert.equal(
+    summary.provenance?.completion.relationshipToSource,
+    "source-changing-descendant",
+  );
+});
+
+test("release gate는 project root 밖 repository source 변경도 거부한다", async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "semforge-release-repo-dirty-"));
+  const nestedProject = path.join(temp, "semforge");
+  fs.mkdirSync(nestedProject);
+  fs.writeFileSync(path.join(nestedProject, "source.txt"), "project source\n");
+  fs.writeFileSync(path.join(temp, "workflow.yml"), "committed workflow\n");
+  execFileSync("git", ["init"], { cwd: temp, stdio: "ignore" });
+  execFileSync("git", ["add", "."], { cwd: temp, stdio: "ignore" });
+  execFileSync(
+    "git",
+    ["-c", "user.email=test@example.invalid", "-c", "user.name=Test", "commit", "-m", "source"],
+    { cwd: temp, stdio: "ignore" },
+  );
+  fs.writeFileSync(path.join(temp, "workflow.yml"), "uncommitted workflow change\n");
+  const markerPath = path.join(nestedProject, "step-ran.txt");
+
+  const { runReleaseGate } = await import(
+    pathToFileURL(path.join(projectRoot, "scripts/ci/run-release-gate.mjs")).href
+  ) as {
+    runReleaseGate: (options: {
+      projectRoot: string;
+      steps: Array<[string, string, string[]]>;
+      supplementalEvidence: [];
+    }) => Promise<{ status: string; failedStep?: string }>;
+  };
+  const summary = await runReleaseGate({
+    projectRoot: nestedProject,
+    steps: [[
+      "must-not-run",
+      process.execPath,
+      ["-e", `require('node:fs').writeFileSync(${JSON.stringify(markerPath)}, 'ran')`],
+    ]],
+    supplementalEvidence: [],
+  });
+
+  assert.equal(summary.status, "failed");
+  assert.equal(summary.failedStep, "source-provenance");
+  assert.equal(fs.existsSync(markerPath), false);
+});

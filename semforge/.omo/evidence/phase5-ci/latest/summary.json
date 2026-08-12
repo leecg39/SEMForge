@@ -1,4 +1,5 @@
 {
+  "schemaVersion": "semforge.release-gate-evidence.v2",
   "status": "passed",
   "projectRoot": "/Users/user01/Music/SEMForge-worktrees/phase-5-finalize/semforge",
   "evidenceDir": "/Users/user01/Music/SEMForge-worktrees/phase-5-finalize/semforge/.omo/evidence/phase5-ci/latest",
@@ -6,6 +7,102 @@
   "nodeExecPath": "/Users/user01/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node",
   "platform": "darwin 25.5.0",
   "startedAt": "2026-08-12T08:45:38.978Z",
+  "provenance": {
+    "source": {
+      "gitSha": "e50c5e6ea05e218268612d73fa05d8eac5517f7b",
+      "treeSha": "08bf255729d32de813b08aeccaca4010623e692e",
+      "capturedAt": "2026-08-12T08:45:38.978Z",
+      "captureMethod": "historical-reconstruction-from-git-and-log-interval"
+    },
+    "completion": {
+      "gitSha": "e50c5e6ea05e218268612d73fa05d8eac5517f7b",
+      "treeSha": "08bf255729d32de813b08aeccaca4010623e692e",
+      "capturedAt": "2026-08-12T08:48:25.061Z",
+      "captureMethod": "historical-reconstruction-from-git-and-log-interval",
+      "relationshipToSource": "same-head"
+    }
+  },
+  "artifacts": {
+    "stepLogs": [
+      {
+        "name": "node-version",
+        "path": ".omo/evidence/phase5-ci/latest/node-version.log",
+        "sha256": "3e79d89a62c36b3b76bfb40b5c7e4cd2de34420c57f8d313fba13ed8af28a244"
+      },
+      {
+        "name": "npm-verify",
+        "path": ".omo/evidence/phase5-ci/latest/npm-verify.log",
+        "sha256": "0ac445d283c0ab512f54f3697c07c5411fd2ae96a633c9532552dc7b177d5642"
+      },
+      {
+        "name": "npm-build",
+        "path": ".omo/evidence/phase5-ci/latest/npm-build.log",
+        "sha256": "dee24cea5a497fdcddc5a1bda989151f667286ae2dadd95bf055c3f0e9b731b3"
+      },
+      {
+        "name": "npm-audit-full",
+        "path": ".omo/evidence/phase5-ci/latest/npm-audit-full.log",
+        "sha256": "d8a404751006d8c9ebb3aeeca4258acefb7bb9540028bbc09fe81a4071f68fd3"
+      },
+      {
+        "name": "npm-audit-production",
+        "path": ".omo/evidence/phase5-ci/latest/npm-audit-production.log",
+        "sha256": "b5d5af521550f9e106cef40ac1e9841d7fbc745f05831e68a522c655f9f7afab"
+      },
+      {
+        "name": "license-check",
+        "path": ".omo/evidence/phase5-ci/latest/license-check.log",
+        "sha256": "ebfa38110ec39f67e1857ba850234c9a5e313cf58f2c58f3d866e8460654516c"
+      },
+      {
+        "name": "db-generate",
+        "path": ".omo/evidence/phase5-ci/latest/db-generate.log",
+        "sha256": "92e9fea41fdbdb9577b7815f4ea4f14790e7c46f0dd49af2f9e95f23047827dc"
+      },
+      {
+        "name": "generated-diff",
+        "path": ".omo/evidence/phase5-ci/latest/generated-diff.log",
+        "sha256": "ef8293a3ba62318b95133387acfe45e4a9e34ba70a4bf1ba15a3baa372baf744"
+      },
+      {
+        "name": "source-diff-check",
+        "path": ".omo/evidence/phase5-ci/latest/source-diff-check.log",
+        "sha256": "4b2b7c90a4ca248cf7e0730f4b0ef841e53131042df2709ea6dfb83513e9c781"
+      },
+      {
+        "name": "range-source-diff-check",
+        "path": ".omo/evidence/phase5-ci/latest/range-source-diff-check.log",
+        "sha256": "aeba80a52364fc5bfba48b46779b7c00a1473354ab4a2b039bf20889d25d0b41"
+      },
+      {
+        "name": "route-manifest",
+        "path": ".omo/evidence/phase5-ci/latest/route-manifest.log",
+        "sha256": "64bb3fc6feb8bcc8b8ff895a476b18970a92fb871d2c8279fac0dc9fad0bf306"
+      },
+      {
+        "name": "forbidden-surface",
+        "path": ".omo/evidence/phase5-ci/latest/forbidden-surface.log",
+        "sha256": "dd4822607f0f3171cb641618db37501da583541087bfca7f239f2efd6b66b10c"
+      },
+      {
+        "name": "pg16",
+        "path": ".omo/evidence/phase5-ci/latest/pg16.log",
+        "sha256": "d0e3fba8486cdb19e0926c33dc39f224042a789aba07c19c9bd282ebb98e5bbe"
+      },
+      {
+        "name": "nine-site",
+        "path": ".omo/evidence/phase5-ci/latest/nine-site.log",
+        "sha256": "5b935029f6d7839c45d5a0b04f14feb9bb4e16b675c9d7b6a044461c5a4051d1"
+      }
+    ],
+    "supplemental": [
+      {
+        "name": "minio-versioning",
+        "path": ".omo/evidence/final-20260812/minio-versioning.log",
+        "sha256": "7c9d4a9bc60c16a116eb4ed4ec275fde30e2eb9957ec781a579d8124d9b96ba9"
+      }
+    ]
+  },
   "steps": [
     {
       "name": "node-version",
