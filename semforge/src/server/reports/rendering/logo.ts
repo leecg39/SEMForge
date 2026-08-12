@@ -6,6 +6,8 @@ import { isIP, type LookupFunction } from "node:net";
 
 import sharp from "sharp";
 
+import { isPublicIpAddress } from "@/server/sites/domain";
+
 const MAX_LOGO_BYTES = 1_000_000;
 const ALLOWED_CONTENT_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 
@@ -19,38 +21,22 @@ async function resolveHostname(hostname: string): Promise<readonly string[]> {
   return (await lookup(hostname, { all: true, verbatim: true })).map(({ address }) => address);
 }
 
-function isPrivateIp(hostname: string): boolean {
+function isForbiddenHostname(hostname: string): boolean {
   const normalized = hostname.replace(/^\[|\]$/g, "");
-  if (isIP(normalized) === 4) {
-    const octets = normalized.split(".").map(Number);
-    return octets[0] === 10 || octets[0] === 127 || octets[0] === 0 ||
-      (octets[0] === 100 && (octets[1] ?? 0) >= 64 && (octets[1] ?? 0) <= 127) ||
-      (octets[0] === 169 && octets[1] === 254) ||
-      (octets[0] === 172 && (octets[1] ?? 0) >= 16 && (octets[1] ?? 0) <= 31) ||
-      (octets[0] === 192 && octets[1] === 0 && octets[2] === 0) ||
-      (octets[0] === 192 && octets[1] === 0 && octets[2] === 2) ||
-      (octets[0] === 192 && octets[1] === 168) ||
-      (octets[0] === 198 && ((octets[1] ?? 0) === 18 || (octets[1] ?? 0) === 19)) ||
-      (octets[0] === 198 && octets[1] === 51 && octets[2] === 100) ||
-      (octets[0] === 203 && octets[1] === 0 && octets[2] === 113) ||
-      (octets[0] ?? 0) >= 224;
-  }
-  if (isIP(normalized) === 6) {
-    const lower = normalized.toLowerCase();
-    const mappedIpv4 = lower.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/)?.[1];
-    if (mappedIpv4) return isPrivateIp(mappedIpv4);
-    return lower === "::1" || lower === "::" || lower.startsWith("2001:db8:") ||
-      lower.startsWith("fc") ||
-      lower.startsWith("fd") || lower.startsWith("fe8") || lower.startsWith("fe9") ||
-      lower.startsWith("fea") || lower.startsWith("feb");
-  }
+  if (isIP(normalized) !== 0) return !isPublicIpAddress(normalized);
   return normalized === "localhost" || normalized.endsWith(".localhost") || normalized.endsWith(".local");
 }
 
 function safeLogoUrl(raw: string): URL | null {
   try {
     const url = new URL(raw);
-    if (url.protocol !== "https:" || url.username || url.password || url.port || isPrivateIp(url.hostname)) {
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      url.port ||
+      isForbiddenHostname(url.hostname)
+    ) {
       return null;
     }
     return url;
@@ -89,7 +75,7 @@ async function requestPinnedLogo(
   signal: AbortSignal,
 ): Promise<{ contentType: string | null; source: Buffer } | null> {
   const family = isIP(address);
-  if (family === 0) return null;
+  if (family === 0 || !isPublicIpAddress(address)) return null;
   const pinnedLookup: LookupFunction = (_hostname, _options, callback) => {
     callback(null, address, family);
   };
@@ -157,7 +143,9 @@ export async function loadReportLogo(
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 3_000);
   try {
     const addresses = await (options.resolveHostname ?? resolveHostname)(url.hostname);
-    if (addresses.length === 0 || addresses.some(isPrivateIp)) return null;
+    if (addresses.length === 0 || addresses.some((address) => !isPublicIpAddress(address))) {
+      return null;
+    }
     let contentType: string | null;
     let source: Buffer | null;
     if (options.fetch) {

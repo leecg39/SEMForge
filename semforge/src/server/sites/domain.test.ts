@@ -44,10 +44,15 @@ test("공개 IP 판정은 private, loopback, link-local, documentation 대역을
     "fe80::1",
     "2001:db8::1",
     "::ffff:127.0.0.1",
+    "::ffff:7f00:1",
+    "::ffff:a00:1",
+    "::ffff:a9fe:a9fe",
+    "::ffff:c0a8:101",
   ]) {
     assert.equal(isPublicIpAddress(address), false, address);
   }
   assert.equal(isPublicIpAddress("8.8.8.8"), true);
+  assert.equal(isPublicIpAddress("::ffff:808:808"), true);
   assert.equal(isPublicIpAddress("2606:4700:4700::1111"), true);
 });
 

@@ -2,13 +2,13 @@ name: semforge-pg16-test
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: "${SEMFORGE_POSTGRES_IMAGE:-postgres:16-alpine}"
     environment:
       POSTGRES_DB: semforge_test
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: semforge_test
     ports:
-      - "${SEMFORGE_PG16_PORT:-55432}:5432"
+      - "127.0.0.1:${SEMFORGE_PG16_PORT:-55432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d semforge_test"]
       interval: 1s

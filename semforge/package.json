@@ -26,6 +26,7 @@
     "test:providers": "tsx --test src/server/talordata/client.test.ts src/server/providers/naver/*.test.ts src/server/naver-search-ads/client.test.ts",
     "test:pg16": "tsx --test src/db/postgres16.multisession.pg16.ts",
     "test:pg16:docker": "bash scripts/test-pg16.sh",
+    "deploy:preflight": "node scripts/ops/deployment-preflight.mjs",
     "verify": "npm run lint && npm run typecheck && npm run test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
