@@ -40,6 +40,7 @@ RUN apt-get update \
 WORKDIR /app
 COPY --chmod=0555 scripts/ops/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY --chown=semforge:semforge scripts/ops/preflight.mjs scripts/ops/runtime.mjs ./scripts/ops/
+COPY --chown=semforge:semforge LICENSE NOTICE THIRD_PARTY_NOTICES.md ./legal/
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 STOPSIGNAL SIGTERM
 

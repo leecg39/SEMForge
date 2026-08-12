@@ -1,0 +1,12 @@
+SEMForge Notice
+
+SEMForge is private commercial software.
+
+The product embeds third-party production dependencies, including Noto
+Sans KR font files used by the web application and PDF renderer. Their
+copyright and license notices are listed in THIRD_PARTY_NOTICES.md.
+
+Container runtime images also include Debian operating-system packages
+installed by the Dockerfile, including Chromium and fonts-noto-cjk.
+Those package notices remain available inside the image under
+/usr/share/doc/<package>/copyright.
