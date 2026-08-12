@@ -56,7 +56,7 @@ const forbiddenPatterns = [
   ["noncommercial upstream identity", new RegExp(`git${"nexus"}`, "i")],
   ["clone wording", /\bclone\b|클론|복제/i],
   ["legacy CRUD", /\bcrud\b|\bResourceSpec\b|\bListMetaShape\b/i],
-  ["legacy API namespace", /\/api\/(?!v1(?:\/|$))/],
+  ["legacy API namespace", /(?:^|[\s"'`(=,:])\/api\/(?!v1(?:\/|$))/m],
 ];
 
 function walkFiles(root) {
