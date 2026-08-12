@@ -20,10 +20,14 @@ const allowedLicenseTokens = new Set([
 
 const forbiddenLicensePattern = /\b(?:AGPL|GPL|SSPL)\b|PolyForm|Noncommercial|NonCommercial|UNLICENSED|UNKNOWN|SEE LICEN[CS]E/i;
 const licenseFilePattern = /^(licen[cs]e|copying|notice|copyright)(?:$|[-_.])/i;
+const distributionFilePattern = /^(licen[cs]e|copying|notice|copyright|readme)(?:$|[-_.])/i;
+const lgplLicenseTextPath = new URL("./licenses/LGPL-3.0-or-later.txt", import.meta.url);
 
 function parseArgs(argv) {
   const args = {
     check: false,
+    distributionNotices: false,
+    includeInstalledOptional: false,
     packageLockPath: "package-lock.json",
     nodeModulesPath: "node_modules",
     outputPath: "THIRD_PARTY_NOTICES.md",
@@ -33,6 +37,10 @@ function parseArgs(argv) {
     const arg = argv[index];
     if (arg === "--check") {
       args.check = true;
+    } else if (arg === "--distribution-notices") {
+      args.distributionNotices = true;
+    } else if (arg === "--include-installed-optional") {
+      args.includeInstalledOptional = true;
     } else if (arg === "--package-lock") {
       args.packageLockPath = requireValue(argv, ++index, arg);
     } else if (arg === "--node-modules") {
@@ -107,11 +115,11 @@ function packageDirectory(nodeModulesPath, packageName) {
   return path.join(nodeModulesPath, ...packageName.split("/"));
 }
 
-function collectLicenseTexts(packages, nodeModulesPath) {
+function collectLicenseTexts(packages, nodeModulesPath, options = {}) {
   const notices = new Map();
 
   for (const dependency of packages) {
-    if (dependency.optional) {
+    if (dependency.optional && options.includeInstalledOptional !== true) {
       continue;
     }
 
@@ -120,8 +128,9 @@ function collectLicenseTexts(packages, nodeModulesPath) {
       continue;
     }
 
+    const filePattern = options.includeInstalledOptional === true ? distributionFilePattern : licenseFilePattern;
     const fileNames = readdirSync(directory)
-      .filter((fileName) => licenseFilePattern.test(fileName))
+      .filter((fileName) => filePattern.test(fileName))
       .sort((left, right) => left.localeCompare(right, "en"));
 
     for (const fileName of fileNames) {
@@ -153,6 +162,52 @@ function collectLicenseTexts(packages, nodeModulesPath) {
   });
 }
 
+function installedDistributionPackages(packages, nodeModulesPath) {
+  return packages.filter((dependency) => existsSync(packageDirectory(nodeModulesPath, dependency.name)));
+}
+
+function usesLgpl(licenseExpression) {
+  return licenseTokens(licenseExpression).some((token) => token.startsWith("LGPL-"));
+}
+
+function renderLgplDistributionNotice({ packages, nodeModulesPath }) {
+  const lgplPackages = installedDistributionPackages(packages, nodeModulesPath).filter((dependency) =>
+    usesLgpl(dependency.license),
+  );
+  if (lgplPackages.length === 0) {
+    return [];
+  }
+
+  const lgplLicenseText = readFileSync(lgplLicenseTextPath, "utf8").replace(/\r\n/gu, "\n").trim();
+  if (!/GNU LESSER GENERAL PUBLIC LICENSE/u.test(lgplLicenseText)) {
+    throw new Error("LGPL-3.0-or-later license artifact is missing canonical LGPL text");
+  }
+
+  return [
+    "## LGPL-3.0-or-later distribution notice",
+    "",
+    "The production container may include unmodified optional platform packages that bundle libvips and related shared libraries for sharp. These packages are dynamically loaded by sharp at runtime and remain present under `node_modules` in the container image.",
+    "",
+    "Installed LGPL packages detected for this notice:",
+    "",
+    ...lgplPackages.map(
+      (dependency) =>
+        `- ${dependency.name}@${dependency.version} (${dependency.license}) from \`${workspaceRelative(
+          packageDirectory(nodeModulesPath, dependency.name),
+        )}\``,
+    ),
+    "",
+    "SEMForge does not add contractual restrictions on reverse engineering for debugging modifications to those LGPL libraries. Release operators distributing a production image must keep this notice, keep the installed package files, and provide the Corresponding Source for the exact LGPL libraries shipped in that image through the product's documented legal/support channel when required.",
+    "",
+    "The package README/licensing tables above identify the bundled libraries and upstream project. The canonical LGPL-3.0-or-later license artifact vendored for this distribution notice is copied below.",
+    "",
+    "```text",
+    codeFence(lgplLicenseText),
+    "```",
+    "",
+  ];
+}
+
 function markdownTableEscape(value) {
   return String(value).replace(/\|/gu, "\\|");
 }
@@ -163,7 +218,13 @@ function codeFence(content) {
     .replace(/```/gu, "`\u200b``");
 }
 
-export function renderThirdPartyNotices({ lockfileText, lockfile, nodeModulesPath = "node_modules" }) {
+export function renderThirdPartyNotices({
+  distributionNotices = false,
+  includeInstalledOptional = false,
+  lockfileText,
+  lockfile,
+  nodeModulesPath = "node_modules",
+}) {
   const packages = collectProductionPackages(lockfile);
   const policyFailures = packages
     .map((dependency) => validateLicenseExpression(`${dependency.name}@${dependency.version}`, dependency.license))
@@ -173,11 +234,13 @@ export function renderThirdPartyNotices({ lockfileText, lockfile, nodeModulesPat
     throw new Error(`license policy failed:\n${policyFailures.join("\n")}`);
   }
 
-  const notices = collectLicenseTexts(packages, nodeModulesPath);
+  const notices = collectLicenseTexts(packages, nodeModulesPath, { includeInstalledOptional });
   const lines = [
     "# SEMForge Third-Party Notices",
     "",
-    "This product includes third-party production dependencies. This file is generated from `package-lock.json` and installed non-optional production packages in `node_modules`.",
+    includeInstalledOptional
+      ? "This product includes third-party production dependencies. This file is generated from `package-lock.json` and installed production packages, including optional platform packages present in this environment, in `node_modules`."
+      : "This product includes third-party production dependencies. This file is generated from `package-lock.json` and installed non-optional production packages in `node_modules`.",
     "",
     `Package lock SHA-256: \`${sha256(lockfileText)}\``,
     "",
@@ -199,7 +262,9 @@ export function renderThirdPartyNotices({ lockfileText, lockfile, nodeModulesPat
     "",
     "## License and notice texts collected from node_modules",
     "",
-    "The following unique texts are copied once from installed non-optional production packages. Optional platform packages remain listed in the inventory above; the production image also retains each installed package's own files under `node_modules`.",
+    includeInstalledOptional
+      ? "The following unique texts are copied once from installed production packages, including optional platform packages present in this environment. The production image also retains each installed package's own files under `node_modules`."
+      : "The following unique texts are copied once from installed non-optional production packages. Optional platform packages remain listed in the inventory above; production images regenerate distribution notices after installing platform-specific optional packages.",
     "",
   );
 
@@ -216,6 +281,10 @@ export function renderThirdPartyNotices({ lockfileText, lockfile, nodeModulesPat
     lines.push("", "```text", codeFence(notice.content), "```", "");
   }
 
+  if (distributionNotices) {
+    lines.push(...renderLgplDistributionNotice({ packages, nodeModulesPath }));
+  }
+
   return `${lines.join("\n").trimEnd()}\n`;
 }
 
@@ -226,6 +295,8 @@ async function main() {
   const outputPath = path.resolve(args.outputPath);
   const lockfileText = await readFile(packageLockPath, "utf8");
   const rendered = renderThirdPartyNotices({
+    distributionNotices: args.distributionNotices,
+    includeInstalledOptional: args.includeInstalledOptional,
     lockfileText,
     lockfile: JSON.parse(lockfileText),
     nodeModulesPath,

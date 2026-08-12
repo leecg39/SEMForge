@@ -19,7 +19,10 @@ RUN npm run build
 
 FROM base AS production-dependencies
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+COPY scripts/license ./scripts/license
+RUN npm ci --omit=dev \
+    && npm run license:generate -- --include-installed-optional --distribution-notices \
+    && npm cache clean --force
 
 FROM ${NODE_BASE_IMAGE} AS runtime-base
 ENV NODE_ENV=production \
@@ -41,7 +44,8 @@ RUN apt-get update \
 WORKDIR /app
 COPY --chmod=0555 scripts/ops/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY --chown=semforge:semforge scripts/ops/preflight.mjs scripts/ops/runtime.mjs ./scripts/ops/
-COPY --chown=semforge:semforge LICENSE NOTICE THIRD_PARTY_NOTICES.md ./legal/
+COPY --chown=semforge:semforge LICENSE NOTICE ./legal/
+COPY --from=production-dependencies --chown=semforge:semforge /app/THIRD_PARTY_NOTICES.md ./legal/THIRD_PARTY_NOTICES.md
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 STOPSIGNAL SIGTERM
 

@@ -151,7 +151,7 @@ License policy: missing, unknown, GPL, AGPL, SSPL, PolyForm, and noncommercial l
 
 ## License and notice texts collected from node_modules
 
-The following unique texts are copied once from installed non-optional production packages. Optional platform packages remain listed in the inventory above; the production image also retains each installed package's own files under `node_modules`.
+The following unique texts are copied once from installed non-optional production packages. Optional platform packages remain listed in the inventory above; production images regenerate distribution notices after installing platform-specific optional packages.
 
 ### @electric-sql/pglite — LICENSE — 4bf96504d6e8
 

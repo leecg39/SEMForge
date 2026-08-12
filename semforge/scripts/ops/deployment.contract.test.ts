@@ -95,7 +95,15 @@ test("배포 산출물은 proprietary 제품 고지와 production dependency 라
   assert.match(thirdParty, /@fontsource\/noto-sans-kr/u);
   assert.match(thirdParty, /SIL OPEN FONT LICENSE Version 1\.1/u);
   assert.match(thirdParty, /This product includes third-party production dependencies/u);
-  assert.match(dockerfile, /COPY --chown=semforge:semforge LICENSE NOTICE THIRD_PARTY_NOTICES\.md \.\/legal\//u);
+  assert.match(
+    dockerfile,
+    /npm run license:generate -- --include-installed-optional --distribution-notices/u,
+  );
+  assert.match(dockerfile, /COPY --chown=semforge:semforge LICENSE NOTICE \.\/legal\//u);
+  assert.match(
+    dockerfile,
+    /COPY --from=production-dependencies --chown=semforge:semforge \/app\/THIRD_PARTY_NOTICES\.md \.\/legal\/THIRD_PARTY_NOTICES\.md/u,
+  );
 });
 
 test("Docker worker는 dispatcher claim과 tenant DB가 분리된 production composition을 사용한다", async () => {

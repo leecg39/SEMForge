@@ -72,3 +72,66 @@ test("license notice CLI는 금지·unknown 라이선스를 fail closed로 거�
     /license policy failed[\s\S]*bad-package@1\.0\.0/u,
   );
 });
+
+test("distribution notice는 설치된 optional sharp-libvips README와 LGPL 고지를 포함한다", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "semforge-license-libvips-"));
+  const packageName = "@img/sharp-libvips-linux-x64";
+  const packageDirectory = path.join(directory, "node_modules", "@img", "sharp-libvips-linux-x64");
+  const outputPath = path.join(directory, "THIRD_PARTY_NOTICES.md");
+
+  await mkdir(packageDirectory, { recursive: true });
+  await writeFile(
+    path.join(directory, "package-lock.json"),
+    JSON.stringify(
+      {
+        lockfileVersion: 3,
+        packages: {
+          "": { optionalDependencies: { [packageName]: "1.3.2" } },
+          [`node_modules/${packageName}`]: {
+            version: "1.3.2",
+            license: "LGPL-3.0-or-later",
+            optional: true,
+            os: ["linux"],
+            cpu: ["x64"],
+          },
+        },
+      },
+      null,
+      2,
+    ),
+  );
+  await writeFile(
+    path.join(packageDirectory, "README.md"),
+    [
+      "# `@img/sharp-libvips-linux-x64`",
+      "",
+      "Prebuilt libvips and dependencies for use with sharp on Linux x64.",
+      "",
+      "## Licensing",
+      "",
+      "| Library | Used under the terms of |",
+      "| --- | --- |",
+      "| libvips | LGPLv3 |",
+      "",
+    ].join("\n"),
+  );
+
+  await execFileAsync(process.execPath, [
+    scriptPath,
+    "--package-lock",
+    path.join(directory, "package-lock.json"),
+    "--node-modules",
+    path.join(directory, "node_modules"),
+    "--output",
+    outputPath,
+    "--include-installed-optional",
+    "--distribution-notices",
+  ]);
+
+  const notice = await readFile(outputPath, "utf8");
+  assert.match(notice, /@img\/sharp-libvips-linux-x64/u);
+  assert.match(notice, /Prebuilt libvips and dependencies/u);
+  assert.match(notice, /LGPL-3\.0-or-later distribution notice/u);
+  assert.match(notice, /GNU LESSER GENERAL PUBLIC LICENSE/u);
+  assert.match(notice, /Corresponding Source/u);
+});
