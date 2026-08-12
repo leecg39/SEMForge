@@ -255,7 +255,6 @@ export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
   const trackingById = {
     PATCH: withApiV1(async (request, context: TrackingParamsContext, apiContext) => {
       const session = await resolveSessionForRoute(request);
-      await requireBilling(session.workspaceId, "workspace:write");
       const idempotencyKey = requireMutationIdempotencyKey(request);
       const body = await parseJsonBody(request, patchActiveBody);
       const { trackingId } = await context.params;

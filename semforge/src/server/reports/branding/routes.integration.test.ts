@@ -63,10 +63,11 @@ function handlers(
   role: AuthMembershipRole,
   workspace = workspaceId,
   privacyOperation: WorkspacePrivacyOperationGuard = allowPrivacyOperation,
+  authorizeBilling: BillingAccessAuthorizer = allowBillingAccess,
 ) {
   return createReportBrandingRouteHandlers({
     db: pg,
-    authorizeBilling: allowBillingAccess,
+    authorizeBilling,
     privacyOperation,
     resolveSession: async () => ({
       workspaceId: workspace,
@@ -195,7 +196,21 @@ test("blocking/erased workspace는 브랜딩 GET/PATCH를 409로 차단하고 �
         throw new WorkspacePrivacyOperationBlockedError(state);
       },
     };
-    const owner = handlers("owner", workspaceId, privacyOperation);
+    const billingCalls: string[] = [];
+    const owner = handlers(
+      "owner",
+      workspaceId,
+      privacyOperation,
+      async ({ capability }) => {
+        billingCalls.push(capability);
+        return {
+          allowed: true,
+          mode: "full",
+          reason: "active",
+          reportPeriodEndBefore: null,
+        };
+      },
+    );
     const read = await owner.branding.GET(
       new Request("https://app.semforge.test/api/v1/reports/branding"),
       undefined,
@@ -212,6 +227,7 @@ test("blocking/erased workspace는 브랜딩 GET/PATCH를 409로 차단하고 �
     assert.equal((await body(read)).error?.code, "CONFLICT");
     assert.equal(write.status, 409);
     assert.equal((await body(write)).error?.code, "CONFLICT");
+    assert.deepEqual(billingCalls, []);
 
     const afterState = (
       await pg.query<typeof before>(

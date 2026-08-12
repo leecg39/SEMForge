@@ -291,9 +291,18 @@ test("blocking/erased workspace read/write는 사이트·tracking 저장과 outb
   ).rows[0]!;
 
   for (const state of ["blocking", "erased"] as const) {
+    const billingCalls: string[] = [];
     const handlers = handlersFor(
       workspaceId,
-      allowBillingAccess,
+      async ({ capability }) => {
+        billingCalls.push(capability);
+        return {
+          allowed: true,
+          mode: "full",
+          reason: "active",
+          reportPeriodEndBefore: null,
+        };
+      },
       blockedPrivacyOperation(state),
     );
     const suffix = state === "blocking" ? "blocked" : "erased";
@@ -371,6 +380,7 @@ test("blocking/erased workspace read/write는 사이트·tracking 저장과 outb
     assert.equal((await readEnvelope(list)).error?.code, "CONFLICT");
     assert.equal(detail.status, 409);
     assert.equal((await readEnvelope(detail)).error?.code, "CONFLICT");
+    assert.deepEqual(billingCalls, []);
   }
 
   const afterState = (
