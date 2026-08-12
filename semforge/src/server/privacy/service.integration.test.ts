@@ -625,7 +625,7 @@ test("subject erasure는 local erase 전에 durable email suppression을 별도 
   assert.equal(suppressionRowsBeforeLocalErase, 1);
   assert.equal(suppressionStepsBeforeLocalErase, 1);
   const lockIndex = statements.findIndex((statement) =>
-    /privacy_subject_email/u.test(statement) && /pg_advisory_xact_lock/u.test(statement)
+    /privacy_lock_recipient_email_exclusive/u.test(statement)
   );
   const eraseIndex = statements.findIndex((statement) => /privacy_erase_subject/u.test(statement));
   assert.notEqual(lockIndex, -1);

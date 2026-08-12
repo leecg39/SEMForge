@@ -241,9 +241,7 @@ async function lockSubjectEmailErasure(
   },
 ): Promise<void> {
   await db.query(
-    `select pg_advisory_xact_lock(
-       hashtextextended('privacy_subject_email:' || $1::uuid::text || ':' || $2::text, 0)
-     )`,
+    `select privacy_lock_recipient_email_exclusive($1::uuid, $2::text)`,
     [input.workspaceId, input.emailHash],
   );
 }
