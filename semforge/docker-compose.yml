@@ -99,6 +99,24 @@ services:
         condition: service_completed_successfully
     restart: "no"
 
+  report-scheduler:
+    <<: *runtime
+    profiles: [scheduled]
+    image: ${SEMFORGE_SCHEDULER_IMAGE:-semforge-scheduler:local}
+    build:
+      context: .
+      target: scheduler
+    env_file:
+      - path: ${SEMFORGE_SCHEDULER_ENV_FILE:-deploy/env/scheduler.env}
+        required: true
+    environment:
+      SEMFORGE_SERVICE: scheduler
+    command: ["report-scheduler"]
+    depends_on:
+      release:
+        condition: service_completed_successfully
+    restart: "no"
+
 networks:
   backend:
     driver: bridge
