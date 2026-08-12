@@ -2,6 +2,7 @@
 // @SPEC docs/planning/06-tasks.md#p4-o1-t1--node-24-docker와-운영-도구
 // @TEST scripts/ops/runtime.mjs
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { test } from "node:test";
 
@@ -108,6 +109,21 @@ const validWorkerEnvironment = {
   CHROMIUM_EXECUTABLE_PATH: "/usr/bin/chromium",
 };
 
+const validPrivacyEnvironment = {
+  NODE_ENV: "production",
+  SEMFORGE_SERVICE: "privacy",
+  PGSSLMODE: "verify-full",
+  PRIVACY_DATABASE_URL: "postgresql://privacy:password@db.example.com/semforge",
+  PRIVACY_RETENTION_POLICY: validWebEnvironment.PRIVACY_RETENTION_POLICY,
+  APP_SECRET: "privacy-secret-material-that-is-at-least-32-bytes",
+  APP_SECRET_CURRENT_KEY_ID: "key-2026-08",
+  S3_ENDPOINT: "https://objects.semforge.example",
+  S3_REGION: "ap-northeast-2",
+  S3_BUCKET: "semforge-private",
+  S3_ACCESS_KEY_ID: "semforge-privacy-access-key",
+  S3_SECRET_ACCESS_KEY: "semforge-privacy-secret-key",
+};
+
 test("web preflight는 필수 secret 누락을 값 없이 한 번에 보고한다", () => {
   const candidate = { ...validWebEnvironment };
   delete candidate.APP_SECRET;
@@ -129,28 +145,56 @@ test("web preflight는 필수 secret 누락을 값 없이 한 번에 보고한�
   );
 });
 
-test("privacy preflight는 전용 DB와 명시 retention policy 없이는 시작하지 않는다", () => {
-  assert.doesNotThrow(() => validateRuntimeEnvironment("privacy", {
-    NODE_ENV: "production",
-    SEMFORGE_SERVICE: "privacy",
-    PGSSLMODE: "verify-full",
-    PRIVACY_DATABASE_URL: "postgresql://privacy:password@db.example.com/semforge",
-    PRIVACY_RETENTION_POLICY: validWebEnvironment.PRIVACY_RETENTION_POLICY,
-  }));
+test("privacy preflight는 DB·retention·암호화·객체 삭제 자격증명을 요구한다", () => {
+  assert.doesNotThrow(() => validateRuntimeEnvironment("privacy", validPrivacyEnvironment));
 
-  assert.throws(
-    () => validateRuntimeEnvironment("privacy", {
-      NODE_ENV: "production",
-      SEMFORGE_SERVICE: "privacy",
-      PGSSLMODE: "verify-full",
-      PRIVACY_DATABASE_URL: "postgresql://privacy:password@db.example.com/semforge",
-    }),
-    (error) => {
-      assert.ok(error instanceof RuntimeConfigurationError);
-      assert.deepEqual(error.issues, ["PRIVACY_RETENTION_POLICY is required"]);
-      return true;
+  for (const missing of [
+    "PRIVACY_DATABASE_URL",
+    "PRIVACY_RETENTION_POLICY",
+    "APP_SECRET",
+    "APP_SECRET_CURRENT_KEY_ID",
+    "S3_ENDPOINT",
+    "S3_REGION",
+    "S3_BUCKET",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+  ]) {
+    const candidate = { ...validPrivacyEnvironment };
+    delete candidate[missing];
+    assert.throws(
+      () => validateRuntimeEnvironment("privacy", candidate),
+      (error) => {
+        assert.ok(error instanceof RuntimeConfigurationError);
+        assert.deepEqual(error.issues, [`${missing} is required`]);
+        return true;
+      },
+    );
+  }
+});
+
+test("privacy preflight는 Google client credential 없이 token revoke를 허용한다", () => {
+  const candidate = { ...validPrivacyEnvironment };
+  delete candidate.GOOGLE_CLIENT_ID;
+  delete candidate.GOOGLE_CLIENT_SECRET;
+  assert.doesNotThrow(() => validateRuntimeEnvironment("privacy", candidate));
+});
+
+test("privacy entrypoint는 필수 secret 누락 시 EX_CONFIG로 종료한다", () => {
+  const candidate = { ...validPrivacyEnvironment };
+  delete candidate.APP_SECRET;
+  const result = spawnSync(
+    "/bin/sh",
+    ["scripts/ops/docker-entrypoint.sh", "privacy-retention"],
+    {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: { ...process.env, ...candidate },
     },
   );
+
+  assert.equal(result.status, 78);
+  assert.match(result.stderr, /runtime preflight failed/u);
+  assert.match(result.stderr, /APP_SECRET is required/u);
 });
 
 test("web preflight는 signed URL용 S3 credentials만 report secret으로 요구한다", () => {

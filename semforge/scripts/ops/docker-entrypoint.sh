@@ -5,10 +5,18 @@ set -eu
 
 profile="${1:-}"
 preflight_profile="$profile"
-if [ "$profile" = "report-scheduler" ]; then
-  preflight_profile="scheduler"
-fi
+case "$profile" in
+  report-scheduler)
+    preflight_profile="scheduler"
+    ;;
+  privacy-retention|privacy-delete)
+    preflight_profile="privacy"
+    ;;
+esac
 node scripts/ops/preflight.mjs "$preflight_profile"
+if [ "$#" -gt 0 ]; then
+  shift
+fi
 
 case "$profile" in
   web)
@@ -25,6 +33,12 @@ case "$profile" in
     ;;
   report-scheduler)
     exec node --import tsx scripts/ops/report-scheduler.ts
+    ;;
+  privacy-retention)
+    exec node --import tsx scripts/privacy/privacy.ts retention --dry-run false
+    ;;
+  privacy-delete)
+    exec node --import tsx scripts/privacy/privacy.ts delete "$@"
     ;;
   migrate)
     exec node --import tsx src/db/migrate.ts

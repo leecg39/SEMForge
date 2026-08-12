@@ -117,6 +117,24 @@ services:
         condition: service_completed_successfully
     restart: "no"
 
+  privacy-retention:
+    <<: *runtime
+    profiles: [scheduled]
+    image: ${SEMFORGE_PRIVACY_IMAGE:-semforge-privacy:local}
+    build:
+      context: .
+      target: privacy
+    env_file:
+      - path: ${SEMFORGE_PRIVACY_ENV_FILE:-deploy/env/privacy.env}
+        required: true
+    environment:
+      SEMFORGE_SERVICE: privacy
+    command: ["privacy-retention"]
+    depends_on:
+      release:
+        condition: service_completed_successfully
+    restart: "no"
+
 networks:
   backend:
     driver: bridge

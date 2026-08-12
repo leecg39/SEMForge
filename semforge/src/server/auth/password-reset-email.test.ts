@@ -9,6 +9,7 @@ import { passwordResetDeliveryAad } from "@/server/auth/postgres-store";
 import {
   createPasswordResetEmailJobHandler,
   PASSWORD_RESET_EMAIL_JOB,
+  PostgresPasswordResetEmailSuppressionPolicy,
   type PasswordResetEmailScrubInput,
 } from "@/server/auth/password-reset-email";
 import type { JobExecutionContext, JobHandlerInput } from "@/server/jobs/contracts";
@@ -23,6 +24,7 @@ const crypto = createSecretCrypto({
   currentKeyId: "password-reset-test",
   currentSecret: "password-reset-test-secret-that-is-at-least-32-bytes",
 });
+const notSuppressed = { async isSuppressed() { return false; } };
 
 function encryptedPayload(expiry = expiresAt) {
   const delivery = {
@@ -85,6 +87,7 @@ test("password reset worker는 처리 직전에만 복호화하고 Resend stable
   const scrubbed: PasswordResetEmailScrubInput[] = [];
   const handler = createPasswordResetEmailJobHandler({
     crypto,
+    suppression: notSuppressed,
     sender: {
       async sendTransactional(input) {
         sent.push({ ...input });
@@ -122,6 +125,7 @@ test("retryable provider 실패는 암호문을 유지하고 마지막 attempt�
   const scrubbed: PasswordResetEmailScrubInput[] = [];
   const handler = createPasswordResetEmailJobHandler({
     crypto,
+    suppression: notSuppressed,
     sender: {
       async sendTransactional() {
         throw new ReportEmailSenderError("retryable", "provider detail must be hidden");
@@ -147,6 +151,7 @@ test("provider reject와 만료 delivery는 평문 복호화 결과를 남기지
   let sendCalls = 0;
   const rejected = createPasswordResetEmailJobHandler({
     crypto,
+    suppression: notSuppressed,
     sender: {
       async sendTransactional() {
         sendCalls += 1;
@@ -163,6 +168,7 @@ test("provider reject와 만료 delivery는 평문 복호화 결과를 남기지
 
   const expired = createPasswordResetEmailJobHandler({
     crypto,
+    suppression: notSuppressed,
     sender: { async sendTransactional() { sendCalls += 1; return { providerMessageId: "must-not-send" }; } },
     store: { async scrub(input) { scrubbed.push(input); } },
   });
@@ -178,6 +184,7 @@ test("전송 후 crash로 scrubbed marker만 남은 재실행은 provider를 호
   let sendCalls = 0;
   const handler = createPasswordResetEmailJobHandler({
     crypto,
+    suppression: notSuppressed,
     sender: { async sendTransactional() { sendCalls += 1; return { providerMessageId: "duplicate" }; } },
     store: { async scrub() { throw new Error("must not scrub twice"); } },
   });
@@ -199,6 +206,7 @@ test("provider 성공 뒤 scrub 실패는 같은 Resend idempotency key로 재�
   let scrubCalls = 0;
   const handler = createPasswordResetEmailJobHandler({
     crypto,
+    suppression: notSuppressed,
     sender: {
       async sendTransactional(input) {
         keys.push(input.idempotencyKey);
@@ -226,6 +234,7 @@ test("AAD가 다른 workspace로 이동하거나 암호문이 변조되면 provi
   let sendCalls = 0;
   const handler = createPasswordResetEmailJobHandler({
     crypto,
+    suppression: notSuppressed,
     sender: { async sendTransactional() { sendCalls += 1; return { providerMessageId: "must-not-send" }; } },
     store: { async scrub(input) { scrubbed.push(input); } },
   });
@@ -251,6 +260,7 @@ test("형식이 손상된 reset payload도 식별자가 있으면 scrub하고 DB
   const scrubbed: PasswordResetEmailScrubInput[] = [];
   const scrubbedHandler = createPasswordResetEmailJobHandler({
     crypto,
+    suppression: notSuppressed,
     sender: { async sendTransactional() { throw new Error("must not send"); } },
     store: { async scrub(input) { scrubbed.push(input); } },
   });
@@ -262,6 +272,7 @@ test("형식이 손상된 reset payload도 식별자가 있으면 scrub하고 DB
 
   const unavailableStoreHandler = createPasswordResetEmailJobHandler({
     crypto,
+    suppression: notSuppressed,
     sender: { async sendTransactional() { throw new Error("must not send"); } },
     store: { async scrub() { throw new Error("temporary database outage"); } },
   });
@@ -269,4 +280,114 @@ test("형식이 손상된 reset payload도 식별자가 있으면 scrub하고 DB
     status: "retryable",
     error: "PASSWORD_RESET_EMAIL_SCRUB_RETRYABLE",
   });
+});
+
+test("이미 queue에 있던 password reset도 수신자가 suppression되면 provider 호출 전 terminal scrub한다", async () => {
+  const scrubbed: PasswordResetEmailScrubInput[] = [];
+  let sendCalls = 0;
+  const handler = createPasswordResetEmailJobHandler({
+    crypto,
+    suppression: {
+      async isSuppressed(input) {
+        assert.deepEqual(input, {
+          workspaceId,
+          recipient: "owner@example.com",
+        });
+        return true;
+      },
+    },
+    sender: {
+      async sendTransactional() {
+        sendCalls += 1;
+        return { providerMessageId: "must-not-send" };
+      },
+    },
+    store: { async scrub(input) { scrubbed.push(input); } },
+  });
+
+  assert.deepEqual(await handler(job(encryptedPayload()), context()), {
+    status: "dead",
+    error: "PASSWORD_RESET_EMAIL_SUPPRESSED",
+  });
+  assert.equal(sendCalls, 0);
+  assert.equal(scrubbed.length, 1);
+  assert.equal(scrubbed[0]?.state, "rejected");
+});
+
+test("password reset suppression policy는 auth에서 active membership만 찾고 worker를 workspace별로 pin한다", async () => {
+  const secondWorkspaceId = "81000000-0000-4000-8000-000000000005";
+  const unrelatedWorkspaceId = "81000000-0000-4000-8000-000000000006";
+  const identityQueries: Array<{ text: string; values?: readonly unknown[] }> = [];
+  const tenantQueries: Array<{ workspaceId: string; text: string; values?: readonly unknown[] }> = [];
+  let activeWorkspace = "";
+  const policy = new PostgresPasswordResetEmailSuppressionPolicy({
+    identityDatabase: {
+      async query<T = unknown>(text: string, values?: readonly unknown[]) {
+        identityQueries.push({ text, values });
+        return { rows: [
+          { workspace_id: workspaceId },
+          { workspace_id: secondWorkspaceId },
+        ] as T[] };
+      },
+    },
+    tenantDatabase: {
+      async connect() {
+        return {
+          async query<T = unknown>(text: string, values?: readonly unknown[]) {
+            if (text === "begin" || text === "commit" || text === "rollback") {
+              return { rows: [] as T[] };
+            }
+            if (text.includes("set_config")) {
+              activeWorkspace = String(values?.[0]);
+              return { rows: [] as T[] };
+            }
+            tenantQueries.push({ workspaceId: activeWorkspace, text, values });
+            return {
+              rows: [{ suppressed: activeWorkspace === secondWorkspaceId }] as T[],
+            };
+          },
+          release() {},
+        };
+      },
+    },
+  });
+
+  assert.equal(await policy.isSuppressed({
+    workspaceId,
+    recipient: "  OWNER@EXAMPLE.COM ",
+  }), true);
+  assert.equal(identityQueries.length, 1);
+  assert.deepEqual(identityQueries[0]?.values, ["owner@example.com"]);
+  assert.deepEqual(tenantQueries.map((query) => query.workspaceId), [
+    workspaceId,
+    secondWorkspaceId,
+  ]);
+  assert.equal(tenantQueries.some((query) => query.workspaceId === unrelatedWorkspaceId), false);
+  for (const query of tenantQueries) {
+    assert.deepEqual(query.values, [
+      query.workspaceId,
+      "c8cd3c6427301eaf6665bccacd65ddb614527acc843a15463e3faba57124c351",
+    ]);
+  }
+});
+
+test("suppression 조회 장애는 fail-open 발송 없이 retryable로 남긴다", async () => {
+  let sendCalls = 0;
+  const handler = createPasswordResetEmailJobHandler({
+    crypto,
+    suppression: { async isSuppressed() { throw new Error("tenant database unavailable"); } },
+    sender: {
+      async sendTransactional() {
+        sendCalls += 1;
+        return { providerMessageId: "must-not-send" };
+      },
+    },
+    store: { async scrub() { throw new Error("must not scrub uncertain policy"); } },
+  });
+
+  assert.deepEqual(await handler(job(encryptedPayload()), context()), {
+    status: "retryable",
+    error: "PASSWORD_RESET_EMAIL_SUPPRESSION_RETRYABLE",
+  });
+  assert.equal(sendCalls, 0);
 });

@@ -1,4 +1,4 @@
-# @TASK P4-O1-T1 - Least-privilege worker, relay, and weekly scheduler examples
+# @TASK P4-O1-T1 - Least-privilege worker, relay, weekly schedulers, and privacy retention
 # @SPEC docs/planning/06-tasks.md#p4-o1-t1--node-24-docker와-운영-도구
 apiVersion: apps/v1
 kind: Deployment
@@ -155,6 +155,77 @@ spec:
                 - { name: PGSSLMODE, value: verify-full }
                 - name: SCHEDULER_DATABASE_URL
                   valueFrom: { secretKeyRef: { name: semforge-scheduler, key: database-url } }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: semforge-daily-privacy-retention
+  labels:
+    app.kubernetes.io/name: semforge
+    app.kubernetes.io/component: privacy-retention
+spec:
+  schedule: "15 3 * * *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: semforge
+            app.kubernetes.io/component: privacy-retention
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: privacy-retention
+              image: registry.example.com/semforge-privacy@sha256:REPLACE_WITH_DIGEST
+              imagePullPolicy: IfNotPresent
+              args: ["privacy-retention"]
+              env:
+                - { name: NODE_ENV, value: production }
+                - { name: SEMFORGE_SERVICE, value: privacy }
+                - { name: PGSSLMODE, value: verify-full }
+                - name: PRIVACY_DATABASE_URL
+                  valueFrom: { secretKeyRef: { name: semforge-privacy, key: database-url } }
+                - name: PRIVACY_RETENTION_POLICY
+                  valueFrom: { secretKeyRef: { name: semforge-privacy, key: retention-policy } }
+                - name: APP_SECRET
+                  valueFrom: { secretKeyRef: { name: semforge-privacy, key: app-secret } }
+                - name: APP_SECRET_CURRENT_KEY_ID
+                  valueFrom: { secretKeyRef: { name: semforge-privacy, key: app-secret-key-id } }
+                - name: APP_SECRET_PREVIOUS_KEYS
+                  valueFrom:
+                    secretKeyRef:
+                      name: semforge-privacy
+                      key: app-secret-previous-keys
+                      optional: true
+                - name: S3_ENDPOINT
+                  valueFrom: { secretKeyRef: { name: semforge-privacy, key: s3-endpoint } }
+                - name: S3_REGION
+                  valueFrom: { secretKeyRef: { name: semforge-privacy, key: s3-region } }
+                - name: S3_BUCKET
+                  valueFrom: { secretKeyRef: { name: semforge-privacy, key: s3-bucket } }
+                - name: S3_ACCESS_KEY_ID
+                  valueFrom: { secretKeyRef: { name: semforge-privacy, key: s3-access-key-id } }
+                - name: S3_SECRET_ACCESS_KEY
+                  valueFrom: { secretKeyRef: { name: semforge-privacy, key: s3-secret-access-key } }
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true

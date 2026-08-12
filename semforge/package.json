@@ -34,6 +34,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "invite": "SEMFORGE_SERVICE=operator tsx scripts/invite.ts",
+    "privacy:retention": "SEMFORGE_SERVICE=privacy tsx scripts/privacy/privacy.ts retention --dry-run false",
+    "privacy:delete": "SEMFORGE_SERVICE=privacy tsx scripts/privacy/privacy.ts delete",
     "worker:start": "tsx scripts/worker.ts",
     "outbox:relay": "tsx scripts/outbox-relay.ts",
     "collections:schedule": "tsx scripts/weekly-collections.ts",

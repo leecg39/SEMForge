@@ -41,12 +41,12 @@ test("package build script는 secret 없는 build service profile을 강제한�
   assert.doesNotMatch(build, /DATABASE_URL|SECRET|TOKEN/u);
 });
 
-test("Dockerfile은 Node 24 web/pipeline/migrator target과 non-root Chromium/Noto runtime을 제공한다", async () => {
+test("Dockerfile은 Node 24 web/pipeline/privacy/migrator target과 non-root Chromium/Noto runtime을 제공한다", async () => {
   const dockerfile = await source("Dockerfile");
 
   assert.match(dockerfile, /^ARG NODE_BASE_IMAGE=node:24-bookworm-slim$/mu);
   assert.equal((dockerfile.match(/^FROM \$\{NODE_BASE_IMAGE\}/gmu) ?? []).length, 2);
-  for (const target of ["web", "worker", "relay", "scheduler", "migrator"]) {
+  for (const target of ["web", "worker", "relay", "scheduler", "privacy", "migrator"]) {
     assert.match(dockerfile, new RegExp(`FROM \\S+ AS ${target}`));
   }
   assert.match(dockerfile, /chromium/u);
@@ -54,6 +54,11 @@ test("Dockerfile은 Node 24 web/pipeline/migrator target과 non-root Chromium/No
   assert.match(dockerfile, /ENTRYPOINT \["\/usr\/bin\/tini"/u);
   assert.match(dockerfile, /USER semforge/u);
   assert.match(dockerfile, /\.next\/standalone/u);
+  assert.match(dockerfile, /\/app\/scripts\/privacy\/privacy\.ts/u);
+  assert.match(
+    dockerfile,
+    /FROM runtime-base AS privacy[\s\S]*SEMFORGE_SERVICE=privacy[\s\S]*CMD \["privacy-retention"\]/u,
+  );
   const commonRuntime = dockerfile.split("FROM runtime-base AS web", 1)[0]!;
   assert.doesNotMatch(commonRuntime, /HOSTNAME=0\.0\.0\.0/u);
   assert.match(dockerfile, /FROM runtime-base AS web[\s\S]*HOSTNAME=0\.0\.0\.0/u);
@@ -122,18 +127,77 @@ test("entrypoint와 compose는 migration 성공 뒤 web/worker/relay와 collecti
   assert.match(entrypoint, /exec node --import tsx scripts\/ops\/relay\.ts/u);
   assert.match(entrypoint, /exec node --import tsx scripts\/ops\/scheduler\.ts/u);
   assert.match(entrypoint, /exec node --import tsx scripts\/ops\/report-scheduler\.ts/u);
+  assert.match(
+    entrypoint,
+    /privacy-retention[\s\S]*scripts\/privacy\/privacy\.ts retention --dry-run false/u,
+  );
+  assert.match(
+    entrypoint,
+    /privacy-delete[\s\S]*scripts\/privacy\/privacy\.ts delete "\$@"/u,
+  );
   assert.match(entrypoint, /exec node --import tsx src\/db\/migrate\.ts/u);
   assert.match(compose, /release:/u);
-  assert.equal((compose.match(/condition: service_completed_successfully/gu) ?? []).length, 5);
+  assert.equal((compose.match(/condition: service_completed_successfully/gu) ?? []).length, 6);
   assert.match(compose, /report-scheduler:/u);
   assert.match(compose, /command:\s*\["report-scheduler"\]/u);
+  assert.match(compose, /privacy-retention:[\s\S]*profiles: \[scheduled\][\s\S]*target: privacy/u);
+  assert.match(compose, /privacy-retention:[\s\S]*command:\s*\["privacy-retention"\]/u);
   assert.match(compose, /\/health\/ready/u);
-  for (const profile of ["web", "worker", "relay", "scheduler", "migrate"]) {
+  for (const profile of ["web", "worker", "relay", "scheduler", "privacy", "migrate"]) {
     assert.match(compose, new RegExp(`SEMFORGE_SERVICE:\\s*${profile}`));
   }
-  for (const envFile of ["WEB", "WORKER", "RELAY", "SCHEDULER", "MIGRATION"]) {
+  for (const envFile of ["WEB", "WORKER", "RELAY", "SCHEDULER", "PRIVACY", "MIGRATION"]) {
     assert.match(compose, new RegExp(`SEMFORGE_${envFile}_ENV_FILE`));
   }
+});
+
+test("privacy lifecycle은 일일 retention과 별도 수동 delete invocation으로 분리된다", async () => {
+  const [entrypoint, deployment, compose, packageJson] = await Promise.all([
+    source("scripts/ops/docker-entrypoint.sh"),
+    source("deploy/kubernetes/pipeline-runtime.yaml"),
+    source("docker-compose.yml"),
+    source("package.json"),
+  ]);
+  const manifest = JSON.parse(packageJson) as { scripts?: Record<string, string> };
+  const privacyCron = deployment
+    .split(/^---$/mu)
+    .find((document) => /name:\s*semforge-daily-privacy-retention/u.test(document)) ?? "";
+
+  assert.match(privacyCron, /kind:\s*CronJob/u);
+  assert.match(privacyCron, /schedule:\s*"15 3 \* \* \*"/u);
+  assert.match(privacyCron, /timeZone:\s*Asia\/Seoul/u);
+  assert.match(privacyCron, /concurrencyPolicy:\s*Forbid/u);
+  assert.match(privacyCron, /args:\s*\["privacy-retention"\]/u);
+  assert.match(privacyCron, /SEMFORGE_SERVICE[\s\S]*value:\s*privacy/u);
+  for (const required of [
+    "PRIVACY_DATABASE_URL",
+    "PRIVACY_RETENTION_POLICY",
+    "APP_SECRET",
+    "APP_SECRET_CURRENT_KEY_ID",
+    "S3_ENDPOINT",
+    "S3_REGION",
+    "S3_BUCKET",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+  ]) {
+    assert.match(privacyCron, new RegExp(`name:\\s*${required}`));
+  }
+  assert.doesNotMatch(privacyCron, /GOOGLE_CLIENT_ID|GOOGLE_CLIENT_SECRET/u);
+  assert.match(privacyCron, /automountServiceAccountToken:\s*false/u);
+  assert.match(privacyCron, /runAsNonRoot:\s*true/u);
+  assert.match(privacyCron, /readOnlyRootFilesystem:\s*true/u);
+  assert.match(privacyCron, /allowPrivilegeEscalation:\s*false/u);
+  assert.match(privacyCron, /drop:\s*\["ALL"\]/u);
+  assert.match(entrypoint, /privacy-delete/u);
+  assert.doesNotMatch(compose, /command:\s*\["privacy-delete"\]/u);
+  assert.equal(
+    manifest.scripts?.["privacy:retention"],
+    "SEMFORGE_SERVICE=privacy tsx scripts/privacy/privacy.ts retention --dry-run false",
+  );
+  assert.equal(
+    manifest.scripts?.["privacy:delete"],
+    "SEMFORGE_SERVICE=privacy tsx scripts/privacy/privacy.ts delete",
+  );
 });
 
 test("Kubernetes 예시는 worker/relay와 일요일 collection·월요일 report scheduler를 분리한다", async () => {
@@ -212,7 +276,28 @@ test("환경 예시는 report delivery 변수 이름만 제공하고 역할별 e
   }
   assert.match(compose, /SEMFORGE_WEB_ENV_FILE/u);
   assert.match(compose, /SEMFORGE_WORKER_ENV_FILE/u);
+  assert.match(compose, /SEMFORGE_PRIVACY_ENV_FILE/u);
   assert.doesNotMatch(compose, /(?:RESEND_API_KEY|S3_SECRET_ACCESS_KEY):\s*[^$\n]/u);
+});
+
+test("privacy env 문서는 retention schedule과 수동 삭제 절차를 분리하고 필수 secret을 열거한다", async () => {
+  const [example, documentation] = await Promise.all([
+    source(".env.example"),
+    source("deploy/env/README.md"),
+  ]);
+
+  assert.match(
+    example,
+    /production runtime에서는 web\|worker\|relay\|scheduler\|privacy\|migrate\|operator/u,
+  );
+  assert.match(documentation, /`privacy\.env`/u);
+  assert.match(documentation, /SEMFORGE_PRIVACY_ENV_FILE/u);
+  assert.match(documentation, /s3:ListBucketVersions/u);
+  assert.match(documentation, /s3:DeleteObjectVersion/u);
+  assert.match(documentation, /privacy-retention/u);
+  assert.match(documentation, /privacy-delete/u);
+  assert.match(documentation, /매일 03:15 KST/u);
+  assert.match(documentation, /Google client credential[^\n]*요구하지/u);
 });
 
 test("nginx 예시는 TLS, browser 격리 header, spoof 불가능한 client IP 전달을 포함한다", async () => {

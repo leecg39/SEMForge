@@ -301,6 +301,7 @@ test("object PUT 성공 뒤 DB crash가 나도 immutable snapshot identity로 �
   let crashOnce = true;
   const store: ReportDeliveryStore = {
     loadReportSnapshot: (input) => baseStore.loadReportSnapshot(input),
+    isEmailSuppressed: (input) => baseStore.isEmailSuppressed(input),
     prepareEmail: (input) => baseStore.prepareEmail(input),
     markEmailDelivered: (input) => baseStore.markEmailDelivered(input),
     markEmailFailed: (input) => baseStore.markEmailFailed(input),
@@ -342,4 +343,47 @@ test("object PUT 성공 뒤 DB crash가 나도 immutable snapshot identity로 �
   assert.match(Buffer.from(object.body).toString(), /render-1$/);
   assert.equal(recovered.asset.checksumSha256, createHash("sha256").update(object.body).digest("hex"));
   assert.equal(recovered.snapshotSha256, object.identity);
+});
+
+test("복구된 legacy report email job도 suppression을 provider 호출 직전 확인하고 terminal 처리한다", async () => {
+  let providerCalls = 0;
+  let prepared = false;
+  const store: ReportDeliveryStore = {
+    async isEmailSuppressed(input) {
+      assert.deepEqual(input, {
+        workspaceId,
+        recipient: "customer@example.test",
+      });
+      return true;
+    },
+    async loadReportSnapshot() { throw new Error("must not load"); },
+    async prepareEmail() { prepared = true; throw new Error("must not prepare"); },
+    async markEmailDelivered() { throw new Error("must not deliver"); },
+    async markEmailFailed() { throw new Error("must not mark"); },
+    async findPdfAsset() { throw new Error("must not read asset"); },
+    async savePdfAsset() { throw new Error("must not save asset"); },
+  };
+  const service = createReportDeliveryService({
+    store,
+    storage: new MemoryStorage(),
+    renderer: { async render() { throw new Error("must not render"); } },
+    email: {
+      async send() {
+        providerCalls += 1;
+        return { providerMessageId: "must-not-send" };
+      },
+    },
+    appPublicUrl: "https://app.semforge.example",
+  });
+
+  await assert.rejects(
+    service.deliverEmail({
+      workspaceId,
+      reportId,
+      recipient: "  Customer@Example.test ",
+    }),
+    /REPORT_EMAIL_SUPPRESSED/u,
+  );
+  assert.equal(providerCalls, 0);
+  assert.equal(prepared, false);
 });

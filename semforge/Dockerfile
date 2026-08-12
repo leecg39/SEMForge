@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-# @TASK P4-O1-T1 - Node 24 standalone web, pipeline, and migration images
+# @TASK P4-O1-T1 - Node 24 standalone web, pipeline, privacy, and migration images
 # @SPEC docs/planning/06-tasks.md#p4-o1-t1--node-24-docker와-운영-도구
 
 ARG NODE_BASE_IMAGE=node:24-bookworm-slim
@@ -79,6 +79,15 @@ CMD ["relay"]
 FROM pipeline-runtime AS scheduler
 ENV SEMFORGE_SERVICE=scheduler
 CMD ["scheduler"]
+
+FROM runtime-base AS privacy
+ENV SEMFORGE_SERVICE=privacy
+COPY --from=production-dependencies --chown=semforge:semforge /app/node_modules ./node_modules
+COPY --from=builder --chown=semforge:semforge /app/package.json /app/tsconfig.json ./
+COPY --from=builder --chown=semforge:semforge /app/src ./src
+COPY --from=builder --chown=semforge:semforge /app/scripts/privacy/privacy.ts ./scripts/privacy/privacy.ts
+USER semforge
+CMD ["privacy-retention"]
 
 FROM runtime-base AS migrator
 ENV SEMFORGE_SERVICE=migrate

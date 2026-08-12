@@ -13,7 +13,11 @@ export interface PrivacyProcessorClient {
     refreshTokenEncrypted: string;
   }): Promise<void>;
   deleteObject(input: { workspaceId: string; storageKey: string }): Promise<void>;
-  markEmailSuppressed(input: { workspaceId: string; emailHash: string }): Promise<void>;
+  markEmailSuppressed(input: {
+    workspaceId: string;
+    emailHash: string;
+    requestUuid: string;
+  }): Promise<void>;
 }
 
 export interface PrivacyRequestInput {
@@ -54,34 +58,45 @@ function digest(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
-function configuredProcessor(): PrivacyProcessorClient {
-  const missing = async (): Promise<void> => {
-    throw new Error("PRIVACY_PROCESSOR_NOT_CONFIGURED");
-  };
-  return {
-    revokeGscConnection: missing,
-    deleteObject: missing,
-    markEmailSuppressed: missing,
-  };
-}
-
 async function beginRequest(
   db: PrivacySql,
   input: PrivacyRequestInput & { type: "export" | "correction" | "deletion" },
-): Promise<string> {
+): Promise<{ id: string; status: "running" | "completed" }> {
   const row = (
-    await db.query<{ id: string }>(
+    await db.query<{ id: string; status: "running" | "completed" }>(
       `insert into privacy_requests
          (workspace_id, request_id, type, status, operator_id, requested_at)
        values ($1, $2, $3, 'running', $4, $5)
        on conflict (workspace_id, request_id) do update
-         set status = 'running', operator_id = excluded.operator_id
-       returning id::text`,
+         set status = case
+               when privacy_requests.status = 'completed' then 'completed'
+               else 'running'
+             end,
+             operator_id = excluded.operator_id,
+             completed_at = case
+               when privacy_requests.status = 'completed' then privacy_requests.completed_at
+               else null
+             end
+       returning id::text, status`,
       [input.workspaceId, input.requestId, input.type, input.operatorId, input.now],
     )
   ).rows[0];
   if (!row) throw new Error("PRIVACY_REQUEST_NOT_CREATED");
-  return row.id;
+  return row;
+}
+
+async function succeededSteps(
+  db: PrivacySql,
+  workspaceId: string,
+  requestUuid: string,
+): Promise<Set<string>> {
+  const rows = await db.query<{ step_key: string }>(
+    `select step_key
+       from privacy_request_steps
+      where workspace_id = $1 and request_id = $2 and status = 'succeeded'`,
+    [workspaceId, requestUuid],
+  );
+  return new Set(rows.rows.map((row) => row.step_key));
 }
 
 async function recordStep(
@@ -189,9 +204,45 @@ export async function runPrivacyRetention(input: {
   now: Date;
   policy?: PrivacyRetentionPolicy;
   dryRun: boolean;
+  processor?: Pick<PrivacyProcessorClient, "deleteObject">;
 }): Promise<PrivacyRetentionResult> {
   const policy = input.policy ?? readPrivacyRetentionPolicy();
+  const deletionMarkers = (
+    await input.db.query<{ workspace_id: string; metadata: unknown }>(
+      `select workspace_id::text, metadata
+         from backup_deletion_markers
+        where metadata ? 'storageKeys'
+        order by workspace_id, created_at`,
+    )
+  ).rows;
+  const restoredObjects = new Map<string, { workspaceId: string; storageKey: string }>();
+  for (const marker of deletionMarkers) {
+    const metadata = typeof marker.metadata === "string"
+      ? JSON.parse(marker.metadata) as unknown
+      : marker.metadata;
+    const storageKeys = metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? (metadata as Record<string, unknown>).storageKeys
+      : undefined;
+    if (!Array.isArray(storageKeys) || storageKeys.some((key) => typeof key !== "string")) {
+      throw new Error("PRIVACY_BACKUP_DELETION_MARKER_INVALID");
+    }
+    for (const storageKey of storageKeys) {
+      const normalized = storageKey.trim();
+      if (!normalized || normalized !== storageKey || normalized.length > 1_024) {
+        throw new Error("PRIVACY_BACKUP_DELETION_MARKER_INVALID");
+      }
+      restoredObjects.set(`${marker.workspace_id}:${normalized}`, {
+        workspaceId: marker.workspace_id,
+        storageKey: normalized,
+      });
+    }
+  }
+  if (!input.dryRun && restoredObjects.size > 0) {
+    if (!input.processor) throw new Error("PRIVACY_PROCESSOR_NOT_CONFIGURED");
+    for (const object of restoredObjects.values()) await input.processor.deleteObject(object);
+  }
   const items = [
+    { target: "backup-restored-objects", matched: restoredObjects.size },
     await countOrApply(
       input.db,
       input.dryRun,
@@ -265,11 +316,11 @@ export function createPrivacyService(options: {
   processor?: PrivacyProcessorClient;
 }) {
   const db = options.db;
-  const processor = options.processor ?? configuredProcessor();
+  const processor = options.processor;
 
   return {
     async exportWorkspaceSubject(input: PrivacyRequestInput) {
-      const requestUuid = await beginRequest(db, { ...input, type: "export" });
+      const requestUuid = (await beginRequest(db, { ...input, type: "export" })).id;
       const workspace = (
         await db.query<{ id: string; name: string; slug: string; logo_url: string | null }>(
           "select id::text, name, slug, logo_url from workspaces where id = $1",
@@ -313,7 +364,7 @@ export function createPrivacyService(options: {
       displayName?: string;
       workspaceName?: string;
     }): Promise<{ requestId: string; status: "completed" }> {
-      const requestUuid = await beginRequest(db, { ...input, type: "correction" });
+      const requestUuid = (await beginRequest(db, { ...input, type: "correction" })).id;
       if (input.displayName !== undefined) {
         await db.query(
           `update users
@@ -344,7 +395,13 @@ export function createPrivacyService(options: {
       requestId: string;
       status: "completed" | "failed";
     }> {
-      const requestUuid = await beginRequest(db, { ...input, type: "deletion" });
+      if (!processor) throw new Error("PRIVACY_PROCESSOR_NOT_CONFIGURED");
+      const request = await beginRequest(db, { ...input, type: "deletion" });
+      if (request.status === "completed") {
+        return { requestId: input.requestId, status: "completed" };
+      }
+      const requestUuid = request.id;
+      const completedSteps = await succeededSteps(db, input.workspaceId, requestUuid);
       const gscConnections = (
         await db.query<{ id: string; refresh_token_encrypted: string }>(
           "select id::text, refresh_token_encrypted from gsc_connections where workspace_id = $1 and disconnected_at is null",
@@ -369,6 +426,7 @@ export function createPrivacyService(options: {
         metadata: Record<string, unknown>,
         action: () => Promise<void>,
       ): Promise<boolean> => {
+        if (completedSteps.has(stepKey)) return true;
         try {
           await action();
           await recordStep(db, {
@@ -379,6 +437,7 @@ export function createPrivacyService(options: {
             now: input.now,
             metadata,
           });
+          completedSteps.add(stepKey);
           return true;
         } catch (error) {
           await recordStep(db, {
@@ -395,49 +454,64 @@ export function createPrivacyService(options: {
         }
       };
 
-      const gscRevoked = await runExternalStep("gsc.revoke", { count: gscConnections.length }, async () => {
-        for (const connection of gscConnections) {
+      for (const connection of gscConnections) {
+        const gscRevoked = await runExternalStep(`gsc.revoke:${connection.id}`, {
+          connectionId: connection.id,
+        }, async () => {
           await processor.revokeGscConnection({
             workspaceId: input.workspaceId,
             connectionId: connection.id,
             refreshTokenEncrypted: connection.refresh_token_encrypted,
           });
-        }
-      });
-      if (!gscRevoked) return { requestId: input.requestId, status: "failed" };
+        });
+        if (!gscRevoked) return { requestId: input.requestId, status: "failed" };
+      }
 
-      const objectsDeleted = await runExternalStep("objects.delete", { count: objects.length }, async () => {
-        for (const object of objects) {
+      for (const object of objects) {
+        const stepKey = `objects.delete:${digest(object.storage_key)}`;
+        const objectsDeleted = await runExternalStep(stepKey, {
+          storageKeyHash: digest(object.storage_key),
+        }, async () => {
           await processor.deleteObject({
             workspaceId: input.workspaceId,
             storageKey: object.storage_key,
           });
-        }
-      });
-      if (!objectsDeleted) return { requestId: input.requestId, status: "failed" };
+        });
+        if (!objectsDeleted) return { requestId: input.requestId, status: "failed" };
+      }
 
-      const emailsSuppressed = await runExternalStep("processors.email_suppress", { count: recipients.length }, async () => {
-        for (const recipient of recipients) {
+      for (const recipient of recipients) {
+        const emailHash = digest(recipient.recipient.trim().toLowerCase());
+        const emailsSuppressed = await runExternalStep(`email.suppress:${emailHash}`, {
+          recipientHash: emailHash,
+        }, async () => {
           await processor.markEmailSuppressed({
             workspaceId: input.workspaceId,
-            emailHash: digest(recipient.recipient),
+            emailHash,
+            requestUuid,
           });
-        }
-      });
-      if (!emailsSuppressed) return { requestId: input.requestId, status: "failed" };
+        });
+        if (!emailsSuppressed) return { requestId: input.requestId, status: "failed" };
+      }
 
-      await db.query("select privacy_erase_workspace($1::uuid, $2::uuid, $3::text)", [
-        input.workspaceId,
-        requestUuid,
-        input.operatorId,
-      ]);
-      await recordStep(db, {
-        workspaceId: input.workspaceId,
-        requestUuid,
-        stepKey: "local.erasure",
-        status: "succeeded",
-        now: input.now,
+      await db.query(
+        `update privacy_requests
+            set metadata = metadata || jsonb_build_object('storageKeys', $3::jsonb)
+          where workspace_id = $1 and id = $2`,
+        [
+          input.workspaceId,
+          requestUuid,
+          JSON.stringify([...new Set(objects.map((object) => object.storage_key))].sort()),
+        ],
+      );
+      const erased = await runExternalStep("local.erasure", {}, async () => {
+        await db.query("select privacy_erase_workspace($1::uuid, $2::uuid, $3::text)", [
+          input.workspaceId,
+          requestUuid,
+          input.operatorId,
+        ]);
       });
+      if (!erased) return { requestId: input.requestId, status: "failed" };
       await finishRequest(db, input.workspaceId, requestUuid, "completed", input.now);
       return { requestId: input.requestId, status: "completed" };
     },

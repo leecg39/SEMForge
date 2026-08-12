@@ -138,3 +138,22 @@ test("Resend idempotency payload 충돌은 재시도하지 않고 terminal 처�
   );
   assert.deepEqual(result, { status: "dead", error: "REPORT_EMAIL_PROVIDER_REJECTED" });
 });
+
+test("suppressed report email은 worker가 재시도하지 않고 terminal 처리한다", async () => {
+  const handler = createReportEmailDeliveryJobHandler(service({
+    deliverEmail: async () => { throw new ReportDeliveryError("EMAIL_SUPPRESSED"); },
+  }));
+  const result = await handler(
+    {
+      id: "job-email-suppressed",
+      workspaceId,
+      type: REPORT_EMAIL_DELIVERY_JOB,
+      payload: { reportId, recipient: "customer@example.test" },
+      idempotencyKey: `report-email:${reportId}`,
+      attempt: 1,
+      maxAttempts: 5,
+    },
+    context(),
+  );
+  assert.deepEqual(result, { status: "dead", error: "REPORT_EMAIL_SUPPRESSED" });
+});

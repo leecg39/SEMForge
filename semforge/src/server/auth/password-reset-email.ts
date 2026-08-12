@@ -1,6 +1,8 @@
 // @TASK P5-S1-T1 - Encrypted password-reset email delivery
 // @SPEC docs/planning/06-tasks.md#p2-a1-t1--초대-전용-인증과-세션
 // @TEST src/server/auth/password-reset-email.test.ts
+import { createHash } from "node:crypto";
+
 import { z } from "zod";
 
 import type { SecretCrypto } from "@/lib/crypto";
@@ -46,8 +48,10 @@ const ScrubbedPayload = z.object({
   providerMessageId: z.string().trim().min(1).max(200).optional(),
 }).strict();
 
+const SuppressionRecipient = z.string().trim().toLowerCase().max(320).pipe(z.email());
+
 const Delivery = z.object({
-  email: z.string().trim().toLowerCase().max(320).pipe(z.email()),
+  email: SuppressionRecipient,
   resetUrl: z.url().max(2_048),
   expiresAt: z.iso.datetime({ offset: true }),
 }).strict();
@@ -67,10 +71,26 @@ export interface PasswordResetEmailStore {
   scrub(input: PasswordResetEmailScrubInput): Promise<void>;
 }
 
+export interface PasswordResetEmailSuppressionPolicy {
+  isSuppressed(input: {
+    readonly workspaceId: string;
+    readonly recipient: string;
+  }): Promise<boolean>;
+}
+
+interface PasswordResetEmailSqlConnection extends SqlQueryable {
+  release(): void;
+}
+
+export interface PasswordResetEmailTenantSqlSource {
+  connect(): Promise<PasswordResetEmailSqlConnection>;
+}
+
 export interface PasswordResetEmailJobDependencies {
   readonly crypto: Pick<SecretCrypto, "decryptOrThrow">;
   readonly sender: TransactionalEmailSender;
   readonly store: PasswordResetEmailStore;
+  readonly suppression: PasswordResetEmailSuppressionPolicy;
 }
 
 function escapeHtml(value: string): string {
@@ -179,6 +199,18 @@ export function createPasswordResetEmailJobHandler(
       return terminalAfterScrub("invalid", "PASSWORD_RESET_EMAIL_INVALID_PAYLOAD");
     }
 
+    try {
+      if (await dependencies.suppression.isSuppressed({
+        workspaceId: job.workspaceId,
+        recipient: delivery.email,
+      })) {
+        return terminalAfterScrub("rejected", "PASSWORD_RESET_EMAIL_SUPPRESSED");
+      }
+    } catch {
+      // suppression 확인 실패는 발송 허용으로 폴백하지 않는다.
+      return jobRetryable("PASSWORD_RESET_EMAIL_SUPPRESSION_RETRYABLE");
+    }
+
     let sent: { providerMessageId: string };
     try {
       sent = await dependencies.sender.sendTransactional({
@@ -234,5 +266,69 @@ export class PostgresPasswordResetEmailStore implements PasswordResetEmailStore 
     if (result.rows[0]?.scrubbed !== true) {
       throw new Error("PASSWORD_RESET_EMAIL_SCRUB_FAILED");
     }
+  }
+}
+
+/**
+ * auth role은 수신자의 workspace 목록만 식별하고, suppression 테이블은
+ * workspace별로 pin된 worker role transaction에서만 조회한다.
+ */
+export class PostgresPasswordResetEmailSuppressionPolicy
+implements PasswordResetEmailSuppressionPolicy {
+  constructor(private readonly options: {
+    readonly identityDatabase: SqlQueryable;
+    readonly tenantDatabase: PasswordResetEmailTenantSqlSource;
+  }) {}
+
+  private async isSuppressedInWorkspace(
+    workspaceId: string,
+    recipientHash: string,
+  ): Promise<boolean> {
+    const connection = await this.options.tenantDatabase.connect();
+    try {
+      await connection.query("begin");
+      await connection.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
+      const result = await connection.query<{ suppressed: boolean }>(
+        `select exists(
+           select 1 from email_suppressions
+            where workspace_id = $1 and recipient_hash = $2
+         ) as suppressed`,
+        [workspaceId, recipientHash],
+      );
+      await connection.query("commit");
+      return result.rows[0]?.suppressed === true;
+    } catch (error) {
+      await connection.query("rollback").catch(() => undefined);
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async isSuppressed(input: {
+    readonly workspaceId: string;
+    readonly recipient: string;
+  }): Promise<boolean> {
+    const parsedRecipient = SuppressionRecipient.safeParse(input.recipient);
+    if (!parsedRecipient.success) throw new Error("PASSWORD_RESET_EMAIL_SUPPRESSION_INVALID_RECIPIENT");
+    const recipient = parsedRecipient.data;
+    const recipientHash = createHash("sha256").update(recipient, "utf8").digest("hex");
+    const memberships = await this.options.identityDatabase.query<{ workspace_id: string }>(
+      `select distinct memberships.workspace_id::text as workspace_id
+         from memberships
+         inner join users on users.id = memberships.user_id
+        where lower(btrim(users.email)) = $1
+          and users.disabled_at is null
+        order by memberships.workspace_id::text`,
+      [recipient],
+    );
+    const workspaceIds = new Set<string>([
+      input.workspaceId,
+      ...memberships.rows.map((row) => row.workspace_id),
+    ]);
+    for (const workspaceId of workspaceIds) {
+      if (await this.isSuppressedInWorkspace(workspaceId, recipientHash)) return true;
+    }
+    return false;
   }
 }

@@ -3,6 +3,10 @@
 // @SPEC paid-beta privacy lifecycle blockers
 import { getPool } from "@/db/client";
 import {
+  createProductionPrivacyProcessor,
+  PrivacyProcessorConfigurationError,
+} from "@/server/privacy/processor";
+import {
   createPrivacyService,
   readPrivacyRetentionPolicy,
   runPrivacyRetention,
@@ -18,7 +22,6 @@ function usage(): never {
       "  tsx scripts/privacy/privacy.ts correct --workspace <uuid> --request <id> --operator <id> [--display-name <name>] [--workspace-name <name>]",
       "  tsx scripts/privacy/privacy.ts delete --workspace <uuid> --request <id> --operator <id>",
       "  tsx scripts/privacy/privacy.ts retention --dry-run true|false",
-      "External delete/revoke processor calls must be wired by the deployment wrapper; this CLI fails closed without one.",
     ].join("\n"),
   );
 }
@@ -49,11 +52,14 @@ async function main() {
 
   if (command === "retention") {
     const dryRun = required(input, "dry-run");
+    const db = getPool("privacy");
+    const processor = createProductionPrivacyProcessor({ db });
     const result = await runPrivacyRetention({
-      db: getPool("privacy"),
+      db,
       now,
       policy: readPrivacyRetentionPolicy(),
       dryRun: dryRun !== "false",
+      processor,
     });
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return;
@@ -65,8 +71,12 @@ async function main() {
     operatorId: required(input, "operator"),
     now,
   };
+  const db = getPool("privacy");
   const service = createPrivacyService({
-    db: getPool("privacy"),
+    db,
+    ...(command === "delete"
+      ? { processor: createProductionPrivacyProcessor({ db }) }
+      : {}),
   });
   if (command === "export") {
     process.stdout.write(`${JSON.stringify(await service.exportWorkspaceSubject(base), null, 2)}\n`);
@@ -83,5 +93,5 @@ async function main() {
 
 main().catch((error) => {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-  process.exitCode = 1;
+  process.exitCode = error instanceof PrivacyProcessorConfigurationError ? 78 : 1;
 });

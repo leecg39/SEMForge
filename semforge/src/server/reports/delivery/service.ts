@@ -80,6 +80,7 @@ export class ReportDeliveryError extends Error {
     | "PDF_ERROR"
     | "EMAIL_PROVIDER_ERROR"
     | "EMAIL_PROVIDER_REJECTED"
+    | "EMAIL_SUPPRESSED"
     | "EMAIL_IDEMPOTENCY_EXPIRED") {
     super(`REPORT_${code}`);
     this.name = "ReportDeliveryError";
@@ -193,6 +194,12 @@ export function createReportDeliveryService(
       const parsedEmail = EmailSchema.safeParse(input.recipient);
       if (!parsedEmail.success) throw new ReportDeliveryError("INVALID_INPUT");
       const recipient = parsedEmail.data;
+      if (await options.store.isEmailSuppressed({
+        workspaceId: input.workspaceId,
+        recipient,
+      })) {
+        throw new ReportDeliveryError("EMAIL_SUPPRESSED");
+      }
       const recipientHash = digest(recipient).slice(0, 32);
       const idempotencyKey = `report-email:${input.reportId}:${recipientHash}`;
       const prepared = await options.store.prepareEmail({

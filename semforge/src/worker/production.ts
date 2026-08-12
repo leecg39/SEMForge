@@ -12,6 +12,7 @@ import {
   createPasswordResetEmailJobHandler,
   PASSWORD_RESET_EMAIL_JOB,
   PostgresPasswordResetEmailStore,
+  PostgresPasswordResetEmailSuppressionPolicy,
 } from "@/server/auth/password-reset-email";
 import { createGscSearchAnalyticsClient } from "@/server/collectors/gsc/client";
 import { createGscWeeklyCollector } from "@/server/collectors/gsc/collector";
@@ -132,6 +133,10 @@ export function createProductionWorkerComposition(
   });
   const passwordResetEmail = createPasswordResetEmailJobHandler({
     crypto: runtimeCrypto(),
+    suppression: new PostgresPasswordResetEmailSuppressionPolicy({
+      identityDatabase: authPool,
+      tenantDatabase: workerPool,
+    }),
     sender: new ResendEmailSender({
       apiKey: requireEnv(env, "RESEND_API_KEY"),
       from: requireEnv(env, "RESEND_FROM_EMAIL"),

@@ -183,7 +183,9 @@ test("삭제 workflow는 외부 processor 실패 시 local immutable report 삭�
       order by step.step_key`,
     [workspaceA, result.requestId],
   );
-  assert.ok(failed.rows.some((row) => row.step_key === "gsc.revoke" && row.status === "failed"));
+  assert.ok(failed.rows.some((row) =>
+    row.step_key === `gsc.revoke:${gscA}` && row.status === "failed"
+  ));
 });
 
 test("삭제 workflow 성공 시 GSC revoke·object delete 후 privacy erasure procedure로 immutable report와 workspace PII를 제거한다", async () => {
@@ -198,7 +200,7 @@ test("삭제 workflow 성공 시 GSC revoke·object delete 후 privacy erasure p
       calls.push(`object:${input.storageKey}`);
     },
     markEmailSuppressed: async (input) => {
-      calls.push(`email:${input.emailHash}`);
+      calls.push(`email:${input.emailHash}:${input.requestUuid}`);
     },
   };
   const service = createPrivacyService({ db: pg, processor });
@@ -211,8 +213,14 @@ test("삭제 workflow 성공 시 GSC revoke·object delete 후 privacy erasure p
   });
 
   assert.equal(result.status, "completed");
+  const requestUuid = (
+    await pg.query<{ id: string }>(
+      "select id::text from privacy_requests where workspace_id = $1 and request_id = $2",
+      [workspaceA, "dsar-delete-ok"],
+    )
+  ).rows[0]!.id;
   assert.deepEqual(calls.sort(), [
-    `email:${digest("owner-a@example.test")}`,
+    `email:${digest("owner-a@example.test")}:${requestUuid}`,
     `gsc:${gscA}`,
     "object:reports/a/report.pdf",
   ]);
@@ -234,6 +242,100 @@ test("삭제 workflow 성공 시 GSC revoke·object delete 후 privacy erasure p
   );
   assert.equal(retained.rows[0]!.count, 1);
   assert.equal(JSON.stringify(retained.rows[0]!.metadata).includes("owner-a@example.test"), false);
+});
+
+test("삭제 재실행은 성공한 대상별 step을 건너뛰고 실패 지점부터 재개하며 local erasure를 중복 실행하지 않는다", async () => {
+  const pg = await migratedDb();
+  await seedPrivacySubject(pg);
+  const calls: string[] = [];
+  let failObjectOnce = true;
+  const processor: PrivacyProcessorClient = {
+    revokeGscConnection: async ({ connectionId }) => {
+      calls.push(`gsc:${connectionId}`);
+    },
+    deleteObject: async ({ storageKey }) => {
+      calls.push(`object:${storageKey}`);
+      if (failObjectOnce) {
+        failObjectOnce = false;
+        throw new Error("temporary object deletion failure");
+      }
+    },
+    markEmailSuppressed: async ({ emailHash }) => {
+      calls.push(`email:${emailHash}`);
+    },
+  };
+  const service = createPrivacyService({ db: pg, processor });
+  const input = {
+    workspaceId: workspaceA,
+    operatorId: "operator-1",
+    requestId: "dsar-delete-resume",
+    now: new Date("2026-08-12T04:30:00.000Z"),
+  };
+
+  assert.deepEqual(await service.deleteWorkspaceSubject(input), {
+    requestId: input.requestId,
+    status: "failed",
+  });
+  assert.deepEqual(await service.deleteWorkspaceSubject({
+    ...input,
+    now: new Date("2026-08-12T04:31:00.000Z"),
+  }), {
+    requestId: input.requestId,
+    status: "completed",
+  });
+  assert.deepEqual(await service.deleteWorkspaceSubject({
+    ...input,
+    now: new Date("2026-08-12T04:32:00.000Z"),
+  }), {
+    requestId: input.requestId,
+    status: "completed",
+  });
+
+  assert.equal(calls.filter((call) => call.startsWith("gsc:")).length, 1);
+  assert.equal(calls.filter((call) => call.startsWith("object:")).length, 2);
+  assert.equal(calls.filter((call) => call.startsWith("email:")).length, 1);
+  const steps = await pg.query<{ step_key: string; status: string; attempts: number }>(
+    `select step.step_key, step.status, step.attempts
+       from privacy_request_steps step
+       join privacy_requests request
+         on request.workspace_id = step.workspace_id and request.id = step.request_id
+      where request.workspace_id = $1 and request.request_id = $2
+      order by step_key`,
+    [workspaceA, input.requestId],
+  );
+  assert.ok(steps.rows.some((step) =>
+    step.step_key === `gsc.revoke:${gscA}` && step.status === "succeeded" && step.attempts === 1
+  ));
+  assert.ok(steps.rows.some((step) =>
+    step.step_key === `objects.delete:${digest("reports/a/report.pdf")}` &&
+    step.status === "succeeded" && step.attempts === 2
+  ));
+  assert.ok(steps.rows.some((step) =>
+    step.step_key === "local.erasure" && step.status === "succeeded" && step.attempts === 1
+  ));
+});
+
+test("삭제 서비스는 production processor가 없으면 외부/DB 삭제를 시작하지 않고 fail-closed한다", async () => {
+  const pg = await migratedDb();
+  await seedPrivacySubject(pg);
+  const service = createPrivacyService({ db: pg });
+
+  await assert.rejects(
+    service.deleteWorkspaceSubject({
+      workspaceId: workspaceA,
+      operatorId: "operator-1",
+      requestId: "dsar-no-processor",
+      now: new Date("2026-08-12T04:40:00.000Z"),
+    }),
+    /PRIVACY_PROCESSOR_NOT_CONFIGURED/u,
+  );
+  const state = await pg.query<{ reports: number; requests: number }>(
+    `select
+       (select count(*)::int from weekly_reports where workspace_id = $1) reports,
+       (select count(*)::int from privacy_requests where workspace_id = $1 and request_id = $2) requests`,
+    [workspaceA, "dsar-no-processor"],
+  );
+  assert.deepEqual(state.rows[0], { reports: 1, requests: 0 });
 });
 
 test("retention dry-run은 만료 대상만 계산하고 apply에서 세션·초대·reset·oauth·queue·recipient·provider metadata를 정리한다", async () => {
@@ -313,4 +415,64 @@ test("retention dry-run은 만료 대상만 계산하고 apply에서 세션·초
     raw_response: null,
     plain_recipients: 0,
   });
+});
+
+test("retention apply는 backup restore로 되살아난 report object key를 매번 version purge한 뒤 DB retention을 수행한다", async () => {
+  const pg = await migratedDb();
+  await seedPrivacySubject(pg);
+  const request = await pg.query<{ id: string }>(
+    `insert into privacy_requests
+       (workspace_id, request_id, type, status, operator_id, requested_at, completed_at)
+     values ($1, 'restored-object-erasure', 'deletion', 'completed', 'operator-1', now(), now())
+     returning id::text`,
+    [workspaceA],
+  );
+  await pg.query(
+    `insert into backup_deletion_markers
+       (workspace_id, request_id, marker_key, runbook_ref, metadata)
+     values ($1, $2, 'backup-erasure-required', 'docs/ops/privacy-erasure-runbook.md',
+       '{"storageKeys":["reports/a/report.pdf"]}'::jsonb)`,
+    [workspaceA, request.rows[0]!.id],
+  );
+  const purged: string[] = [];
+  const processor = {
+    deleteObject: async ({ workspaceId, storageKey }: {
+      workspaceId: string;
+      storageKey: string;
+    }) => {
+      purged.push(`${workspaceId}:${storageKey}`);
+    },
+  };
+
+  const dryRun = await runPrivacyRetention({
+    db: pg,
+    now: new Date("2026-08-12T06:00:00.000Z"),
+    policy: syntheticRetentionPolicy,
+    dryRun: true,
+    processor,
+  });
+  assert.deepEqual(purged, []);
+  assert.deepEqual(
+    dryRun.items.find((item) => item.target === "backup-restored-objects"),
+    { target: "backup-restored-objects", matched: 1 },
+  );
+
+  await runPrivacyRetention({
+    db: pg,
+    now: new Date("2026-08-12T06:01:00.000Z"),
+    policy: syntheticRetentionPolicy,
+    dryRun: false,
+    processor,
+  });
+  await runPrivacyRetention({
+    db: pg,
+    now: new Date("2026-08-12T06:02:00.000Z"),
+    policy: syntheticRetentionPolicy,
+    dryRun: false,
+    processor,
+  });
+  assert.deepEqual(purged, [
+    `${workspaceA}:reports/a/report.pdf`,
+    `${workspaceA}:reports/a/report.pdf`,
+  ]);
 });

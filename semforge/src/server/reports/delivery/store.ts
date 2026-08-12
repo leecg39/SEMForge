@@ -1,5 +1,7 @@
 // @TASK P4-R1-T1 - PostgreSQL report asset and email delivery state
 // @SPEC docs/planning/06-tasks.md#p4-r1-t1--한글-pdf이메일객체-저장소
+import { createHash } from "node:crypto";
+
 import type { WeeklyReportSnapshot } from "@/server/reports/types";
 
 export interface DeliverySqlClient {
@@ -42,6 +44,7 @@ export interface ReportAccessStore {
 
 export interface ReportDeliveryStore {
   loadReportSnapshot(input: { workspaceId: string; reportId: string }): Promise<WeeklyReportSnapshot>;
+  isEmailSuppressed(input: { workspaceId: string; recipient: string }): Promise<boolean>;
   prepareEmail(input: {
     workspaceId: string;
     reportId: string;
@@ -134,6 +137,24 @@ const ASSET_COLUMNS = `
 
 export class PostgresReportDeliveryStore implements ReportDeliveryStore, ReportAccessStore {
   constructor(private readonly source: DeliverySqlSource) {}
+
+  async isEmailSuppressed(input: {
+    workspaceId: string;
+    recipient: string;
+  }): Promise<boolean> {
+    const recipient = input.recipient.trim().toLowerCase();
+    const recipientHash = createHash("sha256").update(recipient, "utf8").digest("hex");
+    return withTransaction(this.source, input.workspaceId, async (database) => {
+      const result = await database.query<{ suppressed: boolean }>(
+        `select exists(
+           select 1 from email_suppressions
+            where workspace_id = $1 and recipient_hash = $2
+         ) as suppressed`,
+        [input.workspaceId, recipientHash],
+      );
+      return result.rows[0]?.suppressed === true;
+    });
+  }
 
   async loadReportForAccess(input: {
     workspaceId: string;
