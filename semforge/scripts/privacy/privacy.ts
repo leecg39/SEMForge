@@ -2,8 +2,10 @@
 // @TASK P5-PRIVACY - Operator-only privacy lifecycle CLI
 // @SPEC paid-beta privacy lifecycle blockers
 import { getPool } from "@/db/client";
+import { PostgresWorkspacePrivacyFence } from "@/server/privacy/fence";
 import {
   createProductionPrivacyProcessor,
+  createProductionPrivacyRetentionProcessor,
   PrivacyProcessorConfigurationError,
 } from "@/server/privacy/processor";
 import {
@@ -52,16 +54,23 @@ async function main() {
 
   if (command === "retention") {
     const dryRun = required(input, "dry-run");
-    const db = getPool("privacy");
-    const processor = createProductionPrivacyProcessor({ db });
-    const result = await runPrivacyRetention({
-      db,
-      now,
-      policy: readPrivacyRetentionPolicy(),
-      dryRun: dryRun !== "false",
-      processor,
-    });
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    const db = getPool("retention");
+    try {
+      const processor = createProductionPrivacyRetentionProcessor({ env: process.env });
+      const result = await runPrivacyRetention({
+        db,
+        now,
+        policy: readPrivacyRetentionPolicy(),
+        dryRun: dryRun !== "false",
+        processor: {
+          deleteWorkspaceObjects: (workspace) =>
+            processor.deleteWorkspaceObjects(workspace),
+        },
+      });
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    } finally {
+      await db.end();
+    }
     return;
   }
 
@@ -72,22 +81,30 @@ async function main() {
     now,
   };
   const db = getPool("privacy");
-  const service = createPrivacyService({
-    db,
-    ...(command === "delete"
-      ? { processor: createProductionPrivacyProcessor({ db }) }
-      : {}),
-  });
-  if (command === "export") {
-    process.stdout.write(`${JSON.stringify(await service.exportWorkspaceSubject(base), null, 2)}\n`);
-  } else if (command === "correct") {
-    process.stdout.write(`${JSON.stringify(await service.correctWorkspaceSubject({
-      ...base,
-      displayName: input.get("display-name"),
-      workspaceName: input.get("workspace-name"),
-    }), null, 2)}\n`);
-  } else {
-    process.stdout.write(`${JSON.stringify(await service.deleteWorkspaceSubject(base), null, 2)}\n`);
+  try {
+    const service = createPrivacyService({
+      db,
+      ...(command === "delete"
+        ? {
+          erasureFence: new PostgresWorkspacePrivacyFence(db),
+          processorFactory: (exclusiveDb) =>
+            createProductionPrivacyProcessor({ db: exclusiveDb, env: process.env }),
+        }
+        : {}),
+    });
+    if (command === "export") {
+      process.stdout.write(`${JSON.stringify(await service.exportWorkspaceSubject(base), null, 2)}\n`);
+    } else if (command === "correct") {
+      process.stdout.write(`${JSON.stringify(await service.correctWorkspaceSubject({
+        ...base,
+        displayName: input.get("display-name"),
+        workspaceName: input.get("workspace-name"),
+      }), null, 2)}\n`);
+    } else {
+      process.stdout.write(`${JSON.stringify(await service.deleteWorkspaceSubject(base), null, 2)}\n`);
+    }
+  } finally {
+    await db.end();
   }
 }
 

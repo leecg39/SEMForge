@@ -51,7 +51,6 @@ const REQUIRED_BY_PROFILE = Object.freeze({
   scheduler: Object.freeze(["SCHEDULER_DATABASE_URL"]),
   privacy: Object.freeze([
     "PRIVACY_DATABASE_URL",
-    "PRIVACY_RETENTION_POLICY",
     "APP_SECRET",
     "APP_SECRET_CURRENT_KEY_ID",
     "S3_ENDPOINT",
@@ -60,7 +59,79 @@ const REQUIRED_BY_PROFILE = Object.freeze({
     "S3_ACCESS_KEY_ID",
     "S3_SECRET_ACCESS_KEY",
   ]),
+  retention: Object.freeze([
+    "PRIVACY_RETENTION_DATABASE_URL",
+    "PRIVACY_RETENTION_POLICY",
+    "S3_ENDPOINT",
+    "S3_REGION",
+    "S3_BUCKET",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+  ]),
+  operator: Object.freeze(["OPERATOR_DATABASE_URL"]),
   migrate: Object.freeze(["MIGRATION_DATABASE_URL"]),
+});
+
+const NON_PRIVACY_RUNTIME_SECRETS = Object.freeze([
+  "APP_PUBLIC_URL",
+  "AUTH_TRUST_PROXY_HEADERS",
+  "LEGAL_RELEASE_MANIFEST",
+  "GSC_REDIRECT_URI",
+  "DATABASE_URL",
+  "AUTH_DATABASE_URL",
+  "WORKER_DATABASE_URL",
+  "DISPATCHER_DATABASE_URL",
+  "SCHEDULER_DATABASE_URL",
+  "BILLING_DATABASE_URL",
+  "BILLING_TENANT_DATABASE_URL",
+  "MIGRATION_DATABASE_URL",
+  "TOSS_CLIENT_KEY",
+  "TOSS_SECRET_KEY",
+  "BILLING_FINGERPRINT_SECRET",
+  "NAVER_OPEN_API_CLIENT_ID",
+  "NAVER_OPEN_API_CLIENT_SECRET",
+  "NAVER_SEARCH_AD_ACCESS_LICENSE",
+  "NAVER_SEARCH_AD_SECRET_KEY",
+  "NAVER_SEARCH_AD_CUSTOMER_ID",
+  "TALORDATA_API_TOKEN",
+  "RESEND_API_KEY",
+  "RESEND_FROM_EMAIL",
+  "CHROMIUM_EXECUTABLE_PATH",
+]);
+
+const FORBIDDEN_BY_PROFILE = Object.freeze({
+  privacy: Object.freeze([
+    ...NON_PRIVACY_RUNTIME_SECRETS,
+    "PRIVACY_RETENTION_DATABASE_URL",
+    "PRIVACY_RETENTION_POLICY",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+  ]),
+  retention: Object.freeze([
+    ...NON_PRIVACY_RUNTIME_SECRETS,
+    "PRIVACY_DATABASE_URL",
+    "APP_SECRET",
+    "APP_SECRET_CURRENT_KEY_ID",
+    "APP_SECRET_PREVIOUS_KEYS",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+  ]),
+  operator: Object.freeze([
+    ...NON_PRIVACY_RUNTIME_SECRETS,
+    "PRIVACY_DATABASE_URL",
+    "PRIVACY_RETENTION_DATABASE_URL",
+    "PRIVACY_RETENTION_POLICY",
+    "APP_SECRET",
+    "APP_SECRET_CURRENT_KEY_ID",
+    "APP_SECRET_PREVIOUS_KEYS",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "S3_ENDPOINT",
+    "S3_REGION",
+    "S3_BUCKET",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+  ]),
 });
 
 const DATABASE_KEYS = new Set([
@@ -73,6 +144,7 @@ const DATABASE_KEYS = new Set([
   "BILLING_DATABASE_URL",
   "BILLING_TENANT_DATABASE_URL",
   "PRIVACY_DATABASE_URL",
+  "PRIVACY_RETENTION_DATABASE_URL",
   "MIGRATION_DATABASE_URL",
 ]);
 
@@ -264,7 +336,12 @@ export function validateRuntimeEnvironment(profile, environment) {
       }
     }
   }
-  if (isPresent(environment.OPERATOR_DATABASE_URL)) {
+  for (const key of FORBIDDEN_BY_PROFILE[profile] ?? []) {
+    if (isPresent(environment[key])) {
+      issues.push(`${key} is forbidden for ${profile}`);
+    }
+  }
+  if (profile !== "operator" && isPresent(environment.OPERATOR_DATABASE_URL)) {
     issues.push("OPERATOR_DATABASE_URL is only allowed for the operator service");
   }
   if (

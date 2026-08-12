@@ -11,15 +11,17 @@
 | `worker.env` | `AUTH_DATABASE_URL`, `DISPATCHER_DATABASE_URL`, `WORKER_DATABASE_URL` | collector secret, `APP_PUBLIC_URL`, Resend 2종, S3 호환 저장소 5종, `CHROMIUM_EXECUTABLE_PATH` |
 | `relay.env` | `DISPATCHER_DATABASE_URL` | secret 없음 |
 | `scheduler.env` | `SCHEDULER_DATABASE_URL` | secret 없음 |
-| `privacy.env` | `PRIVACY_DATABASE_URL` | `PRIVACY_RETENTION_POLICY`, `APP_SECRET`, `APP_SECRET_CURRENT_KEY_ID`, S3 호환 저장소 5종 |
+| `operator.env` | `OPERATOR_DATABASE_URL` | 승인 함수 실행 전용. executor/retention/provider secret 주입 금지 |
+| `privacy.env` | `PRIVACY_DATABASE_URL` | 수동 export/correct/delete용 `APP_SECRET`, `APP_SECRET_CURRENT_KEY_ID`, S3 호환 저장소 5종 |
+| `retention.env` | `PRIVACY_RETENTION_DATABASE_URL` | `PRIVACY_RETENTION_POLICY`, S3 호환 저장소 5종. `APP_SECRET`와 Google client credential 주입 금지 |
 
-`SEMFORGE_SERVICE`는 Compose가 이미지 역할에 맞게 덮어쓴다. dispatcher는 job claim/outbox 전용이며 worker는 tenant RLS transaction 전용이다. `BILLING_TENANT_DATABASE_URL`은 사용자 요청에서 `app.workspace_id`가 설정된 트랜잭션에만 사용하고, `BILLING_DATABASE_URL`은 Toss webhook·조회 대사에만 사용한다. `OPERATOR_DATABASE_URL`은 초대 CLI 실행 시 별도 secret으로 주입하며 web 파일에 넣지 않는다. scheduler 역할은 활성 workspace를 순회하는 예약 작업만 수행한다.
+`SEMFORGE_SERVICE`는 Compose가 이미지 역할에 맞게 덮어쓴다. dispatcher는 job claim/outbox 전용이며 worker는 tenant RLS transaction 전용이다. `BILLING_TENANT_DATABASE_URL`은 사용자 요청에서 `app.workspace_id`가 설정된 트랜잭션에만 사용하고, `BILLING_DATABASE_URL`은 Toss webhook·조회 대사에만 사용한다. `OPERATOR_DATABASE_URL`은 초대와 개인정보 요청 승인 CLI 실행 시 별도 secret으로 주입하며 web/privacy/retention 파일에 넣지 않는다. scheduler 역할은 활성 workspace를 순회하는 예약 작업만 수행한다.
 
 운영자 초대는 저장소 체크아웃 또는 승인된 운영 job에서 `NODE_ENV=production PGSSLMODE=verify-full OPERATOR_DATABASE_URL=… npm run invite -- --email … --workspace-name …`으로 실행한다. 이 프로세스의 `SEMFORGE_SERVICE=operator`는 스크립트가 고정하며 다른 애플리케이션 DSN이나 provider secret을 요구하지 않는다.
 
-개인정보 보존기간 정리는 매일 03:15 KST에 `privacy-retention` 명령으로 한 번 실행한다. Compose 운영 환경에서는 외부 scheduler가 `docker compose --profile scheduled run --rm privacy-retention`을 호출하고, Kubernetes에서는 `semforge-daily-privacy-retention` CronJob이 같은 명령을 호출한다. 두 실행 경로는 `SEMFORGE_PRIVACY_ENV_FILE`로 주입한 `privacy.env`만 사용한다.
+개인정보 보존기간 정리는 매일 03:15 KST에 `privacy-retention` 명령으로 한 번 실행한다. Compose 운영 환경에서는 외부 scheduler가 `docker compose --profile scheduled run --rm privacy-retention`을 호출하고, Kubernetes에서는 `semforge-daily-privacy-retention` CronJob이 같은 명령을 호출한다. 두 실행 경로는 `SEMFORGE_RETENTION_ENV_FILE`로 주입한 `retention.env`와 별도 `semforge-retention` secret만 사용한다. retention runtime에는 `APP_SECRET`, `PRIVACY_DATABASE_URL`, Google client credential을 주입하지 않으며 preflight도 이를 거부한다.
 
-워크스페이스 삭제는 schedule에 포함하지 않는다. 승인된 운영자가 별도 change ticket과 요청 식별자를 확인한 뒤 `docker compose run --rm --no-deps privacy-retention privacy-delete --workspace <uuid> --request <id> --operator <id>`처럼 `privacy-delete`를 수동 실행한다. 삭제 runtime은 GSC refresh token 자체를 Google revoke endpoint로 보내므로 Google client credential을 요구하지 않는다. 암호화 토큰 복호화와 버전 관리 객체 삭제에 필요한 앱 키와 S3 자격증명은 시작 전 preflight가 검증하며, 누락하면 exit 78로 종료한다.
+export/correct/delete는 schedule에 포함하지 않고 승인과 실행을 두 역할로 나눈다. 승인자는 `SEMFORGE_OPERATOR_ENV_FILE`의 `operator.env`만 사용해 `docker compose --profile manual run --rm privacy-request privacy-request --workspace <uuid> --request <id> --operator <id> --type deletion`으로 `privacy-request`를 먼저 실행한다. 그 다음 executor가 동일한 workspace/request/operator identity로 `docker compose --profile manual run --rm privacy privacy-delete --workspace <uuid> --request <id> --operator <id>`를 실행한다. export와 correction도 각각 `--type export` → `privacy-export`, `--type correction` → `privacy-correct` 순서를 지키며 사전 승인 없는 executor 호출은 DB에서 실패한다. 삭제 runtime은 GSC refresh token 자체를 Google revoke endpoint로 보내므로 Google client credential을 요구하지 않는다. 암호화 토큰 복호화와 버전 관리 객체 삭제에 필요한 앱 키와 S3 자격증명은 `SEMFORGE_PRIVACY_ENV_FILE`의 `privacy.env`에만 두며, 시작 전 preflight가 검증하고 누락하면 exit 78로 종료한다.
 
 `privacy.env`의 S3 자격증명은 대상 private bucket으로만 제한하고 최소 `s3:ListBucketVersions`(bucket resource)와 `s3:DeleteObjectVersion`(bucket object resource)을 허용해야 한다. 일반 `s3:DeleteObject`만으로는 versioned bucket의 과거 버전과 delete marker가 영구 삭제되지 않으므로 개인정보 삭제 권한으로 충분하지 않다. 보존기간 작업은 삭제 marker의 객체 key를 매 실행마다 다시 열거해 백업·복원으로 되살아난 version도 재삭제한다.
 

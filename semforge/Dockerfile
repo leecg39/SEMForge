@@ -80,14 +80,29 @@ FROM pipeline-runtime AS scheduler
 ENV SEMFORGE_SERVICE=scheduler
 CMD ["scheduler"]
 
-FROM runtime-base AS privacy
-ENV SEMFORGE_SERVICE=privacy
+FROM runtime-base AS privacy-runtime
 COPY --from=production-dependencies --chown=semforge:semforge /app/node_modules ./node_modules
 COPY --from=builder --chown=semforge:semforge /app/package.json /app/tsconfig.json ./
 COPY --from=builder --chown=semforge:semforge /app/src ./src
 COPY --from=builder --chown=semforge:semforge /app/scripts/privacy/privacy.ts ./scripts/privacy/privacy.ts
 USER semforge
+
+FROM privacy-runtime AS privacy
+ENV SEMFORGE_SERVICE=privacy
+CMD ["privacy-export"]
+
+FROM privacy-runtime AS retention
+ENV SEMFORGE_SERVICE=retention
 CMD ["privacy-retention"]
+
+FROM runtime-base AS operator
+ENV SEMFORGE_SERVICE=operator
+COPY --from=production-dependencies --chown=semforge:semforge /app/node_modules ./node_modules
+COPY --from=builder --chown=semforge:semforge /app/package.json /app/tsconfig.json ./
+COPY --from=builder --chown=semforge:semforge /app/src ./src
+COPY --from=builder --chown=semforge:semforge /app/scripts/ops/privacy-request.ts ./scripts/ops/privacy-request.ts
+USER semforge
+CMD ["privacy-request"]
 
 FROM runtime-base AS migrator
 ENV SEMFORGE_SERVICE=migrate

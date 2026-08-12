@@ -7,11 +7,11 @@
 
 ## 0. 이미지 계약
 
-- `Dockerfile`은 Node 24의 `web`, `worker`, `relay`, `scheduler`, `migrator` target을 제공한다. 모든 target은 UID/GID 10001 `semforge`로 실행한다.
+- `Dockerfile`은 Node 24의 `web`, `worker`, `relay`, `scheduler`, `operator`, `privacy`, `retention`, `migrator` target을 제공한다. 모든 target은 UID/GID 10001 `semforge`로 실행한다.
 - web은 Next standalone 서버만 포함한다. pipeline/migrator 이미지는 production dependency만 설치하며 `SEMFORGE_SERVICE`가 image 역할과 일치하지 않으면 시작하지 않는다.
-- web에는 일반 tenant DSN, auth DSN, tenant billing DSN, Toss webhook·대사용 global billing DSN만 주입하고 operator CLI DSN은 넣지 않는다. worker에는 dispatcher claim DSN과 tenant RLS DSN만, relay에는 dispatcher DSN만, scheduler에는 scheduler DSN만 주입한다. `deploy/env/README.md`의 파일을 분리하고 공유 secret bundle을 사용하지 않는다.
+- web에는 일반 tenant DSN, auth DSN, tenant billing DSN, Toss webhook·대사용 global billing DSN만 주입하고 operator CLI DSN은 넣지 않는다. worker에는 dispatcher claim DSN과 tenant RLS DSN만, relay에는 dispatcher DSN만, scheduler에는 scheduler DSN만 주입한다. 개인정보 요청 승인은 operator, 수동 실행은 privacy, 일일 정리는 retention target과 secret을 각각 사용한다. `deploy/env/README.md`의 파일을 분리하고 공유 secret bundle을 사용하지 않는다.
 - runtime base의 `/usr/bin/chromium`과 Noto Sans CJK KR은 후속 PDF renderer가 동일한 실행 자산을 사용하도록 고정한다. Chromium sandbox 설정을 약화하는 플래그는 배포 설정에 하드코딩하지 않는다.
-- staging에서는 `docker compose build web worker relay scheduler release`로 target을 만들고 `docker compose up`의 release 완료 조건을 확인한다. 운영에서는 각 image를 registry digest로 고정한다.
+- staging에서는 `docker compose build web worker relay scheduler privacy-request privacy privacy-retention release`로 target을 만들고 `docker compose up`의 release 완료 조건을 확인한다. 운영에서는 각 image를 registry digest로 고정한다.
 
 ## 1. Release gate와 migration-first 순서
 

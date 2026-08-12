@@ -1,6 +1,18 @@
-# Privacy erasure backup marker runbook
+# Privacy request approval, execution, and backup marker runbook
 
 This runbook is the beta operational contract for DSAR deletion requests.
+
+Every export, correction, and deletion uses two isolated production roles. The approver runs `privacy-request` with only `OPERATOR_DATABASE_URL`; the executor then runs the matching `privacy-export`, `privacy-correct`, or `privacy-delete` command with only `PRIVACY_DATABASE_URL`, application encryption keys, and S3 credentials. The workspace, external request id, operator id, and request type must match across both steps. The executor fails closed when `privacy_open_request(...)` has not opened that exact request.
+
+```bash
+NODE_ENV=production PGSSLMODE=verify-full npm run privacy:request -- \
+  --workspace "$WORKSPACE_ID" --request "$REQUEST_ID" \
+  --operator "$OPERATOR_ID" --type deletion
+NODE_ENV=production PGSSLMODE=verify-full npm run privacy:delete -- \
+  --workspace "$WORKSPACE_ID" --request "$REQUEST_ID" --operator "$OPERATOR_ID"
+```
+
+Do not load `operator.env` and `privacy.env` in the same process. Retention uses a third role and `retention.env`; it must not receive `PRIVACY_DATABASE_URL`, `OPERATOR_DATABASE_URL`, application encryption keys, or Google credentials.
 
 The application performs live database/object erasure only after external processor steps succeed. Backups are not mutated in place. Each completed deletion inserts a `backup_deletion_markers` row with the DSAR request id. Operators must:
 

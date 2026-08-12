@@ -117,9 +117,9 @@ services:
         condition: service_completed_successfully
     restart: "no"
 
-  privacy-retention:
+  privacy:
     <<: *runtime
-    profiles: [scheduled]
+    profiles: [manual]
     image: ${SEMFORGE_PRIVACY_IMAGE:-semforge-privacy:local}
     build:
       context: .
@@ -129,6 +129,40 @@ services:
         required: true
     environment:
       SEMFORGE_SERVICE: privacy
+    depends_on:
+      release:
+        condition: service_completed_successfully
+    restart: "no"
+
+  privacy-request:
+    <<: *runtime
+    profiles: [manual]
+    image: ${SEMFORGE_OPERATOR_IMAGE:-semforge-operator:local}
+    build:
+      context: .
+      target: operator
+    env_file:
+      - path: ${SEMFORGE_OPERATOR_ENV_FILE:-deploy/env/operator.env}
+        required: true
+    environment:
+      SEMFORGE_SERVICE: operator
+    depends_on:
+      release:
+        condition: service_completed_successfully
+    restart: "no"
+
+  privacy-retention:
+    <<: *runtime
+    profiles: [scheduled]
+    image: ${SEMFORGE_RETENTION_IMAGE:-semforge-retention:local}
+    build:
+      context: .
+      target: retention
+    env_file:
+      - path: ${SEMFORGE_RETENTION_ENV_FILE:-deploy/env/retention.env}
+        required: true
+    environment:
+      SEMFORGE_SERVICE: retention
     command: ["privacy-retention"]
     depends_on:
       release:

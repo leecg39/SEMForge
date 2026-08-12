@@ -9,8 +9,14 @@ case "$profile" in
   report-scheduler)
     preflight_profile="scheduler"
     ;;
-  privacy-retention|privacy-delete)
+  privacy-export|privacy-correct|privacy-delete)
     preflight_profile="privacy"
+    ;;
+  privacy-retention)
+    preflight_profile="retention"
+    ;;
+  privacy-request)
+    preflight_profile="operator"
     ;;
 esac
 node scripts/ops/preflight.mjs "$preflight_profile"
@@ -37,8 +43,17 @@ case "$profile" in
   privacy-retention)
     exec node --import tsx scripts/privacy/privacy.ts retention --dry-run false
     ;;
+  privacy-export)
+    exec node --import tsx scripts/privacy/privacy.ts export "$@"
+    ;;
+  privacy-correct)
+    exec node --import tsx scripts/privacy/privacy.ts correct "$@"
+    ;;
   privacy-delete)
     exec node --import tsx scripts/privacy/privacy.ts delete "$@"
+    ;;
+  privacy-request)
+    exec node --import tsx scripts/ops/privacy-request.ts "$@"
     ;;
   migrate)
     exec node --import tsx src/db/migrate.ts

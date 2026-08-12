@@ -195,37 +195,27 @@ spec:
               type: RuntimeDefault
           containers:
             - name: privacy-retention
-              image: registry.example.com/semforge-privacy@sha256:REPLACE_WITH_DIGEST
+              image: registry.example.com/semforge-retention@sha256:REPLACE_WITH_DIGEST
               imagePullPolicy: IfNotPresent
               args: ["privacy-retention"]
               env:
                 - { name: NODE_ENV, value: production }
-                - { name: SEMFORGE_SERVICE, value: privacy }
+                - { name: SEMFORGE_SERVICE, value: retention }
                 - { name: PGSSLMODE, value: verify-full }
-                - name: PRIVACY_DATABASE_URL
-                  valueFrom: { secretKeyRef: { name: semforge-privacy, key: database-url } }
+                - name: PRIVACY_RETENTION_DATABASE_URL
+                  valueFrom: { secretKeyRef: { name: semforge-retention, key: database-url } }
                 - name: PRIVACY_RETENTION_POLICY
-                  valueFrom: { secretKeyRef: { name: semforge-privacy, key: retention-policy } }
-                - name: APP_SECRET
-                  valueFrom: { secretKeyRef: { name: semforge-privacy, key: app-secret } }
-                - name: APP_SECRET_CURRENT_KEY_ID
-                  valueFrom: { secretKeyRef: { name: semforge-privacy, key: app-secret-key-id } }
-                - name: APP_SECRET_PREVIOUS_KEYS
-                  valueFrom:
-                    secretKeyRef:
-                      name: semforge-privacy
-                      key: app-secret-previous-keys
-                      optional: true
+                  valueFrom: { secretKeyRef: { name: semforge-retention, key: retention-policy } }
                 - name: S3_ENDPOINT
-                  valueFrom: { secretKeyRef: { name: semforge-privacy, key: s3-endpoint } }
+                  valueFrom: { secretKeyRef: { name: semforge-retention, key: s3-endpoint } }
                 - name: S3_REGION
-                  valueFrom: { secretKeyRef: { name: semforge-privacy, key: s3-region } }
+                  valueFrom: { secretKeyRef: { name: semforge-retention, key: s3-region } }
                 - name: S3_BUCKET
-                  valueFrom: { secretKeyRef: { name: semforge-privacy, key: s3-bucket } }
+                  valueFrom: { secretKeyRef: { name: semforge-retention, key: s3-bucket } }
                 - name: S3_ACCESS_KEY_ID
-                  valueFrom: { secretKeyRef: { name: semforge-privacy, key: s3-access-key-id } }
+                  valueFrom: { secretKeyRef: { name: semforge-retention, key: s3-access-key-id } }
                 - name: S3_SECRET_ACCESS_KEY
-                  valueFrom: { secretKeyRef: { name: semforge-privacy, key: s3-secret-access-key } }
+                  valueFrom: { secretKeyRef: { name: semforge-retention, key: s3-secret-access-key } }
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
