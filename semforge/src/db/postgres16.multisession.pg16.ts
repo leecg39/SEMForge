@@ -1087,6 +1087,77 @@ test("PostgreSQL 16 billing subscription race는 cancel/disable을 stale settle�
   }
 });
 
+test("PostgreSQL 16 cancel 예약 뒤 stale 실패 정산은 구독을 past_due로 되돌리지 않는다", async () => {
+  const workspaceId = "f5450000-0000-4000-8000-000000000001";
+  const customerId = "f5450000-0000-4000-8000-000000000002";
+  const subscriptionId = "f5450000-0000-4000-8000-000000000003";
+  const paymentId = "f5450000-0000-4000-8000-000000000004";
+  const orderId = "pg16-stale-failure-after-cancel";
+  await pool.query(
+    "insert into workspaces (id, name, slug) values ($1, 'PG stale failure', 'pg-stale-failure')",
+    [workspaceId],
+  );
+  await pool.query(
+    "insert into billing_customers (id, workspace_id, toss_customer_key) values ($1, $2, 'pg-stale-failure')",
+    [customerId, workspaceId],
+  );
+  await pool.query(
+    `insert into subscriptions
+      (id, workspace_id, billing_customer_id, status, canceled_at)
+     values ($1, $2, $3, 'cancel_at_period_end', now())`,
+    [subscriptionId, workspaceId, customerId],
+  );
+  await pool.query(
+    `insert into payments
+      (id, workspace_id, subscription_id, order_id, idempotency_key, status, amount_krw,
+       billing_period_start, billing_period_end, attempt)
+     values ($1, $2, $3, $4, 'pg16-stale-failure-idempotency', 'pending', 49000,
+       '2026-08-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z', 1)`,
+    [paymentId, workspaceId, subscriptionId, orderId],
+  );
+  const globalRuntimePool = new Pool({
+    connectionString: databaseUrl,
+    max: 1,
+    ssl: false,
+    options: "-c role=semforge_billing",
+  });
+  try {
+    const store = createPostgresBillingStore({
+      pool: globalRuntimePool,
+      fingerprintSecret: "pg16-stale-failure-secret-32-bytes",
+      scope: "global",
+    });
+    const result = await store.settleCharge({
+      workspaceId,
+      orderId,
+      status: "failed",
+      tossPaymentKey: null,
+      failureCode: "TOSS_EXPIRED",
+      failureMessage: "Toss 결제가 완료되지 않았습니다.",
+      paidAt: null,
+      graceEndsAt: new Date("2026-08-08T00:00:00.000Z"),
+      ledger: {
+        id: "f5450000-0000-4000-8000-000000000005",
+        workspaceId,
+        type: "charge.failed",
+        entityId: paymentId,
+        actorUserId: null,
+        requestId: "pg16-stale-failure-event",
+        occurredAt: new Date("2026-08-12T05:30:00.000Z"),
+        amountKrw: 49_000,
+        orderId,
+        paymentStatus: "failed",
+        providerCode: "TOSS_EXPIRED",
+      },
+    });
+    assert.equal(result.changed, true);
+    assert.equal(result.account.latestPayment?.status, "failed");
+    assert.equal(result.account.subscription.status, "cancel_at_period_end");
+  } finally {
+    await globalRuntimePool.end();
+  }
+});
+
 // @TASK P5-PRIVACY - Privacy erasure database authorization and tenant lifecycle
 // @SPEC docs/ops/privacy-erasure-runbook.md
 test("PostgreSQL 16 password reset delivery fence는 worker 역할로 suppression을 읽고 dispatcher 역할을 거부한다", async () => {

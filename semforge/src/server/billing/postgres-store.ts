@@ -499,7 +499,7 @@ export function createPostgresBillingStore(options: {
                  updated_at = now()
              where workspace_id = $1
                and id = $2
-               and status not in ('cancel_at_period_end', 'past_due')`,
+               and status not in ('cancel_at_period_end', 'past_due', 'canceled')`,
             [
               input.workspaceId,
               existing.subscriptionId,
@@ -515,7 +515,9 @@ export function createPostgresBillingStore(options: {
           await client.query(
             `update subscriptions
              set status = 'past_due', grace_ends_at = $3, updated_at = now()
-             where workspace_id = $1 and id = $2`,
+             where workspace_id = $1
+               and id = $2
+               and status not in ('cancel_at_period_end', 'canceled')`,
             [input.workspaceId, existing.subscriptionId, input.graceEndsAt],
           );
         }
