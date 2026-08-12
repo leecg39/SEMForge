@@ -21,13 +21,17 @@ function runDeploymentPreflight(
   manifestPaths: readonly string[],
   environment: Readonly<Record<string, string>>,
 ) {
+  const isolatedEnvironment = { ...process.env };
+  delete isolatedEnvironment.SEMFORGE_NODE_BASE_IMAGE;
+  delete isolatedEnvironment.SEMFORGE_POSTGRES_IMAGE;
+
   return spawnSync(
     process.execPath,
     ["scripts/ops/deployment-preflight.mjs", ...manifestPaths],
     {
       cwd: process.cwd(),
       encoding: "utf8",
-      env: { ...process.env, ...environment },
+      env: { ...isolatedEnvironment, ...environment },
     },
   );
 }
