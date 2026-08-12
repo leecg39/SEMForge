@@ -10,6 +10,10 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 
 import type { BillingAccessAuthorizer } from "@/server/billing/access";
+import {
+  WorkspacePrivacyOperationBlockedError,
+  type WorkspacePrivacyOperationGuard,
+} from "@/server/privacy/operation";
 import { createSitesRouteHandlers } from "@/server/sites/routes";
 
 const pg = new PGlite();
@@ -37,13 +41,31 @@ const allowBillingAccess: BillingAccessAuthorizer = async () => ({
   reportPeriodEndBefore: null,
 });
 
+const allowPrivacyOperation: WorkspacePrivacyOperationGuard = {
+  async withShared(_workspaceId, operation) {
+    return operation(pg);
+  },
+};
+
+function blockedPrivacyOperation(
+  state: "blocking" | "erased",
+): WorkspacePrivacyOperationGuard {
+  return {
+    async withShared() {
+      throw new WorkspacePrivacyOperationBlockedError(state);
+    },
+  };
+}
+
 function handlersFor(
   workspace = workspaceId,
   authorizeBilling: BillingAccessAuthorizer = allowBillingAccess,
+  privacyOperation: WorkspacePrivacyOperationGuard = allowPrivacyOperation,
 ) {
   return createSitesRouteHandlers({
     db: pg,
     authorizeBilling,
+    privacyOperation,
     resolveSession: async () => ({
       workspaceId: workspace,
       userId,
@@ -166,6 +188,214 @@ test("GET /api/v1/sites는 cursor 페이지를 workspace 내부로만 반환한�
   assert.equal(envelope.error, null);
   assert.equal((envelope.data as { items: unknown[] }).items.length, 1);
 });
+
+test("privacy operation DI 누락은 mutation을 fail-closed로 막고 GET에는 영향을 주지 않는다", async () => {
+  const before = (
+    await pg.query<{ sites: number; outbox: number }>(
+      `select
+         (select count(*)::int from sites where workspace_id = $1) sites,
+         (select count(*)::int from outbox where workspace_id = $1) outbox`,
+      [workspaceId],
+    )
+  ).rows[0]!;
+  const handlers = createSitesRouteHandlers({
+    db: pg,
+    authorizeBilling: allowBillingAccess,
+    resolveSession: async () => ({
+      workspaceId,
+      userId,
+      role: "owner",
+      requestId: "missing-privacy-operation",
+    }),
+    resolveDomainAddresses: async () => ["8.8.8.8"],
+  });
+
+  const read = await handlers.sites.GET(
+    new Request("https://app.semforge.test/api/v1/sites"),
+    undefined,
+  );
+  const write = await handlers.sites.POST(
+    new Request("https://app.semforge.test/api/v1/sites", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://app.semforge.test",
+        "idempotency-key": "missing-privacy-operation",
+      },
+      body: JSON.stringify({ name: "Must Not Persist", domain: "missing-guard.example.com" }),
+    }),
+    undefined,
+  );
+  assert.equal(read.status, 200);
+  assert.equal(write.status, 500);
+  assert.equal((await readEnvelope(write)).error?.code, "INTERNAL");
+
+  const afterState = (
+    await pg.query<typeof before>(
+      `select
+         (select count(*)::int from sites where workspace_id = $1) sites,
+         (select count(*)::int from outbox where workspace_id = $1) outbox`,
+      [workspaceId],
+    )
+  ).rows[0]!;
+  assert.deepEqual(afterState, before);
+});
+
+test("blocking/erased workspace mutation은 사이트·tracking 저장과 outbox를 남기지 않고 GET은 유지한다", async () => {
+  const activeSiteId = "20000000-0000-4000-8000-000000000021";
+  const inactiveSiteId = "20000000-0000-4000-8000-000000000022";
+  const activeTrackingId = "20000000-0000-4000-8000-000000000031";
+  const inactiveTrackingId = "20000000-0000-4000-8000-000000000032";
+  await pg.query(
+    `insert into sites (id, workspace_id, name, domain, active) values
+       ($1, $3, 'Privacy Active Site', 'privacy-active.example.com', true),
+       ($2, $3, 'Privacy Inactive Site', 'privacy-inactive.example.com', false)`,
+    [activeSiteId, inactiveSiteId, workspaceId],
+  );
+  await pg.query(
+    `insert into tracked_queries
+       (id, workspace_id, site_id, type, query, normalized_query, active) values
+       ($1, $3, $4, 'rank', 'Privacy Active', 'privacy active', true),
+       ($2, $3, $4, 'aio', 'Privacy Inactive', 'privacy inactive', false)`,
+    [activeTrackingId, inactiveTrackingId, workspaceId, activeSiteId],
+  );
+
+  const before = (
+    await pg.query<{
+      sites: number;
+      tracking: number;
+      outbox: number;
+      active_site: boolean;
+      inactive_site: boolean;
+      active_tracking: boolean;
+      inactive_tracking: boolean;
+    }>(
+      `select
+         (select count(*)::int from sites where workspace_id = $1) sites,
+         (select count(*)::int from tracked_queries where workspace_id = $1) tracking,
+         (select count(*)::int from outbox where workspace_id = $1) outbox,
+         (select active from sites where id = $2) active_site,
+         (select active from sites where id = $3) inactive_site,
+         (select active from tracked_queries where id = $4) active_tracking,
+         (select active from tracked_queries where id = $5) inactive_tracking`,
+      [workspaceId, activeSiteId, inactiveSiteId, activeTrackingId, inactiveTrackingId],
+    )
+  ).rows[0]!;
+
+  for (const state of ["blocking", "erased"] as const) {
+    const handlers = handlersFor(
+      workspaceId,
+      allowBillingAccess,
+      blockedPrivacyOperation(state),
+    );
+    const suffix = state === "blocking" ? "blocked" : "erased";
+    const responses = [
+      await handlers.sites.POST(
+        new Request("https://app.semforge.test/api/v1/sites", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            origin: "https://app.semforge.test",
+            "idempotency-key": `privacy-site-create-${suffix}`,
+          },
+          body: JSON.stringify({
+            name: `Privacy ${state}`,
+            domain: `privacy-${suffix}.example.com`,
+          }),
+        }),
+        undefined,
+      ),
+      await handlers.siteById.PATCH(
+        mutationRequest(`/api/v1/sites/${activeSiteId}`, false, `privacy-site-disable-${suffix}`),
+        { params: Promise.resolve({ siteId: activeSiteId }) },
+      ),
+      await handlers.siteById.PATCH(
+        mutationRequest(`/api/v1/sites/${inactiveSiteId}`, true, `privacy-site-reactivate-${suffix}`),
+        { params: Promise.resolve({ siteId: inactiveSiteId }) },
+      ),
+      await handlers.tracking.POST(
+        new Request("https://app.semforge.test/api/v1/tracking", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            origin: "https://app.semforge.test",
+            "idempotency-key": `privacy-tracking-create-${suffix}`,
+          },
+          body: JSON.stringify({
+            siteId: activeSiteId,
+            type: "rank",
+            query: `Privacy ${state}`,
+          }),
+        }),
+        undefined,
+      ),
+      await handlers.trackingById.PATCH(
+        mutationRequest(
+          `/api/v1/tracking/${activeTrackingId}`,
+          false,
+          `privacy-tracking-disable-${suffix}`,
+        ),
+        { params: Promise.resolve({ trackingId: activeTrackingId }) },
+      ),
+      await handlers.trackingById.PATCH(
+        mutationRequest(
+          `/api/v1/tracking/${inactiveTrackingId}`,
+          true,
+          `privacy-tracking-reactivate-${suffix}`,
+        ),
+        { params: Promise.resolve({ trackingId: inactiveTrackingId }) },
+      ),
+    ];
+    for (const response of responses) {
+      assert.equal(response.status, 409);
+      assert.equal((await readEnvelope(response)).error?.code, "CONFLICT");
+    }
+
+    const list = await handlers.sites.GET(
+      new Request("https://app.semforge.test/api/v1/sites?limit=50"),
+      undefined,
+    );
+    const detail = await handlers.siteById.GET(
+      new Request(`https://app.semforge.test/api/v1/sites/${activeSiteId}`),
+      { params: Promise.resolve({ siteId: activeSiteId }) },
+    );
+    assert.equal(list.status, 200);
+    assert.equal(detail.status, 200);
+  }
+
+  const afterState = (
+    await pg.query<typeof before>(
+      `select
+         (select count(*)::int from sites where workspace_id = $1) sites,
+         (select count(*)::int from tracked_queries where workspace_id = $1) tracking,
+         (select count(*)::int from outbox where workspace_id = $1) outbox,
+         (select active from sites where id = $2) active_site,
+         (select active from sites where id = $3) inactive_site,
+         (select active from tracked_queries where id = $4) active_tracking,
+         (select active from tracked_queries where id = $5) inactive_tracking`,
+      [workspaceId, activeSiteId, inactiveSiteId, activeTrackingId, inactiveTrackingId],
+    )
+  ).rows[0]!;
+  assert.deepEqual(afterState, before);
+  await pg.query("delete from tracked_queries where id = any($1::uuid[])", [
+    [activeTrackingId, inactiveTrackingId],
+  ]);
+  await pg.query("delete from sites where id = any($1::uuid[])", [
+    [activeSiteId, inactiveSiteId],
+  ]);
+});
+
+function mutationRequest(pathname: string, active: boolean, idempotencyKey: string) {
+  return new Request(`https://app.semforge.test${pathname}`, {
+    method: "PATCH",
+    headers: {
+      "content-type": "application/json",
+      origin: "https://app.semforge.test",
+      "idempotency-key": idempotencyKey,
+    },
+    body: JSON.stringify({ active }),
+  });
+}
 
 test("PATCH /api/v1/sites/[siteId]와 /tracking/[trackingId]는 다른 workspace IDOR를 NOT_FOUND로 막는다", async () => {
   const ownerHandlers = handlersFor();

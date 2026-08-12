@@ -19,6 +19,11 @@ import {
   type BillingAccessAuthorizer,
 } from "@/server/billing/access";
 import {
+  missingWorkspacePrivacyOperationGuard,
+  WorkspacePrivacyOperationBlockedError,
+  type WorkspacePrivacyOperationGuard,
+} from "@/server/privacy/operation";
+import {
   createSite,
   createTrackedQuery,
   disableSite,
@@ -56,6 +61,7 @@ export interface SitesRouteDependencies {
   resolveSession?: ApiSessionResolver;
   resolveDomainAddresses?: DomainAddressResolver;
   authorizeBilling?: BillingAccessAuthorizer;
+  privacyOperation?: WorkspacePrivacyOperationGuard;
 }
 
 type SiteParamsContext = { params: Promise<{ siteId: string }> };
@@ -84,6 +90,9 @@ async function withRouteDb<T>(
 }
 
 function mapStoreError(error: unknown): never {
+  if (error instanceof WorkspacePrivacyOperationBlockedError) {
+    throw new ApiError("CONFLICT");
+  }
   if (!(error instanceof SitesStoreError)) throw error;
   switch (error.code) {
     case "INVALID_DOMAIN":
@@ -107,6 +116,8 @@ function mapStoreError(error: unknown): never {
 export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
   const resolveSessionForRoute = deps.resolveSession ?? resolveApiSession;
   const authorizeBilling = deps.authorizeBilling ?? createRuntimeBillingAccessAuthorizer();
+  const privacyOperation =
+    deps.privacyOperation ?? missingWorkspacePrivacyOperationGuard;
 
   async function requireBilling(
     workspaceId: string,
@@ -142,7 +153,7 @@ export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
       const idempotencyKey = requireMutationIdempotencyKey(request);
       const body = await parseJsonBody(request, createSiteBody);
       try {
-        const site = await withRouteDb(deps, (db) =>
+        const site = await privacyOperation.withShared(session.workspaceId, (db) =>
           createSite(
             db,
             {
@@ -155,6 +166,7 @@ export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
               requestId: apiContext.requestId,
               idempotencyKey,
               resolveDomainAddresses: deps.resolveDomainAddresses,
+              transaction: "existing",
             },
           ),
         );
@@ -187,17 +199,17 @@ export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
         );
         if (!existing) throw new ApiError("NOT_FOUND");
         await requireBilling(session.workspaceId, "workspace:write");
-        const site = await withRouteDb(deps, (db) =>
+        const site = await privacyOperation.withShared(session.workspaceId, (db) =>
           body.active
             ? reactivateSite(
                 db,
                 { workspaceId: session.workspaceId, siteId },
-                { requestId: apiContext.requestId, idempotencyKey },
+                { requestId: apiContext.requestId, idempotencyKey, transaction: "existing" },
               )
             : disableSite(
                 db,
                 { workspaceId: session.workspaceId, siteId },
-                { requestId: apiContext.requestId, idempotencyKey },
+                { requestId: apiContext.requestId, idempotencyKey, transaction: "existing" },
               ),
         );
         return apiSuccess(site);
@@ -214,7 +226,7 @@ export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
       const idempotencyKey = requireMutationIdempotencyKey(request);
       const body = await parseJsonBody(request, createTrackingBody);
       try {
-        const trackedQuery = await withRouteDb(deps, (db) =>
+        const trackedQuery = await privacyOperation.withShared(session.workspaceId, (db) =>
           createTrackedQuery(
             db,
             {
@@ -223,7 +235,7 @@ export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
               type: body.type,
               query: body.query,
             },
-            { requestId: apiContext.requestId, idempotencyKey },
+            { requestId: apiContext.requestId, idempotencyKey, transaction: "existing" },
           ),
         );
         return apiSuccess(trackedQuery, { status: 201 });
@@ -241,17 +253,17 @@ export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
       const body = await parseJsonBody(request, patchActiveBody);
       const { trackingId } = await context.params;
       try {
-        const trackedQuery = await withRouteDb(deps, (db) =>
+        const trackedQuery = await privacyOperation.withShared(session.workspaceId, (db) =>
           body.active
             ? reactivateTrackedQuery(
                 db,
                 { workspaceId: session.workspaceId, trackingId },
-                { requestId: apiContext.requestId, idempotencyKey },
+                { requestId: apiContext.requestId, idempotencyKey, transaction: "existing" },
               )
             : disableTrackedQuery(
                 db,
                 { workspaceId: session.workspaceId, trackingId },
-                { requestId: apiContext.requestId, idempotencyKey },
+                { requestId: apiContext.requestId, idempotencyKey, transaction: "existing" },
               ),
         );
         return apiSuccess(trackedQuery);

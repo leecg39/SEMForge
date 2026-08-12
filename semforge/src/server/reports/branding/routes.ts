@@ -13,6 +13,11 @@ import {
   createRuntimeBillingAccessAuthorizer,
   type BillingAccessAuthorizer,
 } from "@/server/billing/access";
+import {
+  missingWorkspacePrivacyOperationGuard,
+  WorkspacePrivacyOperationBlockedError,
+  type WorkspacePrivacyOperationGuard,
+} from "@/server/privacy/operation";
 import { ReportBrandingValidationError } from "@/server/reports/branding/domain";
 import {
   getReportBranding,
@@ -35,6 +40,7 @@ export interface ReportBrandingRouteDependencies {
   readonly resolveSession?: ApiSessionResolver;
   readonly resolveLogoAddresses?: DomainAddressResolver;
   readonly authorizeBilling?: BillingAccessAuthorizer;
+  readonly privacyOperation?: WorkspacePrivacyOperationGuard;
 }
 
 function routeDatabase(dependencies: ReportBrandingRouteDependencies): BrandingSqlSource {
@@ -42,6 +48,9 @@ function routeDatabase(dependencies: ReportBrandingRouteDependencies): BrandingS
 }
 
 function mapBrandingError(error: unknown): never {
+  if (error instanceof WorkspacePrivacyOperationBlockedError) {
+    throw new ApiError("CONFLICT");
+  }
   if (error instanceof ReportBrandingValidationError) {
     throw new ApiError("VALIDATION_ERROR", undefined, {
       fields: { [error.field]: error.message },
@@ -56,6 +65,8 @@ export function createReportBrandingRouteHandlers(
 ) {
   const resolveSession = dependencies.resolveSession ?? resolveApiSession;
   const authorizeBilling = dependencies.authorizeBilling ?? createRuntimeBillingAccessAuthorizer();
+  const privacyOperation =
+    dependencies.privacyOperation ?? missingWorkspacePrivacyOperationGuard;
 
   async function requireBilling(
     workspaceId: string,
@@ -86,10 +97,14 @@ export function createReportBrandingRouteHandlers(
       const body = await parseJsonBody(request, patchBrandingBody);
       try {
         return apiSuccess(
-          await updateReportBranding(
-            routeDatabase(dependencies),
-            { workspaceId: session.workspaceId, branding: body },
-            dependencies.resolveLogoAddresses,
+          await privacyOperation.withShared(
+            session.workspaceId,
+            (database) => updateReportBranding(
+              database,
+              { workspaceId: session.workspaceId, branding: body },
+              dependencies.resolveLogoAddresses,
+              { transaction: "existing" },
+            ),
           ),
         );
       } catch (error) {

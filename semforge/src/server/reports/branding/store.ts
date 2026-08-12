@@ -19,6 +19,11 @@ export type BrandingSqlSource = BrandingSqlClient & {
   connect?: () => Promise<BrandingSqlConnection>;
 };
 
+export interface BrandingStoreOptions {
+  /** The privacy fence already owns BEGIN, tenant context, COMMIT and rollback. */
+  readonly transaction?: "existing";
+}
+
 type BrandingRow = {
   name: string;
   logo_url: string | null;
@@ -44,7 +49,9 @@ async function withWorkspaceTransaction<T>(
   source: BrandingSqlSource,
   workspaceId: string,
   operation: (db: BrandingSqlClient) => Promise<T>,
+  options: BrandingStoreOptions = {},
 ): Promise<T> {
+  if (options.transaction === "existing") return operation(source);
   const connection = source.connect ? await source.connect() : null;
   const db = connection ?? source;
   try {
@@ -83,6 +90,7 @@ export async function updateReportBranding(
   source: BrandingSqlSource,
   input: { workspaceId: string; branding: ReportBranding },
   resolveLogoAddresses?: DomainAddressResolver,
+  options: BrandingStoreOptions = {},
 ): Promise<ReportBranding> {
   const branding = await normalizeReportBranding(input.branding, resolveLogoAddresses);
   return withWorkspaceTransaction(source, input.workspaceId, async (db) => {
@@ -97,5 +105,5 @@ export async function updateReportBranding(
     ).rows[0];
     if (!row) throw new ReportBrandingStoreError("NOT_FOUND");
     return toBranding(row);
-  });
+  }, options);
 }

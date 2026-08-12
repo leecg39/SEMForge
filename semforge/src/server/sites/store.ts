@@ -30,6 +30,8 @@ export interface SqlQueryable {
 export interface StoreRequestContext {
   requestId: string;
   idempotencyKey: string;
+  /** The privacy fence already owns BEGIN, tenant context, COMMIT and rollback. */
+  transaction?: "existing";
 }
 
 export interface SiteRecord {
@@ -105,7 +107,9 @@ async function inTransaction<T>(
   db: SqlQueryable,
   workspaceId: string,
   operation: () => Promise<T>,
+  transaction?: "existing",
 ): Promise<T> {
+  if (transaction === "existing") return operation();
   await db.query("begin");
   try {
     await db.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
@@ -313,7 +317,7 @@ export async function createSite(
     } catch (error) {
       mapDatabaseError(error, new SitesStoreError("NOT_FOUND"));
     }
-  });
+  }, context.transaction);
 }
 
 export async function listSites(
@@ -468,7 +472,7 @@ async function setSiteActive(
       if (error instanceof SitesStoreError) throw error;
       mapDatabaseError(error, new SitesStoreError("NOT_FOUND"));
     }
-  });
+  }, context.transaction);
 }
 
 export async function disableSite(
@@ -565,7 +569,7 @@ export async function createTrackedQuery(
     } catch (error) {
       mapDatabaseError(error, new SitesStoreError("NOT_FOUND"));
     }
-  });
+  }, context.transaction);
 }
 
 async function setTrackedQueryActive(
@@ -615,7 +619,7 @@ async function setTrackedQueryActive(
       if (error instanceof SitesStoreError) throw error;
       mapDatabaseError(error, new SitesStoreError("NOT_FOUND"));
     }
-  });
+  }, context.transaction);
 }
 
 export async function disableTrackedQuery(

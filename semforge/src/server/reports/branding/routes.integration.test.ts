@@ -11,6 +11,10 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 
 import type { AuthMembershipRole } from "@/server/auth/contracts";
 import type { BillingAccessAuthorizer } from "@/server/billing/access";
+import {
+  WorkspacePrivacyOperationBlockedError,
+  type WorkspacePrivacyOperationGuard,
+} from "@/server/privacy/operation";
 import { createReportBrandingRouteHandlers } from "@/server/reports/branding/routes";
 import { createReportsRouteHandlers } from "@/server/reports/routes";
 import { generateWeeklyReport } from "@/server/reports/store";
@@ -29,6 +33,12 @@ const allowBillingAccess: BillingAccessAuthorizer = async () => ({
   reportPeriodEndBefore: null,
 });
 
+const allowPrivacyOperation: WorkspacePrivacyOperationGuard = {
+  async withShared(_workspaceId, operation) {
+    return operation(pg);
+  },
+};
+
 before(async () => {
   await pg.waitReady;
   await migrate(drizzle(pg), { migrationsFolder });
@@ -46,10 +56,15 @@ before(async () => {
 
 after(async () => pg.close());
 
-function handlers(role: AuthMembershipRole, workspace = workspaceId) {
+function handlers(
+  role: AuthMembershipRole,
+  workspace = workspaceId,
+  privacyOperation: WorkspacePrivacyOperationGuard = allowPrivacyOperation,
+) {
   return createReportBrandingRouteHandlers({
     db: pg,
     authorizeBilling: allowBillingAccess,
+    privacyOperation,
     resolveSession: async () => ({
       workspaceId: workspace,
       userId,
@@ -135,6 +150,7 @@ test("account_created는 브랜딩 GET/PATCH 직접 API 우회를 403으로 차�
       requestId: "branding-account-created",
     }),
     resolveLogoAddresses: async () => ["8.8.8.8"],
+    privacyOperation: allowPrivacyOperation,
   });
 
   const read = await blocked.branding.GET(
@@ -150,6 +166,55 @@ test("account_created는 브랜딩 GET/PATCH 직접 API 우회를 403으로 차�
   assert.equal(write.status, 403);
   assert.equal((await body(write)).error?.code, "FORBIDDEN");
   assert.deepEqual(capabilities, ["workspace:read", "workspace:write"]);
+});
+
+test("blocking/erased workspace는 브랜딩 GET을 유지하고 PATCH 저장을 409로 차단한다", async () => {
+  for (const state of ["blocking", "erased"] as const) {
+    const before = (
+      await pg.query<{
+        name: string;
+        logo_url: string | null;
+        accent_color: string;
+        outbox_count: number;
+      }>(
+        `select name, logo_url, accent_color,
+                (select count(*)::int from outbox where workspace_id = $1) outbox_count
+           from workspaces where id = $1`,
+        [workspaceId],
+      )
+    ).rows[0]!;
+    const privacyOperation: WorkspacePrivacyOperationGuard = {
+      async withShared() {
+        throw new WorkspacePrivacyOperationBlockedError(state);
+      },
+    };
+    const owner = handlers("owner", workspaceId, privacyOperation);
+    const read = await owner.branding.GET(
+      new Request("https://app.semforge.test/api/v1/reports/branding"),
+      undefined,
+    );
+    const write = await owner.branding.PATCH(
+      patchRequest({
+        name: `${state} must not persist`,
+        logoUrl: null,
+        accentColor: "#010203",
+      }),
+      undefined,
+    );
+    assert.equal(read.status, 200);
+    assert.equal(write.status, 409);
+    assert.equal((await body(write)).error?.code, "CONFLICT");
+
+    const afterState = (
+      await pg.query<typeof before>(
+        `select name, logo_url, accent_color,
+                (select count(*)::int from outbox where workspace_id = $1) outbox_count
+           from workspaces where id = $1`,
+        [workspaceId],
+      )
+    ).rows[0]!;
+    assert.deepEqual(afterState, before);
+  }
 });
 
 test("브랜딩 PATCH는 tenant override, 길이/색상, 위험 URL과 private DNS를 거부한다", async () => {
@@ -181,6 +246,7 @@ test("브랜딩 PATCH는 tenant override, 길이/색상, 위험 URL과 private D
       requestId: "branding-private-dns",
     }),
     resolveLogoAddresses: async () => ["169.254.169.254"],
+    privacyOperation: allowPrivacyOperation,
   });
   const privateDns = await privateDnsHandlers.branding.PATCH(
     patchRequest({
