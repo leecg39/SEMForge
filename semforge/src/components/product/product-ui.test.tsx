@@ -227,6 +227,31 @@ test("past_due 구독은 과거 리포트 외 화면을 읽기 전용으로 만�
   assert.match(html, /49,000원/);
 });
 
+test("past_due에서 취소 예약으로 전환해도 쓰기 권한을 다시 열지 않는다", () => {
+  const summary = parseBillingSummary({
+    status: "cancel_at_period_end",
+    amountKrw: 49000,
+    currentPeriodStart: "2026-08-01T00:00:00.000Z",
+    currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+    graceEndsAt: "2026-08-15T00:00:00.000Z",
+    cancelAtPeriodEnd: true,
+    nextRetryAt: null,
+    policy: {
+      timing: "period_end",
+      proratedRefund: false,
+      statutoryExceptionsApply: true,
+      notice: "일할 환불은 제공하지 않으며 법정 예외는 적용됩니다.",
+    },
+  });
+
+  assert.ok(summary);
+  assert.deepEqual(productAccessFor(summary, new Date("2026-08-12T00:00:00.000Z")), {
+    canWrite: false,
+    pastReportsOnly: true,
+    reason: "past_due",
+  });
+});
+
 test("결제 대기 구독은 이미 제공되는 Toss 연결 화면을 정확히 안내한다", () => {
   const summary = parseBillingSummary({
     status: "account_created",

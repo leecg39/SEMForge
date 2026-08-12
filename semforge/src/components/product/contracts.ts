@@ -535,14 +535,17 @@ export function productAccessFor(
   if (!summary) return { canWrite: false, pastReportsOnly: false, reason: "subscription_unavailable" };
   if (summary.status === "active") return { canWrite: true, pastReportsOnly: false, reason: "active" };
   if (
+    summary.status === "past_due" ||
+    (summary.status === "cancel_at_period_end" && summary.graceEndsAt !== null)
+  ) {
+    return { canWrite: false, pastReportsOnly: true, reason: "past_due" };
+  }
+  if (
     summary.status === "cancel_at_period_end" &&
     summary.currentPeriodEnd !== null &&
     now.getTime() < Date.parse(summary.currentPeriodEnd)
   ) {
     return { canWrite: true, pastReportsOnly: false, reason: "cancel_at_period_end" };
-  }
-  if (summary.status === "past_due") {
-    return { canWrite: false, pastReportsOnly: true, reason: "past_due" };
   }
   return { canWrite: false, pastReportsOnly: false, reason: summary.status };
 }
