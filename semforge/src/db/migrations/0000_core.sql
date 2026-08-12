@@ -2121,6 +2121,23 @@ BEGIN
   END IF;
   SELECT state INTO privacy_state FROM workspace_privacy_controls
    WHERE workspace_id = target_workspace;
+  IF TG_TABLE_NAME = 'outbox'
+     AND TG_OP = 'UPDATE'
+     AND privacy_state IS DISTINCT FROM 'active'
+     AND to_jsonb(OLD)->>'published_at' IS NULL
+     AND to_jsonb(NEW)->>'published_at' IS NOT NULL
+     AND to_jsonb(NEW)->>'lease_owner' IS NULL
+     AND to_jsonb(NEW)->>'lease_token' IS NULL
+     AND to_jsonb(NEW)->>'lease_expires_at' IS NULL
+     AND to_jsonb(NEW)->>'last_error' = 'WORKSPACE_PRIVACY_SUPPRESSED'
+     AND (
+       to_jsonb(NEW) - ARRAY['published_at', 'lease_owner', 'lease_token', 'lease_expires_at', 'last_error']
+     ) = (
+       to_jsonb(OLD) - ARRAY['published_at', 'lease_owner', 'lease_token', 'lease_expires_at', 'last_error']
+     )
+  THEN
+    RETURN NEW;
+  END IF;
   IF privacy_state IS NULL OR privacy_state = 'erased' THEN
     RAISE EXCEPTION 'workspace is unavailable by privacy control' USING ERRCODE = '55000';
   END IF;

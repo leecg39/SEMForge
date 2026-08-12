@@ -43,34 +43,35 @@ async function insertSubscription(input: {
   );
 }
 
+async function setPrivacyState(
+  workspaceId: string,
+  state: "blocking" | "erased",
+): Promise<void> {
+  const request = await database.query<{ id: string }>(
+    `insert into privacy_requests
+       (workspace_id, request_id, type, status, operator_id, requested_at)
+     values ($1, $2, 'deletion', 'running', 'scheduler-fixture', $3)
+     returning id::text`,
+    [workspaceId, `scheduler:${workspaceId}:${state}`, new Date("2026-08-23T23:59:00.000Z")],
+  );
+  await database.query(
+    `update workspace_privacy_controls
+        set state = $2::text,
+            deletion_request_id = $3::uuid,
+            blocked_at = $4::timestamptz,
+            erased_at = case when $2::text = 'erased' then $4::timestamptz else null end,
+            generation = generation + 1,
+            updated_at = $4::timestamptz
+      where workspace_id = $1`,
+    [workspaceId, state, request.rows[0]!.id, new Date("2026-08-24T00:00:00.000Z")],
+  );
+}
+
 before(async () => {
   await database.waitReady;
   await migrate(drizzle(database), {
     migrationsFolder: path.join(process.cwd(), "src", "db", "migrations"),
   });
-  await database.exec(`
-    create table if not exists workspace_privacy_controls (
-      workspace_id uuid primary key references workspaces(id) on delete cascade,
-      state text not null default 'active'
-        check (state in ('active', 'blocking', 'erased'))
-    );
-    create or replace function privacy_workspace_lock_key(candidate uuid) returns bigint
-    language sql immutable as $$
-      select hashtextextended(candidate::text, 0)
-    $$;
-    create or replace function test_create_workspace_privacy_control() returns trigger
-    language plpgsql as $$
-    begin
-      insert into workspace_privacy_controls (workspace_id)
-      values (new.id)
-      on conflict (workspace_id) do nothing;
-      return new;
-    end;
-    $$;
-    create trigger test_workspaces_create_privacy_control
-      after insert on workspaces
-      for each row execute function test_create_workspace_privacy_control();
-  `);
 });
 
 after(async () => database.close());
@@ -276,14 +277,6 @@ test("scheduler는 blocking/erased/control 누락 workspace와 erased 전환 뒤
       "insert into workspaces (id, name, slug) values ($1, $2, $3)",
       [workspaceId, `Privacy ${candidate.suffix}`, `privacy-${candidate.suffix}`],
     );
-    if (candidate.state === "missing") {
-      await database.query("delete from workspace_privacy_controls where workspace_id = $1", [workspaceId]);
-    } else {
-      await database.query(
-        "update workspace_privacy_controls set state = $2 where workspace_id = $1",
-        [workspaceId, candidate.state],
-      );
-    }
     await insertSubscription({ workspaceId, suffix: candidate.suffix, status: "active" });
     await database.query(
       "insert into sites (id, workspace_id, name, domain) values ($1, $2, $3, $4)",
@@ -307,6 +300,11 @@ test("scheduler는 blocking/erased/control 누락 workspace와 erased 전환 뒤
        values ($1, $2, $3, $4, $5)`,
       [bindingId, workspaceId, siteId, connectionId, `sc-domain:privacy-${candidate.suffix}.example.com`],
     );
+    if (candidate.state === "missing") {
+      await database.query("delete from workspace_privacy_controls where workspace_id = $1", [workspaceId]);
+    } else if (candidate.state !== "active") {
+      await setPrivacyState(workspaceId, candidate.state);
+    }
   }
 
   const executedAt = new Date("2026-08-24T00:00:00.000Z");
@@ -330,10 +328,7 @@ test("scheduler는 blocking/erased/control 누락 workspace와 erased 전환 뒤
     count: 4,
   }]);
 
-  await database.query(
-    "update workspace_privacy_controls set state = 'erased' where workspace_id = $1",
-    ["59000000-0000-4000-8000-000000000031"],
-  );
+  await setPrivacyState("59000000-0000-4000-8000-000000000031", "erased");
   const afterErasure = new Date("2026-08-31T00:00:00.000Z");
   assert.deepEqual(
     await new PostgresWeeklyCollectionScheduler(database).schedule({ executedAt: afterErasure }),
@@ -363,10 +358,7 @@ test("report scheduler는 후보 조회 직후 blocking 전환도 workspace별 i
       const result = await database.query<T>(text, values as unknown[] | undefined);
       if (!blockedAfterCandidates && text.includes("select site.workspace_id::text")) {
         blockedAfterCandidates = true;
-        await database.query(
-          "update workspace_privacy_controls set state = 'blocking' where workspace_id = $1",
-          [workspaceId],
-        );
+        await setPrivacyState(workspaceId, "blocking");
       }
       return result;
     },

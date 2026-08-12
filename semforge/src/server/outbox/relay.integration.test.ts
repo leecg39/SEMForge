@@ -24,35 +24,37 @@ async function createDatabase(workspaceId: string, slug: string): Promise<PGlite
   databases.push(database);
   await database.waitReady;
   await migrate(drizzle(database), { migrationsFolder });
-  await database.exec(`
-    create table if not exists workspace_privacy_controls (
-      workspace_id uuid primary key references workspaces(id) on delete cascade,
-      state text not null default 'active'
-        check (state in ('active', 'blocking', 'erased'))
-    );
-    create or replace function privacy_workspace_lock_key(candidate uuid) returns bigint
-    language sql immutable as $$
-      select hashtextextended(candidate::text, 0)
-    $$;
-    create or replace function test_create_workspace_privacy_control() returns trigger
-    language plpgsql as $$
-    begin
-      insert into workspace_privacy_controls (workspace_id)
-      values (new.id)
-      on conflict (workspace_id) do nothing;
-      return new;
-    end;
-    $$;
-    create trigger test_workspaces_create_privacy_control
-      after insert on workspaces
-      for each row execute function test_create_workspace_privacy_control();
-  `);
   await database.query("insert into workspaces (id, name, slug) values ($1, $2, $3)", [
     workspaceId,
     `Workspace ${slug}`,
     slug,
   ]);
   return database;
+}
+
+async function setPrivacyState(
+  database: PGlite,
+  workspaceId: string,
+  state: "blocking" | "erased",
+): Promise<void> {
+  const request = await database.query<{ id: string }>(
+    `insert into privacy_requests
+       (workspace_id, request_id, type, status, operator_id, requested_at)
+     values ($1, $2, 'deletion', 'running', 'relay-fixture', $3)
+     returning id::text`,
+    [workspaceId, `relay:${workspaceId}:${state}`, new Date("2026-08-12T08:59:00.000Z")],
+  );
+  await database.query(
+    `update workspace_privacy_controls
+        set state = $2::text,
+            deletion_request_id = $3::uuid,
+            blocked_at = $4::timestamptz,
+            erased_at = case when $2::text = 'erased' then $4::timestamptz else null end,
+            generation = generation + 1,
+            updated_at = $4::timestamptz
+      where workspace_id = $1`,
+    [workspaceId, state, request.rows[0]!.id, new Date("2026-08-12T09:00:00.000Z")],
+  );
 }
 
 test("동시 relay 중 하나만 outbox를 claim하고 publish replay에도 job 하나만 남는다", async () => {
@@ -343,16 +345,9 @@ test("production relay는 blocking 또는 control 누락 outbox를 terminal supp
   const missingWorkspaceId = "51000000-0000-4000-8000-000000000022";
   const database = await createDatabase(workspaceId, "outbox-privacy-blocking");
   const now = new Date("2026-08-12T09:00:00.000Z");
-  await database.query(
-    "update workspace_privacy_controls set state = 'blocking' where workspace_id = $1",
-    [workspaceId],
-  );
+  await setPrivacyState(database, workspaceId, "blocking");
   await database.query(
     "insert into workspaces (id, name, slug) values ($1, 'Missing control', 'outbox-privacy-missing')",
-    [missingWorkspaceId],
-  );
-  await database.query(
-    "delete from workspace_privacy_controls where workspace_id = $1",
     [missingWorkspaceId],
   );
   await database.query(
@@ -360,6 +355,10 @@ test("production relay는 blocking 또는 control 누락 outbox를 terminal supp
      values ($1, 'collection.google.weekly', '{"siteId":"blocked-site"}'::jsonb, 'blocked-google', $3),
             ($2, 'collection.google.weekly', '{"siteId":"missing-site"}'::jsonb, 'missing-google', $3)`,
     [workspaceId, missingWorkspaceId, now],
+  );
+  await database.query(
+    "delete from workspace_privacy_controls where workspace_id = $1",
+    [missingWorkspaceId],
   );
   const runtime = new CollectionOutboxRelayRuntime({
     database,
@@ -409,10 +408,7 @@ test("production relay는 claim 직후 workspace가 erased로 전환되어도 pu
       const result = await database.query<T>(text, values as unknown[] | undefined);
       if (!erasedAfterClaim && text.includes("'outbox.leased'") && result.rows.length === 1) {
         erasedAfterClaim = true;
-        await database.query(
-          "update workspace_privacy_controls set state = 'erased' where workspace_id = $1",
-          [workspaceId],
-        );
+        await setPrivacyState(database, workspaceId, "erased");
       }
       return result;
     },
