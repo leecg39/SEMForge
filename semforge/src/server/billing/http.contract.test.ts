@@ -374,3 +374,39 @@ test("취소 API는 효력 발생일과 무일할환불·법정예외 정책을 
   assert.equal(body.data.policy.proratedRefund, false);
   assert.equal(body.data.policy.statutoryExceptionsApply, true);
 });
+
+test("인증 사용자 요청은 tenant service, Toss webhook은 global service만 선택한다", async () => {
+  const scopes: string[] = [];
+  const handlers = createBillingHttpHandlers({
+    requireAuth: async () => principal,
+    getService(scope) {
+      scopes.push(scope);
+      return serviceStub();
+    },
+  });
+
+  assert.equal((await handlers.summary(
+    new Request("https://semforge.example/api/v1/billing"),
+  )).status, 200);
+  assert.equal((await handlers.webhook(
+    new Request("https://semforge.example/api/v1/webhooks/toss", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "tosspayments-webhook-transmission-id": "role-split-transmission",
+        "x-forwarded-for": "203.0.113.79",
+      },
+      body: JSON.stringify({
+        eventType: "PAYMENT_STATUS_CHANGED",
+        createdAt: "2026-08-12T12:00:00+09:00",
+        data: {
+          orderId: "order-role-split",
+          paymentKey: "payment-role-split",
+          status: "DONE",
+        },
+      }),
+    }),
+  )).status, 200);
+
+  assert.deepEqual(scopes, ["tenant", "global"]);
+});

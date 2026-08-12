@@ -38,3 +38,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - **원인**: PostgreSQL은 stored generated expression 전체가 immutable이길 요구하지만 `jsonb`의 text 변환은 immutable로 선언되지 않았다.
 - **해결**: BEFORE INSERT/UPDATE trigger가 정규화된 `jsonb::text`와 주요 필드로 `request_hash`를 항상 덮어쓰도록 만들었다.
 - **교훈**: PostgreSQL canonical serialization을 generated column에 넣기 전 함수 volatility를 확인하고, DB 강제가 필요하면 trigger와 drift 테스트를 함께 사용한다.
+
+### [2026-08-12] 권한 거부 테스트와 transaction 복구 (PostgreSQL, SAVEPOINT, roles)
+- **상황**: 최소권한 역할이 여러 민감 테이블을 연속으로 읽지 못하는지 실제 PostgreSQL 16에서 검증했다.
+- **문제**: 첫 `permission denied` 뒤 같은 트랜잭션의 다음 검증이 `current transaction is aborted`로 실패했다.
+- **원인**: PostgreSQL은 statement 오류 후 명시적 rollback 전까지 현재 트랜잭션을 aborted 상태로 유지한다.
+- **해결**: 각 예상 권한 오류를 독립된 `SAVEPOINT`와 `ROLLBACK TO SAVEPOINT`로 격리했다.
+- **교훈**: 한 트랜잭션에서 여러 negative SQL 권한 테스트를 실행할 때는 각 오류 경계를 savepoint로 감싼다.

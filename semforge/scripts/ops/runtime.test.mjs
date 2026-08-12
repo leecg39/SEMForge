@@ -17,11 +17,12 @@ const validWebEnvironment = {
   PGSSLMODE: "verify-full",
   DATABASE_URL: "postgresql://web:password@db.example.com/semforge",
   AUTH_DATABASE_URL: "postgresql://auth:password@db.example.com/semforge",
-  OPERATOR_DATABASE_URL: "postgresql://operator:password@db.example.com/semforge",
   WORKER_DATABASE_URL: "postgresql://worker:password@db.example.com/semforge",
   DISPATCHER_DATABASE_URL: "postgresql://dispatcher:password@db.example.com/semforge",
   SCHEDULER_DATABASE_URL: "postgresql://scheduler:password@db.example.com/semforge",
   BILLING_DATABASE_URL: "postgresql://billing:password@db.example.com/semforge",
+  BILLING_TENANT_DATABASE_URL:
+    "postgresql://billing-tenant:password@db.example.com/semforge",
   MIGRATION_DATABASE_URL: "postgresql://owner:password@db.example.com/semforge",
   APP_PUBLIC_URL: "https://app.semforge.example",
   APP_SECRET: "app-secret-material-that-is-at-least-32-bytes",
@@ -81,6 +82,38 @@ test("web preflight는 signed URL용 S3 credentials만 report secret으로 요�
     "S3_SECRET_ACCESS_KEY",
   ]) {
     const candidate = { ...validWebEnvironment };
+    delete candidate[missing];
+    assert.throws(
+      () => validateRuntimeEnvironment("web", candidate),
+      (error) => {
+        assert.ok(error instanceof RuntimeConfigurationError);
+        assert.deepEqual(error.issues, [`${missing} is required`]);
+        return true;
+      },
+    );
+  }
+});
+
+test("web preflight는 operator CLI DSN을 받지 않고 tenant/global billing DSN을 분리한다", () => {
+  const withoutOperator = { ...validWebEnvironment };
+  delete withoutOperator.OPERATOR_DATABASE_URL;
+  assert.doesNotThrow(() => validateRuntimeEnvironment("web", withoutOperator));
+  assert.throws(
+    () => validateRuntimeEnvironment("web", {
+      ...validWebEnvironment,
+      OPERATOR_DATABASE_URL: "postgresql://operator:password@db.example.com/semforge",
+    }),
+    (error) => {
+      assert.ok(error instanceof RuntimeConfigurationError);
+      assert.deepEqual(error.issues, [
+        "OPERATOR_DATABASE_URL is only allowed for the operator service",
+      ]);
+      return true;
+    },
+  );
+
+  for (const missing of ["BILLING_DATABASE_URL", "BILLING_TENANT_DATABASE_URL"]) {
+    const candidate = { ...withoutOperator };
     delete candidate[missing];
     assert.throws(
       () => validateRuntimeEnvironment("web", candidate),

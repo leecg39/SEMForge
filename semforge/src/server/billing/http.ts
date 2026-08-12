@@ -92,7 +92,7 @@ export interface BillingHttpService {
 
 export interface BillingHttpHandlerOptions {
   readonly requireAuth: RequireAuth;
-  readonly getService: () => BillingHttpService;
+  readonly getService: (scope: "tenant" | "global") => BillingHttpService;
   readonly checkout?: {
     readonly clientKey: string;
     readonly appPublicUrl: string;
@@ -304,7 +304,7 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
         csrf: false,
         roles: ["owner", "admin"],
       });
-      const identity = await options.getService().getCheckoutIdentity({
+      const identity = await options.getService("tenant").getCheckoutIdentity({
         workspaceId: principal.workspaceId,
       });
       const requestId = requestIdFor(principal, apiContextRequestId);
@@ -325,7 +325,7 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
         csrf: false,
         roles: ["owner", "admin", "member"],
       });
-      const summary = await options.getService().getSummary({
+      const summary = await options.getService("tenant").getSummary({
         workspaceId: principal.workspaceId,
       });
       const requestId = requestIdFor(principal, apiContextRequestId);
@@ -340,7 +340,7 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
       });
       const body = await parseBillingBody(request, authorizeBodySchema);
       const requestId = requestIdFor(principal, apiContextRequestId);
-      const result = await options.getService().completeAuthorization({
+      const result = await options.getService("tenant").completeAuthorization({
         workspaceId: principal.workspaceId,
         actorUserId: principal.userId,
         authKey: body.authKey,
@@ -359,7 +359,7 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
       });
       await parseBillingBody(request, emptyBodySchema);
       const requestId = requestIdFor(principal, apiContextRequestId);
-      const result = await options.getService().retryPastDue({
+      const result = await options.getService("tenant").retryPastDue({
         workspaceId: principal.workspaceId,
         actorUserId: principal.userId,
         requestId,
@@ -377,7 +377,7 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
       });
       await parseBillingBody(request, emptyBodySchema);
       const requestId = requestIdFor(principal, apiContextRequestId);
-      const result = await options.getService().cancelAtPeriodEnd({
+      const result = await options.getService("tenant").cancelAtPeriodEnd({
         workspaceId: principal.workspaceId,
         actorUserId: principal.userId,
         requestId,
@@ -396,7 +396,7 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
         const event = await parseBillingBody(request, webhookBodySchema, {
           maxBytes: WEBHOOK_MAX_BODY_BYTES,
         });
-        const result = await options.getService().handleWebhook({
+        const result = await options.getService("global").handleWebhook({
           transmissionId,
           event,
           receivedAt,

@@ -34,7 +34,7 @@ function sha256(value: string): string {
 }
 
 export function createSessionRequireAuth(
-  pool: Pool = getPool("billing"),
+  pool: Pool = getPool("auth"),
   trustedOrigin?: string,
 ): RequireAuth {
   return async (request, options) => {
@@ -81,28 +81,32 @@ export function createBillingHandlers() {
     throw new Error("BILLING_FINGERPRINT_SECRET이 필요합니다.");
   }
 
-  const store = createPostgresBillingStore({
-    fingerprintSecret: env.BILLING_FINGERPRINT_SECRET,
+  const toss = createTossBillingClient({ secretKey: env.TOSS_SECRET_KEY });
+  const billingKeyVault = createBillingKeyVault({
+    encrypt: encryptSecret,
+    decrypt: decryptSecret,
+    decryptOrThrow(stored, aad) {
+      const decrypted = decryptSecret(stored, aad);
+      if (decrypted === null) throw new Error("비밀값을 복호화할 수 없습니다.");
+      return decrypted;
+    },
   });
-  const service = createBillingService({
-    store,
-    toss: createTossBillingClient({ secretKey: env.TOSS_SECRET_KEY }),
-    billingKeyVault: createBillingKeyVault({
-      encrypt: encryptSecret,
-      decrypt: decryptSecret,
-      decryptOrThrow(stored, aad) {
-        const decrypted = decryptSecret(stored, aad);
-        if (decrypted === null) throw new Error("비밀값을 복호화할 수 없습니다.");
-        return decrypted;
-      },
+  const service = (scope: "tenant" | "global") => createBillingService({
+    store: createPostgresBillingStore({
+      fingerprintSecret: env.BILLING_FINGERPRINT_SECRET!,
+      scope,
     }),
+    toss,
+    billingKeyVault,
     billingKeyFingerprint: (billingKey) =>
       billingKeyFingerprint(billingKey, env.BILLING_FINGERPRINT_SECRET!),
   });
+  const tenantService = service("tenant");
+  const globalService = service("global");
 
   return createBillingHttpHandlers({
     requireAuth: createSessionRequireAuth(undefined, env.APP_PUBLIC_URL),
-    getService: () => service,
+    getService: (scope) => scope === "tenant" ? tenantService : globalService,
     checkout: {
       clientKey: env.TOSS_CLIENT_KEY,
       appPublicUrl: env.APP_PUBLIC_URL,

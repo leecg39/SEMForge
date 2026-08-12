@@ -6,8 +6,8 @@ const REQUIRED_BY_PROFILE = Object.freeze({
   web: Object.freeze([
     "DATABASE_URL",
     "AUTH_DATABASE_URL",
-    "OPERATOR_DATABASE_URL",
     "BILLING_DATABASE_URL",
+    "BILLING_TENANT_DATABASE_URL",
     "APP_PUBLIC_URL",
     "APP_SECRET",
     "APP_SECRET_CURRENT_KEY_ID",
@@ -59,6 +59,7 @@ const DATABASE_KEYS = new Set([
   "DISPATCHER_DATABASE_URL",
   "SCHEDULER_DATABASE_URL",
   "BILLING_DATABASE_URL",
+  "BILLING_TENANT_DATABASE_URL",
   "MIGRATION_DATABASE_URL",
 ]);
 
@@ -109,6 +110,9 @@ export function validateRuntimeEnvironment(profile, environment) {
         issues.push(`${key} must be a valid PostgreSQL URL`);
       }
     }
+  }
+  if (isPresent(environment.OPERATOR_DATABASE_URL)) {
+    issues.push("OPERATOR_DATABASE_URL is only allowed for the operator service");
   }
   if (
     isPresent(environment.APP_PUBLIC_URL) &&

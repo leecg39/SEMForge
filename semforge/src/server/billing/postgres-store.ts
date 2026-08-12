@@ -4,7 +4,7 @@ import { createHmac } from "node:crypto";
 
 import type { Pool, PoolClient } from "pg";
 
-import { getPool } from "@/db/client";
+import { getPool, withWorkspacePoolTransaction } from "@/db/client";
 import { newUuid } from "@/lib/ids";
 import type {
   BillingAccount,
@@ -27,6 +27,10 @@ export function billingKeyFingerprint(billingKey: string, secret: string): strin
     throw new Error("BILLING_FINGERPRINT_SECRET은 32 byte 이상이어야 합니다.");
   }
   return createHmac("sha256", secret).update(billingKey, "utf8").digest("hex");
+}
+
+export function billingDatabaseRole(scope: "global" | "tenant"): "billing" | "billingTenant" {
+  return scope === "tenant" ? "billingTenant" : "billing";
 }
 
 function date(value: unknown): Date | null {
@@ -244,18 +248,32 @@ async function loadPaymentByIdempotencyKey(
 export function createPostgresBillingStore(options: {
   readonly pool?: Pool;
   readonly fingerprintSecret: string;
+  readonly scope: "global" | "tenant";
 }): BillingStore {
-  const pool = options.pool ?? getPool("billing");
+  const scope = options.scope;
+  const pool = options.pool ?? getPool(billingDatabaseRole(scope));
   const fingerprint = (billingKey: string) =>
     billingKeyFingerprint(billingKey, options.fingerprintSecret);
+  const workspaceTransaction = <T>(
+    workspaceId: string,
+    operation: (client: PoolClient) => Promise<T>,
+  ) => scope === "tenant"
+    ? withWorkspacePoolTransaction(pool, workspaceId, operation)
+    : transaction(pool, operation);
+  const globalTransaction = <T>(operation: (client: PoolClient) => Promise<T>) => {
+    if (scope !== "global") {
+      return Promise.reject(new Error("이 작업은 global billing store에서만 허용됩니다."));
+    }
+    return transaction(pool, operation);
+  };
 
   return {
     async getAccount(workspaceId) {
-      return transaction(pool, (client) => loadAccount(client, workspaceId));
+      return workspaceTransaction(workspaceId, (client) => loadAccount(client, workspaceId));
     },
 
     async savePaymentMethod(input) {
-      return transaction(pool, async (client) => {
+      return workspaceTransaction(input.workspaceId, async (client) => {
         const current = await loadAccount(client, input.workspaceId);
         if (!current) throw new Error("billing account not found");
         if (current.customer.tossCustomerKey !== input.expectedCustomerKey) {
@@ -304,7 +322,7 @@ export function createPostgresBillingStore(options: {
     },
 
     async reserveCharge(input) {
-      return transaction(pool, async (client) => {
+      return workspaceTransaction(input.workspaceId, async (client) => {
         const inserted = await client.query<{ id: string }>(
           `insert into payments
             (id, workspace_id, subscription_id, order_id, idempotency_key, toss_payment_key,
@@ -354,7 +372,7 @@ export function createPostgresBillingStore(options: {
     },
 
     async settleCharge(input) {
-      return transaction(pool, async (client) => {
+      return workspaceTransaction(input.workspaceId, async (client) => {
         const existing = await loadPayment(client, input.orderId);
         if (!existing) throw new Error("payment attempt not found");
         if (existing.status === input.status) {
@@ -413,7 +431,7 @@ export function createPostgresBillingStore(options: {
     },
 
     async scheduleCancellation(input) {
-      return transaction(pool, async (client) => {
+      return workspaceTransaction(input.workspaceId, async (client) => {
         const current = await loadAccount(client, input.workspaceId);
         if (!current) throw new Error("billing account not found");
         if (current.subscription.status === "cancel_at_period_end") {
@@ -433,7 +451,7 @@ export function createPostgresBillingStore(options: {
     },
 
     async claimProviderEvent(input) {
-      return transaction(pool, async (client) => {
+      return globalTransaction(async (client) => {
         const inserted = await client.query<{ id: string }>(
           `insert into provider_events
             (id, workspace_id, provider, provider_event_id, event_type, payload, received_at)
@@ -461,7 +479,7 @@ export function createPostgresBillingStore(options: {
     },
 
     async completeProviderEvent(input) {
-      await transaction(pool, async (client) => {
+      await globalTransaction(async (client) => {
         await client.query(
           `update provider_events
            set processed_at = $3, processing_error = null
@@ -472,17 +490,17 @@ export function createPostgresBillingStore(options: {
     },
 
     async findPaymentByOrderId(orderId) {
-      return transaction(pool, (client) => loadPayment(client, orderId));
+      return globalTransaction((client) => loadPayment(client, orderId));
     },
 
     async findPaymentByIdempotencyKey(workspaceId, idempotencyKey) {
-      return transaction(pool, (client) =>
+      return workspaceTransaction(workspaceId, (client) =>
         loadPaymentByIdempotencyKey(client, workspaceId, idempotencyKey),
       );
     },
 
     async disablePaymentMethod(input) {
-      return transaction(pool, async (client) => {
+      return globalTransaction(async (client) => {
         const current = await loadAccount(client, input.workspaceId);
         if (!current) throw new Error("billing account not found");
         const disabled = await client.query(
@@ -512,7 +530,7 @@ export function createPostgresBillingStore(options: {
     },
 
     async findAccountByBillingKey(billingKey) {
-      return transaction(pool, async (client) => {
+      return globalTransaction(async (client) => {
         const found = await client.query<{ workspace_id: string }>(
           `select workspace_id from payment_methods where billing_key_fingerprint = $1`,
           [fingerprint(billingKey)],

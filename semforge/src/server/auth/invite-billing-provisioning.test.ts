@@ -26,7 +26,9 @@ before(async () => {
 after(async () => pg.close());
 
 test("acceptInviteAtomic provisions billing_customers and account_created subscription in the same transaction", async () => {
-  const now = new Date("2026-08-11T03:00:00.000Z");
+  // Keep the fixture relative to PostgreSQL's real clock so the seven-day DB
+  // constraint remains valid after the original test date has passed.
+  const now = new Date(Date.now() + 60_000);
   const tokenHash = sha256("invite-billing-token");
   const store = new PostgresAuthStore(drizzle(pg) as never);
 

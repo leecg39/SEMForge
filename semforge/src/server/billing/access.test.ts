@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import type { Pool } from "pg";
+
 import {
   createBillingAccessAuthorizer,
   createRuntimeBillingAccessAuthorizer,
@@ -76,23 +78,45 @@ test("past_due grace는 현재 청구기간 전 report만 허용하고 목록 SQ
   assert.equal(currentReport.allowed, false);
 });
 
-test("production authorizer는 전용 billing pool factory만 사용한다", async () => {
+test("production authorizer는 tenant billing pool과 transaction-local workspace만 사용한다", async () => {
   const roles: string[] = [];
+  const statements: string[] = [];
+  const values: Array<readonly unknown[] | undefined> = [];
   const authorize = createRuntimeBillingAccessAuthorizer({
     getPool(role) {
       roles.push(role);
-      return billingSource({
-        status: "active",
-        current_period_start: "2026-08-01T00:00:00.000Z",
-        current_period_end: "2026-09-01T00:00:00.000Z",
-        grace_ends_at: null,
-      }, []);
+      return {
+        async connect() {
+          return {
+            async query<T>(text: string, queryValues?: readonly unknown[]) {
+              statements.push(text);
+              values.push(queryValues);
+              return {
+                rows: (/from subscriptions/u.test(text)
+                  ? [{
+                      status: "active",
+                      current_period_start: "2026-08-01T00:00:00.000Z",
+                      current_period_end: "2026-09-01T00:00:00.000Z",
+                      grace_ends_at: null,
+                    }]
+                  : []) as T[],
+              };
+            },
+            release() {},
+          };
+        },
+      } as unknown as Pick<Pool, "connect">;
     },
     clock: () => new Date("2026-08-12T00:00:00.000Z"),
   });
 
   assert.equal((await authorize({ workspaceId, capability: "workspace:read" })).allowed, true);
-  assert.deepEqual(roles, ["billing"]);
+  assert.deepEqual(roles, ["billingTenant"]);
+  assert.equal(statements[0], "begin");
+  assert.equal(statements[1], "select set_config('app.workspace_id', $1, true)");
+  assert.match(statements[2]!, /from subscriptions/u);
+  assert.equal(statements[3], "commit");
+  assert.deepEqual(values[1], [workspaceId]);
 });
 
 test("서버 authorizer는 paid-beta 상태 전체를 단일 domain policy로 강제한다", async () => {

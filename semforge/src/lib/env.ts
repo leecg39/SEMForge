@@ -19,7 +19,7 @@ const rawServerEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   // @TASK P4-O1-T1 - Keep web, worker, and migration containers least-privileged.
   SEMFORGE_SERVICE: z
-    .enum(["web", "worker", "relay", "scheduler", "migrate", "build", "all"])
+    .enum(["web", "worker", "relay", "scheduler", "migrate", "operator", "build", "all"])
     .default("all"),
   DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   // @TASK P1-D3 - Never reuse the migration owner DSN for auth or operator runtime access.
@@ -29,6 +29,7 @@ const rawServerEnvSchema = z.object({
   DISPATCHER_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   SCHEDULER_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   BILLING_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
+  BILLING_TENANT_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   MIGRATION_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   APP_PUBLIC_URL: z.string().trim().url().optional(),
   AUTH_TRUST_PROXY_HEADERS: booleanStringSchema,
@@ -113,11 +114,11 @@ const productionRequiredByService = {
   all: [
     "DATABASE_URL",
     "AUTH_DATABASE_URL",
-    "OPERATOR_DATABASE_URL",
     "WORKER_DATABASE_URL",
     "DISPATCHER_DATABASE_URL",
     "SCHEDULER_DATABASE_URL",
     "BILLING_DATABASE_URL",
+    "BILLING_TENANT_DATABASE_URL",
     "MIGRATION_DATABASE_URL",
     "APP_PUBLIC_URL",
     "APP_SECRET",
@@ -145,8 +146,8 @@ const productionRequiredByService = {
   web: [
     "DATABASE_URL",
     "AUTH_DATABASE_URL",
-    "OPERATOR_DATABASE_URL",
     "BILLING_DATABASE_URL",
+    "BILLING_TENANT_DATABASE_URL",
     "APP_PUBLIC_URL",
     "APP_SECRET",
     "APP_SECRET_CURRENT_KEY_ID",
@@ -188,6 +189,7 @@ const productionRequiredByService = {
   relay: ["DISPATCHER_DATABASE_URL"],
   scheduler: ["SCHEDULER_DATABASE_URL"],
   migrate: ["MIGRATION_DATABASE_URL"],
+  operator: ["OPERATOR_DATABASE_URL"],
   build: [],
 } as const satisfies Record<
   z.infer<typeof rawServerEnvSchema>["SEMFORGE_SERVICE"],
@@ -202,6 +204,7 @@ const databaseUrlKeys = [
   "DISPATCHER_DATABASE_URL",
   "SCHEDULER_DATABASE_URL",
   "BILLING_DATABASE_URL",
+  "BILLING_TENANT_DATABASE_URL",
   "MIGRATION_DATABASE_URL",
 ] as const satisfies readonly (keyof z.infer<typeof rawServerEnvSchema>)[];
 
@@ -232,6 +235,12 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
       } catch {
         issues.push(`${key} must be a valid PostgreSQL URL`);
       }
+    }
+    if (
+      parsed.data.OPERATOR_DATABASE_URL &&
+      parsed.data.SEMFORGE_SERVICE !== "operator"
+    ) {
+      issues.push("OPERATOR_DATABASE_URL is only allowed for the operator service");
     }
   }
   if (

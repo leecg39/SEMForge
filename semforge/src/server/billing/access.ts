@@ -1,7 +1,12 @@
 // @TASK P4-BILLING-ACCESS - Production server-side paid-beta access enforcement
 // @SPEC docs/planning/06-tasks.md#p2-b1-t1--toss-자동결제-상태-머신과-ledger
 // @TEST src/server/billing/access.test.ts
-import { getPool as getDatabasePool } from "@/db/client";
+import type { Pool } from "pg";
+
+import {
+  getPool as getDatabasePool,
+  withWorkspacePoolTransaction,
+} from "@/db/client";
 import {
   decideBillingAccess,
   SUBSCRIPTION_STATUSES,
@@ -94,14 +99,18 @@ export function createBillingAccessAuthorizer(options: {
 }
 
 export function createRuntimeBillingAccessAuthorizer(options: {
-  readonly getPool?: (role: "billing") => BillingAccessSqlSource;
+  readonly getPool?: (role: "billingTenant") => Pick<Pool, "connect">;
   readonly clock?: () => Date;
 } = {}): BillingAccessAuthorizer {
-  const getPool = options.getPool ?? ((role: "billing") => getDatabasePool(role));
-  return (request) => createBillingAccessAuthorizer({
-    // Route modules are evaluated during Next builds. Resolve BILLING_DATABASE_URL
-    // only when an authenticated request actually needs an access decision.
-    database: getPool("billing"),
-    ...(options.clock === undefined ? {} : { clock: options.clock }),
-  })(request);
+  const getPool = options.getPool ?? ((role: "billingTenant") => getDatabasePool(role));
+  return (request) => withWorkspacePoolTransaction(
+    // Route modules are evaluated during Next builds. Resolve the tenant billing
+    // DSN only when an authenticated request actually needs an access decision.
+    getPool("billingTenant"),
+    request.workspaceId,
+    (client) => createBillingAccessAuthorizer({
+      database: client,
+      ...(options.clock === undefined ? {} : { clock: options.clock }),
+    })(request),
+  );
 }
