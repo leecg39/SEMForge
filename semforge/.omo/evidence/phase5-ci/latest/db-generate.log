@@ -1,5 +1,5 @@
 $ npm run db:generate
-startedAt=2026-08-12T12:46:11.390Z
+startedAt=2026-08-12T14:46:44.929Z
 
 > semforge@0.1.0 db:generate
 > drizzle-kit generate
@@ -19,7 +19,7 @@ email_suppressions 4 columns 0 indexes 1 fks
 gsc_connections 10 columns 0 indexes 1 fks
 gsc_observations 14 columns 1 indexes 2 fks
 gsc_property_bindings 6 columns 0 indexes 2 fks
-invites 13 columns 3 indexes 1 fks
+invites 14 columns 3 indexes 1 fks
 jobs 18 columns 2 indexes 1 fks
 legal_acceptances 10 columns 0 indexes 1 fks
 memberships 4 columns 1 indexes 2 fks
@@ -50,6 +50,6 @@ workspaces 7 columns 0 indexes 0 fks
 
 No schema changes, nothing to migrate 😴
 
-endedAt=2026-08-12T12:46:12.904Z
+endedAt=2026-08-12T14:46:45.565Z
 exitCode=0
 signal=null

@@ -1,11 +1,11 @@
 $ npm run ci:forbidden-surface
-startedAt=2026-08-12T12:46:13.282Z
+startedAt=2026-08-12T14:46:45.925Z
 
 > semforge@0.1.0 ci:forbidden-surface
 > node scripts/ci/forbidden-surface.mjs
 
-forbidden surface passed: checkedFiles=310
+forbidden surface passed: checkedFiles=315
 
-endedAt=2026-08-12T12:46:13.574Z
+endedAt=2026-08-12T14:46:46.190Z
 exitCode=0
 signal=null

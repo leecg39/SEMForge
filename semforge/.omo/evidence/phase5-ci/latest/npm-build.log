@@ -1,22 +1,22 @@
 $ npm run build
-startedAt=2026-08-12T12:45:56.937Z
+startedAt=2026-08-12T14:46:37.163Z
 
 > semforge@0.1.0 build
 > SEMFORGE_SERVICE=build next build
 
 ▲ Next.js 16.3.0 (Turbopack)
-✓ Running next.config.ts took 152ms
+✓ Running next.config.ts took 61ms
 
   Creating an optimized production build ...
-✓ Compiled successfully in 3.9s
+✓ Compiled successfully in 1147ms
   Running TypeScript ...
-  Finished TypeScript in 3.0s ...
+  Finished TypeScript in 1654ms ...
   Collecting page data using 7 workers ...
   Generating static pages using 7 workers (0/33) ...
   Generating static pages using 7 workers (8/33) 
   Generating static pages using 7 workers (16/33) 
   Generating static pages using 7 workers (24/33) 
-✓ Generating static pages using 7 workers (33/33) in 421ms
+✓ Generating static pages using 7 workers (33/33) in 205ms
   Finalizing page optimization ...
 
 Route (app)
@@ -72,6 +72,6 @@ Route (app)
 ƒ  (Dynamic)  server-rendered on demand
 
 
-endedAt=2026-08-12T12:46:09.568Z
+endedAt=2026-08-12T14:46:43.358Z
 exitCode=0
 signal=null
