@@ -279,6 +279,7 @@ test("invites는 신규 workspace intent와 수락한 owner membership을 명시
       "token_hash",
       "workspace_name",
       "workspace_slug",
+      "release_target",
       "role",
       "expires_at",
       "accepted_at",
@@ -292,6 +293,7 @@ test("invites는 신규 workspace intent와 수락한 owner membership을 명시
   const checks = config.checks.map((constraint) => constraint.name);
   assert.ok(checks.includes("invites_token_hash_ck"));
   assert.ok(checks.includes("invites_owner_role_ck"));
+  assert.ok(checks.includes("invites_release_target_ck"));
   assert.ok(checks.includes("invites_provisioning_state_ck"));
   assert.ok(checks.includes("invites_intent_text_ck"));
   assert.ok(checks.includes("invites_acceptance_time_ck"));

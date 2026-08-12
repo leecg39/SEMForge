@@ -160,6 +160,7 @@ export const invites = pgTable(
     tokenHash: text("token_hash").notNull(),
     workspaceName: text("workspace_name").notNull(),
     workspaceSlug: text("workspace_slug").notNull(),
+    releaseTarget: text("release_target").notNull().default("paid-production"),
     role: membershipRoleEnum("role").notNull().default("owner"),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     acceptedAt: timestamp("accepted_at", { withTimezone: true }),
@@ -176,6 +177,10 @@ export const invites = pgTable(
     ),
     check("invites_token_hash_ck", sql`${table.tokenHash} ~ '^[0-9a-f]{64}$'`),
     check("invites_owner_role_ck", sql`${table.role} = 'owner'`),
+    check(
+      "invites_release_target_ck",
+      sql`${table.releaseTarget} in ('sandbox', 'staging', 'paid-production')`,
+    ),
     check(
       "invites_intent_text_ck",
       sql`btrim(${table.email}) <> '' and btrim(${table.workspaceName}) <> '' and btrim(${table.workspaceSlug}) <> ''`,

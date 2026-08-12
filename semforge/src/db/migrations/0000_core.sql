@@ -128,6 +128,7 @@ CREATE TABLE "invites" (
 	"token_hash" text NOT NULL,
 	"workspace_name" text NOT NULL,
 	"workspace_slug" text NOT NULL,
+	"release_target" text DEFAULT 'paid-production' NOT NULL,
 	"role" "membership_role" DEFAULT 'owner' NOT NULL,
 	"expires_at" timestamp with time zone NOT NULL,
 	"accepted_at" timestamp with time zone,
@@ -139,6 +140,7 @@ CREATE TABLE "invites" (
 	CONSTRAINT "invites_expiry_window_ck" CHECK ("invites"."expires_at" > "invites"."created_at" and "invites"."expires_at" <= "invites"."created_at" + interval '7 days'),
 	CONSTRAINT "invites_token_hash_ck" CHECK ("invites"."token_hash" ~ '^[0-9a-f]{64}$'),
 	CONSTRAINT "invites_owner_role_ck" CHECK ("invites"."role" = 'owner'),
+	CONSTRAINT "invites_release_target_ck" CHECK ("invites"."release_target" in ('sandbox', 'staging', 'paid-production')),
 	CONSTRAINT "invites_intent_text_ck" CHECK (btrim("invites"."email") <> '' and btrim("invites"."workspace_name") <> '' and btrim("invites"."workspace_slug") <> ''),
 	CONSTRAINT "invites_provisioning_state_ck" CHECK ((("invites"."accepted_at" is null and "invites"."superseded_at" is null and "invites"."accepted_workspace_id" is null and "invites"."accepted_by_user_id" is null) or ("invites"."accepted_at" is not null and "invites"."superseded_at" is null and "invites"."accepted_workspace_id" is not null and "invites"."accepted_by_user_id" is not null) or ("invites"."accepted_at" is null and "invites"."superseded_at" is not null and "invites"."accepted_workspace_id" is null and "invites"."accepted_by_user_id" is null))),
 	CONSTRAINT "invites_acceptance_time_ck" CHECK ("invites"."accepted_at" is null or ("invites"."accepted_at" >= "invites"."created_at" and "invites"."accepted_at" <= "invites"."expires_at")),
@@ -759,7 +761,7 @@ GRANT SELECT, INSERT ON workspaces, memberships TO semforge_auth;--> statement-b
 GRANT INSERT ON billing_customers, subscriptions TO semforge_auth;--> statement-breakpoint
 GRANT INSERT (workspace_id, topic, payload, idempotency_key, available_at, created_at) ON outbox TO semforge_auth;--> statement-breakpoint
 GRANT SELECT ON invites TO semforge_operator;--> statement-breakpoint
-GRANT INSERT (email, token_hash, workspace_name, workspace_slug, expires_at) ON invites TO semforge_operator;--> statement-breakpoint
+GRANT INSERT (email, token_hash, workspace_name, workspace_slug, release_target, expires_at) ON invites TO semforge_operator;--> statement-breakpoint
 GRANT UPDATE (superseded_at) ON invites TO semforge_operator;--> statement-breakpoint
 GRANT SELECT ON jobs TO semforge_dispatcher;--> statement-breakpoint
 GRANT INSERT (workspace_id, type, payload, idempotency_key, priority, available_at, max_attempts)

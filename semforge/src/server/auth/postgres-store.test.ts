@@ -70,6 +70,7 @@ test("새 workspace 초대 수락은 사용자·membership·session·초대 소�
     workspaceSlug: "agency-one",
     email: "  OWNER@Example.COM ",
     tokenHash: digest("invite-hash-1"),
+    releaseTarget: "staging",
     role: "owner",
     expiresAt: addMs(now, 7 * DAY_MS),
     now,
@@ -88,6 +89,7 @@ test("새 workspace 초대 수락은 사용자·membership·session·초대 소�
   });
 
   assert.equal(invite.email, "owner@example.com");
+  assert.equal(invite.releaseTarget, "staging");
   assert.equal(invite.acceptedWorkspaceId, null);
   assert.equal(result.status, "accepted");
   if (result.status !== "accepted") return;

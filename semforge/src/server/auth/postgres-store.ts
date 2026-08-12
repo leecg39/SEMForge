@@ -97,6 +97,7 @@ export class PostgresOperatorInviteStore implements OperatorInviteStore {
       email: input.email,
       workspaceName: input.workspaceName,
       workspaceSlug: input.workspaceSlug,
+      releaseTarget: input.releaseTarget,
     });
     if (!validation.success) {
       const issue = validation.error.issues[0];
@@ -109,6 +110,9 @@ export class PostgresOperatorInviteStore implements OperatorInviteStore {
       }
       if (field === "workspaceSlug") {
         throw new TypeError("유효한 workspace slug를 입력하세요.");
+      }
+      if (field === "releaseTarget") {
+        throw new TypeError("유효한 release target을 입력하세요.");
       }
       throw new TypeError("초대 입력값이 올바르지 않습니다.");
     }
@@ -147,6 +151,7 @@ export class PostgresOperatorInviteStore implements OperatorInviteStore {
         .values({
           workspaceName,
           workspaceSlug,
+          releaseTarget: validation.data.releaseTarget,
           email,
           tokenHash: input.tokenHash,
           expiresAt: input.expiresAt,
@@ -159,6 +164,7 @@ export class PostgresOperatorInviteStore implements OperatorInviteStore {
         workspaceName,
         workspaceSlug,
         email,
+        releaseTarget: validation.data.releaseTarget,
         role: "owner",
         expiresAt: input.expiresAt,
       };
@@ -313,9 +319,9 @@ export class PostgresAuthStore implements AuthStore {
           .update(invites)
           .set({
             acceptedWorkspaceId: workspace.id,
-          acceptedAt: sql`now()`,
-          acceptedByUserId: user.id,
-        })
+            acceptedAt: sql`now()`,
+            acceptedByUserId: user.id,
+          })
           .where(
             and(
               eq(invites.id, invite.id),

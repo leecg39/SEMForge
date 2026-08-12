@@ -26,18 +26,19 @@ before(async () => {
 after(async () => pg.close());
 
 test("acceptInviteAtomic provisions billing_customers and account_created subscription in the same transaction", async () => {
-  const now = new Date("2026-08-11T03:00:00.000Z");
+  const now = new Date();
   const tokenHash = sha256("invite-billing-token");
   const store = new PostgresAuthStore(drizzle(pg) as never);
 
   await pg.query(
-    `insert into invites (email, token_hash, workspace_name, workspace_slug, expires_at)
-     values ($1, $2, $3, $4, $5)`,
+    `insert into invites (email, token_hash, workspace_name, workspace_slug, created_at, expires_at)
+     values ($1, $2, $3, $4, $5, $6)`,
     [
       "billing-owner@example.com",
       tokenHash,
       "Billing Agency",
       "billing-agency",
+      now,
       new Date(now.getTime() + 86_400_000),
     ],
   );

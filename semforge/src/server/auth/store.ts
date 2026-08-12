@@ -40,6 +40,7 @@ export interface AuthInvite {
   readonly workspaceName: string;
   readonly workspaceSlug: string;
   readonly email: string;
+  readonly releaseTarget: "sandbox" | "staging" | "paid-production";
   readonly role: "owner";
   readonly expiresAt: Date;
 }
@@ -55,6 +56,7 @@ interface CreateInviteBase {
 export type CreateInviteInput = CreateInviteBase & {
   readonly workspaceName: string;
   readonly workspaceSlug: string;
+  readonly releaseTarget?: "sandbox" | "staging" | "paid-production";
 };
 
 export type AcceptInviteUser =

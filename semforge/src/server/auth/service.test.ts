@@ -49,6 +49,7 @@ test("초대 토큰은 7일 만료 SHA-256 해시로만 저장하고 raw token�
           workspaceName: input.workspaceName,
           workspaceSlug: input.workspaceSlug,
           email: input.email,
+          releaseTarget: input.releaseTarget ?? "paid-production",
           role: input.role,
           expiresAt: input.expiresAt,
         };
@@ -69,7 +70,9 @@ test("초대 토큰은 7일 만료 SHA-256 해시로만 저장하고 raw token�
   assert.equal(stored?.email, "owner@example.com");
   assert.equal(stored?.workspaceName, "Agency One");
   assert.equal(stored?.workspaceSlug, "agency-one-0123456789abcdef");
+  assert.equal(stored?.releaseTarget, "paid-production");
   assert.equal(stored?.role, "owner");
+  assert.equal(result.releaseTarget, "paid-production");
   assert.equal(result.role, "owner");
   assert.equal(stored?.tokenHash, createHash("sha256").update(result.token).digest("hex"));
   assert.notEqual(stored?.tokenHash, result.token);
