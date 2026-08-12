@@ -54,6 +54,13 @@ test("route/forbidden-surface와 3파트너 9사이트 harness는 직접 실행 
   assert.equal(fs.existsSync(path.join(projectRoot, "scripts/ci/nine-site-harness.mjs")), true);
 });
 
+test("route manifest는 계획에 고정된 NAVER와 AIO 읽기 API를 포함한다", () => {
+  const manifest = read("scripts/ci/route-manifest.mjs");
+
+  assert.match(manifest, /"\/api\/v1\/insights\/naver"/);
+  assert.match(manifest, /"\/api\/v1\/visibility\/aio"/);
+});
+
 test("GitHub Actions workflow는 Node 24, PostgreSQL 16, Chromium을 release gate에 공급한다", () => {
   const workflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "release-gate.yml"), "utf8");
 
