@@ -1,0 +1,40 @@
+✔ 동시 relay 중 하나만 outbox를 claim하고 publish replay에도 job 하나만 남는다 (1107.661417ms)
+✔ job insert 뒤 publish crash가 발생해도 transaction 전체가 rollback되고 같은 lease로 복구된다 (598.925792ms)
+✔ 만료된 마지막 outbox attempt는 명시적 DLQ가 되고 다시 claim되지 않는다 (553.697042ms)
+✔ 기존 job과 canonical 요청이 충돌하면 outbox는 unpublished 상태를 유지한다 (490.820209ms)
+✔ production relay는 collection topic만 claim하고 canonical job type으로 publish한다 (533.728583ms)
+✖ production relay는 report PDF·email outbox payload를 그대로 canonical jobs로 publish한다 (497.798459ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 5
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4157.388708
+
+✖ failing tests:
+
+test at src/server/outbox/relay.integration.test.ts:33:838
+✖ production relay는 report PDF·email outbox payload를 그대로 canonical jobs로 publish한다 (497.798459ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+    {
+  +   claimed: 2,
+  -   claimed: 3,
+      failed: 0,
+  +   published: 2
+  -   published: 3
+    }
+
+      at TestContext.<anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/src/server/outbox/relay.integration.test.ts:253:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { claimed: 2, published: 2, failed: 0 },
+    expected: { claimed: 3, published: 3, failed: 0 },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

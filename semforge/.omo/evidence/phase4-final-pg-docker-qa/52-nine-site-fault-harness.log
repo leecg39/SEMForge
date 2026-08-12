@@ -1,0 +1,46 @@
+^D{
+  "workspaces": 3,
+  "sites": 9,
+  "trackedQueries": 360,
+  "initialOutbox": 369,
+  "collection": {
+    "google": 9,
+    "naver": 180,
+    "gsc": 0
+  },
+  "collectionRelay": {
+    "claimed": 189,
+    "published": 189,
+    "failed": 0,
+    "batches": 2
+  },
+  "collectorMocks": {
+    "googleCalls": 9,
+    "naverCalls": 180,
+    "runBatches": 2
+  },
+  "reportScheduler": {
+    "cycleMonday": "2026-08-17",
+    "reports": 9
+  },
+  "weeklyReports": 9,
+  "reportDeliveryRelay": {
+    "claimed": 18,
+    "published": 18,
+    "failed": 0
+  },
+  "delivery": {
+    "deliveries": 9,
+    "assets": 9,
+    "delivered": 9,
+    "emailCalls": 10,
+    "acceptedIdempotencyKeys": 9,
+    "objectCount": 9,
+    "retryableAfterAcceptedCrash": 1
+  },
+  "faultRecovery": {
+    "status": "succeeded",
+    "attempts": 2,
+    "handlerCallsAfterKill": 1
+  }
+}

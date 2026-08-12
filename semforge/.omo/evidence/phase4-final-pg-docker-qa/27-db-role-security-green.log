@@ -1,0 +1,1206 @@
+^D✖ fresh migration과 두 번째 migration 실행이 모두 성공한다 (3378.368584ms)
+✖ workspace당 네 번째 site를 거부한다 (98.138292ms)
+✖ site당 active rank와 aio query를 각각 20개까지만 허용한다 (0.492667ms)
+✖ web role은 transaction-local workspace 밖의 row를 볼 수 없다 (0.177791ms)
+✖ web, dispatcher, scheduler, worker, billing role은 BYPASSRLS가 아니다 (0.140834ms)
+✖ web role은 billing 고객·결제수단·구독 테이블 권한을 전혀 갖지 않는다 (0.091709ms)
+✖ scheduler role은 최소 subscription/outbox 컬럼과 제한된 topic 정책만 가진다 (0.083792ms)
+✖ worker role은 audit_events에 INSERT만 허용하고 기록을 읽을 수 없다 (0.078917ms)
+✖ worker role은 transaction-local workspace 밖 tenant row와 global queue에 접근하지 못한다 (0.161458ms)
+✖ worker role은 자기 workspace report outbox 최소 컬럼만 INSERT하고 조회·수정·tenant 이탈은 거부된다 (0.158375ms)
+✖ dispatcher role은 jobs/outbox만 전역 처리하고 tenant domain row는 읽지 못한다 (0.068958ms)
+✖ scheduler role은 canonical collection outbox 입력 컬럼만 사용한다 (0.052333ms)
+✖ job/outbox request hash는 직접 변조해도 canonical 중요 필드에서 다시 계산된다 (0.049458ms)
+✖ NAVER/GSC provenance schema는 source/status와 tenant 복합 FK를 실제 DB에서 강제한다 (0.044708ms)
+✖ billing role은 fingerprint 결제수단과 append-only ledger만 변경한다 (0.037583ms)
+✖ DB도 GSC token과 Toss billing key의 평문 저장을 거부한다 (0.046125ms)
+✖ auth role은 pre-tenant 인증 트랜잭션에 필요한 최소 권한과 RLS 정책만 가진다 (0.049375ms)
+✖ auth role은 password reset outbox를 INSERT만 할 수 있고 tenant outbox payload를 SELECT할 수 없다 (0.081333ms)
+✖ auth role은 billing provisioning INSERT만 허용하고 billing SELECT를 노출하지 않는다 (0.084084ms)
+✖ auth role은 초대 intent에서 신규 workspace·owner membership·session을 원자 생성한다 (0.063375ms)
+✖ auth 수락 트랜잭션 중간 실패는 account와 workspace 생성을 전부 rollback한다 (0.0665ms)
+✖ invite provisioning 제약은 잘못된 상태·역할·해시와 pending 중복을 거부한다 (0.071708ms)
+✖ auth role은 만료된 invite intent를 잠그거나 수락하지 못한다 (0.063958ms)
+✖ operator는 만료 intent만 supersede하고 경쟁 재발급에서 pending 하나만 남긴다 (0.055791ms)
+✖ operator role은 NOLOGIN 권한 그룹이며 invites SELECT/INSERT 권한만 가진다 (0.057541ms)
+✖ operator는 7일 초대를 발급하지만 인증·사이트·결제 데이터에는 접근하지 못한다 (0.057125ms)
+ℹ tests 26
+ℹ suites 0
+ℹ pass 0
+ℹ fail 26
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4511.276375
+
+✖ failing tests:
+
+test at src/db/migrations/core.integration.test.ts:2:1412
+✖ fresh migration과 두 번째 migration 실행이 모두 성공한다 (3378.368584ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:2:1818
+✖ workspace당 네 번째 site를 거부한다 (98.138292ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:2:2438
+✖ site당 active rank와 aio query를 각각 20개까지만 허용한다 (0.492667ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:2:3453
+✖ web role은 transaction-local workspace 밖의 row를 볼 수 없다 (0.177791ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:2:4449
+✖ web, dispatcher, scheduler, worker, billing role은 BYPASSRLS가 아니다 (0.140834ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:2:5332
+✖ web role은 billing 고객·결제수단·구독 테이블 권한을 전혀 갖지 않는다 (0.091709ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:8:517
+✖ scheduler role은 최소 subscription/outbox 컬럼과 제한된 topic 정책만 가진다 (0.083792ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:17:266
+✖ worker role은 audit_events에 INSERT만 허용하고 기록을 읽을 수 없다 (0.078917ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:18:629
+✖ worker role은 transaction-local workspace 밖 tenant row와 global queue에 접근하지 못한다 (0.161458ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:19:871
+✖ worker role은 자기 workspace report outbox 최소 컬럼만 INSERT하고 조회·수정·tenant 이탈은 거부된다 (0.158375ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:23:1082
+✖ dispatcher role은 jobs/outbox만 전역 처리하고 tenant domain row는 읽지 못한다 (0.068958ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:23:2292
+✖ scheduler role은 canonical collection outbox 입력 컬럼만 사용한다 (0.052333ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:26:236
+✖ job/outbox request hash는 직접 변조해도 canonical 중요 필드에서 다시 계산된다 (0.049458ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:32:361
+✖ NAVER/GSC provenance schema는 source/status와 tenant 복합 FK를 실제 DB에서 강제한다 (0.044708ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:37:663
+✖ billing role은 fingerprint 결제수단과 append-only ledger만 변경한다 (0.037583ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:43:732
+✖ DB도 GSC token과 Toss billing key의 평문 저장을 거부한다 (0.046125ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:43:1264
+✖ auth role은 pre-tenant 인증 트랜잭션에 필요한 최소 권한과 RLS 정책만 가진다 (0.049375ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:43:4752
+✖ auth role은 password reset outbox를 INSERT만 할 수 있고 tenant outbox payload를 SELECT할 수 없다 (0.081333ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:47:774
+✖ auth role은 billing provisioning INSERT만 허용하고 billing SELECT를 노출하지 않는다 (0.084084ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:47:3559
+✖ auth role은 초대 intent에서 신규 workspace·owner membership·session을 원자 생성한다 (0.063375ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:47:7185
+✖ auth 수락 트랜잭션 중간 실패는 account와 workspace 생성을 전부 rollback한다 (0.0665ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:47:9695
+✖ invite provisioning 제약은 잘못된 상태·역할·해시와 pending 중복을 거부한다 (0.071708ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:47:12764
+✖ auth role은 만료된 invite intent를 잠그거나 수락하지 못한다 (0.063958ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:47:13863
+✖ operator는 만료 intent만 supersede하고 경쟁 재발급에서 pending 하나만 남긴다 (0.055791ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:47:17191
+✖ operator role은 NOLOGIN 권한 그룹이며 invites SELECT/INSERT 권한만 가진다 (0.057541ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }
+
+test at src/db/migrations/core.integration.test.ts:47:18957
+✖ operator는 7일 초대를 발급하지만 인증·사이트·결제 데이터에는 접근하지 못한다 (0.057125ms)
+  Error: Failed query:
+  CREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler
+    WITH CHECK (
+      topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')
+      AND CASE
+        WHEN jsonb_typeof(payload) = 'object'
+          AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+        THEN EXISTS (
+          SELECT 1 FROM sites
+           WHERE sites.id = (payload->>'siteId')::uuid
+             AND sites.workspace_id = outbox.workspace_id
+             AND sites.active
+        )
+        ELSE false
+      END
+      AND (
+        topic <> 'report.snapshot'
+        OR (
+          jsonb_object_length(payload) = 2
+          AND payload ?& ARRAY['siteId', 'cycleMonday']
+          AND payload->>'cycleMonday' ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+      )
+    );
+  params:
+      at PglitePreparedQuery.queryWithCache (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/session.ts:73:11)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/src/pg-core/dialect.ts:102:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:10:1757) {
+    query: "\nCREATE POLICY outbox_scheduler_insert ON outbox FOR INSERT TO semforge_scheduler\n  WITH CHECK (\n    topic IN ('collection.google.weekly', 'collection.naver.weekly', 'collection.gsc.weekly', 'report.snapshot')\n    AND CASE\n      WHEN jsonb_typeof(payload) = 'object'\n        AND payload->>'siteId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'\n      THEN EXISTS (\n        SELECT 1 FROM sites\n         WHERE sites.id = (payload->>'siteId')::uuid\n           AND sites.workspace_id = outbox.workspace_id\n           AND sites.active\n      )\n      ELSE false\n    END\n    AND (\n      topic <> 'report.snapshot'\n      OR (\n        jsonb_object_length(payload) = 2\n        AND payload ?& ARRAY['siteId', 'cycleMonday']\n        AND payload->>'cycleMonday' ~ '^\\d{4}-\\d{2}-\\d{2}$'\n      )\n    )\n  );",
+    params: [],
+    cause: error: function jsonb_object_length(jsonb) does not exist
+        at be.$r (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:22154)
+        at be.Na (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:19524)
+        at be.parse (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:3:18257)
+        at <anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:224824)
+        at wasm://wasm/021d3ac6:wasm-function[3717]:0x27f7ed
+        at wasm://wasm/021d3ac6:wasm-function[3727]:0x27fb64
+        at wasm://wasm/021d3ac6:wasm-function[9511]:0x50b432
+        at wasm://wasm/021d3ac6:wasm-function[175]:0x5ad13
+        at invoke_v (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/@electric-sql/pglite/dist/index.cjs:12:209340)
+        at wasm://wasm/021d3ac6:wasm-function[178]:0x5b558
+  }

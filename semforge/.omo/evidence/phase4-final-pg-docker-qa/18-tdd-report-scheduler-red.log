@@ -1,0 +1,19 @@
+✔ scheduler는 DB의 active site/query/binding만 canonical payload로 outbox에 멱등 예약한다 (1010.05525ms)
+✖ report scheduler는 KST cycleMonday와 active site로 snapshot outbox를 지연 재실행에도 한 건만 예약한다 (3.667875ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1423.12225
+
+✖ failing tests:
+
+test at src/worker/scheduler.test.ts:9:1392
+✖ report scheduler는 KST cycleMonday와 active site로 snapshot outbox를 지연 재실행에도 한 건만 예약한다 (3.667875ms)
+  TypeError: import_scheduler.PostgresWeeklyReportScheduler is not a constructor
+      at TestContext.<anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/src/worker/scheduler.test.ts:119:21)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7)

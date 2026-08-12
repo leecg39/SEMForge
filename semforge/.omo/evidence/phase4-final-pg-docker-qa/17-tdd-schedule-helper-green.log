@@ -1,0 +1,13 @@
+✔ KST 월요일 주기는 일요일 18시 수집, 월요일 07시 마감, 08시 snapshot으로 고정된다 (37.790083ms)
+✔ GSC mature window는 PT DST 시작일에도 이전 목요일 포함 7일과 직전 7일을 유지한다 (0.354167ms)
+✔ 수집 retry는 월요일 07:00 KST 이전에만 예약된다 (0.173583ms)
+✔ report snapshot 실행은 KST 월요일의 cycleMonday를 지연 재실행에도 유지한다 (0.309667ms)
+✔ report snapshot 실행은 KST 월요일이 아닌 시각을 거부한다 (0.2685ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 246.810625

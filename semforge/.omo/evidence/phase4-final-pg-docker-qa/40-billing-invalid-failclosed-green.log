@@ -1,0 +1,20 @@
+^D✔ Next production build는 standalone output을 생성한다 (5.075917ms)
+✔ package build script는 secret 없는 build service profile을 강제한다 (0.734792ms)
+✔ Dockerfile은 Node 24 web/pipeline/migrator target과 non-root Chromium/Noto runtime을 제공한다 (1.98225ms)
+✔ Docker worker는 dispatcher claim과 tenant DB가 분리된 production composition을 사용한다 (1.494834ms)
+✔ entrypoint와 compose는 migration 성공 뒤 web/worker/relay와 collection/report scheduler를 분리 실행한다 (1.66475ms)
+✔ Kubernetes 예시는 worker/relay와 일요일 collection·월요일 report scheduler를 분리한다 (2.64025ms)
+✔ 환경 예시는 report delivery 변수 이름만 제공하고 역할별 env_file secret 주입을 유지한다 (1.776541ms)
+✔ nginx 예시는 TLS 1.2+, auth rate limit, streaming proxy 보안을 포함한다 (0.917583ms)
+✔ 운영 runbook은 TLS/PITR, object version restore, backup, previous-image rollback을 실행 순서로 고정한다 (1.069042ms)
+✔ billing gate는 허용된 collection만 provider handler로 전달한다 (6.956209ms)
+✔ billing gate는 past_due collection과 report.snapshot을 provider/generator 호출 없이 terminal-success skip한다 (0.859958ms)
+✔ billing gate는 손상된 날짜와 알 수 없는 subscription status를 fail-closed skip한다 (0.572709ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 296.4865

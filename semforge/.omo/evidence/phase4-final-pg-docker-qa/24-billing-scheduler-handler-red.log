@@ -1,0 +1,59 @@
+^Dnode:internal/modules/cjs/loader:1517
+  const err = new Error(message);
+              ^
+
+Error: Cannot find module '@/worker/billing-gate'
+Require stack:
+- /Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/src/worker/billing-gate.test.ts
+    at node:internal/modules/cjs/loader:1517:15
+    at T._resolveFilename (file:///Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:15301)
+    at nextResolveSimple (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/tsx/dist/register-BoI6-WNn.cjs:10:1017)
+    at /Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/tsx/dist/register-BoI6-WNn.cjs:9:4613
+    at /Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/tsx/dist/register-BoI6-WNn.cjs:9:3894
+    at resolveTsPaths (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/tsx/dist/register-BoI6-WNn.cjs:10:770)
+    at Module._resolveFilename (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/node_modules/tsx/dist/register-BoI6-WNn.cjs:10:1171)
+    at wrapResolveFilename (node:internal/modules/cjs/loader:1071:27)
+    at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1095:10)
+    at defaultResolve (node:internal/modules/cjs/loader:1152:20) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/src/worker/billing-gate.test.ts'
+  ]
+}
+
+Node.js v24.19.0
+✖ src/worker/billing-gate.test.ts (210.477583ms)
+✔ scheduler는 DB의 active site/query/binding만 canonical payload로 outbox에 멱등 예약한다 (983.383792ms)
+✔ report scheduler는 KST cycleMonday와 active site로 snapshot outbox를 지연 재실행에도 한 건만 예약한다 (48.699792ms)
+✖ scheduler는 active 또는 아직 만료되지 않은 cancel_at_period_end workspace만 예약한다 (10.850292ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 2
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1488.993792
+
+✖ failing tests:
+
+test at src/worker/billing-gate.test.ts:1:1
+✖ src/worker/billing-gate.test.ts (210.477583ms)
+  'test failed'
+
+test at src/worker/scheduler.test.ts:17:441
+✖ scheduler는 active 또는 아직 만료되지 않은 cancel_at_period_end workspace만 예약한다 (10.850292ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  5 !== 2
+
+      at TestContext.<anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/src/worker/scheduler.test.ts:215:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 5,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
