@@ -12,6 +12,7 @@ export type DatabaseRole =
   | "web"
   | "webFence"
   | "auth"
+  | "authFence"
   | "operator"
   | "dispatcher"
   | "scheduler"
@@ -38,6 +39,7 @@ export function resolveDatabaseUrl(role: DatabaseRole, env: ServerEnv): string {
     web: "DATABASE_URL",
     webFence: "DATABASE_URL",
     auth: "AUTH_DATABASE_URL",
+    authFence: "AUTH_DATABASE_URL",
     operator: "OPERATOR_DATABASE_URL",
     dispatcher: "DISPATCHER_DATABASE_URL",
     scheduler: "SCHEDULER_DATABASE_URL",
@@ -67,9 +69,11 @@ export function getPool(role: DatabaseRole = "web"): Pool {
     statement_timeout: env.PG_STATEMENT_TIMEOUT_MS,
     application_name: role === "webFence"
       ? "semforge-web-privacy-fence"
-      : role === "billingFence"
-        ? "semforge-billing-privacy-fence"
-        : `semforge-${role}`,
+      : role === "authFence"
+        ? "semforge-auth-privacy-fence"
+        : role === "billingFence"
+          ? "semforge-billing-privacy-fence"
+          : `semforge-${role}`,
     ssl: sslConfig(env),
   });
   return pools[role]!;

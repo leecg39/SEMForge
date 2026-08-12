@@ -794,6 +794,7 @@ test("password reset 생성은 이메일·URL 평문 없이 암호화 delivery�
     expiresAt: addMs(now, HOUR_MS),
     now,
     delivery: {
+      workspaceId: accepted.principal.workspaceId,
       email: "reset-outbox@example.com",
       resetUrl: "https://app.semforge.test/reset-password/raw-reset-token",
       expiresAt: addMs(now, HOUR_MS),
@@ -907,6 +908,7 @@ test("password reset job이 마지막 attempt 또는 crash 복구로 dead가 되
     expiresAt: addMs(now, HOUR_MS),
     now,
     delivery: {
+      workspaceId: accepted.principal.workspaceId,
       email: "dead-reset@example.com",
       resetUrl: "https://app.semforge.test/reset-password/dead-reset-token",
       expiresAt: addMs(now, HOUR_MS),

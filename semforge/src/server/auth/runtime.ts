@@ -1,6 +1,6 @@
 // @TASK P2-A1-T1 - Production auth runtime composition
 // @SPEC docs/planning/06-tasks.md#p2-a1-t1--초대-전용-인증과-세션
-import { getDatabase } from "@/db/client";
+import { getDatabase, getPool } from "@/db/client";
 import { getServerEnv } from "@/lib/env";
 import {
   createRequireAuth,
@@ -11,7 +11,24 @@ import {
   type AuthHttpService,
 } from "@/server/auth/http";
 import { PostgresAuthStore } from "@/server/auth/postgres-store";
+import {
+  createPrivacyFencedAuthStore,
+  type AuthWorkspacePrivacyFence,
+} from "@/server/auth/privacy-fenced-store";
 import { createAuthService } from "@/server/auth/service";
+import { PostgresWorkspacePrivacyFence } from "@/server/privacy/fence";
+
+export function createRuntimeAuthWorkspacePrivacyFence(): AuthWorkspacePrivacyFence {
+  const fence = new PostgresWorkspacePrivacyFence(getPool("authFence"));
+  return {
+    withShared(workspaceId, operation) {
+      return fence.withShared(workspaceId, () => operation());
+    },
+    withSharedMany(workspaceIds, operation) {
+      return fence.withSharedMany(workspaceIds, () => operation());
+    },
+  };
+}
 
 /**
  * 인증 전 경계는 tenant-scoped web role이 아닌 제한된 auth role만 사용한다.
@@ -19,8 +36,12 @@ import { createAuthService } from "@/server/auth/service";
  */
 export function createRuntimeAuthService(): AuthHttpService {
   const env = getServerEnv();
+  const store = new PostgresAuthStore(getDatabase("auth"));
   return createAuthService({
-    store: new PostgresAuthStore(getDatabase("auth")),
+    store: createPrivacyFencedAuthStore({
+      store,
+      fence: createRuntimeAuthWorkspacePrivacyFence(),
+    }),
     passwordResetBaseUrl: env.APP_PUBLIC_URL,
   });
 }

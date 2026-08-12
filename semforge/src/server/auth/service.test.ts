@@ -40,6 +40,7 @@ function storeFixture(overrides: Partial<AuthStore> = {}): AuthStore {
     revokeSessionByTokenHash: async () => false,
     revokeSessionsForUser: async () => 0,
     createPasswordReset: async () => { throw new Error("createPasswordReset not implemented"); },
+    preparePasswordReset: async () => ({ status: "invalid" }),
     resetPasswordAtomic: async () => ({ status: "invalid" }),
     consumeAuthThrottle: async () => ({
       allowed: true,

@@ -122,6 +122,8 @@ export interface CreatePasswordResetInput {
   readonly expiresAt: Date;
   readonly now: Date;
   readonly delivery?: {
+    /** 개인정보 fence가 선택한 active workspace. Raw adapter 호출 호환을 위해 optional이다. */
+    readonly workspaceId?: string;
     readonly email: string;
     readonly resetUrl: string;
     readonly expiresAt: Date;
@@ -142,6 +144,10 @@ export interface ResetPasswordInput {
 
 export type ResetPasswordResult =
   | { readonly status: "reset"; readonly userId: string }
+  | { readonly status: "invalid" | "expired" };
+
+export type PreparePasswordResetResult =
+  | { readonly status: "ready"; readonly userId: string }
   | { readonly status: "invalid" | "expired" };
 
 export interface ConsumeAuthThrottleInput {
@@ -184,7 +190,8 @@ export interface AuthStore {
   revokeSessionByTokenHash(tokenHash: string, now: Date): Promise<boolean>;
   revokeSessionsForUser(userId: string, now: Date): Promise<number>;
 
-  createPasswordReset(input: CreatePasswordResetInput): Promise<AuthPasswordReset>;
+  createPasswordReset(input: CreatePasswordResetInput): Promise<AuthPasswordReset | null>;
+  preparePasswordReset(tokenHash: string, now: Date): Promise<PreparePasswordResetResult>;
   resetPasswordAtomic(input: ResetPasswordInput): Promise<ResetPasswordResult>;
 
   consumeAuthThrottle(input: ConsumeAuthThrottleInput): Promise<AuthThrottleDecision>;

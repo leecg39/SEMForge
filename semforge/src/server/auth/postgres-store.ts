@@ -36,6 +36,7 @@ import type {
   CreateInviteInput,
   PrepareInviteAcceptanceInput,
   PrepareInviteAcceptanceResult,
+  PreparePasswordResetResult,
   OperatorInviteStore,
   ResetPasswordInput,
   ResetPasswordResult,
@@ -591,11 +592,16 @@ export class PostgresAuthStore implements AuthStore {
       if (!reset) throw new Error("비밀번호 재설정 token을 생성하지 못했습니다.");
 
       if (input.delivery) {
+        if (!input.delivery.workspaceId) {
+          throw new Error("AUTH_PRIVACY_FENCE_WORKSPACE_REQUIRED");
+        }
         const [membership] = await tx
           .select({ workspaceId: memberships.workspaceId })
           .from(memberships)
-          .where(eq(memberships.userId, input.userId))
-          .orderBy(asc(memberships.createdAt), asc(memberships.workspaceId))
+          .where(and(
+            eq(memberships.userId, input.userId),
+            eq(memberships.workspaceId, input.delivery.workspaceId),
+          ))
           .limit(1);
         if (!membership) {
           throw new Error("비밀번호 재설정 outbox workspace를 찾을 수 없습니다.");
@@ -629,6 +635,28 @@ export class PostgresAuthStore implements AuthStore {
       }
       return reset;
     });
+  }
+
+  async preparePasswordReset(
+    tokenHash: string,
+    now: Date,
+  ): Promise<PreparePasswordResetResult> {
+    const [reset] = await this.database
+      .select({
+        userId: passwordResets.userId,
+        expiresAt: passwordResets.expiresAt,
+        usedAt: passwordResets.usedAt,
+      })
+      .from(passwordResets)
+      .innerJoin(users, eq(users.id, passwordResets.userId))
+      .where(and(
+        eq(passwordResets.tokenHash, tokenHash),
+        isNull(users.disabledAt),
+      ))
+      .limit(1);
+    if (!reset || reset.usedAt) return { status: "invalid" };
+    if (reset.expiresAt <= now) return { status: "expired" };
+    return { status: "ready", userId: reset.userId };
   }
 
   async resetPasswordAtomic(input: ResetPasswordInput): Promise<ResetPasswordResult> {
