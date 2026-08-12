@@ -383,6 +383,14 @@ test("production relay는 blocking 또는 control 누락 outbox를 terminal supp
     { published: true, last_error: "WORKSPACE_PRIVACY_SUPPRESSED", job_count: 0 },
     { published: true, last_error: "WORKSPACE_PRIVACY_SUPPRESSED", job_count: 0 },
   ]);
+  const audits = await database.query<{ workspace_id: string }>(
+    `select workspace_id::text
+       from audit_events
+      where action = 'outbox.suppressed' and workspace_id in ($1, $2)
+      order by workspace_id`,
+    [workspaceId, missingWorkspaceId],
+  );
+  assert.deepEqual(audits.rows, [{ workspace_id: workspaceId }]);
   assert.deepEqual(await runtime.runOnce(), { claimed: 0, published: 0, failed: 0 });
 });
 
@@ -434,5 +442,12 @@ test("production relay는 claim 직후 workspace가 erased로 전환되어도 pu
     lease_owner: null,
     job_count: 0,
   }]);
+  const audits = await database.query<{ count: number }>(
+    `select count(*)::int as count
+       from audit_events
+      where workspace_id = $1 and action = 'outbox.suppressed'`,
+    [workspaceId],
+  );
+  assert.equal(audits.rows[0]?.count, 0);
   assert.deepEqual(await runtime.runOnce(), { claimed: 0, published: 0, failed: 0 });
 });

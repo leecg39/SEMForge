@@ -252,7 +252,7 @@ export class PostgresOutboxRelay {
     }
     const result = await this.database.query<OutboxRow>(
       `with suppressible as (
-         select event.id
+         select event.id, privacy.state::text as privacy_state
            from outbox event
            left join workspace_privacy_controls privacy
              on privacy.workspace_id = event.workspace_id
@@ -276,9 +276,14 @@ export class PostgresOutboxRelay {
          returning event.id::text, event.workspace_id::text, event.topic
        ), suppressed_audited as (
          insert into audit_events (workspace_id, action, entity_type, entity_id, request_id, metadata)
-         select workspace_id::uuid, 'outbox.suppressed', 'outbox', id, $3,
-                jsonb_build_object('reason', 'WORKSPACE_PRIVACY_SUPPRESSED', 'topic', topic)
+         select suppressed.workspace_id::uuid, 'outbox.suppressed', 'outbox', suppressed.id, $3,
+                jsonb_build_object(
+                  'reason', 'WORKSPACE_PRIVACY_SUPPRESSED',
+                  'topic', suppressed.topic
+                )
            from suppressed
+           join suppressible on suppressible.id::text = suppressed.id
+          where suppressible.privacy_state = 'blocking'
        ), candidates as (
          select event.id
            from outbox event
@@ -360,6 +365,7 @@ export class PostgresOutboxRelay {
          select workspace_id::uuid, 'outbox.suppressed', 'outbox', id, $3,
                 jsonb_build_object('reason', 'WORKSPACE_PRIVACY_SUPPRESSED', 'topic', topic)
            from suppressed
+          where exists (select 1 from privacy_control where state = 'blocking')
        ), inserted_job as (
          insert into jobs
            (workspace_id, type, payload, idempotency_key, priority, available_at, max_attempts)
