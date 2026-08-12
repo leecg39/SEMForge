@@ -213,6 +213,58 @@ test("등록되지 않은 job type은 실행하지 않고 즉시 DLQ로 보낸�
   assert.equal((await queue.get(workspaceId, job.id))?.lastError, "HANDLER_NOT_REGISTERED");
 });
 
+test("privacy execution scope는 blocking job의 handler를 건너뛰고 queue terminal finalization까지 lock 안에 둔다", async () => {
+  const workspaceId = "53000000-0000-4000-8000-000000000044";
+  const database = await createDatabase(workspaceId, "runtime-privacy-scope");
+  const queue = new PostgresJobQueue(database);
+  const now = new Date("2026-08-12T09:30:00.000Z");
+  const queued = await queue.enqueue({
+    workspaceId,
+    type: "collect.privacy-blocked",
+    payload: { siteId: "must-not-run" },
+    idempotencyKey: "runtime-privacy-scope",
+    availableAt: now,
+  });
+  const order: string[] = [];
+  let delegates = 0;
+  const runtime = new WorkerRuntime({
+    database,
+    handlers: {
+      "collect.privacy-blocked": defineJobHandler(async () => {
+        delegates += 1;
+        return jobSucceeded();
+      }),
+    },
+    executionScope: {
+      async execute(input) {
+        order.push("lock-acquired:blocking");
+        const result = await input.blocked("blocking");
+        const stateInsideLock = await queue.get(workspaceId, queued.id);
+        order.push(`terminal-inside-lock:${stateInsideLock?.status}`);
+        order.push("lock-released");
+        return result;
+      },
+    },
+    workerId: "runtime-privacy-scope",
+    clock: () => now,
+  });
+
+  assert.deepEqual(await runtime.runOnce(), {
+    claimed: 1,
+    succeeded: 1,
+    retryable: 0,
+    dead: 0,
+    leaseLost: 0,
+  });
+  assert.equal(delegates, 0);
+  assert.deepEqual(order, [
+    "lock-acquired:blocking",
+    "terminal-inside-lock:succeeded",
+    "lock-released",
+  ]);
+  assert.equal((await queue.get(workspaceId, queued.id))?.status, "succeeded");
+});
+
 test("handler context는 고정 workspace의 audit, providerCalls, clock과 lease를 연결한다", async () => {
   const workspaceId = "53000000-0000-4000-8000-000000000005";
   const database = await createDatabase(workspaceId, "runtime-context");

@@ -16,6 +16,11 @@ import {
   type PrivacyProcessorClient,
   type PrivacyRetentionPolicy,
 } from "@/server/privacy/service";
+import type {
+  WorkspaceErasureFenceInput,
+  WorkspacePrivacyFence,
+  WorkspacePrivacyFenceSql,
+} from "@/server/privacy/fence";
 
 const databases: PGlite[] = [];
 const workspaceA = "00000000-0000-4000-8000-00000000a501";
@@ -115,6 +120,82 @@ async function seedPrivacySubject(pg: PGlite) {
   );
 }
 
+async function openRequest(
+  pg: PGlite,
+  input: { requestId: string; type: "export" | "correction" | "deletion" },
+): Promise<void> {
+  await pg.query(
+    `select *
+       from privacy_open_request($1::uuid, $2::text, $3::text, 'operator-1', now())`,
+    [workspaceA, input.requestId, input.type],
+  );
+}
+
+function immediateErasureFence(pg: PGlite): WorkspacePrivacyFence {
+  const tenantQuery = async <T = unknown>(
+    workspaceId: string,
+    text: string,
+    values?: readonly unknown[],
+  ): Promise<{ rows: T[] }> => {
+    await pg.query("begin");
+    try {
+      await pg.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
+      const result = await pg.query<T>(text, values as unknown[] | undefined);
+      await pg.query("commit");
+      return result;
+    } catch (error) {
+      await pg.query("rollback").catch(() => undefined);
+      throw error;
+    }
+  };
+  return {
+    async withShared() { throw new Error("unused test shared fence"); },
+    async withSharedState() { throw new Error("unused test shared fence"); },
+    async withExclusiveErasure<T>(
+      input: WorkspaceErasureFenceInput,
+      externalOperation: (database: WorkspacePrivacyFenceSql) => Promise<T>,
+    ): Promise<T> {
+      await tenantQuery(
+        input.workspaceId,
+        "select privacy_block_workspace($1::uuid, $2::uuid, $3::text, $4::timestamptz)",
+        [input.workspaceId, input.requestUuid, input.operatorId, input.now],
+      );
+      const database: WorkspacePrivacyFenceSql = {
+        query: <TRow = unknown>(text: string, values?: readonly unknown[]) =>
+          tenantQuery<TRow>(input.workspaceId, text, values),
+      };
+      const value = await externalOperation(database);
+      await pg.query("begin");
+      try {
+        await pg.query("select set_config('app.workspace_id', $1, true)", [input.workspaceId]);
+        await pg.query("select privacy_erase_workspace($1::uuid, $2::uuid, $3::text)", [
+          input.workspaceId, input.requestUuid, input.operatorId,
+        ]);
+        await pg.query(
+          `select privacy_record_request_step(
+             $1::uuid, $2::uuid, $3::text, 'local.erasure', 'succeeded',
+             null, '{}'::jsonb, $4::timestamptz
+           )`,
+          [input.workspaceId, input.requestUuid, input.operatorId, input.now],
+        );
+        await pg.query(
+          "select privacy_mark_workspace_erased($1::uuid, $2::uuid, $3::text, $4::timestamptz)",
+          [input.workspaceId, input.requestUuid, input.operatorId, input.now],
+        );
+        await pg.query(
+          "select privacy_finish_request($1::uuid, $2::uuid, $3::text, 'completed', $4::timestamptz)",
+          [input.workspaceId, input.requestUuid, input.operatorId, input.now],
+        );
+        await pg.query("commit");
+      } catch (error) {
+        await pg.query("rollback").catch(() => undefined);
+        throw error;
+      }
+      return value;
+    },
+  };
+}
+
 afterEach(async () => {
   await Promise.all(databases.splice(0).map((db) => db.close()));
 });
@@ -134,6 +215,7 @@ test("retention policy는 운영자가 주입한 명시 JSON만 허용하고 기
 test("운영자 DSAR export는 tenant 경계를 지키고 token/billing key 원문을 내보내지 않는다", async () => {
   const pg = await migratedDb();
   await seedPrivacySubject(pg);
+  await openRequest(pg, { requestId: "dsar-export-1", type: "export" });
   const service = createPrivacyService({ db: pg });
 
   const exported = await service.exportWorkspaceSubject({
@@ -153,14 +235,16 @@ test("운영자 DSAR export는 tenant 경계를 지키고 token/billing key 원�
 test("삭제 workflow는 외부 processor 실패 시 local immutable report 삭제를 실행하지 않고 failed audit으로 닫는다", async () => {
   const pg = await migratedDb();
   await seedPrivacySubject(pg);
+  await openRequest(pg, { requestId: "dsar-delete-failed", type: "deletion" });
   const processor: PrivacyProcessorClient = {
     revokeGscConnection: async () => {
       throw new Error("google revoke failed");
     },
     deleteObject: async () => undefined,
+    deleteWorkspaceObjects: async () => undefined,
     markEmailSuppressed: async () => undefined,
   };
-  const service = createPrivacyService({ db: pg, processor });
+  const service = createPrivacyService({ db: pg, processor, erasureFence: immediateErasureFence(pg) });
 
   const result = await service.deleteWorkspaceSubject({
     workspaceId: workspaceA,
@@ -192,6 +276,7 @@ test("삭제 workflow는 외부 processor 실패 시 local immutable report 삭�
 test("삭제 workflow 성공 시 GSC revoke·object delete 후 privacy erasure procedure로 immutable report와 workspace PII를 제거한다", async () => {
   const pg = await migratedDb();
   await seedPrivacySubject(pg);
+  await openRequest(pg, { requestId: "dsar-delete-ok", type: "deletion" });
   await pg.query(
     `insert into users (id, email, password_hash, display_name, email_verified_at)
      values ($1, 'member-without-delivery@example.test', 'scrypt:c', 'Member C', now())`,
@@ -209,11 +294,14 @@ test("삭제 workflow 성공 시 GSC revoke·object delete 후 privacy erasure p
     deleteObject: async (input) => {
       calls.push(`object:${input.storageKey}`);
     },
+    deleteWorkspaceObjects: async (input) => {
+      calls.push(`workspace-object:${input.workspaceId}`);
+    },
     markEmailSuppressed: async (input) => {
       calls.push(`email:${input.emailHash}:${input.requestUuid}`);
     },
   };
-  const service = createPrivacyService({ db: pg, processor });
+  const service = createPrivacyService({ db: pg, processor, erasureFence: immediateErasureFence(pg) });
 
   const result = await service.deleteWorkspaceSubject({
     workspaceId: workspaceA,
@@ -233,7 +321,7 @@ test("삭제 workflow 성공 시 GSC revoke·object delete 후 privacy erasure p
     `email:${digest("member-without-delivery@example.test")}:${requestUuid}`,
     `email:${digest("owner-a@example.test")}:${requestUuid}`,
     `gsc:${gscA}`,
-    "object:reports/a/report.pdf",
+    `workspace-object:${workspaceA}`,
   ].sort());
   const counts = await pg.query<{ reports: number; assets: number; gsc: number; deliveries: number }>(
     `select
@@ -258,6 +346,7 @@ test("삭제 workflow 성공 시 GSC revoke·object delete 후 privacy erasure p
 test("삭제 재실행은 성공한 대상별 step을 건너뛰고 실패 지점부터 재개하며 local erasure를 중복 실행하지 않는다", async () => {
   const pg = await migratedDb();
   await seedPrivacySubject(pg);
+  await openRequest(pg, { requestId: "dsar-delete-resume", type: "deletion" });
   const calls: string[] = [];
   let failObjectOnce = true;
   const processor: PrivacyProcessorClient = {
@@ -271,11 +360,18 @@ test("삭제 재실행은 성공한 대상별 step을 건너뛰고 실패 지점
         throw new Error("temporary object deletion failure");
       }
     },
+    deleteWorkspaceObjects: async ({ workspaceId }) => {
+      calls.push(`workspace-object:${workspaceId}`);
+      if (failObjectOnce) {
+        failObjectOnce = false;
+        throw new Error("temporary object deletion failure");
+      }
+    },
     markEmailSuppressed: async ({ emailHash }) => {
       calls.push(`email:${emailHash}`);
     },
   };
-  const service = createPrivacyService({ db: pg, processor });
+  const service = createPrivacyService({ db: pg, processor, erasureFence: immediateErasureFence(pg) });
   const input = {
     workspaceId: workspaceA,
     operatorId: "operator-1",
@@ -303,7 +399,7 @@ test("삭제 재실행은 성공한 대상별 step을 건너뛰고 실패 지점
   });
 
   assert.equal(calls.filter((call) => call.startsWith("gsc:")).length, 1);
-  assert.equal(calls.filter((call) => call.startsWith("object:")).length, 2);
+  assert.equal(calls.filter((call) => call.startsWith("workspace-object:")).length, 2);
   assert.equal(calls.filter((call) => call.startsWith("email:")).length, 1);
   const steps = await pg.query<{ step_key: string; status: string; attempts: number }>(
     `select step.step_key, step.status, step.attempts
@@ -318,7 +414,7 @@ test("삭제 재실행은 성공한 대상별 step을 건너뛰고 실패 지점
     step.step_key === `gsc.revoke:${gscA}` && step.status === "succeeded" && step.attempts === 1
   ));
   assert.ok(steps.rows.some((step) =>
-    step.step_key === `objects.delete:${digest("reports/a/report.pdf")}` &&
+    step.step_key === "objects.delete:workspace-prefix" &&
     step.status === "succeeded" && step.attempts === 2
   ));
   assert.ok(steps.rows.some((step) =>
@@ -442,16 +538,16 @@ test("retention apply는 backup restore로 되살아난 report object key를 매
     `insert into backup_deletion_markers
        (workspace_id, request_id, marker_key, runbook_ref, metadata)
      values ($1, $2, 'backup-erasure-required', 'docs/ops/privacy-erasure-runbook.md',
-       '{"storageKeys":["reports/a/report.pdf"]}'::jsonb)`,
-    [workspaceA, request.rows[0]!.id],
+       $3::jsonb)`,
+    [workspaceA, request.rows[0]!.id, JSON.stringify({
+      storagePrefix: `reports/${workspaceA}/`,
+      storageKeyHashes: [digest("reports/a/report.pdf")],
+    })],
   );
   const purged: string[] = [];
   const processor = {
-    deleteObject: async ({ workspaceId, storageKey }: {
-      workspaceId: string;
-      storageKey: string;
-    }) => {
-      purged.push(`${workspaceId}:${storageKey}`);
+    deleteWorkspaceObjects: async ({ workspaceId }: { workspaceId: string }) => {
+      purged.push(workspaceId);
     },
   };
 
@@ -464,8 +560,8 @@ test("retention apply는 backup restore로 되살아난 report object key를 매
   });
   assert.deepEqual(purged, []);
   assert.deepEqual(
-    dryRun.items.find((item) => item.target === "backup-restored-objects"),
-    { target: "backup-restored-objects", matched: 1 },
+    dryRun.items.find((item) => item.target === "backup-restored-workspaces"),
+    { target: "backup-restored-workspaces", matched: 1 },
   );
 
   await runPrivacyRetention({
@@ -483,7 +579,7 @@ test("retention apply는 backup restore로 되살아난 report object key를 매
     processor,
   });
   assert.deepEqual(purged, [
-    `${workspaceA}:reports/a/report.pdf`,
-    `${workspaceA}:reports/a/report.pdf`,
+    workspaceA,
+    workspaceA,
   ]);
 });

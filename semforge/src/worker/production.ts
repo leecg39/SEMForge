@@ -2,7 +2,7 @@
 // @SPEC docs/planning/06-tasks.md#p3-w1-t1--lease-기반-작업-큐와-transactional-outbox
 import { hostname } from "node:os";
 
-import type { Pool } from "pg";
+import { Pool } from "pg";
 
 import { getPool } from "@/db/client";
 import { decryptSecret, decryptSecretOrThrow, encryptSecret, type SecretCrypto } from "@/lib/crypto";
@@ -25,6 +25,10 @@ import { createPostgresGoogleObservationRepository } from "@/server/collectors/g
 import { createNaverCollectionJobHandler } from "@/server/collectors/naver/handler";
 import { createPostgresNaverObservationStore } from "@/server/collectors/naver/postgres-store";
 import { createNaverProductionProvider } from "@/server/providers/naver/production";
+import {
+  createWorkspacePrivacyWorkerExecutionScope,
+  PostgresWorkspacePrivacyFence,
+} from "@/server/privacy/fence";
 import { createTalordataGoogleProvider } from "@/server/providers/talordata/provider";
 import { createRuntimeReportJobHandlers } from "@/server/reports/runtime";
 import { ResendEmailSender } from "@/server/reports/delivery/resend";
@@ -59,6 +63,7 @@ export interface ProductionWorkerComposition {
   readonly authPool: Pool;
   readonly dispatcherPool: Pool;
   readonly workerPool: Pool;
+  readonly workerFencePool: Pool;
   close(): Promise<void>;
 }
 
@@ -80,12 +85,33 @@ export function composeProductionWorkerJobHandlers(input: {
   };
 }
 
+function privacyFenceSsl(env: ServerEnv): false | { readonly rejectUnauthorized: boolean } {
+  if (env.PGSSLMODE === "disable") return false;
+  return { rejectUnauthorized: env.PGSSLMODE === "verify-full" };
+}
+
+function createWorkerFencePool(env: ServerEnv): Pool {
+  return new Pool({
+    connectionString: requireEnv(env, "WORKER_DATABASE_URL"),
+    max: env.PGPOOL_MAX,
+    connectionTimeoutMillis: env.PGPOOL_CONNECTION_TIMEOUT_MS,
+    idleTimeoutMillis: env.PGPOOL_IDLE_TIMEOUT_MS,
+    statement_timeout: env.PG_STATEMENT_TIMEOUT_MS,
+    application_name: "semforge-worker-privacy-fence",
+    ssl: privacyFenceSsl(env),
+  });
+}
+
 export function createProductionWorkerComposition(
   env: ServerEnv = getServerEnv(),
 ): ProductionWorkerComposition {
   const authPool = getPool("auth");
   const dispatcherPool = getPool("dispatcher");
   const workerPool = getPool("worker");
+  // Advisory session locks must never consume the same pool used by delegates.
+  // With concurrency === PGPOOL_MAX, sharing workerPool would deadlock every
+  // handler while each fence waits for a delegate connection.
+  const workerFencePool = createWorkerFencePool(env);
   const google = createGoogleCollectionJobHandler({
     provider: createTalordataGoogleProvider({
       token: requireEnv(env, "TALORDATA_API_TOKEN"),
@@ -159,6 +185,9 @@ export function createProductionWorkerComposition(
     database: dispatcherPool,
     tenantDatabase: workerPool,
     handlers,
+    executionScope: createWorkspacePrivacyWorkerExecutionScope(
+      new PostgresWorkspacePrivacyFence(workerFencePool),
+    ),
     workerId: processIdentity("worker"),
     concurrency: Math.min(10, env.PGPOOL_MAX),
   });
@@ -167,8 +196,14 @@ export function createProductionWorkerComposition(
     authPool,
     dispatcherPool,
     workerPool,
+    workerFencePool,
     async close() {
-      await Promise.all([authPool.end(), dispatcherPool.end(), workerPool.end()]);
+      await Promise.all([
+        authPool.end(),
+        dispatcherPool.end(),
+        workerPool.end(),
+        workerFencePool.end(),
+      ]);
     },
   };
 }

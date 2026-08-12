@@ -23,6 +23,8 @@ export interface WorkerRuntimeOptions {
   /** Tenant-RLS worker connection. Defaults to database for tests only. */
   readonly tenantDatabase?: SqlQueryable;
   readonly handlers: Readonly<Record<string, RegisteredJobHandler>>;
+  /** Holds a workspace side-effect fence through handler and queue finalization. */
+  readonly executionScope?: WorkerExecutionScope;
   readonly workerId: string;
   readonly concurrency?: number;
   readonly leaseMs?: number;
@@ -32,6 +34,14 @@ export interface WorkerRuntimeOptions {
   readonly retryBackoffMs?: number;
   readonly maxRetryBackoffMs?: number;
   readonly clock?: () => Date;
+}
+
+export interface WorkerExecutionScope {
+  execute<T>(input: {
+    readonly workspaceId: string;
+    readonly active: () => Promise<T>;
+    readonly blocked: (state: "blocking" | "erased") => Promise<T>;
+  }): Promise<T>;
 }
 
 export interface WorkerRunResult {
@@ -102,6 +112,7 @@ export class WorkerRuntime {
   private readonly database: SqlQueryable;
   private readonly tenantDatabase: SqlQueryable;
   private readonly handlers: Readonly<Record<string, RegisteredJobHandler>>;
+  private readonly executionScope: WorkerExecutionScope | undefined;
   private readonly workerId: string;
   private readonly concurrency: number;
   private readonly leaseMs: number;
@@ -119,6 +130,7 @@ export class WorkerRuntime {
     this.database = options.database;
     this.tenantDatabase = options.tenantDatabase ?? options.database;
     this.handlers = options.handlers;
+    this.executionScope = options.executionScope;
     this.workerId = requireNonBlank(options.workerId, "workerId");
     this.concurrency = requireInteger(options.concurrency ?? 1, 1, 100, "concurrency");
     this.leaseMs = requireInteger(options.leaseMs ?? 60_000, 1_000, 3_600_000, "leaseMs");
@@ -247,106 +259,131 @@ export class WorkerRuntime {
       }
     })();
 
-    try {
-      const handler = Object.hasOwn(this.handlers, initialJob.type)
-        ? this.handlers[initialJob.type]
-        : undefined;
-      if (!handler) {
-        await this.queue.fail(currentJob, {
-          error: "HANDLER_NOT_REGISTERED",
-          retryable: false,
-          now: this.clock(),
-        });
-        return "dead";
-      }
+    const executeActive = async (): Promise<ExecutionOutcome> => {
+      try {
+        const handler = Object.hasOwn(this.handlers, initialJob.type)
+          ? this.handlers[initialJob.type]
+          : undefined;
+        if (!handler) {
+          await this.queue.fail(currentJob, {
+            error: "HANDLER_NOT_REGISTERED",
+            retryable: false,
+            now: this.clock(),
+          });
+          return "dead";
+        }
 
-      const context: JobExecutionContext = {
-        workspaceId: initialJob.workspaceId,
-        jobId: initialJob.id,
-        attempt: initialJob.attempts,
-        maxAttempts: initialJob.maxAttempts,
-        lease: initialJob.lease,
-        signal: controller.signal,
-        providerCalls: new PostgresProviderCallCoordinator(this.tenantDatabase, {
+        const context: JobExecutionContext = {
           workspaceId: initialJob.workspaceId,
           jobId: initialJob.id,
-          workerId: this.workerId,
-          clock: this.clock,
-        }),
-        now: this.clock,
-        audit: async (action, metadata = {}) => {
-          const normalizedAction = safeErrorCode(action, "worker.audit.invalid_action");
-          await withWorkerTransaction(this.tenantDatabase, async (transaction) => {
-            await transaction.query(
-              `insert into audit_events
-                 (workspace_id, action, entity_type, entity_id, request_id, metadata)
-               values ($1, $2, 'job', $3, $4, $5::jsonb)`,
-              [
-                initialJob.workspaceId,
-                normalizedAction,
-                initialJob.id,
-                this.workerId,
-                JSON.stringify(metadata),
-              ],
-            );
-          }, initialJob.workspaceId);
-        },
-      };
-      const runtimeHandler = handler as unknown as JobHandler;
-      let result: JobHandlerResult;
-      try {
-        result = await runtimeHandler(
-          {
-            id: initialJob.id,
+          attempt: initialJob.attempts,
+          maxAttempts: initialJob.maxAttempts,
+          lease: initialJob.lease,
+          signal: controller.signal,
+          providerCalls: new PostgresProviderCallCoordinator(this.tenantDatabase, {
             workspaceId: initialJob.workspaceId,
-            type: initialJob.type,
-            payload: initialJob.payload,
-            idempotencyKey: initialJob.idempotencyKey,
-            attempt: initialJob.attempts,
-            maxAttempts: initialJob.maxAttempts,
+            jobId: initialJob.id,
+            workerId: this.workerId,
+            clock: this.clock,
+          }),
+          now: this.clock,
+          audit: async (action, metadata = {}) => {
+            const normalizedAction = safeErrorCode(action, "worker.audit.invalid_action");
+            await withWorkerTransaction(this.tenantDatabase, async (transaction) => {
+              await transaction.query(
+                `insert into audit_events
+                   (workspace_id, action, entity_type, entity_id, request_id, metadata)
+                 values ($1, $2, 'job', $3, $4, $5::jsonb)`,
+                [
+                  initialJob.workspaceId,
+                  normalizedAction,
+                  initialJob.id,
+                  this.workerId,
+                  JSON.stringify(metadata),
+                ],
+              );
+            }, initialJob.workspaceId);
           },
-          context,
-        );
-      } catch {
+        };
+        const runtimeHandler = handler as unknown as JobHandler;
+        let result: JobHandlerResult;
+        try {
+          result = await runtimeHandler(
+            {
+              id: initialJob.id,
+              workspaceId: initialJob.workspaceId,
+              type: initialJob.type,
+              payload: initialJob.payload,
+              idempotencyKey: initialJob.idempotencyKey,
+              attempt: initialJob.attempts,
+              maxAttempts: initialJob.maxAttempts,
+            },
+            context,
+          );
+        } catch {
+          if (leaseLost) return "leaseLost";
+          const now = this.clock();
+          await this.queue.fail(currentJob, {
+            error: controller.signal.aborted ? "WORKER_SHUTDOWN" : "HANDLER_EXCEPTION",
+            retryable: true,
+            retryAt: controller.signal.aborted ? now : this.retryAt(initialJob.attempts, now),
+            now,
+          });
+          return "retryable";
+        }
+
         if (leaseLost) return "leaseLost";
+        if (controller.signal.aborted) {
+          await this.queue.fail(currentJob, {
+            error: "WORKER_SHUTDOWN",
+            retryable: true,
+            now: this.clock(),
+          });
+          return "retryable";
+        }
+        if (result.status === "succeeded") {
+          await this.queue.succeed(currentJob, { metadata: result.metadata, now: this.clock() });
+          return "succeeded";
+        }
+        const retryable = result.status === "retryable";
         const now = this.clock();
-        await this.queue.fail(currentJob, {
-          error: controller.signal.aborted ? "WORKER_SHUTDOWN" : "HANDLER_EXCEPTION",
-          retryable: true,
-          retryAt: controller.signal.aborted ? now : this.retryAt(initialJob.attempts, now),
+        const retryAt = result.status === "retryable"
+          ? (result.retryAt ?? this.retryAt(initialJob.attempts, now))
+          : undefined;
+        const failed = await this.queue.fail(currentJob, {
+          error: safeErrorCode(result.error, retryable ? "HANDLER_RETRYABLE" : "HANDLER_DEAD"),
+          retryable,
+          retryAt,
           now,
         });
-        return "retryable";
+        return failed.status === "dead" ? "dead" : "retryable";
+      } catch (error) {
+        if (isLeaseLost(error)) return "leaseLost";
+        throw error;
       }
+    };
 
-      if (leaseLost) return "leaseLost";
-      if (controller.signal.aborted) {
-        await this.queue.fail(currentJob, {
-          error: "WORKER_SHUTDOWN",
-          retryable: true,
-          now: this.clock(),
-        });
-        return "retryable";
-      }
-      if (result.status === "succeeded") {
-        await this.queue.succeed(currentJob, { metadata: result.metadata, now: this.clock() });
-        return "succeeded";
-      }
-      const retryable = result.status === "retryable";
-      const now = this.clock();
-      const retryAt = result.status === "retryable"
-        ? (result.retryAt ?? this.retryAt(initialJob.attempts, now))
-        : undefined;
-      const failed = await this.queue.fail(currentJob, {
-        error: safeErrorCode(result.error, retryable ? "HANDLER_RETRYABLE" : "HANDLER_DEAD"),
-        retryable,
-        retryAt,
-        now,
+    try {
+      if (!this.executionScope) return await executeActive();
+      return await this.executionScope.execute({
+        workspaceId: initialJob.workspaceId,
+        active: executeActive,
+        blocked: async (state) => {
+          try {
+            await this.queue.succeed(currentJob, {
+              metadata: {
+                privacyFenceDisposition: "skipped",
+                privacyWorkspaceState: state,
+              },
+              now: this.clock(),
+            });
+            return "succeeded";
+          } catch (error) {
+            if (isLeaseLost(error)) return "leaseLost";
+            throw error;
+          }
+        },
       });
-      return failed.status === "dead" ? "dead" : "retryable";
-    } catch (error) {
-      if (isLeaseLost(error)) return "leaseLost";
-      throw error;
     } finally {
       heartbeatStop.abort();
       await heartbeat;

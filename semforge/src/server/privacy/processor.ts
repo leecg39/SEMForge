@@ -107,7 +107,7 @@ const productionStorageKeys = [
 ] as const;
 
 export interface PrivacyRetentionProcessorClient {
-  deleteObject(input: { workspaceId: string; storageKey: string }): Promise<void>;
+  deleteWorkspaceObjects(input: { workspaceId: string }): Promise<void>;
 }
 
 function createProductionVersionedStorage(options: {
@@ -139,9 +139,9 @@ export function createProductionPrivacyRetentionProcessor(options: {
     ...(options.fetch ? { fetch: options.fetch } : {}),
   });
   return {
-    async deleteObject(input): Promise<void> {
+    async deleteWorkspaceObjects(input): Promise<void> {
       try {
-        await storage.eraseAllVersions(input.storageKey);
+        await storage.eraseWorkspaceReportVersions(input.workspaceId);
       } catch {
         throw new PrivacyProcessorError("PRIVACY_OBJECT_DELETE_FAILED");
       }

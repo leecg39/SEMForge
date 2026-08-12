@@ -157,10 +157,7 @@ test("retention processor는 APP_SECRET 없이 S3 version erasure만 구성한�
     },
   });
 
-  await processor.deleteObject({
-    workspaceId,
-    storageKey: "reports/workspace/restored.pdf",
-  });
+  await processor.deleteWorkspaceObjects({ workspaceId });
 
   assert.equal(requests.length, 2);
   assert.ok(requests.every((request) => /versions=/u.test(request.url)));
