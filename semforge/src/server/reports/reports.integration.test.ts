@@ -14,6 +14,11 @@ import {
   createBillingAccessAuthorizer,
   type BillingAccessAuthorizer,
 } from "@/server/billing/access";
+import {
+  createRuntimeWorkspacePrivacyOperationGuard,
+  WorkspacePrivacyOperationBlockedError,
+  type WorkspacePrivacyOperationGuard,
+} from "@/server/privacy/operation";
 import { createReportsRouteHandlers } from "@/server/reports/routes";
 import {
   generateWeeklyReport,
@@ -30,6 +35,12 @@ const allowBillingAccess: BillingAccessAuthorizer = async () => ({
   reason: "active",
   reportPeriodEndBefore: null,
 });
+
+const allowPrivacyOperation: WorkspacePrivacyOperationGuard = {
+  async withShared(_workspaceId, operation) {
+    return operation(pg);
+  },
+};
 
 before(async () => {
   await pg.waitReady;
@@ -156,6 +167,7 @@ test("GET reports API는 session workspace envelope만 반환하고 다른 tenan
   const ownerHandlers = createReportsRouteHandlers({
     db: pg,
     authorizeBilling: allowBillingAccess,
+    privacyOperation: allowPrivacyOperation,
     resolveSession: async () => ({
       workspaceId: owner.workspaceId,
       userId,
@@ -198,6 +210,7 @@ test("GET reports API는 session workspace envelope만 반환하고 다른 tenan
   const attackerHandlers = createReportsRouteHandlers({
     db: pg,
     authorizeBilling: allowBillingAccess,
+    privacyOperation: allowPrivacyOperation,
     resolveSession: async () => ({
       workspaceId: attacker.workspaceId,
       userId,
@@ -239,6 +252,7 @@ test("past_due grace report 목록은 SQL/pagination에서 현재 기간을 제�
   const handlers = createReportsRouteHandlers({
     db: pg,
     authorizeBilling,
+    privacyOperation: allowPrivacyOperation,
     resolveSession: async () => ({
       workspaceId: tenant.workspaceId,
       userId,
@@ -277,6 +291,7 @@ test("billing-only report detail은 tenant 실제 report를 먼저 load해 외�
   let authorizations = 0;
   const handlers = createReportsRouteHandlers({
     db: pg,
+    privacyOperation: allowPrivacyOperation,
     authorizeBilling: async () => {
       authorizations += 1;
       return {
@@ -314,6 +329,7 @@ test("past_due scope에 실제 currentPeriodStart cutoff가 없으면 report 목
   await generateWeeklyReport(pg, { ...tenant, cycleMonday: "2026-07-27" });
   const handlers = createReportsRouteHandlers({
     db: pg,
+    privacyOperation: allowPrivacyOperation,
     authorizeBilling: async () => ({
       allowed: false,
       mode: "past_reports_only",
@@ -336,4 +352,132 @@ test("past_due scope에 실제 currentPeriodStart cutoff가 없으면 report 목
   const envelope = await response.json() as { data: null; error: { code: string } };
   assert.equal(envelope.data, null);
   assert.equal(envelope.error.code, "FORBIDDEN");
+});
+
+test("blocking workspace report 목록은 report DB와 billing delegate를 호출하지 않고 409다", async () => {
+  let reportQueries = 0;
+  let billingCalls = 0;
+  let privacyGuardCalls = 0;
+  const privacyOperation: WorkspacePrivacyOperationGuard = {
+    async withShared() {
+      privacyGuardCalls += 1;
+      throw new WorkspacePrivacyOperationBlockedError("blocking");
+    },
+  };
+  const handlers = createReportsRouteHandlers({
+    db: {
+      async query<T>() {
+        reportQueries += 1;
+        return { rows: [] as T[] };
+      },
+    },
+    authorizeBilling: async () => {
+      billingCalls += 1;
+      return allowBillingAccess({ workspaceId: ids(1).workspaceId, capability: "report:read" });
+    },
+    privacyOperation,
+    resolveSession: async () => ({
+      workspaceId: ids(1).workspaceId,
+      userId,
+      role: "owner",
+      requestId: "privacy-blocked-report-list",
+    }),
+  });
+
+  const response = await handlers.reports.GET(
+    new Request("https://app.semforge.test/api/v1/reports"),
+    undefined,
+  );
+  assert.equal(response.status, 409);
+  assert.equal((await response.json() as { error: { code: string } }).error.code, "CONFLICT");
+  assert.equal(privacyGuardCalls, 1);
+  assert.equal(reportQueries, 0);
+  assert.equal(billingCalls, 0);
+});
+
+test("erased workspace report 상세는 report DB와 billing delegate를 호출하지 않고 409다", async () => {
+  let reportQueries = 0;
+  let billingCalls = 0;
+  const handlers = createReportsRouteHandlers({
+    db: {
+      async query<T>() {
+        reportQueries += 1;
+        return { rows: [] as T[] };
+      },
+    },
+    authorizeBilling: async () => {
+      billingCalls += 1;
+      return allowBillingAccess({ workspaceId: ids(1).workspaceId, capability: "report:read" });
+    },
+    privacyOperation: {
+      async withShared() {
+        throw new WorkspacePrivacyOperationBlockedError("erased");
+      },
+    },
+    resolveSession: async () => ({
+      workspaceId: ids(1).workspaceId,
+      userId,
+      role: "owner",
+      requestId: "privacy-erased-report-detail",
+    }),
+  });
+
+  const response = await handlers.reportById.GET(
+    new Request("https://app.semforge.test/api/v1/reports/33000000-0000-4000-8000-000000000001"),
+    { params: Promise.resolve({ reportId: "33000000-0000-4000-8000-000000000001" }) },
+  );
+  assert.equal(response.status, 409);
+  assert.equal((await response.json() as { error: { code: string } }).error.code, "CONFLICT");
+  assert.equal(reportQueries, 0);
+  assert.equal(billingCalls, 0);
+});
+
+test("privacy control row 누락은 실제 fence에서 report DB/billing delegate 0회로 fail-closed한다", async () => {
+  let reportQueries = 0;
+  let billingCalls = 0;
+  let released = false;
+  const privacyOperation = createRuntimeWorkspacePrivacyOperationGuard({
+    async connect() {
+      return {
+        async query<T>(text: string) {
+          if (text.includes("pg_advisory_unlock_shared")) {
+            return { rows: [{ unlocked: true }] as T[] };
+          }
+          return { rows: [] as T[] };
+        },
+        release() {
+          released = true;
+        },
+      };
+    },
+  });
+  const handlers = createReportsRouteHandlers({
+    db: {
+      async query<T>() {
+        reportQueries += 1;
+        return { rows: [] as T[] };
+      },
+    },
+    authorizeBilling: async () => {
+      billingCalls += 1;
+      return allowBillingAccess({ workspaceId: ids(1).workspaceId, capability: "report:read" });
+    },
+    privacyOperation,
+    resolveSession: async () => ({
+      workspaceId: ids(1).workspaceId,
+      userId,
+      role: "owner",
+      requestId: "privacy-control-missing",
+    }),
+  });
+
+  const response = await handlers.reports.GET(
+    new Request("https://app.semforge.test/api/v1/reports"),
+    undefined,
+  );
+  assert.equal(response.status, 409);
+  assert.equal((await response.json() as { error: { code: string } }).error.code, "CONFLICT");
+  assert.equal(reportQueries, 0);
+  assert.equal(billingCalls, 0);
+  assert.equal(released, true);
 });

@@ -6,6 +6,11 @@ import {
   type ApiSessionResolver,
 } from "@/server/auth/api-session";
 import type { BillingAccessAuthorizer } from "@/server/billing/access";
+import {
+  missingWorkspacePrivacyOperationGuard,
+  WorkspacePrivacyOperationBlockedError,
+  type WorkspacePrivacyOperationGuard,
+} from "@/server/privacy/operation";
 import { ReportDeliveryStoreError, type ReportAccessStore } from "@/server/reports/delivery/store";
 import { snapshotSha256 } from "@/server/reports/rendering/html";
 import type { PrivateObjectStorage } from "@/server/storage/s3";
@@ -15,6 +20,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 export interface ReportPdfDownloadDependencies {
   readonly resolveSession?: ApiSessionResolver;
   readonly authorizeBilling: BillingAccessAuthorizer;
+  readonly privacyOperation?: WorkspacePrivacyOperationGuard;
   readonly store: ReportAccessStore;
   readonly storage: Pick<PrivateObjectStorage, "createSignedGetUrl">;
 }
@@ -25,39 +31,49 @@ export function createReportPdfDownloadRouteHandler(
   dependencies: ReportPdfDownloadDependencies,
 ) {
   const resolveSession = dependencies.resolveSession ?? resolveApiSession;
+  const privacyOperation =
+    dependencies.privacyOperation ?? missingWorkspacePrivacyOperationGuard;
   return withApiV1(async (request, context: ReportParamsContext) => {
     const session = await resolveSession(request);
     const { reportId } = await context.params;
     if (!UUID.test(reportId)) throw new ApiError("NOT_FOUND");
     try {
-      const report = await dependencies.store.loadReportForAccess({
-        workspaceId: session.workspaceId,
-        reportId,
-      });
-      const access = await dependencies.authorizeBilling({
-        workspaceId: session.workspaceId,
-        capability: "report:read",
-        reportPeriodEnd: new Date(`${report.periodEnd}T00:00:00.000Z`),
-      });
-      if (!access.allowed) throw new ApiError("FORBIDDEN");
-      const hash = snapshotSha256(report.snapshot);
-      const storageKey = `reports/${session.workspaceId}/${reportId}/${hash}.pdf`;
-      const asset = await dependencies.store.findPdfAsset({
-        workspaceId: session.workspaceId,
-        reportId,
-        storageKey,
-      });
-      if (!asset) throw new ApiError("NOT_FOUND");
-      const signed = await dependencies.storage.createSignedGetUrl(asset.storageKey, {
-        expiresInSeconds: 60,
-      });
-      return apiSuccess({
-        url: signed.url,
-        expiresAt: signed.expiresAt.toISOString(),
-        snapshotSha256: hash,
-      });
+      return apiSuccess(await privacyOperation.withShared(
+        session.workspaceId,
+        async () => {
+          const report = await dependencies.store.loadReportForAccess({
+            workspaceId: session.workspaceId,
+            reportId,
+          });
+          const access = await dependencies.authorizeBilling({
+            workspaceId: session.workspaceId,
+            capability: "report:read",
+            reportPeriodEnd: new Date(`${report.periodEnd}T00:00:00.000Z`),
+          });
+          if (!access.allowed) throw new ApiError("FORBIDDEN");
+          const hash = snapshotSha256(report.snapshot);
+          const storageKey = `reports/${session.workspaceId}/${reportId}/${hash}.pdf`;
+          const asset = await dependencies.store.findPdfAsset({
+            workspaceId: session.workspaceId,
+            reportId,
+            storageKey,
+          });
+          if (!asset) throw new ApiError("NOT_FOUND");
+          const signed = await dependencies.storage.createSignedGetUrl(asset.storageKey, {
+            expiresInSeconds: 60,
+          });
+          return {
+            url: signed.url,
+            expiresAt: signed.expiresAt.toISOString(),
+            snapshotSha256: hash,
+          };
+        },
+      ));
     } catch (error) {
       if (error instanceof ApiError) throw error;
+      if (error instanceof WorkspacePrivacyOperationBlockedError) {
+        throw new ApiError("CONFLICT");
+      }
       if (error instanceof ReportDeliveryStoreError && error.code === "NOT_FOUND") {
         throw new ApiError("NOT_FOUND");
       }

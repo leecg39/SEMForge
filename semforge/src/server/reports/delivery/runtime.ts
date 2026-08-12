@@ -3,6 +3,7 @@
 import { getPool } from "@/db/client";
 import { getServerEnv, type ServerEnv } from "@/lib/env";
 import { createRuntimeBillingAccessAuthorizer } from "@/server/billing/access";
+import { createRuntimeWorkspacePrivacyOperationGuard } from "@/server/privacy/operation";
 import {
   createReportEmailDeliveryJobHandler,
   createReportPdfRenderJobHandler,
@@ -90,6 +91,7 @@ export function createRuntimeReportPdfDownloadRouteHandler() {
   const env = getServerEnv();
   return createReportPdfDownloadRouteHandler({
     authorizeBilling: createRuntimeBillingAccessAuthorizer(),
+    privacyOperation: createRuntimeWorkspacePrivacyOperationGuard(),
     store: new PostgresReportDeliveryStore(
       getPool("web") as unknown as DeliverySqlSource,
     ),

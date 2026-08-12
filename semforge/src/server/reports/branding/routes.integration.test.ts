@@ -301,6 +301,7 @@ test("브랜딩 변경은 현재 workspace에만 반영되고 이미 생성된 r
   const reports = createReportsRouteHandlers({
     db: pg,
     authorizeBilling: allowBillingAccess,
+    privacyOperation: allowPrivacyOperation,
     resolveSession: async () => ({
       workspaceId,
       userId,
