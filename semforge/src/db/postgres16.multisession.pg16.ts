@@ -17,7 +17,10 @@ import {
   type JobHandlerInput,
 } from "@/server/jobs/contracts";
 import { createPostgresBillingStore } from "@/server/billing/postgres-store";
-import { PostgresPasswordResetEmailSuppressionPolicy } from "@/server/auth/password-reset-email";
+import {
+  PostgresPasswordResetEmailStore,
+  PostgresPasswordResetEmailSuppressionPolicy,
+} from "@/server/auth/password-reset-email";
 import { createBillingAccessGuardedJobHandler } from "@/worker/billing-gate";
 import { createInsightRouteHandlers } from "@/server/insights/routes";
 import {
@@ -689,6 +692,14 @@ test("PostgreSQL 16 실제 tenant billing role은 설정된 workspace만 허용�
 // @SPEC docs/ops/privacy-erasure-runbook.md
 test("PostgreSQL 16 password reset delivery fence는 worker 역할로 suppression을 읽고 dispatcher 역할을 거부한다", async () => {
   const workspaceId = "f5f00000-0000-4000-8000-000000000001";
+  const jobId = "f5f00000-0000-4000-8000-000000000002";
+  const resetId = "f5f00000-0000-4000-8000-000000000003";
+  const encrypted = {
+    kind: "password_reset",
+    resetId,
+    encryptedDelivery: "enc:v1:test:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAA:YWJj",
+    expiresAt: "2030-08-12T06:00:00.000Z",
+  };
   const worker = new Pool({ connectionString: roleDatabaseUrl("semforge_worker"), max: 1, ssl: false });
   const dispatcher = new Pool({ connectionString: roleDatabaseUrl("semforge_dispatcher"), max: 1, ssl: false });
   const auth = new Pool({ connectionString: roleDatabaseUrl("semforge_auth"), max: 1, ssl: false });
@@ -696,18 +707,59 @@ test("PostgreSQL 16 password reset delivery fence는 worker 역할로 suppressio
     "insert into workspaces (id, name, slug) values ($1, 'Reset fence role', 'reset-fence-role')",
     [workspaceId],
   );
+  await pool.query(
+    `insert into jobs (id, workspace_id, type, payload, idempotency_key)
+     values ($1, $2, 'email.password_reset', $3::jsonb, $4)`,
+    [jobId, workspaceId, JSON.stringify(encrypted), `outbox:email.password_reset:password-reset:${resetId}`],
+  );
+  await pool.query(
+    `insert into outbox (workspace_id, topic, payload, idempotency_key)
+     values ($1, 'email.password_reset', $2::jsonb, $3)`,
+    [workspaceId, JSON.stringify(encrypted), `password-reset:${resetId}`],
+  );
   try {
     const workerPolicy = new PostgresPasswordResetEmailSuppressionPolicy({
       identityDatabase: auth,
       tenantDatabase: worker,
       deliveryFenceDatabase: worker,
     });
+    const dispatcherStore = new PostgresPasswordResetEmailStore(dispatcher);
     const result = await workerPolicy.withDeliveryFence(
       { workspaceId, recipient: "reset-role@example.test" },
-      async (_database, state) => state,
+      async (_workerDatabase, state) => {
+        await dispatcherStore.scrub({
+          workspaceId,
+          jobId,
+          resetId,
+          state: "delivered",
+          scrubbedAt: new Date("2026-08-12T06:00:00.000Z"),
+          providerMessageId: "pg16-resend-id",
+        });
+        return { ...state, scrubbed: true };
+      },
     );
-    assert.deepEqual(result, { suppressed: false });
+    assert.deepEqual(result, { suppressed: false, scrubbed: true });
+    const payload = await pool.query<{ payload: Record<string, unknown> }>(
+      "select payload from jobs where id = $1",
+      [jobId],
+    );
+    assert.equal(payload.rows[0]?.payload.kind, "password_reset_scrubbed");
 
+    const workerClient = await worker.connect();
+    try {
+      await workerClient.query("begin");
+      await workerClient.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
+      await assert.rejects(
+        workerClient.query(
+          "select scrub_password_reset_delivery($1, $2, $3, 'delivered', now(), 'worker-must-not-scrub')",
+          [workspaceId, jobId, resetId],
+        ),
+        /permission denied for function scrub_password_reset_delivery/i,
+      );
+      await workerClient.query("rollback");
+    } finally {
+      workerClient.release();
+    }
     const dispatcherPolicy = new PostgresPasswordResetEmailSuppressionPolicy({
       identityDatabase: auth,
       tenantDatabase: worker,

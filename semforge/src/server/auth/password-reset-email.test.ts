@@ -393,7 +393,7 @@ test("suppression 조회 장애는 fail-open 발송 없이 retryable로 남긴�
   assert.equal(sendCalls, 0);
 });
 
-test("password reset delivery fence는 shared recipient lock부터 suppression 재확인·Resend·scrub commit까지 같은 connection에 고정한다", async () => {
+test("password reset delivery fence는 worker lock을 유지한 채 dispatcher scrub을 별도 commit한다", async () => {
   const secondWorkspaceId = "81000000-0000-4000-8000-000000000005";
   const events: string[] = [];
   let activeWorkspace = "";
@@ -415,10 +415,6 @@ test("password reset delivery fence는 shared recipient lock부터 suppression �
       if (text.includes("from email_suppressions")) {
         events.push(`suppression:${activeWorkspace}:${values?.[1]}`);
         return { rows: [{ suppressed: false }] as T[] };
-      }
-      if (text.includes("scrub_password_reset_delivery")) {
-        events.push(`scrub:${activeWorkspace}:${values?.[3]}:${values?.[5]}`);
-        return { rows: [{ scrubbed: true }] as T[] };
       }
       throw new Error(`unexpected query: ${text}`);
     },
@@ -449,7 +445,10 @@ test("password reset delivery fence는 shared recipient lock부터 suppression �
       },
     },
     store: new PostgresPasswordResetEmailStore({
-      async query() { throw new Error("default scrub pool must not be used"); },
+      async query<T = unknown>(_text: string, values?: readonly unknown[]) {
+        events.push(`dispatcher-scrub:${values?.[0]}:${values?.[3]}:${values?.[5]}`);
+        return { rows: [{ scrubbed: true }] as T[] };
+      },
     }),
   });
 
@@ -470,13 +469,13 @@ test("password reset delivery fence는 shared recipient lock부터 suppression �
     `suppression:${secondWorkspaceId}:${expectedHash}`,
     `tenant:${workspaceId}`,
     `send:owner@example.com:password-reset:${resetId}`,
-    `scrub:${workspaceId}:delivered:resend-fenced-message`,
+    `dispatcher-scrub:${workspaceId}:delivered:resend-fenced-message`,
     "commit",
     "release",
   ]);
 });
 
-test("password reset delivery fence는 lock 내부 suppression 발견 시 Resend 0회로 terminal scrub을 같은 transaction에서 commit한다", async () => {
+test("password reset delivery fence는 lock 내부 suppression 발견 시 Resend 0회·dispatcher terminal scrub 후 commit한다", async () => {
   const secondWorkspaceId = "81000000-0000-4000-8000-000000000005";
   const events: string[] = [];
   let activeWorkspace = "";
@@ -498,10 +497,6 @@ test("password reset delivery fence는 lock 내부 suppression 발견 시 Resend
       if (text.includes("from email_suppressions")) {
         events.push(`suppression:${activeWorkspace}`);
         return { rows: [{ suppressed: activeWorkspace === secondWorkspaceId }] as T[] };
-      }
-      if (text.includes("scrub_password_reset_delivery")) {
-        events.push(`scrub:${activeWorkspace}:${values?.[3]}`);
-        return { rows: [{ scrubbed: true }] as T[] };
       }
       throw new Error(`unexpected query: ${text}`);
     },
@@ -533,7 +528,10 @@ test("password reset delivery fence는 lock 내부 suppression 발견 시 Resend
       },
     },
     store: new PostgresPasswordResetEmailStore({
-      async query() { throw new Error("default scrub pool must not be used"); },
+      async query<T = unknown>(_text: string, values?: readonly unknown[]) {
+        events.push(`dispatcher-scrub:${values?.[0]}:${values?.[3]}`);
+        return { rows: [{ scrubbed: true }] as T[] };
+      },
     }),
   });
 
@@ -553,7 +551,7 @@ test("password reset delivery fence는 lock 내부 suppression 발견 시 Resend
     `tenant:${secondWorkspaceId}`,
     `suppression:${secondWorkspaceId}`,
     `tenant:${workspaceId}`,
-    `scrub:${workspaceId}:rejected`,
+    `dispatcher-scrub:${workspaceId}:rejected`,
     "commit",
     "release",
   ]);

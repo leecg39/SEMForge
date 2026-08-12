@@ -263,14 +263,14 @@ export function createPasswordResetEmailJobHandler(
         return await dependencies.suppression.withDeliveryFence({
           workspaceId: job.workspaceId,
           recipient: delivery.email,
-        }, (database, state) => state.suppressed
+        }, (_database, state) => state.suppressed
           ? terminalAfterScrub(
             "rejected",
             "PASSWORD_RESET_EMAIL_SUPPRESSED",
-            database,
+            undefined,
             true,
           )
-          : sendAndScrub(database));
+          : sendAndScrub());
       }
       if (await dependencies.suppression.isSuppressed({
         workspaceId: job.workspaceId,
