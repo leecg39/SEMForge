@@ -55,6 +55,8 @@ All commands below were run from the app root with Node 24 on `PATH`.
   - Result: `No schema changes, nothing to migrate`.
 - `git diff --check -- . ':(exclude).omo/evidence/**'`
   - Result: passed.
+- `git diff --check origin/codex/paid-beta-core...HEAD -- . ':(exclude).omo/evidence/**'`
+  - Result: passed after normalizing trailing whitespace in generated third-party notices.
 
 ## Remaining launch gates
 

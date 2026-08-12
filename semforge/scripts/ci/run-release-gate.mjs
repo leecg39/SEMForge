@@ -60,6 +60,8 @@ function assertNode24() {
   }
 }
 
+const releaseDiffBase = process.env.SEMFORGE_RELEASE_DIFF_BASE ?? "origin/codex/paid-beta-core";
+
 export const defaultSteps = [
   ["node-version", process.execPath, ["-v"]],
   ["npm-verify", "npm", ["run", "verify"]], // npm run verify
@@ -70,6 +72,7 @@ export const defaultSteps = [
   ["db-generate", "npm", ["run", "db:generate"]], // npm run db:generate
   ["generated-diff", "git", ["diff", "--exit-code", "--", "src/db/migrations", "src/db/schema", "THIRD_PARTY_NOTICES.md", "package.json", "package-lock.json"]], // git diff --exit-code
   ["source-diff-check", "git", ["diff", "--check", "--", ".", ":(exclude).omo/evidence/**"]], // git diff --check
+  ["range-source-diff-check", "git", ["diff", "--check", `${releaseDiffBase}...HEAD`, "--", ".", ":(exclude).omo/evidence/**"]], // git diff --check release range
   ["route-manifest", "npm", ["run", "ci:route-manifest"]], // npm run ci:route-manifest
   ["forbidden-surface", "npm", ["run", "ci:forbidden-surface"]], // npm run ci:forbidden-surface
   ["pg16", "npm", ["run", "ci:pg16"]], // npm run ci:pg16

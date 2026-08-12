@@ -36,6 +36,8 @@ test("release gate runner는 필수 검증 단계와 evidence 산출물을 선�
     "npm run db:generate",
     "git diff --exit-code",
     "git diff --check",
+    "range-source-diff-check",
+    "SEMFORGE_RELEASE_DIFF_BASE",
     "npm run ci:route-manifest",
     "npm run ci:forbidden-surface",
     "npm run ci:pg16",
@@ -75,6 +77,8 @@ test("GitHub Actions workflow는 Node 24, PostgreSQL 16, Chromium을 release gat
   assert.match(workflow, /CHROMIUM_EXECUTABLE_PATH/);
   assert.match(workflow, /working-directory:\s*semforge/);
   assert.match(workflow, /cache-dependency-path:\s*semforge\/package-lock\.json/);
+  assert.match(workflow, /fetch-depth:\s*0/);
+  assert.match(workflow, /SEMFORGE_RELEASE_DIFF_BASE:\s*origin\/codex\/paid-beta-core/);
   assert.match(workflow, /path:\s*semforge\/\.omo\/evidence\/phase5-ci\/latest/);
   assert.match(workflow, /npm run ci:release-gate/);
   assert.doesNotMatch(workflow, /postgres:\/\/semforge/u);
@@ -124,13 +128,68 @@ test("release gate runner는 generated notice/schema drift가 생기면 실패�
       });
 
       assert.equal(summary.status, "failed");
-      assert.equal(summary.failedStep, "generated-diff");
+      const failedStep = summary.failedStep ?? summary.steps?.find((step) => !step.ok)?.name;
+      assert.equal(failedStep, "generated-diff", JSON.stringify(summary));
       assert.equal(summary.steps?.find((step) => step.name === "generated-diff")?.ok, false);
       const persisted = JSON.parse(
         fs.readFileSync(path.join(temp, ".omo", "evidence", "phase5-ci", "latest", "summary.json"), "utf8"),
       ) as { status: string; failedStep?: string };
       assert.equal(persisted.status, "failed");
       assert.equal(persisted.failedStep, "generated-diff");
+    },
+  );
+});
+
+test("release gate runner는 커밋된 release-range whitespace도 실패시킨다", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "semforge-release-range-"));
+  fs.writeFileSync(path.join(temp, "source.txt"), "clean\n");
+  fs.mkdirSync(path.join(temp, ".omo", "evidence"), { recursive: true });
+  execFileSync("git", ["init"], { cwd: temp, stdio: "ignore" });
+  execFileSync("git", ["add", "."], { cwd: temp, stdio: "ignore" });
+  execFileSync(
+    "git",
+    ["-c", "user.email=test@example.invalid", "-c", "user.name=Test", "commit", "-m", "base"],
+    { cwd: temp, stdio: "ignore" },
+  );
+  execFileSync(
+    "git",
+    ["update-ref", "refs/remotes/origin/codex/paid-beta-core", "HEAD"],
+    { cwd: temp, stdio: "ignore" },
+  );
+  fs.writeFileSync(path.join(temp, "source.txt"), "committed trailing whitespace \n");
+  fs.writeFileSync(path.join(temp, ".omo", "evidence", "ignored.log"), "evidence trailing whitespace \n");
+  execFileSync("git", ["add", "."], { cwd: temp, stdio: "ignore" });
+  execFileSync(
+    "git",
+    ["-c", "user.email=test@example.invalid", "-c", "user.name=Test", "commit", "-m", "range whitespace"],
+    { cwd: temp, stdio: "ignore" },
+  );
+
+  return import(pathToFileURL(path.join(projectRoot, "scripts/ci/run-release-gate.mjs")).href).then(
+    async ({ runReleaseGate }: {
+      runReleaseGate: (options: {
+        projectRoot: string;
+        steps: Array<[string, string, string[]]>;
+      }) => Promise<{ status: string; failedStep?: string; steps?: Array<{ name: string; ok: boolean }> }>;
+    }) => {
+      const summary = await runReleaseGate({
+        projectRoot: temp,
+        steps: [
+          ["range-source-diff-check", "git", [
+            "diff",
+            "--check",
+            "origin/codex/paid-beta-core...HEAD",
+            "--",
+            ".",
+            ":(exclude).omo/evidence/**",
+          ]],
+        ],
+      });
+
+      assert.equal(summary.status, "failed");
+      const failedStep = summary.failedStep ?? summary.steps?.find((step) => !step.ok)?.name;
+      assert.equal(failedStep, "range-source-diff-check", JSON.stringify(summary));
+      assert.equal(summary.steps?.find((step) => step.name === "range-source-diff-check")?.ok, false);
     },
   );
 });
