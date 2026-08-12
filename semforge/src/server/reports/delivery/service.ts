@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 
 import type {
+  ReportEmailDeliveryTransaction,
   ReportDeliveryStore,
   ReportPdfAsset,
 } from "@/server/reports/delivery/store";
@@ -136,9 +137,21 @@ export function createReportDeliveryService(
 
   const ensurePdf: ReportDeliveryService["ensurePdf"] = async (input) => {
     requireIds(input.workspaceId, input.reportId);
+    return ensurePdfWithStore(options.store, input);
+  };
+
+  const ensurePdfWithStore = async (
+    store: Pick<ReportDeliveryStore, "findPdfAsset" | "savePdfAsset"> | ReportEmailDeliveryTransaction,
+    input: {
+      workspaceId: string;
+      reportId: string;
+      snapshot: WeeklyReportSnapshot;
+    },
+  ): ReturnType<ReportDeliveryService["ensurePdf"]> => {
+    requireIds(input.workspaceId, input.reportId);
     const hash = snapshotSha256(input.snapshot);
     const storageKey = `reports/${input.workspaceId}/${input.reportId}/${hash}.pdf`;
-    const existing = await options.store.findPdfAsset({ ...input, storageKey });
+    const existing = await store.findPdfAsset({ ...input, storageKey });
     if (existing) {
       const pdf = await options.storage.getPrivate(existing.storageKey);
       if (pdf.byteLength !== existing.sizeBytes || digest(pdf) !== existing.checksumSha256) {
@@ -171,7 +184,7 @@ export function createReportDeliveryService(
       digest(persistedPdf) !== stored.checksumSha256 ||
       Buffer.from(persistedPdf).subarray(0, 5).toString("ascii") !== "%PDF-"
     ) throw new ReportDeliveryError("PDF_ERROR");
-    const asset = await options.store.savePdfAsset({
+    const asset = await store.savePdfAsset({
       workspaceId: input.workspaceId,
       reportId: input.reportId,
       storageKey,
@@ -200,72 +213,83 @@ export function createReportDeliveryService(
       })) {
         throw new ReportDeliveryError("EMAIL_SUPPRESSED");
       }
-      const recipientHash = digest(recipient).slice(0, 32);
-      const idempotencyKey = `report-email:${input.reportId}:${recipientHash}`;
-      const prepared = await options.store.prepareEmail({
+      const recipientHash = digest(recipient);
+      const idempotencyRecipientHash = recipientHash.slice(0, 32);
+      const idempotencyKey = `report-email:${input.reportId}:${idempotencyRecipientHash}`;
+      const result = await options.store.withEmailDeliveryFence({
         workspaceId: input.workspaceId,
         reportId: input.reportId,
         recipient,
+        recipientHash,
         idempotencyKey,
         now: clock(),
+      }, async (prepared, transaction) => {
+        const hash = snapshotSha256(prepared.snapshot);
+        if (clock().getTime() - prepared.createdAt.getTime() > 23 * 60 * 60 * 1000) {
+          await transaction.markEmailFailed({
+            workspaceId: input.workspaceId,
+            deliveryId: prepared.id,
+            errorCode: "REPORT_EMAIL_IDEMPOTENCY_EXPIRED",
+          });
+          throw new ReportDeliveryError("EMAIL_IDEMPOTENCY_EXPIRED");
+        }
+        try {
+          const published = await ensurePdfWithStore(transaction, {
+            workspaceId: input.workspaceId,
+            reportId: input.reportId,
+            snapshot: prepared.snapshot,
+          });
+          const reportUrl = new URL(`/app/reports/${encodeURIComponent(input.reportId)}`, appPublicUrl).toString();
+          await options.email.send({
+            recipient,
+            subject: `${prepared.snapshot.brand.name} 주간 검색 성과 리포트`,
+            html: emailHtml(prepared.snapshot, hash, reportUrl),
+            idempotencyKey,
+            snapshotSha256: hash,
+            attachment: {
+              filename: `semforge-report-${prepared.snapshot.period.current.end}.pdf`,
+              content: published.pdf,
+              contentType: "application/pdf",
+            },
+          });
+          await transaction.markEmailDelivered({
+            workspaceId: input.workspaceId,
+            deliveryId: prepared.id,
+            deliveredAt: clock(),
+          });
+          return {
+            status: "delivered" as const,
+            deliveryId: prepared.id,
+            pdfAssetId: published.asset.id,
+            snapshotSha256: hash,
+          };
+        } catch (error) {
+          const providerRejected = error instanceof ReportEmailSenderError &&
+            error.disposition === "rejected";
+          const errorCode = providerRejected
+            ? "REPORT_EMAIL_PROVIDER_REJECTED"
+            : "REPORT_EMAIL_PROVIDER_ERROR";
+          await transaction.markEmailFailed({
+            workspaceId: input.workspaceId,
+            deliveryId: prepared.id,
+            errorCode,
+          });
+          throw new ReportDeliveryError(
+            providerRejected ? "EMAIL_PROVIDER_REJECTED" : "EMAIL_PROVIDER_ERROR",
+          );
+        }
       });
-      const hash = snapshotSha256(prepared.snapshot);
-      if (prepared.alreadyDelivered) {
-        return { status: "already_delivered", deliveryId: prepared.id, snapshotSha256: hash };
+      if (result.disposition === "suppressed") {
+        throw new ReportDeliveryError("EMAIL_SUPPRESSED");
       }
-      if (clock().getTime() - prepared.createdAt.getTime() > 23 * 60 * 60 * 1000) {
-        await options.store.markEmailFailed({
-          workspaceId: input.workspaceId,
-          deliveryId: prepared.id,
-          errorCode: "REPORT_EMAIL_IDEMPOTENCY_EXPIRED",
-        });
-        throw new ReportDeliveryError("EMAIL_IDEMPOTENCY_EXPIRED");
-      }
-      try {
-        const published = await ensurePdf({
-          workspaceId: input.workspaceId,
-          reportId: input.reportId,
-          snapshot: prepared.snapshot,
-        });
-        const reportUrl = new URL(`/app/reports/${encodeURIComponent(input.reportId)}`, appPublicUrl).toString();
-        await options.email.send({
-          recipient,
-          subject: `${prepared.snapshot.brand.name} 주간 검색 성과 리포트`,
-          html: emailHtml(prepared.snapshot, hash, reportUrl),
-          idempotencyKey,
-          snapshotSha256: hash,
-          attachment: {
-            filename: `semforge-report-${prepared.snapshot.period.current.end}.pdf`,
-            content: published.pdf,
-            contentType: "application/pdf",
-          },
-        });
-        await options.store.markEmailDelivered({
-          workspaceId: input.workspaceId,
-          deliveryId: prepared.id,
-          deliveredAt: clock(),
-        });
+      if (result.disposition === "already_delivered") {
         return {
-          status: "delivered",
-          deliveryId: prepared.id,
-          pdfAssetId: published.asset.id,
-          snapshotSha256: hash,
+          status: "already_delivered",
+          deliveryId: result.prepared.id,
+          snapshotSha256: snapshotSha256(result.prepared.snapshot),
         };
-      } catch (error) {
-        const providerRejected = error instanceof ReportEmailSenderError &&
-          error.disposition === "rejected";
-        const errorCode = providerRejected
-          ? "REPORT_EMAIL_PROVIDER_REJECTED"
-          : "REPORT_EMAIL_PROVIDER_ERROR";
-        await options.store.markEmailFailed({
-          workspaceId: input.workspaceId,
-          deliveryId: prepared.id,
-          errorCode,
-        });
-        throw new ReportDeliveryError(
-          providerRejected ? "EMAIL_PROVIDER_REJECTED" : "EMAIL_PROVIDER_ERROR",
-        );
       }
+      return result.value;
     },
   };
 }

@@ -15,7 +15,10 @@ import {
   ReportEmailSenderError,
 } from "@/server/reports/delivery/service";
 import { PostgresReportDeliveryStore } from "@/server/reports/delivery/store";
-import type { ReportDeliveryStore } from "@/server/reports/delivery/store";
+import type {
+  ReportDeliveryStore,
+  ReportEmailDeliveryTransaction,
+} from "@/server/reports/delivery/store";
 import { snapshotSha256 } from "@/server/reports/rendering/html";
 import type { ReportPdfRenderer } from "@/server/reports/rendering/pdf";
 import type {
@@ -116,6 +119,28 @@ class MemoryStorage implements PrivateObjectStorage {
   async createSignedGetUrl(): Promise<SignedObjectUrl> {
     throw new Error("not used");
   }
+}
+
+function passthroughEmailDeliveryFence(
+  store: ReportDeliveryStore,
+): ReportDeliveryStore["withEmailDeliveryFence"] {
+  return async (input, operation) => {
+    const prepared = await store.prepareEmail(input);
+    if (prepared.alreadyDelivered) {
+      return { disposition: "already_delivered", prepared };
+    }
+    const transaction: ReportEmailDeliveryTransaction = {
+      findPdfAsset: (value) => store.findPdfAsset(value),
+      savePdfAsset: (value) => store.savePdfAsset(value),
+      markEmailDelivered: (value) => store.markEmailDelivered(value),
+      markEmailFailed: (value) => store.markEmailFailed(value),
+    };
+    return {
+      disposition: "executed",
+      prepared,
+      value: await operation(prepared, transaction),
+    };
+  };
 }
 
 test("Resend 수락 직후 crash가 나도 retry/duplicate는 같은 snapshot과 idempotency key로 이메일 1건만 만든다", async () => {
@@ -313,6 +338,7 @@ test("object PUT 성공 뒤 DB crash가 나도 immutable snapshot identity로 �
       }
       return baseStore.savePdfAsset(input);
     },
+    withEmailDeliveryFence: passthroughEmailDeliveryFence(baseStore),
   };
   const storage = new MemoryStorage();
   let renders = 0;
@@ -362,6 +388,7 @@ test("복구된 legacy report email job도 suppression을 provider 호출 직전
     async markEmailFailed() { throw new Error("must not mark"); },
     async findPdfAsset() { throw new Error("must not read asset"); },
     async savePdfAsset() { throw new Error("must not save asset"); },
+    async withEmailDeliveryFence() { throw new Error("must not fence"); },
   };
   const service = createReportDeliveryService({
     store,
@@ -386,4 +413,65 @@ test("복구된 legacy report email job도 suppression을 provider 호출 직전
   );
   assert.equal(providerCalls, 0);
   assert.equal(prepared, false);
+});
+
+test("report email은 subject suppression이 초기 확인 뒤 들어오면 provider와 S3를 호출하지 않는다", async () => {
+  let initialSuppressionChecks = 0;
+  let providerCalls = 0;
+  let storagePuts = 0;
+  let prepared = false;
+  const store: ReportDeliveryStore = {
+    async isEmailSuppressed(input) {
+      assert.deepEqual(input, {
+        workspaceId,
+        recipient: "customer@example.test",
+      });
+      initialSuppressionChecks += 1;
+      return false;
+    },
+    async withEmailDeliveryFence(input) {
+      assert.equal(input.workspaceId, workspaceId);
+      assert.equal(input.reportId, reportId);
+      assert.equal(input.recipient, "customer@example.test");
+      assert.equal(
+        input.recipientHash,
+        "06c3645baad7d2fd6661e4dce43692e8b0fc79133fbd1582bad9235e7ea668da",
+      );
+      assert.match(input.idempotencyKey, /^report-email:/u);
+      return { disposition: "suppressed" };
+    },
+    async loadReportSnapshot() { throw new Error("must not load"); },
+    async prepareEmail() { prepared = true; throw new Error("must not prepare outside fence"); },
+    async markEmailDelivered() { throw new Error("must not deliver"); },
+    async markEmailFailed() { throw new Error("must not mark"); },
+    async findPdfAsset() { throw new Error("must not read asset"); },
+    async savePdfAsset() { throw new Error("must not save asset"); },
+  };
+  const storage = new class extends MemoryStorage {
+    override async putPrivate(input: PutPrivateObjectInput) {
+      storagePuts += 1;
+      return super.putPrivate(input);
+    }
+  }();
+  const service = createReportDeliveryService({
+    store,
+    storage,
+    renderer: { async render() { throw new Error("must not render"); } },
+    email: {
+      async send() {
+        providerCalls += 1;
+        return { providerMessageId: "must-not-send" };
+      },
+    },
+    appPublicUrl: "https://app.semforge.example",
+  });
+
+  await assert.rejects(
+    service.deliverEmail({ workspaceId, reportId, recipient: "Customer@Example.test" }),
+    /REPORT_EMAIL_SUPPRESSED/u,
+  );
+  assert.equal(initialSuppressionChecks, 1);
+  assert.equal(prepared, false);
+  assert.equal(providerCalls, 0);
+  assert.equal(storagePuts, 0);
 });

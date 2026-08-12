@@ -34,6 +34,28 @@ export interface ReportPdfAsset {
   readonly sizeBytes: number;
 }
 
+export interface ReportEmailDeliveryTransaction {
+  findPdfAsset(input: { workspaceId: string; reportId: string; storageKey: string }): Promise<ReportPdfAsset | null>;
+  savePdfAsset(input: {
+    workspaceId: string;
+    reportId: string;
+    storageKey: string;
+    checksumSha256: string;
+    sizeBytes: number;
+  }): Promise<ReportPdfAsset>;
+  markEmailDelivered(input: { workspaceId: string; deliveryId: string; deliveredAt: Date }): Promise<void>;
+  markEmailFailed(input: { workspaceId: string; deliveryId: string; errorCode: string }): Promise<void>;
+}
+
+export type ReportEmailDeliveryFenceResult<T> =
+  | { readonly disposition: "suppressed" }
+  | { readonly disposition: "already_delivered"; readonly prepared: PreparedEmailDelivery }
+  | {
+      readonly disposition: "executed";
+      readonly prepared: PreparedEmailDelivery;
+      readonly value: T;
+    };
+
 export interface ReportAccessStore {
   loadReportForAccess(input: { workspaceId: string; reportId: string }): Promise<{
     snapshot: WeeklyReportSnapshot;
@@ -62,6 +84,17 @@ export interface ReportDeliveryStore {
     checksumSha256: string;
     sizeBytes: number;
   }): Promise<ReportPdfAsset>;
+  withEmailDeliveryFence<T>(input: {
+    workspaceId: string;
+    reportId: string;
+    recipient: string;
+    recipientHash: string;
+    idempotencyKey: string;
+    now: Date;
+  }, operation: (
+    prepared: PreparedEmailDelivery,
+    transaction: ReportEmailDeliveryTransaction,
+  ) => Promise<T>): Promise<ReportEmailDeliveryFenceResult<T>>;
 }
 
 export class ReportDeliveryStoreError extends Error {
@@ -135,6 +168,174 @@ const ASSET_COLUMNS = `
   id::text, workspace_id::text, report_id::text, storage_key,
   checksum_sha256, size_bytes`;
 
+async function isEmailSuppressedInTransaction(
+  database: DeliverySqlClient,
+  input: { workspaceId: string; recipientHash: string },
+): Promise<boolean> {
+  const result = await database.query<{ suppressed: boolean }>(
+    `select exists(
+       select 1 from email_suppressions
+        where workspace_id = $1 and recipient_hash = $2
+     ) as suppressed`,
+    [input.workspaceId, input.recipientHash],
+  );
+  return result.rows[0]?.suppressed === true;
+}
+
+async function prepareEmailInTransaction(
+  database: DeliverySqlClient,
+  input: {
+    workspaceId: string;
+    reportId: string;
+    recipient: string;
+    idempotencyKey: string;
+    now: Date;
+  },
+): Promise<PreparedEmailDelivery> {
+  const report = (
+    await database.query<ReportRow>(
+      `select id::text, snapshot from weekly_reports
+        where workspace_id = $1 and id = $2 and snapshot is not null`,
+      [input.workspaceId, input.reportId],
+    )
+  ).rows[0];
+  if (!report?.snapshot) throw new ReportDeliveryStoreError("NOT_FOUND");
+  await database.query(
+    `insert into deliveries
+      (workspace_id, report_id, channel, recipient, status, idempotency_key, created_at)
+     values ($1, $2, 'email', $3, 'queued', $4, $5)
+     on conflict (workspace_id, idempotency_key) do nothing`,
+    [input.workspaceId, input.reportId, input.recipient, input.idempotencyKey, input.now],
+  );
+  const delivery = (
+    await database.query<DeliveryRow>(
+      `select id::text, report_id::text, recipient, status, attempts, created_at
+         from deliveries
+        where workspace_id = $1 and idempotency_key = $2
+        for update`,
+      [input.workspaceId, input.idempotencyKey],
+    )
+  ).rows[0];
+  if (!delivery || delivery.report_id !== input.reportId || delivery.recipient !== input.recipient) {
+    throw new ReportDeliveryStoreError("CONFLICT");
+  }
+  if (delivery.status === "delivered") {
+    return {
+      id: delivery.id,
+      reportId: report.id,
+      snapshot: jsonValue(report.snapshot),
+      attempts: delivery.attempts,
+      createdAt: new Date(delivery.created_at),
+      alreadyDelivered: true,
+    };
+  }
+  const changed = (
+    await database.query<{ attempts: number }>(
+      `update deliveries
+          set status = 'sending', attempts = attempts + 1, last_error = null
+        where workspace_id = $1 and id = $2 and status <> 'delivered'
+        returning attempts`,
+      [input.workspaceId, delivery.id],
+    )
+  ).rows[0];
+  if (!changed) throw new ReportDeliveryStoreError("INVALID_STATE");
+  return {
+    id: delivery.id,
+    reportId: report.id,
+    snapshot: jsonValue(report.snapshot),
+    attempts: changed.attempts,
+    createdAt: new Date(delivery.created_at),
+    alreadyDelivered: false,
+  };
+}
+
+async function markEmailDeliveredInTransaction(
+  database: DeliverySqlClient,
+  input: { workspaceId: string; deliveryId: string; deliveredAt: Date },
+): Promise<void> {
+  const delivery = (
+    await database.query<{ report_id: string }>(
+      `update deliveries
+          set status = 'delivered', last_error = null, delivered_at = coalesce(delivered_at, $3)
+        where workspace_id = $1 and id = $2 and status <> 'delivered'
+        returning report_id::text`,
+      [input.workspaceId, input.deliveryId, input.deliveredAt],
+    )
+  ).rows[0];
+  if (!delivery) {
+    const existing = await database.query(
+      "select 1 from deliveries where workspace_id = $1 and id = $2 and status = 'delivered'",
+      [input.workspaceId, input.deliveryId],
+    );
+    if (!existing.rows[0]) throw new ReportDeliveryStoreError("NOT_FOUND");
+    return;
+  }
+  await database.query(
+    `update weekly_reports
+        set status = 'delivered', delivered_at = $3, updated_at = $3
+      where workspace_id = $1 and id = $2 and delivered_at is null`,
+    [input.workspaceId, delivery.report_id, input.deliveredAt],
+  );
+}
+
+async function markEmailFailedInTransaction(
+  database: DeliverySqlClient,
+  input: { workspaceId: string; deliveryId: string; errorCode: string },
+): Promise<void> {
+  await database.query(
+    `update deliveries
+        set status = 'failed', last_error = $3
+      where workspace_id = $1 and id = $2 and status <> 'delivered'`,
+    [input.workspaceId, input.deliveryId, input.errorCode],
+  );
+}
+
+async function findPdfAssetInTransaction(
+  database: DeliverySqlClient,
+  input: { workspaceId: string; reportId: string; storageKey: string },
+): Promise<ReportPdfAsset | null> {
+  const row = (
+    await database.query<AssetRow>(
+      `select ${ASSET_COLUMNS} from report_assets
+        where workspace_id = $1 and report_id = $2 and kind = 'pdf' and storage_key = $3`,
+      [input.workspaceId, input.reportId, input.storageKey],
+    )
+  ).rows[0];
+  return row ? asset(row) : null;
+}
+
+async function savePdfAssetInTransaction(
+  database: DeliverySqlClient,
+  input: {
+    workspaceId: string;
+    reportId: string;
+    storageKey: string;
+    checksumSha256: string;
+    sizeBytes: number;
+  },
+): Promise<ReportPdfAsset> {
+  await database.query(
+    `insert into report_assets
+      (workspace_id, report_id, kind, storage_key, content_type, checksum_sha256, size_bytes)
+     values ($1, $2, 'pdf', $3, 'application/pdf', $4, $5)
+     on conflict (storage_key) do nothing`,
+    [input.workspaceId, input.reportId, input.storageKey, input.checksumSha256, input.sizeBytes],
+  );
+  const row = (
+    await database.query<AssetRow>(
+      `select ${ASSET_COLUMNS} from report_assets
+        where workspace_id = $1 and report_id = $2 and kind = 'pdf' and storage_key = $3`,
+      [input.workspaceId, input.reportId, input.storageKey],
+    )
+  ).rows[0];
+  if (!row) throw new ReportDeliveryStoreError("CONFLICT");
+  const stored = asset(row);
+  if (stored.checksumSha256 !== input.checksumSha256 || stored.sizeBytes !== input.sizeBytes) {
+    throw new ReportDeliveryStoreError("CONFLICT");
+  }
+  return stored;
+}
+
 export class PostgresReportDeliveryStore implements ReportDeliveryStore, ReportAccessStore {
   constructor(private readonly source: DeliverySqlSource) {}
 
@@ -145,14 +346,10 @@ export class PostgresReportDeliveryStore implements ReportDeliveryStore, ReportA
     const recipient = input.recipient.trim().toLowerCase();
     const recipientHash = createHash("sha256").update(recipient, "utf8").digest("hex");
     return withTransaction(this.source, input.workspaceId, async (database) => {
-      const result = await database.query<{ suppressed: boolean }>(
-        `select exists(
-           select 1 from email_suppressions
-            where workspace_id = $1 and recipient_hash = $2
-         ) as suppressed`,
-        [input.workspaceId, recipientHash],
-      );
-      return result.rows[0]?.suppressed === true;
+      return isEmailSuppressedInTransaction(database, {
+        workspaceId: input.workspaceId,
+        recipientHash,
+      });
     });
   }
 
@@ -203,61 +400,7 @@ export class PostgresReportDeliveryStore implements ReportDeliveryStore, ReportA
     now: Date;
   }): Promise<PreparedEmailDelivery> {
     return withTransaction(this.source, input.workspaceId, async (database) => {
-      const report = (
-        await database.query<ReportRow>(
-          `select id::text, snapshot from weekly_reports
-            where workspace_id = $1 and id = $2 and snapshot is not null`,
-          [input.workspaceId, input.reportId],
-        )
-      ).rows[0];
-      if (!report?.snapshot) throw new ReportDeliveryStoreError("NOT_FOUND");
-      await database.query(
-        `insert into deliveries
-          (workspace_id, report_id, channel, recipient, status, idempotency_key, created_at)
-         values ($1, $2, 'email', $3, 'queued', $4, $5)
-         on conflict (workspace_id, idempotency_key) do nothing`,
-        [input.workspaceId, input.reportId, input.recipient, input.idempotencyKey, input.now],
-      );
-      const delivery = (
-        await database.query<DeliveryRow>(
-          `select id::text, report_id::text, recipient, status, attempts, created_at
-             from deliveries
-            where workspace_id = $1 and idempotency_key = $2
-            for update`,
-          [input.workspaceId, input.idempotencyKey],
-        )
-      ).rows[0];
-      if (!delivery || delivery.report_id !== input.reportId || delivery.recipient !== input.recipient) {
-        throw new ReportDeliveryStoreError("CONFLICT");
-      }
-      if (delivery.status === "delivered") {
-        return {
-          id: delivery.id,
-          reportId: report.id,
-          snapshot: jsonValue(report.snapshot),
-          attempts: delivery.attempts,
-          createdAt: new Date(delivery.created_at),
-          alreadyDelivered: true,
-        };
-      }
-      const changed = (
-        await database.query<{ attempts: number }>(
-          `update deliveries
-              set status = 'sending', attempts = attempts + 1, last_error = null
-            where workspace_id = $1 and id = $2 and status <> 'delivered'
-            returning attempts`,
-          [input.workspaceId, delivery.id],
-        )
-      ).rows[0];
-      if (!changed) throw new ReportDeliveryStoreError("INVALID_STATE");
-      return {
-        id: delivery.id,
-        reportId: report.id,
-        snapshot: jsonValue(report.snapshot),
-        attempts: changed.attempts,
-        createdAt: new Date(delivery.created_at),
-        alreadyDelivered: false,
-      };
+      return prepareEmailInTransaction(database, input);
     });
   }
 
@@ -267,29 +410,7 @@ export class PostgresReportDeliveryStore implements ReportDeliveryStore, ReportA
     deliveredAt: Date;
   }): Promise<void> {
     await withTransaction(this.source, input.workspaceId, async (database) => {
-      const delivery = (
-        await database.query<{ report_id: string }>(
-          `update deliveries
-              set status = 'delivered', last_error = null, delivered_at = coalesce(delivered_at, $3)
-            where workspace_id = $1 and id = $2 and status <> 'delivered'
-            returning report_id::text`,
-          [input.workspaceId, input.deliveryId, input.deliveredAt],
-        )
-      ).rows[0];
-      if (!delivery) {
-        const existing = await database.query(
-          "select 1 from deliveries where workspace_id = $1 and id = $2 and status = 'delivered'",
-          [input.workspaceId, input.deliveryId],
-        );
-        if (!existing.rows[0]) throw new ReportDeliveryStoreError("NOT_FOUND");
-        return;
-      }
-      await database.query(
-        `update weekly_reports
-            set status = 'delivered', delivered_at = $3, updated_at = $3
-          where workspace_id = $1 and id = $2 and delivered_at is null`,
-        [input.workspaceId, delivery.report_id, input.deliveredAt],
-      );
+      await markEmailDeliveredInTransaction(database, input);
     });
   }
 
@@ -299,12 +420,7 @@ export class PostgresReportDeliveryStore implements ReportDeliveryStore, ReportA
     errorCode: string;
   }): Promise<void> {
     await withTransaction(this.source, input.workspaceId, async (database) => {
-      await database.query(
-        `update deliveries
-            set status = 'failed', last_error = $3
-          where workspace_id = $1 and id = $2 and status <> 'delivered'`,
-        [input.workspaceId, input.deliveryId, input.errorCode],
-      );
+      await markEmailFailedInTransaction(database, input);
     });
   }
 
@@ -314,14 +430,7 @@ export class PostgresReportDeliveryStore implements ReportDeliveryStore, ReportA
     storageKey: string;
   }): Promise<ReportPdfAsset | null> {
     return withTransaction(this.source, input.workspaceId, async (database) => {
-      const row = (
-        await database.query<AssetRow>(
-          `select ${ASSET_COLUMNS} from report_assets
-            where workspace_id = $1 and report_id = $2 and kind = 'pdf' and storage_key = $3`,
-          [input.workspaceId, input.reportId, input.storageKey],
-        )
-      ).rows[0];
-      return row ? asset(row) : null;
+      return findPdfAssetInTransaction(database, input);
     });
   }
 
@@ -333,26 +442,56 @@ export class PostgresReportDeliveryStore implements ReportDeliveryStore, ReportA
     sizeBytes: number;
   }): Promise<ReportPdfAsset> {
     return withTransaction(this.source, input.workspaceId, async (database) => {
-      await database.query(
-        `insert into report_assets
-          (workspace_id, report_id, kind, storage_key, content_type, checksum_sha256, size_bytes)
-         values ($1, $2, 'pdf', $3, 'application/pdf', $4, $5)
-         on conflict (storage_key) do nothing`,
-        [input.workspaceId, input.reportId, input.storageKey, input.checksumSha256, input.sizeBytes],
-      );
-      const row = (
-        await database.query<AssetRow>(
-          `select ${ASSET_COLUMNS} from report_assets
-            where workspace_id = $1 and report_id = $2 and kind = 'pdf' and storage_key = $3`,
-          [input.workspaceId, input.reportId, input.storageKey],
-        )
-      ).rows[0];
-      if (!row) throw new ReportDeliveryStoreError("CONFLICT");
-      const stored = asset(row);
-      if (stored.checksumSha256 !== input.checksumSha256 || stored.sizeBytes !== input.sizeBytes) {
-        throw new ReportDeliveryStoreError("CONFLICT");
-      }
-      return stored;
+      return savePdfAssetInTransaction(database, input);
     });
+  }
+
+  async withEmailDeliveryFence<T>(input: {
+    workspaceId: string;
+    reportId: string;
+    recipient: string;
+    recipientHash: string;
+    idempotencyKey: string;
+    now: Date;
+  }, operation: (
+    prepared: PreparedEmailDelivery,
+    transaction: ReportEmailDeliveryTransaction,
+  ) => Promise<T>): Promise<ReportEmailDeliveryFenceResult<T>> {
+    let operationError: unknown;
+    const result: ReportEmailDeliveryFenceResult<T> | { readonly disposition: "operation_failed" } =
+      await withTransaction(this.source, input.workspaceId, async (database) => {
+      await database.query(
+        "select privacy_lock_recipient_email_shared($1::uuid, $2::text)",
+        [input.workspaceId, input.recipientHash],
+      );
+      if (await isEmailSuppressedInTransaction(database, input)) {
+        return { disposition: "suppressed" } as const;
+      }
+      const prepared = await prepareEmailInTransaction(database, input);
+      if (prepared.alreadyDelivered) {
+        return { disposition: "already_delivered", prepared } as const;
+      }
+      const transaction: ReportEmailDeliveryTransaction = {
+        findPdfAsset: (value) => findPdfAssetInTransaction(database, value),
+        savePdfAsset: (value) => savePdfAssetInTransaction(database, value),
+        markEmailDelivered: (value) => markEmailDeliveredInTransaction(database, value),
+        markEmailFailed: (value) => markEmailFailedInTransaction(database, value),
+      };
+      try {
+        return {
+          disposition: "executed",
+          prepared,
+          value: await operation(prepared, transaction),
+        } as const;
+      } catch (error) {
+        operationError = error;
+        return { disposition: "operation_failed" } as const;
+      }
+    });
+    if (operationError !== undefined) throw operationError;
+    if (result.disposition === "operation_failed") {
+      throw new ReportDeliveryStoreError("INVALID_STATE");
+    }
+    return result;
   }
 }
