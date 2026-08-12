@@ -9,7 +9,7 @@ case "$profile" in
   report-scheduler)
     preflight_profile="scheduler"
     ;;
-  privacy-export|privacy-correct|privacy-delete)
+  privacy-export|privacy-correct|privacy-delete|privacy-delete-workspace)
     preflight_profile="privacy"
     ;;
   privacy-retention)
@@ -51,6 +51,9 @@ case "$profile" in
     ;;
   privacy-delete)
     exec node --import tsx scripts/privacy/privacy.ts delete "$@"
+    ;;
+  privacy-delete-workspace)
+    exec node --import tsx scripts/privacy/privacy.ts delete-workspace "$@"
     ;;
   privacy-request)
     exec node --import tsx scripts/ops/privacy-request.ts "$@"

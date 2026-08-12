@@ -49,6 +49,7 @@ async function runComposeConfig(): Promise<TextSpawnResult> {
         `SEMFORGE_PRIVACY_ENV_FILE=${envFile}`,
         `SEMFORGE_OPERATOR_ENV_FILE=${envFile}`,
         `SEMFORGE_RETENTION_ENV_FILE=${envFile}`,
+        `SEMFORGE_NODE_BASE_IMAGE=node:24-bookworm-slim@sha256:${"b".repeat(64)}`,
         "",
       ].join("\n"),
       "utf8",
@@ -212,6 +213,10 @@ test("entrypoint와 compose는 migration 성공 뒤 web/worker/relay와 collecti
   assert.match(
     entrypoint,
     /privacy-delete[\s\S]*scripts\/privacy\/privacy\.ts delete "\$@"/u,
+  );
+  assert.match(
+    entrypoint,
+    /privacy-delete-workspace[\s\S]*scripts\/privacy\/privacy\.ts delete-workspace "\$@"/u,
   );
   assert.match(entrypoint, /exec node --import tsx src\/db\/migrate\.ts/u);
   assert.match(compose, /release:/u);
