@@ -48,6 +48,29 @@ before(async () => {
   await migrate(drizzle(database), {
     migrationsFolder: path.join(process.cwd(), "src", "db", "migrations"),
   });
+  await database.exec(`
+    create table if not exists workspace_privacy_controls (
+      workspace_id uuid primary key references workspaces(id) on delete cascade,
+      state text not null default 'active'
+        check (state in ('active', 'blocking', 'erased'))
+    );
+    create or replace function privacy_workspace_lock_key(candidate uuid) returns bigint
+    language sql immutable as $$
+      select hashtextextended(candidate::text, 0)
+    $$;
+    create or replace function test_create_workspace_privacy_control() returns trigger
+    language plpgsql as $$
+    begin
+      insert into workspace_privacy_controls (workspace_id)
+      values (new.id)
+      on conflict (workspace_id) do nothing;
+      return new;
+    end;
+    $$;
+    create trigger test_workspaces_create_privacy_control
+      after insert on workspaces
+      for each row execute function test_create_workspace_privacy_control();
+  `);
 });
 
 after(async () => database.close());
@@ -230,4 +253,135 @@ test("scheduler는 active 또는 아직 만료되지 않은 cancel_at_period_end
       (candidate) => `57000000-0000-4000-8000-${candidate.suffix.padStart(12, "0")}`,
     ),
   );
+});
+
+// @TASK P5-PRIVACY-FENCE - Erased workspaces cannot create collection/report work
+// @SPEC docs/ops/privacy-erasure-runbook.md
+test("scheduler는 blocking/erased/control 누락 workspace와 erased 전환 뒤 신규 작업을 예약하지 않는다", async () => {
+  await database.query("update sites set active = false");
+  const cases = [
+    { suffix: "31", state: "active" },
+    { suffix: "32", state: "blocking" },
+    { suffix: "33", state: "erased" },
+    { suffix: "34", state: "missing" },
+  ] as const;
+
+  for (const candidate of cases) {
+    const workspaceId = `59000000-0000-4000-8000-${candidate.suffix.padStart(12, "0")}`;
+    const siteId = `59100000-0000-4000-8000-${candidate.suffix.padStart(12, "0")}`;
+    const queryId = `59200000-0000-4000-8000-${candidate.suffix.padStart(12, "0")}`;
+    const connectionId = `59300000-0000-4000-8000-${candidate.suffix.padStart(12, "0")}`;
+    const bindingId = `59400000-0000-4000-8000-${candidate.suffix.padStart(12, "0")}`;
+    await database.query(
+      "insert into workspaces (id, name, slug) values ($1, $2, $3)",
+      [workspaceId, `Privacy ${candidate.suffix}`, `privacy-${candidate.suffix}`],
+    );
+    if (candidate.state === "missing") {
+      await database.query("delete from workspace_privacy_controls where workspace_id = $1", [workspaceId]);
+    } else {
+      await database.query(
+        "update workspace_privacy_controls set state = $2 where workspace_id = $1",
+        [workspaceId, candidate.state],
+      );
+    }
+    await insertSubscription({ workspaceId, suffix: candidate.suffix, status: "active" });
+    await database.query(
+      "insert into sites (id, workspace_id, name, domain) values ($1, $2, $3, $4)",
+      [siteId, workspaceId, `Privacy ${candidate.suffix}`, `privacy-${candidate.suffix}.example.com`],
+    );
+    await database.query(
+      `insert into tracked_queries
+         (id, workspace_id, site_id, type, query, normalized_query)
+       values ($1, $2, $3, 'rank', $4, $5)`,
+      [queryId, workspaceId, siteId, `Privacy ${candidate.suffix}`, `privacy ${candidate.suffix}`],
+    );
+    await database.query(
+      `insert into gsc_connections
+         (id, workspace_id, label, access_token_encrypted, refresh_token_encrypted, token_expires_at)
+       values ($1, $2, $3, 'enc:v1:key:iv:tag:cipher', 'enc:v1:key:iv:tag:cipher', $4)`,
+      [connectionId, workspaceId, `Privacy ${candidate.suffix}`, new Date("2026-10-01T00:00:00.000Z")],
+    );
+    await database.query(
+      `insert into gsc_property_bindings
+         (id, workspace_id, site_id, connection_id, property_uri)
+       values ($1, $2, $3, $4, $5)`,
+      [bindingId, workspaceId, siteId, connectionId, `sc-domain:privacy-${candidate.suffix}.example.com`],
+    );
+  }
+
+  const executedAt = new Date("2026-08-24T00:00:00.000Z");
+  assert.deepEqual(
+    await new PostgresWeeklyCollectionScheduler(database).schedule({ executedAt }),
+    { google: 1, naver: 1, gsc: 1 },
+  );
+  assert.deepEqual(
+    await new PostgresWeeklyReportScheduler(database).schedule({ executedAt }),
+    { cycleMonday: "2026-08-24", reports: 1 },
+  );
+  const eventCounts = await database.query<{ workspace_id: string; count: number }>(
+    `select workspace_id::text, count(*)::int as count
+       from outbox
+      where workspace_id::text like '59000000-%'
+      group by workspace_id
+      order by workspace_id`,
+  );
+  assert.deepEqual(eventCounts.rows, [{
+    workspace_id: "59000000-0000-4000-8000-000000000031",
+    count: 4,
+  }]);
+
+  await database.query(
+    "update workspace_privacy_controls set state = 'erased' where workspace_id = $1",
+    ["59000000-0000-4000-8000-000000000031"],
+  );
+  const afterErasure = new Date("2026-08-31T00:00:00.000Z");
+  assert.deepEqual(
+    await new PostgresWeeklyCollectionScheduler(database).schedule({ executedAt: afterErasure }),
+    { google: 0, naver: 0, gsc: 0 },
+  );
+  assert.deepEqual(
+    await new PostgresWeeklyReportScheduler(database).schedule({ executedAt: afterErasure }),
+    { cycleMonday: "2026-08-31", reports: 0 },
+  );
+});
+
+test("report scheduler는 후보 조회 직후 blocking 전환도 workspace별 insert fence에서 차단한다", async () => {
+  const workspaceId = "59000000-0000-4000-8000-000000000035";
+  const siteId = "59100000-0000-4000-8000-000000000035";
+  await database.query(
+    "insert into workspaces (id, name, slug) values ($1, 'Privacy race', 'privacy-race')",
+    [workspaceId],
+  );
+  await insertSubscription({ workspaceId, suffix: "35", status: "active" });
+  await database.query(
+    "insert into sites (id, workspace_id, name, domain) values ($1, $2, 'Privacy race', 'privacy-race.example.com')",
+    [siteId, workspaceId],
+  );
+  let blockedAfterCandidates = false;
+  const racingDatabase = {
+    async query<T = unknown>(text: string, values?: readonly unknown[]) {
+      const result = await database.query<T>(text, values as unknown[] | undefined);
+      if (!blockedAfterCandidates && text.includes("select site.workspace_id::text")) {
+        blockedAfterCandidates = true;
+        await database.query(
+          "update workspace_privacy_controls set state = 'blocking' where workspace_id = $1",
+          [workspaceId],
+        );
+      }
+      return result;
+    },
+  };
+
+  assert.deepEqual(
+    await new PostgresWeeklyReportScheduler(racingDatabase).schedule({
+      executedAt: new Date("2026-09-07T00:00:00.000Z"),
+    }),
+    { cycleMonday: "2026-09-07", reports: 0 },
+  );
+  assert.equal(blockedAfterCandidates, true);
+  const events = await database.query<{ count: number }>(
+    "select count(*)::int as count from outbox where workspace_id = $1",
+    [workspaceId],
+  );
+  assert.equal(events.rows[0]?.count, 0);
 });

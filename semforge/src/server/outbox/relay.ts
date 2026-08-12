@@ -94,9 +94,20 @@ type JobRow = {
   idempotency_conflict?: boolean;
 };
 
+type PublishRow = {
+  job: JobRow | string | null;
+  idempotency_conflict: boolean;
+  privacy_suppressed: boolean;
+};
+
 export class OutboxRelayError extends Error {
   constructor(
-    readonly code: "INVALID_OUTBOX" | "LEASE_LOST" | "JOB_NOT_FOUND" | "IDEMPOTENCY_CONFLICT",
+    readonly code:
+      | "INVALID_OUTBOX"
+      | "LEASE_LOST"
+      | "JOB_NOT_FOUND"
+      | "IDEMPOTENCY_CONFLICT"
+      | "WORKSPACE_PRIVACY_SUPPRESSED",
     message: string = code,
   ) {
     super(message);
@@ -190,6 +201,16 @@ function toJob(row: JobRow): JobRecord {
   };
 }
 
+function parsePublishJob(value: PublishRow["job"]): JobRow | null {
+  if (value === null) return null;
+  if (typeof value !== "string") return value;
+  const parsed = JSON.parse(value) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new OutboxRelayError("INVALID_OUTBOX", "published job is invalid");
+  }
+  return parsed as JobRow;
+}
+
 const OUTBOX_COLUMNS = `
   id::text, workspace_id::text, topic, payload, idempotency_key, request_hash, available_at,
   lease_owner, lease_token::text, lease_generation, lease_expires_at,
@@ -230,14 +251,45 @@ export class PostgresOutboxRelay {
       throw new OutboxRelayError("INVALID_OUTBOX", "topics are invalid");
     }
     const result = await this.database.query<OutboxRow>(
-      `with candidates as (
-         select id
-           from outbox
-          where published_at is null and available_at <= $1 and attempts < max_attempts
-            and (lease_expires_at is null or lease_expires_at <= $1)
-            and ($5::text[] is null or topic = any($5::text[]))
-          order by available_at asc, created_at asc
-          for update skip locked
+      `with suppressible as (
+         select event.id
+           from outbox event
+           left join workspace_privacy_controls privacy
+             on privacy.workspace_id = event.workspace_id
+          where event.published_at is null and event.available_at <= $1
+            and event.attempts < event.max_attempts
+            and (event.lease_expires_at is null or event.lease_expires_at <= $1)
+            and ($5::text[] is null or event.topic = any($5::text[]))
+            and (privacy.workspace_id is null or privacy.state <> 'active')
+          order by event.available_at asc, event.created_at asc
+          for update of event skip locked
+          limit $2
+       ), suppressed as (
+         update outbox as event
+            set published_at = $1,
+                lease_owner = null,
+                lease_token = null,
+                lease_expires_at = null,
+                last_error = 'WORKSPACE_PRIVACY_SUPPRESSED'
+           from suppressible
+          where event.id = suppressible.id
+         returning event.id::text, event.workspace_id::text, event.topic
+       ), suppressed_audited as (
+         insert into audit_events (workspace_id, action, entity_type, entity_id, request_id, metadata)
+         select workspace_id::uuid, 'outbox.suppressed', 'outbox', id, $3,
+                jsonb_build_object('reason', 'WORKSPACE_PRIVACY_SUPPRESSED', 'topic', topic)
+           from suppressed
+       ), candidates as (
+         select event.id
+           from outbox event
+           join workspace_privacy_controls privacy
+             on privacy.workspace_id = event.workspace_id and privacy.state = 'active'
+          where event.published_at is null and event.available_at <= $1
+            and event.attempts < event.max_attempts
+            and (event.lease_expires_at is null or event.lease_expires_at <= $1)
+            and ($5::text[] is null or event.topic = any($5::text[]))
+          order by event.available_at asc, event.created_at asc
+          for update of event skip locked
           limit $2
        ), claimed as (
          update outbox as event
@@ -266,19 +318,48 @@ export class PostgresOutboxRelay {
     const jobType = requireNonBlank(input.jobType ?? event.topic, "jobType");
     const priority = requireInteger(input.priority ?? 100, -1_000_000, 1_000_000, "priority");
     const maxAttempts = requireInteger(input.maxAttempts ?? 5, 1, 100, "maxAttempts");
-    const result = await this.database.query<JobRow>(
-      `with source as (
+    const result = await this.database.query<PublishRow>(
+      `with privacy_lock as materialized (
+         select pg_advisory_xact_lock_shared(privacy_workspace_lock_key($1::uuid))
+       ), privacy_control as materialized (
+         select privacy.state::text as state
+           from workspace_privacy_controls privacy
+           cross join privacy_lock
+          where privacy.workspace_id = $1::uuid
+          for share of privacy
+       ), source as (
          select ${OUTBOX_COLUMNS}
-           from outbox
-          where workspace_id = $1 and id = $2
+           from outbox event
+           cross join privacy_lock
+          where event.workspace_id = $1 and event.id = $2
             and (
-              published_at is not null
+              event.published_at is not null
               or (
-                published_at is null and lease_owner = $3 and lease_token = $4
-                and lease_generation = $5 and lease_expires_at > $6
+                event.published_at is null and event.lease_owner = $3 and event.lease_token = $4
+                and event.lease_generation = $5 and event.lease_expires_at > $6
+                and exists (select 1 from privacy_control where state = 'active')
               )
             )
-          for update
+          for update of event
+       ), suppressed as (
+         update outbox as event
+            set published_at = $6,
+                lease_owner = null,
+                lease_token = null,
+                lease_expires_at = null,
+                last_error = 'WORKSPACE_PRIVACY_SUPPRESSED'
+          where event.workspace_id = $1 and event.id = $2
+            and event.published_at is null
+            and event.lease_owner = $3 and event.lease_token = $4
+            and event.lease_generation = $5 and event.lease_expires_at > $6
+            and exists (select 1 from privacy_lock)
+            and not exists (select 1 from privacy_control where state = 'active')
+         returning event.id::text, event.workspace_id::text, event.topic
+       ), suppressed_audited as (
+         insert into audit_events (workspace_id, action, entity_type, entity_id, request_id, metadata)
+         select workspace_id::uuid, 'outbox.suppressed', 'outbox', id, $3,
+                jsonb_build_object('reason', 'WORKSPACE_PRIVACY_SUPPRESSED', 'topic', topic)
+           from suppressed
        ), inserted_job as (
          insert into jobs
            (workspace_id, type, payload, idempotency_key, priority, available_at, max_attempts)
@@ -324,8 +405,14 @@ export class PostgresOutboxRelay {
            from source
           where source.published_at is null and exists (select 1 from published)
        )
-       select * from checked_job
-        where idempotency_conflict or exists (select 1 from published)
+       select to_jsonb(checked_job) as job,
+              checked_job.idempotency_conflict,
+              false as privacy_suppressed
+         from checked_job
+        where checked_job.idempotency_conflict or exists (select 1 from published)
+       union all
+       select null::jsonb as job, false as idempotency_conflict, true as privacy_suppressed
+         from suppressed
         limit 1`,
       [
         requireNonBlank(event.workspaceId, "workspaceId"),
@@ -340,13 +427,17 @@ export class PostgresOutboxRelay {
       ],
     );
     const row = result.rows[0];
+    if (row?.privacy_suppressed) {
+      throw new OutboxRelayError("WORKSPACE_PRIVACY_SUPPRESSED");
+    }
     if (row?.idempotency_conflict) {
       throw new OutboxRelayError("IDEMPOTENCY_CONFLICT");
     }
-    if (!row) {
+    const job = parsePublishJob(row?.job ?? null);
+    if (!job) {
       throw new OutboxRelayError("LEASE_LOST", "OUTBOX_LEASE_LOST");
     }
-    return toJob(row);
+    return toJob(job);
   }
 
   async recoverExpired(

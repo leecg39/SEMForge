@@ -24,6 +24,29 @@ async function createDatabase(workspaceId: string, slug: string): Promise<PGlite
   databases.push(database);
   await database.waitReady;
   await migrate(drizzle(database), { migrationsFolder });
+  await database.exec(`
+    create table if not exists workspace_privacy_controls (
+      workspace_id uuid primary key references workspaces(id) on delete cascade,
+      state text not null default 'active'
+        check (state in ('active', 'blocking', 'erased'))
+    );
+    create or replace function privacy_workspace_lock_key(candidate uuid) returns bigint
+    language sql immutable as $$
+      select hashtextextended(candidate::text, 0)
+    $$;
+    create or replace function test_create_workspace_privacy_control() returns trigger
+    language plpgsql as $$
+    begin
+      insert into workspace_privacy_controls (workspace_id)
+      values (new.id)
+      on conflict (workspace_id) do nothing;
+      return new;
+    end;
+    $$;
+    create trigger test_workspaces_create_privacy_control
+      after insert on workspaces
+      for each row execute function test_create_workspace_privacy_control();
+  `);
   await database.query("insert into workspaces (id, name, slug) values ($1, $2, $3)", [
     workspaceId,
     `Workspace ${slug}`,
@@ -311,4 +334,105 @@ test("production relay는 report PDF·email outbox payload를 그대로 canonica
     { topic: "report.pdf.render", published: true },
     { topic: "report.snapshot", published: true },
   ]);
+});
+
+// @TASK P5-PRIVACY-FENCE - Suppress blocked/erased workspace outbox publication
+// @SPEC docs/ops/privacy-erasure-runbook.md
+test("production relay는 blocking 또는 control 누락 outbox를 terminal suppression하고 job을 만들지 않는다", async () => {
+  const workspaceId = "51000000-0000-4000-8000-000000000020";
+  const missingWorkspaceId = "51000000-0000-4000-8000-000000000022";
+  const database = await createDatabase(workspaceId, "outbox-privacy-blocking");
+  const now = new Date("2026-08-12T09:00:00.000Z");
+  await database.query(
+    "update workspace_privacy_controls set state = 'blocking' where workspace_id = $1",
+    [workspaceId],
+  );
+  await database.query(
+    "insert into workspaces (id, name, slug) values ($1, 'Missing control', 'outbox-privacy-missing')",
+    [missingWorkspaceId],
+  );
+  await database.query(
+    "delete from workspace_privacy_controls where workspace_id = $1",
+    [missingWorkspaceId],
+  );
+  await database.query(
+    `insert into outbox (workspace_id, topic, payload, idempotency_key, available_at)
+     values ($1, 'collection.google.weekly', '{"siteId":"blocked-site"}'::jsonb, 'blocked-google', $3),
+            ($2, 'collection.google.weekly', '{"siteId":"missing-site"}'::jsonb, 'missing-google', $3)`,
+    [workspaceId, missingWorkspaceId, now],
+  );
+  const runtime = new CollectionOutboxRelayRuntime({
+    database,
+    relayId: "relay-privacy-blocking",
+    clock: () => now,
+  });
+
+  assert.deepEqual(await runtime.runOnce(), { claimed: 0, published: 0, failed: 0 });
+  const state = await database.query<{
+    published: boolean;
+    last_error: string | null;
+    job_count: number;
+  }>(
+    `select published_at is not null as published, last_error,
+            (select count(*)::int from jobs where workspace_id in ($1, $2)) as job_count
+       from outbox where workspace_id in ($1, $2)
+       order by workspace_id`,
+    [workspaceId, missingWorkspaceId],
+  );
+  assert.deepEqual(state.rows, [
+    { published: true, last_error: "WORKSPACE_PRIVACY_SUPPRESSED", job_count: 0 },
+    { published: true, last_error: "WORKSPACE_PRIVACY_SUPPRESSED", job_count: 0 },
+  ]);
+  assert.deepEqual(await runtime.runOnce(), { claimed: 0, published: 0, failed: 0 });
+});
+
+test("production relay는 claim 직후 workspace가 erased로 전환되어도 publish 재검증으로 job을 만들지 않는다", async () => {
+  const workspaceId = "51000000-0000-4000-8000-000000000021";
+  const database = await createDatabase(workspaceId, "outbox-privacy-race");
+  const now = new Date("2026-08-12T10:00:00.000Z");
+  await database.query(
+    `insert into outbox (workspace_id, topic, payload, idempotency_key, available_at)
+     values ($1, 'collection.google.weekly', '{"siteId":"racing-site"}'::jsonb, 'racing-google', $2)`,
+    [workspaceId, now],
+  );
+  let erasedAfterClaim = false;
+  const racingDatabase = {
+    async query<T = unknown>(text: string, values?: readonly unknown[]) {
+      const result = await database.query<T>(text, values as unknown[] | undefined);
+      if (!erasedAfterClaim && text.includes("'outbox.leased'") && result.rows.length === 1) {
+        erasedAfterClaim = true;
+        await database.query(
+          "update workspace_privacy_controls set state = 'erased' where workspace_id = $1",
+          [workspaceId],
+        );
+      }
+      return result;
+    },
+  };
+  const runtime = new CollectionOutboxRelayRuntime({
+    database: racingDatabase,
+    relayId: "relay-privacy-race",
+    clock: () => now,
+  });
+
+  assert.deepEqual(await runtime.runOnce(), { claimed: 1, published: 0, failed: 0 });
+  assert.equal(erasedAfterClaim, true);
+  const state = await database.query<{
+    published: boolean;
+    last_error: string | null;
+    lease_owner: string | null;
+    job_count: number;
+  }>(
+    `select published_at is not null as published, last_error, lease_owner,
+            (select count(*)::int from jobs where workspace_id = $1) as job_count
+       from outbox where workspace_id = $1`,
+    [workspaceId],
+  );
+  assert.deepEqual(state.rows, [{
+    published: true,
+    last_error: "WORKSPACE_PRIVACY_SUPPRESSED",
+    lease_owner: null,
+    job_count: 0,
+  }]);
+  assert.deepEqual(await runtime.runOnce(), { claimed: 0, published: 0, failed: 0 });
 });

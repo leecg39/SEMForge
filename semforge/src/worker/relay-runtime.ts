@@ -1,7 +1,7 @@
 // @TASK P3-P1-FIX - Production collection outbox relay loop
 // @SPEC docs/planning/06-tasks.md#p3-w1-t1--lease-기반-작업-큐와-transactional-outbox
 // @TEST src/server/outbox/relay.integration.test.ts
-import { PostgresOutboxRelay } from "@/server/outbox/relay";
+import { OutboxRelayError, PostgresOutboxRelay } from "@/server/outbox/relay";
 import type { SqlQueryable } from "@/server/jobs/queue";
 import {
   PRODUCTION_OUTBOX_TOPICS,
@@ -75,7 +75,13 @@ export class CollectionOutboxRelayRuntime {
           now: this.clock(),
         });
         published += 1;
-      } catch {
+      } catch (error) {
+        if (
+          error instanceof OutboxRelayError &&
+          error.code === "WORKSPACE_PRIVACY_SUPPRESSED"
+        ) {
+          continue;
+        }
         failed += 1;
       }
     }

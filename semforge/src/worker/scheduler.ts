@@ -37,6 +37,11 @@ type BindingRow = {
   binding_id: string;
 };
 
+type ReportSiteRow = {
+  workspace_id: string;
+  site_id: string;
+};
+
 function isoDay(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
@@ -56,6 +61,46 @@ function canonicalQuery(value: string): string {
   return value.normalize("NFKC").trim().replace(/\s+/gu, " ");
 }
 
+// @TASK P5-PRIVACY-FENCE - Schedule only while the workspace is active under a shared fence
+async function insertPrivacyFencedOutbox(
+  database: SqlQueryable,
+  input: {
+    readonly workspaceId: string;
+    readonly topic: string;
+    readonly key: string;
+    readonly payload: Readonly<Record<string, unknown>>;
+    readonly availableAt?: Date;
+  },
+): Promise<number> {
+  const result = await database.query<{ inserted: number }>(
+    `with privacy_lock as materialized (
+       select pg_advisory_xact_lock_shared(privacy_workspace_lock_key($1::uuid))
+     ), privacy_fence as materialized (
+       select privacy.workspace_id
+         from workspace_privacy_controls privacy
+         cross join privacy_lock
+        where privacy.workspace_id = $1::uuid and privacy.state = 'active'
+        for share of privacy
+     ), inserted as (
+       insert into outbox
+         (workspace_id, topic, payload, idempotency_key, available_at)
+       select $1::uuid, $2::text, $3::jsonb, $4::text,
+              coalesce($5::timestamptz, now())
+         from privacy_fence
+       on conflict (workspace_id, topic, idempotency_key) do nothing
+       returning 1
+     ) select count(*)::int as inserted from inserted`,
+    [
+      input.workspaceId,
+      input.topic,
+      JSON.stringify(input.payload),
+      input.key,
+      input.availableAt ?? null,
+    ],
+  );
+  return result.rows[0]?.inserted ?? 0;
+}
+
 export class PostgresWeeklyCollectionScheduler {
   constructor(private readonly database: SqlQueryable) {}
 
@@ -71,6 +116,8 @@ export class PostgresWeeklyCollectionScheduler {
          from tracked_queries query
          join sites site on site.workspace_id = query.workspace_id and site.id = query.site_id
          join subscriptions subscription on subscription.workspace_id = query.workspace_id
+         join workspace_privacy_controls privacy
+           on privacy.workspace_id = query.workspace_id and privacy.state = 'active'
         where query.active and site.active
           and (
             subscription.status = 'active'
@@ -87,6 +134,8 @@ export class PostgresWeeklyCollectionScheduler {
          from gsc_property_bindings binding
          join sites site on site.workspace_id = binding.workspace_id and site.id = binding.site_id
          join subscriptions subscription on subscription.workspace_id = binding.workspace_id
+         join workspace_privacy_controls privacy
+           on privacy.workspace_id = binding.workspace_id and privacy.state = 'active'
         where site.active
           and (
             subscription.status = 'active'
@@ -182,16 +231,7 @@ export class PostgresWeeklyCollectionScheduler {
     key: string;
     payload: Readonly<Record<string, unknown>>;
   }): Promise<number> {
-    const result = await this.database.query<{ inserted: number }>(
-      `with inserted as (
-         insert into outbox (workspace_id, topic, payload, idempotency_key)
-         values ($1, $2, $3::jsonb, $4)
-         on conflict (workspace_id, topic, idempotency_key) do nothing
-         returning 1
-       ) select count(*)::int as inserted from inserted`,
-      [input.workspaceId, input.topic, JSON.stringify(input.payload), input.key],
-    );
-    return result.rows[0]?.inserted ?? 0;
+    return insertPrivacyFencedOutbox(this.database, input);
   }
 }
 
@@ -201,29 +241,33 @@ export class PostgresWeeklyReportScheduler {
   async schedule(input: ScheduleInput): Promise<WeeklyReportScheduleResult> {
     const cycleMonday = cycleMondayForReportSnapshotRun(input.executedAt);
     const schedule = buildWeeklyReportSchedule(cycleMonday);
-    const result = await this.database.query<{ inserted: number }>(
-      `with inserted as (
-         insert into outbox
-           (workspace_id, topic, payload, idempotency_key, available_at)
-         select site.workspace_id, 'report.snapshot',
-                jsonb_build_object('siteId', site.id::text, 'cycleMonday', $1::text),
-                'weekly:report:' || $1::text || ':' || site.id::text,
-                $2::timestamptz
-           from sites site
-           join subscriptions subscription on subscription.workspace_id = site.workspace_id
-          where site.active
-            and (
-              subscription.status = 'active'
-              or (
-                subscription.status = 'cancel_at_period_end'
-                and subscription.current_period_end > $3::timestamptz
-              )
+    const candidates = await this.database.query<ReportSiteRow>(
+      `select site.workspace_id::text, site.id::text as site_id
+         from sites site
+         join subscriptions subscription on subscription.workspace_id = site.workspace_id
+         join workspace_privacy_controls privacy
+           on privacy.workspace_id = site.workspace_id and privacy.state = 'active'
+        where site.active
+          and (
+            subscription.status = 'active'
+            or (
+              subscription.status = 'cancel_at_period_end'
+              and subscription.current_period_end > $1::timestamptz
             )
-         on conflict (workspace_id, topic, idempotency_key) do nothing
-         returning 1
-       ) select count(*)::int as inserted from inserted`,
-      [cycleMonday, schedule.snapshotAt, input.executedAt.toISOString()],
+          )
+        order by site.workspace_id, site.id`,
+      [input.executedAt.toISOString()],
     );
-    return { cycleMonday, reports: result.rows[0]?.inserted ?? 0 };
+    let reports = 0;
+    for (const candidate of candidates.rows) {
+      reports += await insertPrivacyFencedOutbox(this.database, {
+        workspaceId: candidate.workspace_id,
+        topic: "report.snapshot",
+        key: `weekly:report:${cycleMonday}:${candidate.site_id}`,
+        payload: { siteId: candidate.site_id, cycleMonday },
+        availableAt: schedule.snapshotAt,
+      });
+    }
+    return { cycleMonday, reports };
   }
 }
