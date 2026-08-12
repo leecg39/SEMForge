@@ -21,18 +21,26 @@ Paid-production invite issuance now fails closed before calling the auth service
 
 Required gates:
 
+- `ci_quality_gate_passed`
+- `security_privacy_license_gate_passed`
 - `toss_billing_production_approved`
+- `toss_reconciliation_rehearsed`
 - `google_oauth_production_approved`
 - `naver_keys_validated`
+- `talordata_google_serp_live_validated`
 - `resend_domain_verified`
 - `managed_postgres16_pitr_rehearsed`
 - `object_storage_version_restore_rehearsed`
+- `previous_image_rollback_rehearsed`
+- `forward_migration_rehearsed`
 - `legal_attestation_completed`
 - `three_partner_nine_site_first_report_smoke_passed`
 
 Sandbox/staging are explicit non-production release targets and do not require the paid-production attestation. A production runtime rejects sandbox/staging before the auth service is called. If a non-production runtime is pointed at a production-like operator DSN, the target still reaches the auth service and is persisted in `invites.release_target`, so non-production invites are not indistinguishable from paid-production invites at the DB boundary.
 
-No production approval manifest, external provider credential, or fake approval artifact was created or committed.
+The release gate validates manifest structure, expiry, git SHA binding, non-future approval timestamps, required-gate coverage, and evidence-reference format. It cannot prove that an external approval, live provider check, recovery rehearsal, reconciliation rehearsal, security/privacy/license review, or legal review actually happened. That remains a manual operator attestation backed by the referenced artifacts.
+
+No production approval manifest, external provider credential, live provider call, or fake approval artifact was created or committed.
 
 ## RED evidence
 
@@ -50,18 +58,31 @@ Binary observable:
   - `keeps sandbox invites explicit and does not require production attestation`
 - The run was interrupted after RED was observed to avoid wasting time on unrelated full-suite tests.
 
+Additional RED for the expanded 14-gate launch criteria:
+
+```bash
+PATH=/Users/user01/.omo/codegraph:$PATH npx tsx --test src/server/release/operational-gate.test.ts
+```
+
+Binary observable before extending `REQUIRED_OPERATIONAL_GATES`:
+
+- `tests 6`
+- `pass 5`
+- `fail 1`
+- failing test: `requires the full paid-production launch gate set`
+
 ## GREEN and regression evidence
 
 Targeted seam:
 
 ```bash
-PATH=/Users/user01/.omo/codegraph:$PATH npx tsx --test src/server/auth/invite-billing-provisioning.test.ts src/server/auth/service.test.ts src/server/auth/postgres-store.test.ts src/db/schema/core.test.ts src/db/migrations/core.integration.test.ts src/server/release/operational-gate.test.ts scripts/release-gate.test.ts scripts/invite.test.ts
+PATH=/Users/user01/.omo/codegraph:$PATH npx tsx --test src/server/release/operational-gate.test.ts scripts/release-gate.test.ts scripts/invite.test.ts
 ```
 
 Result:
 
-- `tests 88`
-- `pass 88`
+- `tests 24`
+- `pass 24`
 - `fail 0`
 
 Full verify:
@@ -74,8 +95,8 @@ Result:
 
 - ESLint: pass
 - TypeScript: pass
-- `tests 496`
-- `pass 496`
+- `tests 497`
+- `pass 497`
 - `fail 0`
 
 Schema drift:

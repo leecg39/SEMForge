@@ -11,6 +11,14 @@ import {
 
 const NOW = new Date("2026-08-12T03:00:00.000Z");
 const CURRENT_SHA = "a".repeat(40);
+const ADDITIONAL_RELEASE_GATES = [
+  "ci_quality_gate_passed",
+  "security_privacy_license_gate_passed",
+  "talordata_google_serp_live_validated",
+  "previous_image_rollback_rehearsed",
+  "forward_migration_rehearsed",
+  "toss_reconciliation_rehearsed",
+] as const;
 
 function manifest(overrides: Record<string, unknown> = {}): string {
   return JSON.stringify(
@@ -38,6 +46,12 @@ function manifest(overrides: Record<string, unknown> = {}): string {
 }
 
 describe("operational release gate", () => {
+  it("requires the full paid-production launch gate set", () => {
+    for (const gate of ADDITIONAL_RELEASE_GATES) {
+      assert.equal(REQUIRED_OPERATIONAL_GATES.includes(gate), true);
+    }
+  });
+
   it("allows sandbox invites without an attestation manifest and marks them non-production", () => {
     const decision = evaluateOperationalReleaseGate({
       releaseTarget: "sandbox",

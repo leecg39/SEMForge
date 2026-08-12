@@ -8,12 +8,18 @@ export const RELEASE_TARGETS = ["sandbox", "staging", "paid-production"] as cons
 export type ReleaseTarget = (typeof RELEASE_TARGETS)[number];
 
 export const REQUIRED_OPERATIONAL_GATES = [
+  "ci_quality_gate_passed",
+  "security_privacy_license_gate_passed",
   "toss_billing_production_approved",
+  "toss_reconciliation_rehearsed",
   "google_oauth_production_approved",
   "naver_keys_validated",
+  "talordata_google_serp_live_validated",
   "resend_domain_verified",
   "managed_postgres16_pitr_rehearsed",
   "object_storage_version_restore_rehearsed",
+  "previous_image_rollback_rehearsed",
+  "forward_migration_rehearsed",
   "legal_attestation_completed",
   "three_partner_nine_site_first_report_smoke_passed",
 ] as const;
