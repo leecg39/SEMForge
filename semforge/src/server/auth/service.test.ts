@@ -306,7 +306,7 @@ test("로그인은 throttle 통과 후 워크스페이스를 검증하고 기존
     password: "login-password-2026",
     workspaceId: "00000000-0000-4000-8000-000000000002",
     currentSessionToken,
-    throttleKey: "203.0.113.10",
+    clientAddressHash: "a".repeat(64),
   });
 
   assert.equal(result.principal, principal);
@@ -399,6 +399,136 @@ test("login throttle이 차단하면 계정 조회 전에 retry-after 오류를 
   assert.equal(accountLookups, 0);
 });
 
+test("login은 정규화 이메일과 trusted remote IP를 독립 throttle bucket으로 모두 소비한다", async () => {
+  const consumed: Parameters<AuthStore["consumeAuthThrottle"]>[0][] = [];
+  const service = createAuthService({
+    store: storeFixture({
+      consumeAuthThrottle: async (input) => {
+        consumed.push(input);
+        return input.keyHash === consumed[0]?.keyHash
+          ? { allowed: true, remaining: 4, blockedUntil: null, retryAfterSeconds: 0 }
+          : {
+              allowed: false,
+              remaining: 0,
+              blockedUntil: new Date("2026-08-11T03:01:00.000Z"),
+              retryAfterSeconds: 60,
+            };
+      },
+    }),
+    now: () => NOW,
+  });
+
+  await assert.rejects(
+    () => service.login({
+      email: " USER@Example.com ",
+      password: "wrong-password-2026",
+      clientAddressHash: "b".repeat(64),
+    }),
+    (error: unknown) => error instanceof AuthServiceError &&
+      error.code === "RATE_LIMITED" && error.retryAfterSeconds === 60,
+  );
+
+  assert.equal(consumed.length, 2);
+  assert.equal(consumed[0]?.action, "login");
+  assert.equal(consumed[1]?.action, "login");
+  assert.notEqual(consumed[0]?.keyHash, consumed[1]?.keyHash);
+  assert.equal(JSON.stringify(consumed).includes("user@example.com"), false);
+  assert.equal(JSON.stringify(consumed).includes("b".repeat(64)), false);
+});
+
+test("성공 login은 이메일 bucket만 초기화하고 shared IP spraying bucket은 유지한다", async () => {
+  const passwordHash = await hashPassword("correct-password-2026");
+  const consumed: string[] = [];
+  const cleared: string[] = [];
+  const service = createAuthService({
+    store: storeFixture({
+      consumeAuthThrottle: async (input) => {
+        consumed.push(input.keyHash);
+        return { allowed: true, remaining: 4, blockedUntil: null, retryAfterSeconds: 0 };
+      },
+      findUserByEmail: async () => ({
+        id: "user-login",
+        email: "login@example.com",
+        passwordHash,
+        displayName: null,
+        disabledAt: null,
+      }),
+      listMembershipsForUser: async () => [{
+        workspaceId: "00000000-0000-4000-8000-000000000001",
+        workspaceName: "Agency",
+        workspaceSlug: "agency",
+        role: "owner",
+      }],
+      rotateSession: async () => ({
+        sessionId: "session-login",
+        userId: "user-login",
+        workspaceId: "00000000-0000-4000-8000-000000000001",
+        email: "login@example.com",
+        displayName: null,
+        role: "owner",
+        expiresAt: new Date("2026-09-10T03:00:00.000Z"),
+      }),
+      clearAuthThrottle: async (_action, keyHash) => { cleared.push(keyHash); },
+    }),
+    now: () => NOW,
+  });
+
+  await service.login({
+    email: "login@example.com",
+    password: "correct-password-2026",
+    clientAddressHash: "e".repeat(64),
+  });
+
+  assert.equal(consumed.length, 2);
+  assert.deepEqual(cleared, [consumed[0]]);
+  assert.notEqual(cleared[0], consumed[1]);
+});
+
+test("성공 login 뒤 이메일 throttle cleanup 장애는 이미 생성된 session 응답을 실패시키지 않는다", async () => {
+  const passwordHash = await hashPassword("correct-password-2026");
+  const service = createAuthService({
+    store: storeFixture({
+      consumeAuthThrottle: async () => ({
+        allowed: true,
+        remaining: 4,
+        blockedUntil: null,
+        retryAfterSeconds: 0,
+      }),
+      findUserByEmail: async () => ({
+        id: "user-cleanup-outage",
+        email: "cleanup@example.com",
+        passwordHash,
+        displayName: null,
+        disabledAt: null,
+      }),
+      listMembershipsForUser: async () => [{
+        workspaceId: "00000000-0000-4000-8000-000000000001",
+        workspaceName: "Agency",
+        workspaceSlug: "agency",
+        role: "owner",
+      }],
+      rotateSession: async () => ({
+        sessionId: "session-cleanup-outage",
+        userId: "user-cleanup-outage",
+        workspaceId: "00000000-0000-4000-8000-000000000001",
+        email: "cleanup@example.com",
+        displayName: null,
+        role: "owner",
+        expiresAt: new Date("2026-09-10T03:00:00.000Z"),
+      }),
+      clearAuthThrottle: async () => { throw new Error("temporary cleanup outage"); },
+    }),
+    now: () => NOW,
+  });
+
+  const result = await service.login({
+    email: "cleanup@example.com",
+    password: "correct-password-2026",
+    clientAddressHash: "f".repeat(64),
+  });
+  assert.equal(result.principal.sessionId, "session-cleanup-outage");
+});
+
 test("세션 조회와 로그아웃은 raw cookie를 저장소에 넘기지 않고 폐기는 멱등적이다", async () => {
   const rawToken = "f".repeat(43);
   const expectedHash = createHash("sha256").update(rawToken).digest("hex");
@@ -462,7 +592,7 @@ test("비밀번호 재설정 요청은 30분 해시 토큰과 outbox delivery를
   assert.deepEqual(
     await service.requestPasswordReset({
       email: " RESET@Example.com ",
-      throttleKey: "203.0.113.20",
+      clientAddressHash: "c".repeat(64),
     }),
     { accepted: true },
   );
@@ -535,7 +665,7 @@ test("비밀번호 재설정 요청은 계정 존재·throttle은 숨기되 outb
     now: () => NOW,
   });
 
-  const input = { email: "nobody@example.com", throttleKey: "203.0.113.20" };
+  const input = { email: "nobody@example.com", clientAddressHash: "d".repeat(64) };
   assert.deepEqual(await missingService.requestPasswordReset(input), { accepted: true });
   assert.deepEqual(await blockedService.requestPasswordReset(input), { accepted: true });
   assert.deepEqual(await deliveryService.requestPasswordReset(input), { accepted: true });

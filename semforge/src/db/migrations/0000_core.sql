@@ -330,6 +330,56 @@ CREATE TABLE "outbox" (
 	CONSTRAINT "outbox_idempotency_uq" UNIQUE("workspace_id","topic","idempotency_key")
 );
 --> statement-breakpoint
+-- @TASK P5-S1-T1 - Queue storage accepts only encrypted or terminal password-reset payloads.
+CREATE FUNCTION valid_password_reset_payload(candidate jsonb) RETURNS boolean
+LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE SET search_path = public, pg_temp AS $$
+  SELECT CASE WHEN jsonb_typeof(candidate) <> 'object' THEN false ELSE COALESCE(
+    jsonb_typeof(candidate->'resetId') = 'string'
+    AND candidate->>'resetId' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+    AND CASE candidate->>'kind'
+      WHEN 'password_reset' THEN
+        (SELECT count(*) = 4 FROM jsonb_object_keys(candidate))
+        AND candidate ?& ARRAY['kind', 'resetId', 'encryptedDelivery', 'expiresAt']
+        AND jsonb_typeof(candidate->'encryptedDelivery') = 'string'
+        AND candidate->>'encryptedDelivery' ~ '^enc:v1:[A-Za-z0-9._-]{1,64}:[A-Za-z0-9_-]{16}:[A-Za-z0-9_-]{22}:([A-Za-z0-9_-]{4})*([A-Za-z0-9_-]{2}|[A-Za-z0-9_-]{3}|[A-Za-z0-9_-]{4})$'
+        AND length(candidate->>'encryptedDelivery') <= 8192
+        AND jsonb_typeof(candidate->'expiresAt') = 'string'
+        AND candidate->>'expiresAt' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$'
+      WHEN 'password_reset_scrubbed' THEN
+        jsonb_typeof(candidate->'state') = 'string'
+        AND candidate->>'state' IN ('delivered', 'rejected', 'expired', 'invalid', 'retry_exhausted')
+        AND jsonb_typeof(candidate->'scrubbedAt') = 'string'
+        AND candidate->>'scrubbedAt' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$'
+        AND CASE WHEN candidate->>'state' = 'delivered' THEN
+          (SELECT count(*) = 5 FROM jsonb_object_keys(candidate))
+          AND candidate ?& ARRAY['kind', 'resetId', 'state', 'scrubbedAt', 'providerMessageId']
+          AND jsonb_typeof(candidate->'providerMessageId') = 'string'
+          AND length(btrim(candidate->>'providerMessageId')) BETWEEN 1 AND 200
+        ELSE
+          (SELECT count(*) = 4 FROM jsonb_object_keys(candidate))
+          AND candidate ?& ARRAY['kind', 'resetId', 'state', 'scrubbedAt']
+        END
+      ELSE false
+    END,
+    false
+  ) END;
+$$;--> statement-breakpoint
+ALTER TABLE outbox ADD CONSTRAINT outbox_password_reset_payload_ck
+  CHECK (
+    topic <> 'email.password_reset'
+    OR (
+      valid_password_reset_payload(payload)
+      AND idempotency_key = 'password-reset:' || (payload->>'resetId')
+    )
+  );--> statement-breakpoint
+ALTER TABLE jobs ADD CONSTRAINT jobs_password_reset_payload_ck
+  CHECK (
+    type <> 'email.password_reset'
+    OR (
+      valid_password_reset_payload(payload)
+      AND idempotency_key = 'outbox:email.password_reset:password-reset:' || (payload->>'resetId')
+    )
+  );--> statement-breakpoint
 -- @TASK P3-P1-FIX - Canonical job/outbox idempotency request hashes
 CREATE FUNCTION set_job_request_hash() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = public, pg_temp AS $$
@@ -356,6 +406,72 @@ END;
 $$;--> statement-breakpoint
 CREATE TRIGGER outbox_request_hash BEFORE INSERT OR UPDATE
 ON outbox FOR EACH ROW EXECUTE FUNCTION set_outbox_request_hash();--> statement-breakpoint
+-- A terminal queue transition is the final crash-safe cleanup boundary. Handler-level
+-- scrubbing records the precise state; this trigger is the last-attempt fallback.
+CREATE FUNCTION scrub_dead_password_reset_job() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE
+  scrubbed_payload jsonb;
+BEGIN
+  IF NEW.type = 'email.password_reset'
+     AND NEW.status = 'dead'
+     AND OLD.status IS DISTINCT FROM 'dead'
+     AND OLD.payload->>'kind' = 'password_reset' THEN
+    scrubbed_payload := jsonb_build_object(
+      'kind', 'password_reset_scrubbed',
+      'resetId', OLD.payload->>'resetId',
+      'state', 'retry_exhausted',
+      'scrubbedAt', to_jsonb(NEW.updated_at)
+    );
+
+    UPDATE outbox
+       SET payload = scrubbed_payload
+     WHERE workspace_id = NEW.workspace_id
+       AND topic = 'email.password_reset'
+       AND idempotency_key = 'password-reset:' || (OLD.payload->>'resetId')
+       AND payload->>'kind' = 'password_reset'
+       AND payload->>'resetId' = OLD.payload->>'resetId';
+
+    NEW.payload := scrubbed_payload;
+    NEW.request_hash := encode(sha256(convert_to(
+      NEW.type || chr(31) || NEW.payload::text || chr(31) ||
+      NEW.max_attempts::text || chr(31) || NEW.priority::text,
+      'UTF8'
+    )), 'hex');
+  END IF;
+  RETURN NEW;
+END;
+$$;--> statement-breakpoint
+CREATE TRIGGER jobs_scrub_dead_password_reset BEFORE UPDATE OF status ON jobs
+FOR EACH ROW EXECUTE FUNCTION scrub_dead_password_reset_job();--> statement-breakpoint
+CREATE FUNCTION scrub_dead_password_reset_outbox() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+  IF NEW.topic = 'email.password_reset'
+     AND NEW.published_at IS NULL
+     AND NEW.attempts >= NEW.max_attempts
+     AND OLD.lease_owner IS NOT NULL
+     AND NEW.lease_owner IS NULL
+     AND NEW.lease_token IS NULL
+     AND NEW.lease_expires_at IS NULL
+     AND OLD.payload->>'kind' = 'password_reset' THEN
+    NEW.payload := jsonb_build_object(
+      'kind', 'password_reset_scrubbed',
+      'resetId', OLD.payload->>'resetId',
+      'state', 'retry_exhausted',
+      'scrubbedAt', to_jsonb(NEW.available_at)
+    );
+    NEW.request_hash := encode(sha256(convert_to(
+      NEW.topic || chr(31) || NEW.payload::text || chr(31) || NEW.max_attempts::text,
+      'UTF8'
+    )), 'hex');
+  END IF;
+  RETURN NEW;
+END;
+$$;--> statement-breakpoint
+CREATE TRIGGER outbox_scrub_dead_password_reset
+BEFORE UPDATE OF lease_owner, lease_token, lease_expires_at ON outbox
+FOR EACH ROW EXECUTE FUNCTION scrub_dead_password_reset_outbox();--> statement-breakpoint
 CREATE TABLE "password_resets" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" uuid NOT NULL,
@@ -922,11 +1038,13 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_billing') THEN CREATE ROLE semforge_billing NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_billing_tenant') THEN CREATE ROLE semforge_billing_tenant NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_privacy') THEN CREATE ROLE semforge_privacy NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_secret_scrubber') THEN CREATE ROLE semforge_secret_scrubber NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
 END
 $$;--> statement-breakpoint
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC;--> statement-breakpoint
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;--> statement-breakpoint
 GRANT USAGE ON SCHEMA public TO semforge_web, semforge_auth, semforge_operator, semforge_dispatcher, semforge_scheduler, semforge_worker, semforge_billing, semforge_billing_tenant, semforge_privacy;--> statement-breakpoint
+GRANT USAGE ON SCHEMA public TO semforge_secret_scrubber;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON
   workspaces, memberships, sites, tracked_queries,
   gsc_connections, oauth_states, gsc_property_bindings
@@ -957,6 +1075,10 @@ GRANT SELECT ON outbox TO semforge_dispatcher;--> statement-breakpoint
 GRANT UPDATE (available_at, lease_owner, lease_token, lease_generation,
   lease_expires_at, attempts, published_at, last_error) ON outbox TO semforge_dispatcher;--> statement-breakpoint
 GRANT INSERT ON audit_events TO semforge_dispatcher;--> statement-breakpoint
+GRANT SELECT (workspace_id, id, type, payload) ON jobs TO semforge_secret_scrubber;--> statement-breakpoint
+GRANT UPDATE (payload, updated_at) ON jobs TO semforge_secret_scrubber;--> statement-breakpoint
+GRANT SELECT (workspace_id, topic, payload, idempotency_key) ON outbox TO semforge_secret_scrubber;--> statement-breakpoint
+GRANT UPDATE (payload) ON outbox TO semforge_secret_scrubber;--> statement-breakpoint
 GRANT SELECT ON sites, tracked_queries, gsc_property_bindings TO semforge_scheduler;--> statement-breakpoint
 GRANT SELECT (workspace_id, status, current_period_end) ON subscriptions TO semforge_scheduler;--> statement-breakpoint
 GRANT INSERT (workspace_id, topic, payload, idempotency_key, available_at, created_at)
@@ -1069,7 +1191,12 @@ CREATE POLICY password_resets_auth_select ON password_resets FOR SELECT TO semfo
 CREATE POLICY password_resets_auth_insert ON password_resets FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY password_resets_auth_update ON password_resets FOR UPDATE TO semforge_auth USING (true) WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY outbox_auth_insert ON outbox FOR INSERT TO semforge_auth
-  WITH CHECK (topic = 'email.password_reset');--> statement-breakpoint
+  WITH CHECK (
+    topic = 'email.password_reset'
+    AND payload->>'kind' = 'password_reset'
+    AND valid_password_reset_payload(payload)
+    AND idempotency_key = 'password-reset:' || (payload->>'resetId')
+  );--> statement-breakpoint
 CREATE POLICY audit_events_worker_insert ON audit_events FOR INSERT TO semforge_worker
   WITH CHECK (workspace_id = nullif(current_setting('app.workspace_id', true), '')::uuid);--> statement-breakpoint
 CREATE POLICY outbox_worker_insert ON outbox FOR INSERT TO semforge_worker
@@ -1123,6 +1250,85 @@ CREATE POLICY jobs_dispatcher_access ON jobs TO semforge_dispatcher
   USING (true) WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY outbox_dispatcher_access ON outbox TO semforge_dispatcher
   USING (true) WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY jobs_password_reset_scrubber ON jobs TO semforge_secret_scrubber
+  USING (type = 'email.password_reset') WITH CHECK (type = 'email.password_reset');--> statement-breakpoint
+CREATE POLICY outbox_password_reset_scrubber ON outbox TO semforge_secret_scrubber
+  USING (topic = 'email.password_reset') WITH CHECK (topic = 'email.password_reset');--> statement-breakpoint
+-- @TASK P5-S1-T1 - Remove encrypted reset delivery from queue storage after terminal handling.
+CREATE FUNCTION scrub_password_reset_delivery(
+  p_workspace_id uuid,
+  p_job_id uuid,
+  p_reset_id uuid,
+  p_state text,
+  p_scrubbed_at timestamptz,
+  p_provider_message_id text
+) RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE
+  scrubbed_payload jsonb;
+  changed_jobs integer := 0;
+BEGIN
+  IF p_workspace_id IS NULL OR p_job_id IS NULL OR p_reset_id IS NULL OR p_scrubbed_at IS NULL THEN
+    RAISE EXCEPTION 'password reset scrub identifiers are required' USING ERRCODE = '22023';
+  END IF;
+  IF p_state NOT IN ('delivered', 'rejected', 'expired', 'invalid', 'retry_exhausted') THEN
+    RAISE EXCEPTION 'password reset scrub state is invalid' USING ERRCODE = '22023';
+  END IF;
+  IF p_state = 'delivered' AND (p_provider_message_id IS NULL OR btrim(p_provider_message_id) = '') THEN
+    RAISE EXCEPTION 'delivered reset requires provider message id' USING ERRCODE = '22023';
+  END IF;
+  IF p_provider_message_id IS NOT NULL AND length(p_provider_message_id) > 200 THEN
+    RAISE EXCEPTION 'provider message id is invalid' USING ERRCODE = '22023';
+  END IF;
+
+  scrubbed_payload := jsonb_strip_nulls(jsonb_build_object(
+    'kind', 'password_reset_scrubbed',
+    'resetId', p_reset_id::text,
+    'state', p_state,
+    'scrubbedAt', to_jsonb(p_scrubbed_at),
+    'providerMessageId', CASE WHEN p_state = 'delivered' THEN p_provider_message_id ELSE NULL END
+  ));
+
+  UPDATE jobs
+     SET payload = scrubbed_payload, updated_at = p_scrubbed_at
+   WHERE workspace_id = p_workspace_id
+     AND id = p_job_id
+     AND type = 'email.password_reset'
+     AND payload->>'resetId' = p_reset_id::text
+     AND (
+       payload->>'kind' = 'password_reset'
+       OR payload = scrubbed_payload
+     );
+  GET DIAGNOSTICS changed_jobs = ROW_COUNT;
+
+  UPDATE outbox
+     SET payload = scrubbed_payload
+   WHERE workspace_id = p_workspace_id
+     AND topic = 'email.password_reset'
+     AND idempotency_key = 'password-reset:' || p_reset_id::text
+     AND payload->>'resetId' = p_reset_id::text
+     AND (
+       payload->>'kind' = 'password_reset'
+       OR payload = scrubbed_payload
+     );
+
+  RETURN changed_jobs = 1;
+END;
+$$;--> statement-breakpoint
+GRANT CREATE ON SCHEMA public TO semforge_secret_scrubber;--> statement-breakpoint
+ALTER FUNCTION scrub_password_reset_delivery(uuid, uuid, uuid, text, timestamptz, text)
+  OWNER TO semforge_secret_scrubber;--> statement-breakpoint
+ALTER FUNCTION scrub_dead_password_reset_job()
+  OWNER TO semforge_secret_scrubber;--> statement-breakpoint
+ALTER FUNCTION scrub_dead_password_reset_outbox()
+  OWNER TO semforge_secret_scrubber;--> statement-breakpoint
+REVOKE CREATE ON SCHEMA public FROM semforge_secret_scrubber;--> statement-breakpoint
+REVOKE ALL ON FUNCTION scrub_password_reset_delivery(uuid, uuid, uuid, text, timestamptz, text) FROM PUBLIC;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION scrub_password_reset_delivery(uuid, uuid, uuid, text, timestamptz, text) TO semforge_dispatcher;--> statement-breakpoint
+REVOKE ALL ON FUNCTION scrub_dead_password_reset_job() FROM PUBLIC;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION scrub_dead_password_reset_job() TO semforge_dispatcher;--> statement-breakpoint
+REVOKE ALL ON FUNCTION scrub_dead_password_reset_outbox() FROM PUBLIC;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION scrub_dead_password_reset_outbox() TO semforge_dispatcher;--> statement-breakpoint
 CREATE POLICY sites_scheduler_read ON sites FOR SELECT TO semforge_scheduler USING (true);--> statement-breakpoint
 CREATE POLICY tracked_queries_scheduler_read ON tracked_queries FOR SELECT TO semforge_scheduler USING (true);--> statement-breakpoint
 CREATE POLICY gsc_property_bindings_scheduler_read ON gsc_property_bindings FOR SELECT TO semforge_scheduler USING (true);--> statement-breakpoint

@@ -75,6 +75,7 @@ const productionEnv = {
   MIGRATION_DATABASE_URL: "postgresql://semforge_owner_login:test@db.example.com:5432/semforge",
   LEGAL_RELEASE_MANIFEST: approvedLegalReleaseManifest,
   APP_PUBLIC_URL: "https://app.semforge.example",
+  AUTH_TRUST_PROXY_HEADERS: "true",
   APP_SECRET: "production-secret-material-that-is-at-least-32-bytes",
   APP_SECRET_CURRENT_KEY_ID: "key-2026-08",
   TOSS_CLIENT_KEY: "test_ck_semforge_toss_client",
@@ -172,6 +173,19 @@ test("AUTH_TRUST_PROXY_HEADERS는 명시적인 true/false만 허용한다", () =
   assert.throws(
     () => parseServerEnv({ NODE_ENV: "test", AUTH_TRUST_PROXY_HEADERS: "yes" }),
     EnvironmentValidationError,
+  );
+});
+
+test("production web은 nginx가 덮어쓰는 proxy header trust를 명시적으로 요구한다", () => {
+  assert.throws(
+    () => parseServerEnv({ ...productionEnv, SEMFORGE_SERVICE: "web", AUTH_TRUST_PROXY_HEADERS: "false" }),
+    (error: unknown) => {
+      assert.ok(error instanceof EnvironmentValidationError);
+      assert.deepEqual(error.issues, [
+        "AUTH_TRUST_PROXY_HEADERS must be true for production web service",
+      ]);
+      return true;
+    },
   );
 });
 

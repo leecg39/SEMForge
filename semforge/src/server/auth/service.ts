@@ -77,10 +77,28 @@ function parseNewPassword(password: string): string {
   return result.data;
 }
 
-function throttleDigest(action: "login" | "forgot_password", email: string, key?: string): string {
+function throttleDigest(
+  action: "login" | "forgot_password",
+  dimension: "email" | "client_address",
+  identifier: string,
+): string {
   return createHash("sha256")
-    .update(`semforge-auth-v1:${action}:${email}:${key ?? "unknown"}`)
+    .update(`semforge-auth-v2:${action}:${dimension}:${identifier}`)
     .digest("hex");
+}
+
+function throttleKeyHashes(
+  action: "login" | "forgot_password",
+  email: string,
+  clientAddressHash?: string,
+): readonly string[] {
+  const normalizedEmail = email.normalize("NFKC").trim().toLocaleLowerCase("en-US");
+  return [
+    throttleDigest(action, "email", normalizedEmail),
+    ...(clientAddressHash
+      ? [throttleDigest(action, "client_address", clientAddressHash)]
+      : []),
+  ];
 }
 
 function passwordResetUrl(baseUrl: string | undefined, token: string): string {
@@ -207,21 +225,19 @@ export function createAuthService(dependencies: AuthServiceDependencies) {
       if (!store) throw configurationError("auth store");
       const parsed = loginInputSchema.parse(input);
       const loggedInAt = now();
-      const throttleKeyHash = throttleDigest(
+      const throttleKeyHashesForRequest = throttleKeyHashes(
         "login",
         parsed.email,
-        parsed.throttleKey,
+        parsed.clientAddressHash,
       );
-      const throttle = await store.consumeAuthThrottle({
-        action: "login",
-        keyHash: throttleKeyHash,
-        now: loggedInAt,
-      });
-      if (!throttle.allowed) {
+      const throttles = await Promise.all(throttleKeyHashesForRequest.map((keyHash) =>
+        store.consumeAuthThrottle({ action: "login", keyHash, now: loggedInAt })));
+      const blocked = throttles.filter((throttle) => !throttle.allowed);
+      if (blocked.length > 0) {
         throw new AuthServiceError(
           "RATE_LIMITED",
           "로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.",
-          throttle.retryAfterSeconds,
+          Math.max(...blocked.map((throttle) => throttle.retryAfterSeconds)),
         );
       }
 
@@ -250,7 +266,12 @@ export function createAuthService(dependencies: AuthServiceDependencies) {
       });
       if (!principal) throw invalidCredentials();
 
-      await store.clearAuthThrottle("login", throttleKeyHash).catch(() => undefined);
+      // 정상 로그인은 사용자가 소유한 이메일 bucket만 초기화한다. 공유 IP
+      // bucket을 초기화하면 공격자가 자신의 계정으로 성공 로그인한 뒤 다른
+      // 이메일에 대한 spraying 제한을 반복해서 우회할 수 있다.
+      await store
+        .clearAuthThrottle("login", throttleKeyHashesForRequest[0]!)
+        .catch(() => undefined);
       return {
         token,
         expiresAt: principal.expiresAt,
@@ -285,16 +306,16 @@ export function createAuthService(dependencies: AuthServiceDependencies) {
       const accepted = { accepted: true } as const;
       const requestedAt = now();
 
-      const throttle = await store.consumeAuthThrottle({
+      const throttles = await Promise.all(throttleKeyHashes(
+        "forgot_password",
+        parsed.email,
+        parsed.clientAddressHash,
+      ).map((keyHash) => store.consumeAuthThrottle({
         action: "forgot_password",
-        keyHash: throttleDigest(
-          "forgot_password",
-          parsed.email,
-          parsed.throttleKey,
-        ),
+        keyHash,
         now: requestedAt,
-      });
-      if (!throttle.allowed) return accepted;
+      })));
+      if (throttles.some((throttle) => !throttle.allowed)) return accepted;
 
       const user = await store.findUserByEmail(parsed.email);
       if (!user || user.disabledAt) return accepted;

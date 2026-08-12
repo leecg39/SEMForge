@@ -8,6 +8,11 @@ import { getPool } from "@/db/client";
 import { decryptSecret, decryptSecretOrThrow, encryptSecret, type SecretCrypto } from "@/lib/crypto";
 import { getServerEnv, type ServerEnv } from "@/lib/env";
 import type { JobHandler } from "@/server/jobs/contracts";
+import {
+  createPasswordResetEmailJobHandler,
+  PASSWORD_RESET_EMAIL_JOB,
+  PostgresPasswordResetEmailStore,
+} from "@/server/auth/password-reset-email";
 import { createGscSearchAnalyticsClient } from "@/server/collectors/gsc/client";
 import { createGscWeeklyCollector } from "@/server/collectors/gsc/collector";
 import { createDedicatedGscCollectionJobHandler } from "@/server/collectors/gsc/handler";
@@ -21,6 +26,7 @@ import { createPostgresNaverObservationStore } from "@/server/collectors/naver/p
 import { createNaverProductionProvider } from "@/server/providers/naver/production";
 import { createTalordataGoogleProvider } from "@/server/providers/talordata/provider";
 import { createRuntimeReportJobHandlers } from "@/server/reports/runtime";
+import { ResendEmailSender } from "@/server/reports/delivery/resend";
 import { CollectionOutboxRelayRuntime } from "@/worker/relay-runtime";
 import { createBillingAccessGuardedJobHandler } from "@/worker/billing-gate";
 import {
@@ -61,12 +67,14 @@ export function composeProductionWorkerJobHandlers(input: {
   readonly google: ProductionJobHandler;
   readonly naver: ProductionJobHandler;
   readonly gsc: ProductionJobHandler;
+  readonly passwordResetEmail: ProductionJobHandler;
   readonly reports: Readonly<Record<string, ProductionJobHandler>>;
 }) {
   return {
     "collect.google": input.google,
     "collect.naver": input.naver,
     "collect.gsc.weekly": input.gsc,
+    [PASSWORD_RESET_EMAIL_JOB]: input.passwordResetEmail,
     ...input.reports,
   };
 }
@@ -122,12 +130,21 @@ export function createProductionWorkerComposition(
     authDatabase: authPool,
     env,
   });
+  const passwordResetEmail = createPasswordResetEmailJobHandler({
+    crypto: runtimeCrypto(),
+    sender: new ResendEmailSender({
+      apiKey: requireEnv(env, "RESEND_API_KEY"),
+      from: requireEnv(env, "RESEND_FROM_EMAIL"),
+    }),
+    store: new PostgresPasswordResetEmailStore(dispatcherPool),
+  });
   const billingGuard = <TPayload extends Record<string, unknown>>(delegate: JobHandler<TPayload>) =>
     createBillingAccessGuardedJobHandler({ database: workerPool, delegate });
   const handlers = composeProductionWorkerJobHandlers({
     google: billingGuard(google),
     naver: billingGuard(naver),
     gsc: billingGuard(gsc),
+    passwordResetEmail,
     reports: {
       ...reports,
       "report.snapshot": billingGuard(reports["report.snapshot"]),

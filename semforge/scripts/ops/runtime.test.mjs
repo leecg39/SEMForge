@@ -68,6 +68,7 @@ const validWebEnvironment = {
   PRIVACY_DATABASE_URL: "postgresql://privacy:password@db.example.com/semforge",
   MIGRATION_DATABASE_URL: "postgresql://owner:password@db.example.com/semforge",
   APP_PUBLIC_URL: "https://app.semforge.example",
+  AUTH_TRUST_PROXY_HEADERS: "true",
   APP_SECRET: "app-secret-material-that-is-at-least-32-bytes",
   APP_SECRET_CURRENT_KEY_ID: "key-2026-08",
   TOSS_CLIENT_KEY: "test_ck_semforge_toss_client",
@@ -269,6 +270,22 @@ test("web preflight는 승인된 법률 manifest가 없거나 placeholder이면 
       LEGAL_RELEASE_MANIFEST: JSON.stringify(unknownField),
     }),
     RuntimeConfigurationError,
+  );
+});
+
+test("web preflight는 trusted nginx proxy header mode를 명시적으로 요구한다", () => {
+  assert.throws(
+    () => validateRuntimeEnvironment("web", {
+      ...validWebEnvironment,
+      AUTH_TRUST_PROXY_HEADERS: "false",
+    }),
+    (error) => {
+      assert.ok(error instanceof RuntimeConfigurationError);
+      assert.deepEqual(error.issues, [
+        "AUTH_TRUST_PROXY_HEADERS must equal true for web",
+      ]);
+      return true;
+    },
   );
 });
 

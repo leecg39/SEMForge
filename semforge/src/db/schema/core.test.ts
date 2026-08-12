@@ -269,6 +269,30 @@ test("auth_action_throttles는 workspace 없이 action과 SHA-256 hash만 저장
   );
 });
 
+test("password reset scrub은 dispatcher의 임의 payload UPDATE 없이 제한 SECURITY DEFINER 함수만 허용한다", () => {
+  const migration = readFileSync(
+    path.join(process.cwd(), "src", "db", "migrations", "0000_core.sql"),
+    "utf8",
+  );
+  assert.match(migration, /CREATE ROLE semforge_secret_scrubber[^;]+NOLOGIN[^;]+NOBYPASSRLS/iu);
+  assert.match(migration, /CREATE FUNCTION scrub_password_reset_delivery\([^]+SECURITY DEFINER/iu);
+  assert.match(migration, /ALTER FUNCTION scrub_password_reset_delivery[^]+OWNER TO semforge_secret_scrubber/iu);
+  assert.match(migration, /REVOKE ALL ON FUNCTION scrub_password_reset_delivery[^]+FROM PUBLIC/iu);
+  assert.match(migration, /GRANT EXECUTE ON FUNCTION scrub_password_reset_delivery[^]+TO semforge_dispatcher/iu);
+  assert.doesNotMatch(
+    migration,
+    /GRANT UPDATE \([^)]*payload[^)]*\) ON jobs TO semforge_dispatcher/iu,
+  );
+  assert.match(migration, /valid_password_reset_payload\([^]+jsonb_object_keys/iu);
+  assert.match(migration, /outbox_password_reset_payload_ck[^]+valid_password_reset_payload/iu);
+  assert.match(migration, /jobs_password_reset_payload_ck[^]+valid_password_reset_payload/iu);
+  assert.match(migration, /outbox_auth_insert[^]+valid_password_reset_payload\(payload\)/iu);
+  assert.match(migration, /encryptedDelivery[^]+\{16\}[^]+\{22\}[^]+\{4\}[^]+\{2\}/u);
+  assert.match(migration, /idempotency_key = 'password-reset:' \|\| \(payload->>'resetId'\)/u);
+  assert.match(migration, /CREATE TRIGGER jobs_scrub_dead_password_reset/iu);
+  assert.match(migration, /CREATE TRIGGER outbox_scrub_dead_password_reset/iu);
+});
+
 test("invites는 생성 시점부터 최대 7일까지만 유효하다", () => {
   const checks = getTableConfig(invites).checks.map((constraint) => constraint.name);
   assert.ok(checks.includes("invites_expiry_window_ck"));

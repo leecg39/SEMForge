@@ -22,13 +22,24 @@ export interface ResendEmailSenderOptions {
   readonly timeoutMs?: number;
 }
 
+export interface TransactionalEmailSendInput {
+  readonly recipient: string;
+  readonly subject: string;
+  readonly html: string;
+  readonly idempotencyKey: string;
+}
+
+export interface TransactionalEmailSender {
+  sendTransactional(input: TransactionalEmailSendInput): Promise<{ providerMessageId: string }>;
+}
+
 function nonBlank(value: string, maximum: number): string {
   const normalized = value.trim();
   if (!normalized || normalized.length > maximum) throw new ResendEmailError("INVALID_INPUT");
   return normalized;
 }
 
-export class ResendEmailSender implements ReportEmailSender {
+export class ResendEmailSender implements ReportEmailSender, TransactionalEmailSender {
   private readonly apiKey: string;
   private readonly from: string;
   private readonly fetcher: typeof globalThis.fetch;
@@ -63,6 +74,25 @@ export class ResendEmailSender implements ReportEmailSender {
         content: base64,
       }],
     };
+    return this.post(payload, idempotencyKey);
+  }
+
+  async sendTransactional(
+    input: TransactionalEmailSendInput,
+  ): Promise<{ providerMessageId: string }> {
+    const idempotencyKey = nonBlank(input.idempotencyKey, 256);
+    return this.post({
+      from: this.from,
+      to: [nonBlank(input.recipient, 320)],
+      subject: nonBlank(input.subject, 998),
+      html: nonBlank(input.html, 10 * 1024 * 1024),
+    }, idempotencyKey);
+  }
+
+  private async post(
+    payload: Readonly<Record<string, unknown>>,
+    idempotencyKey: string,
+  ): Promise<{ providerMessageId: string }> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     let response: Response;

@@ -46,3 +46,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - **원인**: PostgreSQL은 statement 오류 후 명시적 rollback 전까지 현재 트랜잭션을 aborted 상태로 유지한다.
 - **해결**: 각 예상 권한 오류를 독립된 `SAVEPOINT`와 `ROLLBACK TO SAVEPOINT`로 격리했다.
 - **교훈**: 한 트랜잭션에서 여러 negative SQL 권한 테스트를 실행할 때는 각 오류 경계를 savepoint로 감싼다.
+
+### [2026-08-12] 비밀 payload의 queue 종료 경계 (PostgreSQL, outbox, encryption)
+- **상황**: 비밀번호 재설정 이메일을 AES-GCM 암호문으로 outbox/job에 보관하고 terminal 처리 뒤 제거하려 했다.
+- **문제**: handler만 scrub하면 worker crash나 job 생성 전 relay DLQ 경로에서 암호문이 남고, 느슨한 envelope/key 제약은 평문 위장 payload를 허용할 수 있었다.
+- **원인**: 애플리케이션 성공 경로만 정리 경계로 보고 outbox와 job의 독립적인 terminal 전환을 모두 모델링하지 않았다.
+- **해결**: 전체 envelope 형식과 reset ID/idempotency key 관계를 DB 제약으로 강제하고, handler scrub 외에 outbox/job terminal trigger를 최종 정리 경계로 추가했다.
+- **교훈**: 비밀을 담는 durable queue는 생산자·relay·consumer 각각의 crash terminal 경로를 열거하고 DB 수준 형식 검증과 멱등 scrub을 함께 둔다.

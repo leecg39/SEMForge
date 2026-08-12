@@ -230,6 +230,9 @@ export function validateRuntimeEnvironment(profile, environment) {
   if ((environment.PGSSLMODE ?? "verify-full") !== "verify-full") {
     issues.push("PGSSLMODE must be verify-full in production");
   }
+  if (profile === "web" && environment.AUTH_TRUST_PROXY_HEADERS !== "true") {
+    issues.push("AUTH_TRUST_PROXY_HEADERS must equal true for web");
+  }
   for (const key of required) {
     const value = environment[key];
     if (!isPresent(value)) {

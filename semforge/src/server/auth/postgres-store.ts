@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, gt, isNull, or, sql } from "drizzle-orm";
 
 import { getDatabase, type SemforgeDatabase } from "@/db/client";
+import { encryptSecret, type SecretCrypto } from "@/lib/crypto";
 import {
   authActionThrottles,
   billingCustomers,
@@ -85,6 +86,10 @@ function toAuthUser(row: typeof users.$inferSelect): AuthUser {
 
 function deriveTossCustomerKey(workspaceId: string): string {
   return `semforge_${workspaceId.replaceAll("-", "")}`;
+}
+
+export function passwordResetDeliveryAad(workspaceId: string, resetId: string): string {
+  return `workspace:${workspaceId}:password-reset:${resetId}:delivery`;
 }
 
 /** pending invite의 workspace provisioning intent만 쓰는 운영자 전용 경계다. */
@@ -182,6 +187,7 @@ export class PostgresOperatorInviteStore implements OperatorInviteStore {
 export class PostgresAuthStore implements AuthStore {
   constructor(
     private readonly database: SemforgeDatabase = getDatabase("auth"),
+    private readonly crypto: Pick<SecretCrypto, "encrypt"> = { encrypt: encryptSecret },
   ) {}
 
   async prepareInviteAcceptance(
@@ -595,6 +601,16 @@ export class PostgresAuthStore implements AuthStore {
           throw new Error("비밀번호 재설정 outbox workspace를 찾을 수 없습니다.");
         }
 
+        const expiresAt = input.delivery.expiresAt.toISOString();
+        const encryptedDelivery = this.crypto.encrypt(
+          JSON.stringify({
+            email: normalizeEmail(input.delivery.email),
+            resetUrl: input.delivery.resetUrl,
+            expiresAt,
+          }),
+          passwordResetDeliveryAad(membership.workspaceId, reset.id),
+        );
+
         await tx
           .insert(outbox)
           .values({
@@ -602,9 +618,9 @@ export class PostgresAuthStore implements AuthStore {
             topic: "email.password_reset",
             payload: {
               kind: "password_reset",
-              email: input.delivery.email,
-              resetUrl: input.delivery.resetUrl,
-              expiresAt: input.delivery.expiresAt.toISOString(),
+              resetId: reset.id,
+              encryptedDelivery,
+              expiresAt,
             },
             idempotencyKey: `password-reset:${reset.id}`,
             availableAt: input.now,

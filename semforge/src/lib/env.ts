@@ -251,6 +251,12 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
     if (parsed.data.PGSSLMODE !== "verify-full") {
       issues.push("PGSSLMODE must be verify-full in production");
     }
+    if (
+      (parsed.data.SEMFORGE_SERVICE === "web" || parsed.data.SEMFORGE_SERVICE === "all") &&
+      !parsed.data.AUTH_TRUST_PROXY_HEADERS
+    ) {
+      issues.push("AUTH_TRUST_PROXY_HEADERS must be true for production web service");
+    }
     for (const key of databaseUrlKeys) {
       const value = parsed.data[key];
       if (typeof value !== "string") continue;

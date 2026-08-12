@@ -57,12 +57,12 @@ export const loginInputSchema = z.object({
   password: credentialPasswordSchema,
   workspaceId: z.uuid().optional(),
   currentSessionToken: opaqueTokenSchema.optional(),
-  throttleKey: z.string().trim().min(1).max(512).optional(),
+  clientAddressHash: z.string().regex(/^[0-9a-f]{64}$/u).optional(),
 }).strict();
 
 export const requestPasswordResetInputSchema = z.object({
   email: normalizedEmailSchema,
-  throttleKey: z.string().trim().min(1).max(512).optional(),
+  clientAddressHash: z.string().regex(/^[0-9a-f]{64}$/u).optional(),
 }).strict();
 
 export const resetPasswordInputSchema = z.object({
