@@ -35,7 +35,7 @@ All commands below were run from the app root with Node 24 on `PATH`.
 - `npm run lint`
   - Result: passed.
 - `npm test`
-  - Result: 596/596 passing.
+  - Result: 597/597 passing after the final remote integration merge.
 - `npm run build`
   - Result: passed; Next production route manifest contains only the approved pages/API routes.
 - `npm run license:check`
