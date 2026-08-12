@@ -4,29 +4,29 @@ Status: PASSED
 
 ## Git provenance
 
-- Source HEAD captured at run start: `f7efc7c93a2f88d694e68b6e7ef8c8fa2e60c649`
-- Source tree captured at run start: `439f4fcd2337aff110ab9976ff35540441410bb0`
-- Evidence HEAD captured at run completion: `f7efc7c93a2f88d694e68b6e7ef8c8fa2e60c649`
+- Source HEAD captured at run start: `ac79f69d6ee99ad2fd6f736362773fab787b3ed2`
+- Source tree captured at run start: `ecded451d02b9e7c6d3a3cc8599c6cb3fe15c306`
+- Evidence HEAD captured at run completion: `ac79f69d6ee99ad2fd6f736362773fab787b3ed2`
 - HEAD relationship: `same-head`
 
 ## Release gate logs
 
-- `node-version`: `.omo/evidence/phase5-ci/latest/node-version.log` (sha256 `ab4adae7480d0568fbeb46309961f359eb01b4a4dbfe42fe10986a7464b52d64`)
-- `npm-verify`: `.omo/evidence/phase5-ci/latest/npm-verify.log` (sha256 `7e39a7b473e0b13275d6e64886f6d6a49d9502c8f91e745af2976e75a244930e`)
-- `npm-build`: `.omo/evidence/phase5-ci/latest/npm-build.log` (sha256 `d37c1442f2023ccd4ecff771f4ee13549f277c542bf806c0f52561f8967bf728`)
-- `npm-audit-full`: `.omo/evidence/phase5-ci/latest/npm-audit-full.log` (sha256 `be92f10c01f0c4431f9e966cf389af671ae930c4eb66bb21168a3cf0dfc62292`)
-- `npm-audit-production`: `.omo/evidence/phase5-ci/latest/npm-audit-production.log` (sha256 `90cde2c44c35a82c482010183bd70412e4be420602f34d18b1d3574201dc0427`)
-- `license-check`: `.omo/evidence/phase5-ci/latest/license-check.log` (sha256 `651609c2225a1d6670dc23e383166e2712112aa90a70632e89525691d0c7b36a`)
-- `db-generate`: `.omo/evidence/phase5-ci/latest/db-generate.log` (sha256 `d895966756edabbb64e1d369a90c63c0befe1ae174953a28e82c86bd1cc0eedc`)
-- `generated-diff`: `.omo/evidence/phase5-ci/latest/generated-diff.log` (sha256 `0e3f434a5cf6f32ebf29a90af75fbf96a068f39411107f9256a91b391dd19b1b`)
-- `source-diff-check`: `.omo/evidence/phase5-ci/latest/source-diff-check.log` (sha256 `59ee3f749c5dd48ec27f318b1aff58d296a1b575ec5b31cdfeb7e32b8b9826fa`)
-- `range-source-diff-check`: `.omo/evidence/phase5-ci/latest/range-source-diff-check.log` (sha256 `53d7f988eb291a16c143bec9c2890d56b3c382a60e428b8d29d1567c4c9c0497`)
-- `route-manifest`: `.omo/evidence/phase5-ci/latest/route-manifest.log` (sha256 `a0077307e9d927f9083597e5398de4e38d0e8f0b0e21129e305a13261ccd05f3`)
-- `forbidden-surface`: `.omo/evidence/phase5-ci/latest/forbidden-surface.log` (sha256 `57155092f18e72cab1f8511075ba5ac090ce2c9ed604d5674f5a9784accbeb2b`)
-- `pg16`: `.omo/evidence/phase5-ci/latest/pg16.log` (sha256 `ef16acc130ce7735321243949411af07f4280c5fe56e4a307d6c64f90dd83a92`)
-- `nine-site`: `.omo/evidence/phase5-ci/latest/nine-site.log` (sha256 `97fdcd8c2dfd45b797c54f58be0086b78a255a1475cbc51916856a3e968a7ebd`)
+- `node-version`: `.omo/evidence/phase5-ci/latest/node-version.log` (sha256 `1bb158bd1b5bf235a1b15deb0e6506f49499ea0bd5ee8b11dfb0968ae9e6d393`)
+- `npm-verify`: `.omo/evidence/phase5-ci/latest/npm-verify.log` (sha256 `f8566e7dab2e922416f9781221faf22080d576d8dbdb4390ea6a0503662754ce`)
+- `npm-build`: `.omo/evidence/phase5-ci/latest/npm-build.log` (sha256 `440b623cc56a0073776c861bc02d967e26db08dd8f4d36755cbf4efbc9773fb7`)
+- `npm-audit-full`: `.omo/evidence/phase5-ci/latest/npm-audit-full.log` (sha256 `46f59acedd33a9ddf4fb7374099e98534aaa38ec902438a0177545904ed443ee`)
+- `npm-audit-production`: `.omo/evidence/phase5-ci/latest/npm-audit-production.log` (sha256 `c970c93dc2a13e2d422c0d7456e76dd957a2ee06f2fa70e78252a369bef1d1d5`)
+- `license-check`: `.omo/evidence/phase5-ci/latest/license-check.log` (sha256 `0dec682ff723d1609e24ec83b87a74b19222fbb78af9a88ccf5c413638631261`)
+- `db-generate`: `.omo/evidence/phase5-ci/latest/db-generate.log` (sha256 `4539f5eced2a9c983800db1d75caddaf54586ed82a55bcb2215b5208905a16f8`)
+- `generated-diff`: `.omo/evidence/phase5-ci/latest/generated-diff.log` (sha256 `2e1179594399f928d0f16ed53a13db01c305aae5f264b2c600fba24dc53305d9`)
+- `source-diff-check`: `.omo/evidence/phase5-ci/latest/source-diff-check.log` (sha256 `a06de7cd8195d31d546b3d33bb14abbbb03b4d140018ee5d69008ac5e09807f1`)
+- `range-source-diff-check`: `.omo/evidence/phase5-ci/latest/range-source-diff-check.log` (sha256 `423dd2bb2197f5034f1343e2600277dc7129e098316b8ea856845b52979839a7`)
+- `route-manifest`: `.omo/evidence/phase5-ci/latest/route-manifest.log` (sha256 `3be3f8765a682e0b2d5c104dc6580da3572e9a6cadddba417f3dbeddbb13d510`)
+- `forbidden-surface`: `.omo/evidence/phase5-ci/latest/forbidden-surface.log` (sha256 `c19c56940f35293f8cdc623b7eca48535890fa12393f98a2ca48585ee47eaab7`)
+- `pg16`: `.omo/evidence/phase5-ci/latest/pg16.log` (sha256 `e5f015bbf834f148c4d3c832e1268434d70fdb46333e0b24968374e394d0c597`)
+- `nine-site`: `.omo/evidence/phase5-ci/latest/nine-site.log` (sha256 `3ac9662fdea3253f322ff78c6329f2fd479a195752cfaac18b4d975594f02cd6`)
 
 ## Separately executed acceptance evidence
 
-- `minio-versioning`: `.omo/evidence/final-20260812/minio-versioning.log` (sha256 `da44e3b773e80cd52f5c2ee2b6d37e8bc98a26a511fbcb91b767a11bf5976e15`)
+- `minio-versioning`: `.omo/evidence/final-20260812/minio-versioning.log` (sha256 `2fba4939af76a21398ea7397d846bfe34e0564b7aa7ea06cfaa0a9a8f60f0c28`)
 

@@ -1,11 +1,11 @@
 $ npm run ci:route-manifest
-startedAt=2026-08-12T10:01:37.767Z
+startedAt=2026-08-12T10:09:58.081Z
 
 > semforge@0.1.0 ci:route-manifest
 > node scripts/ci/route-manifest.mjs
 
 route manifest passed: pages=14 routes=31
 
-endedAt=2026-08-12T10:01:38.045Z
+endedAt=2026-08-12T10:09:58.326Z
 exitCode=0
 signal=null
