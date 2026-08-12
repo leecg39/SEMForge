@@ -1139,15 +1139,15 @@ test("PostgreSQL 16 subject erasure email suppression은 exact running erasure r
   const erasureRequestA = "f6310000-0000-4000-8000-000000000021";
   const erasureRequestB = "f6310000-0000-4000-8000-000000000022";
   const exportRequestA = "f6310000-0000-4000-8000-000000000023";
-  const hashA = sha256Hex("subject-a@example.test");
+  const hashA = sha256Hex("subject-suppression-a@example.test");
   await pool.query(
     "insert into workspaces (id, name, slug) values ($1, 'Subject Suppression A', 'subject-suppression-a'), ($2, 'Subject Suppression B', 'subject-suppression-b')",
     [workspaceA, workspaceB],
   );
   await pool.query(
     `insert into users (id, email, password_hash, email_verified_at)
-     values ($1, 'subject-a@example.test', 'scrypt:a', now()),
-            ($2, 'subject-b@example.test', 'scrypt:b', now())`,
+     values ($1, 'subject-suppression-a@example.test', 'scrypt:a', now()),
+            ($2, 'subject-suppression-b@example.test', 'scrypt:b', now())`,
     [subjectA, subjectB],
   );
   await pool.query(

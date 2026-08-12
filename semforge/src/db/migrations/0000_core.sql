@@ -1409,7 +1409,7 @@ BEGIN
   UPDATE invites
      SET email = 'erased:' || encode(sha256((id::text || p_request_id::text || ':invite')::bytea), 'hex'),
          accepted_by_user_id = NULL,
-         accepted_erased_at = p_erased_at
+         accepted_erased_at = greatest(p_erased_at, accepted_at)
    WHERE accepted_workspace_id = p_workspace_id
      AND accepted_by_user_id = p_subject_user_id
      AND accepted_at IS NOT NULL

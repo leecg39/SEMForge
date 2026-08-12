@@ -315,7 +315,7 @@ test("PostgreSQL 16 subject erasure는 허용 request suppression, accepted invi
       operatorId,
       requestId,
       subjectUserId: subjectUserA,
-      now: new Date("2026-08-12T03:30:00.000Z"),
+      now: new Date(),
     });
 
     assert.deepEqual(result, { requestId, status: "completed" });
