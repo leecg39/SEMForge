@@ -1097,3 +1097,24 @@ test("PostgreSQL 16 email suppression은 privacy request에 귀속되고 worker�
     /email_suppressions_request_fk/i,
   );
 });
+
+test("PostgreSQL 16 privacy 운영 역할은 DSAR·retention 최소 테이블만 실제 접근한다", async () => {
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query("set local role semforge_privacy");
+    await client.query("select id from workspaces limit 1");
+    await client.query("select workspace_id from memberships limit 1");
+    await client.query("select workspace_id from legal_acceptances limit 1");
+    await client.query("select id from invites limit 1");
+    await client.query("delete from invites where false");
+    await client.query("update workspaces set name = name, updated_at = updated_at where false");
+    await assert.rejects(
+      client.query("update workspaces set slug = slug where false"),
+      /permission denied/i,
+    );
+  } finally {
+    await rollback(client);
+    client.release();
+  }
+});

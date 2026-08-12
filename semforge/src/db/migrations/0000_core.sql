@@ -1185,6 +1185,9 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON privacy_requests, privacy_request_steps,
   rank_observations, aio_observations, aio_citations, naver_observations, naver_observation_sources, gsc_observations,
   tracked_queries, sites, outbox, jobs, sessions, password_resets, billing_customers, payment_methods, billing_ledger_events, users
 TO semforge_privacy;--> statement-breakpoint
+GRANT SELECT ON workspaces, memberships, legal_acceptances TO semforge_privacy;--> statement-breakpoint
+GRANT UPDATE (name, updated_at) ON workspaces TO semforge_privacy;--> statement-breakpoint
+GRANT SELECT, DELETE ON invites TO semforge_privacy;--> statement-breakpoint
 GRANT SELECT, INSERT, DELETE ON email_suppressions TO semforge_privacy;--> statement-breakpoint
 REVOKE ALL ON FUNCTION privacy_erase_workspace(uuid, uuid, text) FROM PUBLIC;--> statement-breakpoint
 GRANT EXECUTE ON FUNCTION privacy_erase_workspace(uuid, uuid, text) TO semforge_privacy;--> statement-breakpoint
@@ -1205,6 +1208,8 @@ CREATE POLICY workspaces_auth_select ON workspaces FOR SELECT TO semforge_auth U
 CREATE POLICY workspaces_auth_insert ON workspaces FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY workspaces_worker_read ON workspaces FOR SELECT TO semforge_worker
   USING (id = nullif(current_setting('app.workspace_id', true), '')::uuid);--> statement-breakpoint
+CREATE POLICY workspaces_privacy_access ON workspaces TO semforge_privacy
+  USING (true) WITH CHECK (true);--> statement-breakpoint
 DO $$
 DECLARE tenant_table text;
 BEGIN
@@ -1319,6 +1324,8 @@ $$;--> statement-breakpoint
 CREATE POLICY users_privacy_access ON users TO semforge_privacy USING (true) WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY sessions_privacy_access ON sessions TO semforge_privacy USING (true) WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY password_resets_privacy_access ON password_resets TO semforge_privacy USING (true) WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY memberships_privacy_select ON memberships FOR SELECT TO semforge_privacy USING (true);--> statement-breakpoint
+CREATE POLICY invites_privacy_access ON invites TO semforge_privacy USING (true);--> statement-breakpoint
 ALTER TABLE email_suppressions ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE email_suppressions FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY email_suppressions_worker_select ON email_suppressions FOR SELECT TO semforge_worker
