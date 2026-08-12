@@ -98,6 +98,12 @@ test("GitHub Actions workflow는 Node 24, PostgreSQL 16, Chromium을 release gat
     /OPERATOR_DATABASE_URL/,
     "release workflow는 build/web 범위에 operator 전용 DSN을 주입하면 안 된다",
   );
+  assert.match(workflow, /CHROMIUM_EXECUTABLE_PATH:\s*\/usr\/bin\/google-chrome/);
+  assert.doesNotMatch(
+    workflow,
+    /apt-get install[^\n]*(?:chromium|chromium-browser)|snap\s+install\s+chromium/u,
+    "GitHub hosted runner의 Chrome을 사용하고 외부 Snap Store에 의존하면 안 된다",
+  );
   assert.doesNotMatch(workflow, /postgres:\/\/semforge/u);
   assert.match(workflow, /postgresql:\/\/semforge/u);
 });
