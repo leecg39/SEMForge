@@ -3,7 +3,7 @@
 // @TASK P4-F1-T1 - Korean immutable report snapshot web renderer
 // @SPEC docs/planning/06-tasks.md#p4-f1-t1--허용-페이지-전체-구현
 // @TEST src/components/product/product-ui.test.tsx
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 
 import { StatusPanel } from "@/components/core-shell/status-panel";
 
@@ -21,6 +21,118 @@ import {
   formatPeriodKo,
 } from "./format";
 import { ResourcePanel } from "./resource-panel";
+
+export interface ReportPdfDownloadViewModel {
+  readonly url: string;
+  readonly expiresAt: string;
+}
+
+export interface ReportPdfPopup {
+  opener: unknown;
+  readonly location: { replace(url: string): void };
+  close(): void;
+}
+
+export type ReportPdfPopupOpener = (url: string, target: string) => ReportPdfPopup | null;
+
+export function parseReportPdfDownload(value: unknown): ReportPdfDownloadViewModel | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const source = value as Record<string, unknown>;
+  if (typeof source.url !== "string" || typeof source.expiresAt !== "string") return null;
+  if (!Number.isFinite(Date.parse(source.expiresAt))) return null;
+  try {
+    const url = new URL(source.url);
+    if (url.protocol !== "https:") return null;
+  } catch {
+    return null;
+  }
+  return { url: source.url, expiresAt: source.expiresAt };
+}
+
+export function reserveReportPdfPopup(opener?: ReportPdfPopupOpener): ReportPdfPopup {
+  const openPopup: ReportPdfPopupOpener = opener ?? ((url, target) => {
+    if (typeof window === "undefined") return null;
+    return window.open(url, target);
+  });
+  const popup = openPopup("about:blank", "_blank");
+  if (!popup) {
+    throw new Error("새 창을 열지 못했습니다. 팝업 허용 후 다시 시도해 주세요.");
+  }
+  popup.opener = null;
+  return popup;
+}
+
+export async function openReportPdf(
+  reportId: string,
+  popup: ReportPdfPopup,
+  fetcher: typeof fetch = fetch,
+): Promise<void> {
+  try {
+    const response = await fetcher(`/api/v1/reports/${encodeURIComponent(reportId)}/pdf`, {
+      method: "GET",
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    const payload: unknown = await response.json().catch(() => null);
+    const envelope = typeof payload === "object" && payload !== null && !Array.isArray(payload)
+      ? payload as Record<string, unknown>
+      : null;
+    const pdf = parseReportPdfDownload(envelope?.data);
+    if (!response.ok || !pdf) {
+      const message = response.status === 404
+        ? "PDF 파일을 준비하고 있습니다. 잠시 후 다시 시도해 주세요."
+        : "PDF 다운로드 URL을 불러오지 못했습니다.";
+      throw new Error(message);
+    }
+    popup.location.replace(pdf.url);
+  } catch (error) {
+    popup.close();
+    throw error;
+  }
+}
+
+export function ReportPdfDownload({
+  reportId,
+  blockedByPastDue,
+}: {
+  reportId: string;
+  blockedByPastDue: boolean;
+}) {
+  const [state, setState] = useState<"idle" | "loading" | "error">("idle");
+  const [message, setMessage] = useState("");
+
+  async function open() {
+    if (blockedByPastDue || state === "loading") return;
+    setState("loading");
+    setMessage("");
+    try {
+      const popup = reserveReportPdfPopup();
+      await openReportPdf(reportId, popup);
+      setState("idle");
+    } catch (error) {
+      setState("error");
+      setMessage(error instanceof Error ? error.message : "PDF 다운로드 URL을 불러오지 못했습니다.");
+    }
+  }
+
+  return (
+    <div className="sf-report-actions" data-endpoint={`/api/v1/reports/${reportId}/pdf`}>
+      <button
+        className="sf-button sf-button--secondary"
+        style={{ minHeight: 44 }}
+        type="button"
+        disabled={blockedByPastDue || state === "loading"}
+        aria-busy={state === "loading"}
+        onClick={() => void open()}
+      >
+        {state === "loading" ? "PDF 준비 확인 중…" : "PDF 열기"}
+      </button>
+      {blockedByPastDue ? <p role="status">PDF는 과거 리포트에서만 열 수 있습니다.</p> : null}
+      {state === "error" ? <p role="alert">{message}</p> : null}
+    </div>
+  );
+}
 
 function records(value: unknown): ReadonlyArray<Record<string, unknown>> {
   return Array.isArray(value)
@@ -250,8 +362,16 @@ export function ReportDetailWorkspace({ reportId }: { reportId: string }) {
         const currentPeriodStart = summaryState.status === "ready" ? summaryState.data.currentPeriodStart : null;
         const blockedByPastDue = access.pastReportsOnly && (!currentPeriodStart || report.period.end >= currentPeriodStart.slice(0, 10));
         return blockedByPastDue ? (
-          <StatusPanel status="error" title="현재 청구기간 리포트는 열 수 없습니다" description="미납 유예 기간에는 현재 청구기간보다 앞선 불변 리포트만 읽을 수 있습니다." />
-        ) : <ReportSnapshotView report={report} />;
+          <div className="sf-page-stack">
+            <StatusPanel status="error" title="현재 청구기간 리포트는 열 수 없습니다" description="미납 유예 기간에는 현재 청구기간보다 앞선 불변 리포트만 읽을 수 있습니다." />
+            <ReportPdfDownload reportId={reportId} blockedByPastDue />
+          </div>
+        ) : (
+          <div className="sf-page-stack">
+            <ReportPdfDownload reportId={reportId} blockedByPastDue={false} />
+            <ReportSnapshotView report={report} />
+          </div>
+        );
       }}
     </ResourcePanel>
   );
