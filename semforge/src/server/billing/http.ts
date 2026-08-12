@@ -8,7 +8,7 @@ import { resolveRequestId } from "@/lib/api-v1/request-id";
 import { errorResponse, successResponse } from "@/lib/api-v1/response";
 import type { SubscriptionStatus } from "@/server/billing/domain";
 import type {
-  BillingChargeResult,
+  BillingChargeOutcome,
   BillingService,
   TossBillingWebhook,
 } from "@/server/billing/service";
@@ -44,6 +44,11 @@ export type BillingSummaryResponse = {
   };
 };
 
+type BillingMutationServiceResult = {
+  readonly outcome: BillingChargeOutcome;
+  readonly account: unknown;
+};
+
 export interface BillingHttpService {
   getCheckoutIdentity(input: { readonly workspaceId: string }): Promise<{
     readonly customerKey: string;
@@ -66,14 +71,14 @@ export interface BillingHttpService {
     readonly customerKey: string;
     readonly requestId: string;
     readonly idempotencyKey: string;
-  }): Promise<BillingChargeResult | { readonly outcome: string; readonly account: unknown }>;
+  }): Promise<BillingMutationServiceResult>;
   retryPastDue(input: {
     readonly workspaceId: string;
     readonly actorUserId: string;
     readonly requestId: string;
     readonly idempotencyKey: string;
     readonly force?: boolean;
-  }): Promise<BillingChargeResult | { readonly outcome: string; readonly account: unknown }>;
+  }): Promise<BillingMutationServiceResult>;
   cancelAtPeriodEnd(input: {
     readonly workspaceId: string;
     readonly actorUserId: string;
@@ -92,7 +97,7 @@ export interface BillingHttpService {
 
 export interface BillingHttpHandlerOptions {
   readonly requireAuth: RequireAuth;
-  readonly getService: () => BillingHttpService;
+  readonly getService: (scope: "tenant" | "global") => BillingHttpService;
   readonly checkout?: {
     readonly clientKey: string;
     readonly appPublicUrl: string;
@@ -304,7 +309,7 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
         csrf: false,
         roles: ["owner", "admin"],
       });
-      const identity = await options.getService().getCheckoutIdentity({
+      const identity = await options.getService("tenant").getCheckoutIdentity({
         workspaceId: principal.workspaceId,
       });
       const requestId = requestIdFor(principal, apiContextRequestId);
@@ -325,7 +330,7 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
         csrf: false,
         roles: ["owner", "admin", "member"],
       });
-      const summary = await options.getService().getSummary({
+      const summary = await options.getService("tenant").getSummary({
         workspaceId: principal.workspaceId,
       });
       const requestId = requestIdFor(principal, apiContextRequestId);
@@ -340,7 +345,8 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
       });
       const body = await parseBillingBody(request, authorizeBodySchema);
       const requestId = requestIdFor(principal, apiContextRequestId);
-      const result = await options.getService().completeAuthorization({
+      const service = options.getService("tenant");
+      const result = await service.completeAuthorization({
         workspaceId: principal.workspaceId,
         actorUserId: principal.userId,
         authKey: body.authKey,
@@ -348,7 +354,16 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
         requestId,
         idempotencyKey,
       });
-      return { data: serializeResult(result), requestId };
+      const summary = await service.getSummary({
+        workspaceId: principal.workspaceId,
+      });
+      return {
+        data: {
+          outcome: result.outcome,
+          subscription: serializeSummary(summary),
+        },
+        requestId,
+      };
     }),
 
     retry: (request: Request) => api(request, async (apiContextRequestId) => {
@@ -359,14 +374,24 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
       });
       await parseBillingBody(request, emptyBodySchema);
       const requestId = requestIdFor(principal, apiContextRequestId);
-      const result = await options.getService().retryPastDue({
+      const service = options.getService("tenant");
+      const result = await service.retryPastDue({
         workspaceId: principal.workspaceId,
         actorUserId: principal.userId,
         requestId,
         idempotencyKey,
         force: true,
       });
-      return { data: serializeResult(result), requestId };
+      const summary = await service.getSummary({
+        workspaceId: principal.workspaceId,
+      });
+      return {
+        data: {
+          outcome: result.outcome,
+          subscription: serializeSummary(summary),
+        },
+        requestId,
+      };
     }),
 
     cancel: (request: Request) => api(request, async (apiContextRequestId) => {
@@ -377,12 +402,22 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
       });
       await parseBillingBody(request, emptyBodySchema);
       const requestId = requestIdFor(principal, apiContextRequestId);
-      const result = await options.getService().cancelAtPeriodEnd({
+      const service = options.getService("tenant");
+      await service.cancelAtPeriodEnd({
         workspaceId: principal.workspaceId,
         actorUserId: principal.userId,
         requestId,
       });
-      return { data: serializeResult(result), requestId };
+      const summary = await service.getSummary({
+        workspaceId: principal.workspaceId,
+      });
+      return {
+        data: {
+          outcome: "cancel_scheduled" as const,
+          subscription: serializeSummary(summary),
+        },
+        requestId,
+      };
     }),
 
     webhook: (request: Request) =>
@@ -396,7 +431,7 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
         const event = await parseBillingBody(request, webhookBodySchema, {
           maxBytes: WEBHOOK_MAX_BODY_BYTES,
         });
-        const result = await options.getService().handleWebhook({
+        const result = await options.getService("global").handleWebhook({
           transmissionId,
           event,
           receivedAt,

@@ -1,0 +1,18 @@
+{
+  "status": "passed",
+  "evidenceKind": "synthetic-limit-fixture",
+  "proves": "workspace/site/query/report cardinality fixture only",
+  "doesNotProve": "real partner onboarding, live provider collection, payment, PDF rendering, or email delivery",
+  "externalNetworkCalls": 0,
+  "workspaceCount": 3,
+  "siteCount": 9,
+  "rankKeywordCount": 180,
+  "aioPromptCount": 180,
+  "observationCount": 360,
+  "reportCount": 9,
+  "limits": {
+    "maxSitesPerWorkspace": 3,
+    "maxRankKeywordsPerSite": 20,
+    "maxAioPromptsPerSite": 20
+  }
+}

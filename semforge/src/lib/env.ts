@@ -5,6 +5,12 @@
 // @TEST src/lib/env.test.ts
 import { z } from "zod";
 
+import {
+  LegalReleaseConfigurationError,
+  parseLegalReleaseManifest,
+  type LegalReleaseManifest,
+} from "@/app/legal/release";
+
 const keyIdSchema = z.string().trim().min(1).max(64).regex(/^[A-Za-z0-9._-]+$/);
 const secretSchema = z
   .string()
@@ -19,7 +25,17 @@ const rawServerEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   // @TASK P4-O1-T1 - Keep web, worker, and migration containers least-privileged.
   SEMFORGE_SERVICE: z
-    .enum(["web", "worker", "relay", "scheduler", "migrate", "build", "all"])
+    .enum([
+      "web",
+      "worker",
+      "relay",
+      "scheduler",
+      "privacy",
+      "migrate",
+      "operator",
+      "build",
+      "all",
+    ])
     .default("all"),
   DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   // @TASK P1-D3 - Never reuse the migration owner DSN for auth or operator runtime access.
@@ -29,7 +45,11 @@ const rawServerEnvSchema = z.object({
   DISPATCHER_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   SCHEDULER_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   BILLING_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
+  BILLING_TENANT_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
+  PRIVACY_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
+  PRIVACY_RETENTION_POLICY: z.string().trim().min(1).max(16 * 1024).optional(),
   MIGRATION_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
+  LEGAL_RELEASE_MANIFEST: z.string().trim().min(1).max(64 * 1024).optional(),
   APP_PUBLIC_URL: z.string().trim().url().optional(),
   AUTH_TRUST_PROXY_HEADERS: booleanStringSchema,
   APP_SECRET: secretSchema.optional(),
@@ -107,18 +127,22 @@ export function parsePreviousSecretKeys(raw: string | undefined): PreviousSecret
 
 export type ServerEnv = Omit<z.infer<typeof rawServerEnvSchema>, "APP_SECRET_PREVIOUS_KEYS"> & {
   APP_SECRET_PREVIOUS_KEYS: PreviousSecretKeys;
+  LEGAL_RELEASE: LegalReleaseManifest | undefined;
 };
 
 const productionRequiredByService = {
   all: [
     "DATABASE_URL",
     "AUTH_DATABASE_URL",
-    "OPERATOR_DATABASE_URL",
     "WORKER_DATABASE_URL",
     "DISPATCHER_DATABASE_URL",
     "SCHEDULER_DATABASE_URL",
     "BILLING_DATABASE_URL",
+    "BILLING_TENANT_DATABASE_URL",
+    "PRIVACY_DATABASE_URL",
+    "PRIVACY_RETENTION_POLICY",
     "MIGRATION_DATABASE_URL",
+    "LEGAL_RELEASE_MANIFEST",
     "APP_PUBLIC_URL",
     "APP_SECRET",
     "APP_SECRET_CURRENT_KEY_ID",
@@ -145,8 +169,9 @@ const productionRequiredByService = {
   web: [
     "DATABASE_URL",
     "AUTH_DATABASE_URL",
-    "OPERATOR_DATABASE_URL",
     "BILLING_DATABASE_URL",
+    "BILLING_TENANT_DATABASE_URL",
+    "LEGAL_RELEASE_MANIFEST",
     "APP_PUBLIC_URL",
     "APP_SECRET",
     "APP_SECRET_CURRENT_KEY_ID",
@@ -187,7 +212,19 @@ const productionRequiredByService = {
   ],
   relay: ["DISPATCHER_DATABASE_URL"],
   scheduler: ["SCHEDULER_DATABASE_URL"],
+  privacy: [
+    "PRIVACY_DATABASE_URL",
+    "PRIVACY_RETENTION_POLICY",
+    "APP_SECRET",
+    "APP_SECRET_CURRENT_KEY_ID",
+    "S3_ENDPOINT",
+    "S3_REGION",
+    "S3_BUCKET",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+  ],
   migrate: ["MIGRATION_DATABASE_URL"],
+  operator: ["OPERATOR_DATABASE_URL"],
   build: [],
 } as const satisfies Record<
   z.infer<typeof rawServerEnvSchema>["SEMFORGE_SERVICE"],
@@ -202,6 +239,8 @@ const databaseUrlKeys = [
   "DISPATCHER_DATABASE_URL",
   "SCHEDULER_DATABASE_URL",
   "BILLING_DATABASE_URL",
+  "BILLING_TENANT_DATABASE_URL",
+  "PRIVACY_DATABASE_URL",
   "MIGRATION_DATABASE_URL",
 ] as const satisfies readonly (keyof z.infer<typeof rawServerEnvSchema>)[];
 
@@ -214,12 +253,19 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
   }
 
   const issues: string[] = [];
+  let legalRelease: LegalReleaseManifest | undefined;
   if (parsed.data.NODE_ENV === "production") {
     for (const required of productionRequiredByService[parsed.data.SEMFORGE_SERVICE]) {
       if (!parsed.data[required]) issues.push(`${required} is required in production`);
     }
     if (parsed.data.PGSSLMODE !== "verify-full") {
       issues.push("PGSSLMODE must be verify-full in production");
+    }
+    if (
+      (parsed.data.SEMFORGE_SERVICE === "web" || parsed.data.SEMFORGE_SERVICE === "all") &&
+      !parsed.data.AUTH_TRUST_PROXY_HEADERS
+    ) {
+      issues.push("AUTH_TRUST_PROXY_HEADERS must be true for production web service");
     }
     for (const key of databaseUrlKeys) {
       const value = parsed.data[key];
@@ -232,6 +278,12 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
       } catch {
         issues.push(`${key} must be a valid PostgreSQL URL`);
       }
+    }
+    if (
+      parsed.data.OPERATOR_DATABASE_URL &&
+      parsed.data.SEMFORGE_SERVICE !== "operator"
+    ) {
+      issues.push("OPERATOR_DATABASE_URL is only allowed for the operator service");
     }
   }
   if (
@@ -255,11 +307,23 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
   ) {
     issues.push("S3_ENDPOINT must use https in production");
   }
+  if (parsed.data.LEGAL_RELEASE_MANIFEST) {
+    try {
+      legalRelease = parseLegalReleaseManifest(parsed.data.LEGAL_RELEASE_MANIFEST);
+    } catch (error) {
+      if (error instanceof LegalReleaseConfigurationError) {
+        issues.push(...error.issues);
+      } else {
+        issues.push("LEGAL_RELEASE_MANIFEST could not be validated");
+      }
+    }
+  }
   if (issues.length > 0) throw new EnvironmentValidationError(issues);
 
   return {
     ...parsed.data,
     APP_SECRET_PREVIOUS_KEYS: parsePreviousSecretKeys(parsed.data.APP_SECRET_PREVIOUS_KEYS),
+    LEGAL_RELEASE: legalRelease,
   };
 }
 

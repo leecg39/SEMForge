@@ -12,15 +12,26 @@ import { eq } from "drizzle-orm";
 
 import type { SemforgeDatabase } from "@/db/client";
 import * as schema from "@/db/schema";
+import { createSecretCrypto, type SecretCrypto } from "@/lib/crypto";
 import {
   PostgresAuthStore,
   PostgresOperatorInviteStore,
+  passwordResetDeliveryAad,
 } from "@/server/auth/postgres-store";
+import { currentLegalDocuments } from "@/server/privacy/legal-documents";
+import { approvedLegalReleaseManifest } from "@/server/privacy/legal-documents.test-fixture";
+import {
+  PASSWORD_RESET_EMAIL_JOB,
+  PostgresPasswordResetEmailStore,
+} from "@/server/auth/password-reset-email";
+import { PostgresOutboxRelay } from "@/server/outbox/relay";
+import { PostgresJobQueue } from "@/server/jobs/queue";
 
 const databases: PGlite[] = [];
 const MINUTE_MS = 60 * 1_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
+process.env.LEGAL_RELEASE_MANIFEST = approvedLegalReleaseManifest;
 
 /** raw label은 테스트 가독성에만 쓰고 DB에는 실제 SHA-256 lower-hex만 전달한다. */
 function digest(rawLabel: string): string {
@@ -41,6 +52,8 @@ async function createStores(): Promise<{
   auth: PostgresAuthStore;
   operator: PostgresOperatorInviteStore;
   database: SemforgeDatabase;
+  crypto: SecretCrypto;
+  client: PGlite;
 }> {
   const client = new PGlite();
   databases.push(client);
@@ -50,10 +63,16 @@ async function createStores(): Promise<{
     migrationsFolder: path.join(process.cwd(), "src", "db", "migrations"),
   });
   const semforgeDatabase = database as unknown as SemforgeDatabase;
+  const crypto = createSecretCrypto({
+    currentKeyId: "auth-test-key",
+    currentSecret: "auth-test-secret-material-that-is-at-least-32-bytes",
+  });
   return {
-    auth: new PostgresAuthStore(semforgeDatabase),
+    auth: new PostgresAuthStore(semforgeDatabase, crypto),
     operator: new PostgresOperatorInviteStore(semforgeDatabase),
     database: semforgeDatabase,
+    crypto,
+    client,
   };
 }
 
@@ -70,6 +89,7 @@ test("새 workspace 초대 수락은 사용자·membership·session·초대 소�
     workspaceSlug: "agency-one",
     email: "  OWNER@Example.COM ",
     tokenHash: digest("invite-hash-1"),
+    releaseTarget: "staging",
     role: "owner",
     expiresAt: addMs(now, 7 * DAY_MS),
     now,
@@ -88,6 +108,7 @@ test("새 workspace 초대 수락은 사용자·membership·session·초대 소�
   });
 
   assert.equal(invite.email, "owner@example.com");
+  assert.equal(invite.releaseTarget, "staging");
   assert.equal(invite.acceptedWorkspaceId, null);
   assert.equal(result.status, "accepted");
   if (result.status !== "accepted") return;
@@ -116,6 +137,71 @@ test("새 workspace 초대 수락은 사용자·membership·session·초대 소�
   });
   assert.equal(reused.status, "invalid");
   assert.equal(await store.findSessionByTokenHash(digest("session-hash-2"), now), null);
+});
+
+test("초대 수락은 final 약관·개인정보 version/SHA와 presented/accepted 시각을 같은 transaction에 기록한다", async () => {
+  const { auth: store, operator, database } = await createStores();
+  const now = testNow();
+  const presentedAt = addMs(now, -MINUTE_MS);
+  const documents = currentLegalDocuments();
+  await operator.createInvite({
+    workspaceName: "Consent Agency",
+    workspaceSlug: "consent-agency",
+    email: "consent@example.com",
+    tokenHash: digest("consent-invite-hash"),
+    role: "owner",
+    expiresAt: addMs(now, 7 * DAY_MS),
+    now,
+  });
+
+  const result = await store.acceptInviteAtomic({
+    tokenHash: digest("consent-invite-hash"),
+    email: "consent@example.com",
+    user: {
+      kind: "new",
+      passwordHash: "scrypt:test-password-hash",
+      displayName: "Consent Owner",
+    },
+    sessionTokenHash: digest("consent-session-hash"),
+    sessionExpiresAt: addMs(now, 30 * DAY_MS),
+    now,
+    legalAcceptance: {
+      termsVersion: documents.terms.version,
+      termsSha256: documents.terms.sha256,
+      privacyVersion: documents.privacy.version,
+      privacySha256: documents.privacy.sha256,
+      presentedAt,
+    },
+  });
+  assert.equal(result.status, "accepted");
+  if (result.status !== "accepted") return;
+
+  const rows = await database.execute<{
+    workspace_id: string;
+    user_id: string;
+    terms_version: string;
+    terms_sha256: string;
+    privacy_version: string;
+    privacy_sha256: string;
+    presented_at: Date;
+    accepted_at: Date;
+  }>(
+    `select workspace_id::text, user_id::text, terms_version, terms_sha256,
+            privacy_version, privacy_sha256, presented_at, accepted_at
+       from legal_acceptances
+      where workspace_id = '${result.principal.workspaceId}'`,
+  );
+  assert.equal(rows.rows.length, 1);
+  assert.deepEqual(rows.rows[0], {
+    workspace_id: result.principal.workspaceId,
+    user_id: result.principal.userId,
+    terms_version: documents.terms.version,
+    terms_sha256: documents.terms.sha256,
+    privacy_version: documents.privacy.version,
+    privacy_sha256: documents.privacy.sha256,
+    presented_at: presentedAt.toISOString().replace("T", " ").replace(".000Z", "+00"),
+    accepted_at: now.toISOString().replace("T", " ").replace(".000Z", "+00"),
+  });
 });
 
 test("invite preflight은 유효한 token과 일치 email만 ready로 공개하고 나머지는 invalid로 합친다", async () => {
@@ -679,8 +765,8 @@ test("password reset은 token을 한 번만 소비하고 password 변경과 모�
   );
 });
 
-test("password reset 생성은 reset token row와 이메일 outbox를 같은 auth transaction에 예약한다", async () => {
-  const { auth: store, operator, database } = await createStores();
+test("password reset 생성은 이메일·URL 평문 없이 암호화 delivery를 outbox에 원자 예약한다", async () => {
+  const { auth: store, operator, database, crypto, client } = await createStores();
   const now = testNow();
   await operator.createInvite({
     workspaceName: "Reset Outbox Agency",
@@ -723,12 +809,131 @@ test("password reset 생성은 reset token row와 이메일 outbox를 같은 aut
   assert.equal(outbox.workspaceId, accepted.principal.workspaceId);
   assert.equal(outbox.topic, "email.password_reset");
   assert.equal(outbox.publishedAt, null);
-  assert.deepEqual(outbox.payload, {
+  assert.equal(JSON.stringify(outbox.payload).includes("reset-outbox@example.com"), false);
+  assert.equal(JSON.stringify(outbox.payload).includes("raw-reset-token"), false);
+  assert.deepEqual(Object.keys(outbox.payload).sort(), [
+    "encryptedDelivery",
+    "expiresAt",
+    "kind",
+    "resetId",
+  ]);
+  const encryptedDelivery = String(outbox.payload.encryptedDelivery);
+  assert.match(encryptedDelivery, /^enc:v1:auth-test-key:/u);
+  assert.deepEqual(
+    JSON.parse(crypto.decryptOrThrow(
+      encryptedDelivery,
+      passwordResetDeliveryAad(accepted.principal.workspaceId, reset.id),
+    )),
+    {
+      email: "reset-outbox@example.com",
+      resetUrl: "https://app.semforge.test/reset-password/raw-reset-token",
+      expiresAt: addMs(now, HOUR_MS).toISOString(),
+    },
+  );
+  assert.deepEqual({
+    kind: outbox.payload.kind,
+    resetId: outbox.payload.resetId,
+    expiresAt: outbox.payload.expiresAt,
+  }, {
     kind: "password_reset",
-    email: "reset-outbox@example.com",
-    resetUrl: "https://app.semforge.test/reset-password/raw-reset-token",
+    resetId: reset.id,
     expiresAt: addMs(now, HOUR_MS).toISOString(),
   });
+
+  const relay = new PostgresOutboxRelay(client, () => now);
+  const [claimed] = await relay.claim({
+    workerId: "password-reset-relay",
+    topics: [PASSWORD_RESET_EMAIL_JOB],
+    now,
+  });
+  assert.ok(claimed);
+  const job = await relay.publish(claimed, { now, jobType: PASSWORD_RESET_EMAIL_JOB });
+  await new PostgresPasswordResetEmailStore(client).scrub({
+    workspaceId: accepted.principal.workspaceId,
+    jobId: job.id,
+    resetId: reset.id,
+    state: "delivered",
+    scrubbedAt: addMs(now, MINUTE_MS),
+    providerMessageId: "resend-reset-message-1",
+  });
+  const scrubbed = await client.query<{ source: string; payload: Record<string, unknown> }>(
+    `select 'job' as source, payload from jobs where id = $1
+     union all
+     select 'outbox' as source, payload from outbox
+      where workspace_id = $2 and topic = $3 and idempotency_key = $4
+     order by source`,
+    [
+      job.id,
+      accepted.principal.workspaceId,
+      PASSWORD_RESET_EMAIL_JOB,
+      `password-reset:${reset.id}`,
+    ],
+  );
+  assert.equal(scrubbed.rows.length, 2);
+  for (const row of scrubbed.rows) {
+    assert.equal(row.payload.kind, "password_reset_scrubbed");
+    assert.equal(row.payload.state, "delivered");
+    assert.equal(JSON.stringify(row.payload).includes("enc:v1"), false);
+    assert.equal(JSON.stringify(row.payload).includes("reset-outbox@example.com"), false);
+    assert.equal(JSON.stringify(row.payload).includes("raw-reset-token"), false);
+  }
+});
+
+test("password reset job이 마지막 attempt 또는 crash 복구로 dead가 되면 DB trigger가 양쪽 암호문을 scrub한다", async () => {
+  const { auth: store, operator, client } = await createStores();
+  const now = testNow();
+  await operator.createInvite({
+    workspaceName: "Dead Reset Agency",
+    workspaceSlug: "dead-reset-agency",
+    email: "dead-reset@example.com",
+    tokenHash: digest("dead-reset-invite"),
+    role: "owner",
+    expiresAt: addMs(now, DAY_MS),
+    now,
+  });
+  const accepted = await store.acceptInviteAtomic({
+    tokenHash: digest("dead-reset-invite"),
+    email: "dead-reset@example.com",
+    user: { kind: "new", passwordHash: "scrypt:old" },
+    sessionTokenHash: digest("dead-reset-session"),
+    sessionExpiresAt: addMs(now, DAY_MS),
+    now,
+  });
+  assert.equal(accepted.status, "accepted");
+  if (accepted.status !== "accepted") return;
+  const reset = await store.createPasswordReset({
+    userId: accepted.principal.userId,
+    tokenHash: digest("dead-reset-token"),
+    expiresAt: addMs(now, HOUR_MS),
+    now,
+    delivery: {
+      email: "dead-reset@example.com",
+      resetUrl: "https://app.semforge.test/reset-password/dead-reset-token",
+      expiresAt: addMs(now, HOUR_MS),
+    },
+  });
+  const relay = new PostgresOutboxRelay(client, () => now);
+  const [event] = await relay.claim({ workerId: "dead-reset-relay", topics: [PASSWORD_RESET_EMAIL_JOB], now });
+  assert.ok(event);
+  const published = await relay.publish(event, { jobType: PASSWORD_RESET_EMAIL_JOB, maxAttempts: 1, now });
+  const queue = new PostgresJobQueue(client, () => now);
+  const [leased] = await queue.claim({ workerId: "dead-reset-worker", now });
+  assert.ok(leased);
+  const dead = await queue.fail(leased, { error: "WORKER_CRASH", retryable: true, now });
+  assert.equal(dead.status, "dead");
+
+  const rows = await client.query<{ payload: Record<string, unknown> }>(
+    `select payload from jobs where id = $1
+     union all select payload from outbox
+      where workspace_id = $2 and idempotency_key = $3`,
+    [published.id, accepted.principal.workspaceId, `password-reset:${reset.id}`],
+  );
+  assert.equal(rows.rows.length, 2);
+  for (const row of rows.rows) {
+    assert.equal(row.payload.kind, "password_reset_scrubbed");
+    assert.equal(row.payload.state, "retry_exhausted");
+    assert.equal(Object.hasOwn(row.payload, "encryptedDelivery"), false);
+  }
 });
 
 test("동시 password reset은 한 요청만 password를 변경하고 다른 요청은 invalid로 끝난다", async () => {

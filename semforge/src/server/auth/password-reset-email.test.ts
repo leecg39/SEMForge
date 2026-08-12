@@ -1,0 +1,272 @@
+// @TASK P5-S1-T1 - Encrypted password-reset email delivery
+// @SPEC docs/planning/06-tasks.md#p2-a1-t1--초대-전용-인증과-세션
+// @TEST src/server/auth/password-reset-email.ts
+import assert from "node:assert/strict";
+import { test } from "node:test";
+
+import { createSecretCrypto } from "@/lib/crypto";
+import { passwordResetDeliveryAad } from "@/server/auth/postgres-store";
+import {
+  createPasswordResetEmailJobHandler,
+  PASSWORD_RESET_EMAIL_JOB,
+  type PasswordResetEmailScrubInput,
+} from "@/server/auth/password-reset-email";
+import type { JobExecutionContext, JobHandlerInput } from "@/server/jobs/contracts";
+import { ReportEmailSenderError } from "@/server/reports/delivery/service";
+
+const workspaceId = "81000000-0000-4000-8000-000000000001";
+const resetId = "81000000-0000-4000-8000-000000000002";
+const jobId = "81000000-0000-4000-8000-000000000003";
+const now = new Date("2026-08-12T05:00:00.000Z");
+const expiresAt = new Date("2026-08-12T05:30:00.000Z");
+const crypto = createSecretCrypto({
+  currentKeyId: "password-reset-test",
+  currentSecret: "password-reset-test-secret-that-is-at-least-32-bytes",
+});
+
+function encryptedPayload(expiry = expiresAt) {
+  const delivery = {
+    email: "owner@example.com",
+    resetUrl: "https://app.semforge.test/reset-password/secure-reset-token",
+    expiresAt: expiry.toISOString(),
+  };
+  return {
+    kind: "password_reset",
+    resetId,
+    expiresAt: expiry.toISOString(),
+    encryptedDelivery: crypto.encrypt(
+      JSON.stringify(delivery),
+      passwordResetDeliveryAad(workspaceId, resetId),
+    ),
+  };
+}
+
+function job(
+  payload: Record<string, unknown> = encryptedPayload(),
+  attempt = 1,
+  maxAttempts = 5,
+): JobHandlerInput {
+  return {
+    id: jobId,
+    workspaceId,
+    type: PASSWORD_RESET_EMAIL_JOB,
+    payload,
+    idempotencyKey: `outbox:${PASSWORD_RESET_EMAIL_JOB}:password-reset:${resetId}`,
+    attempt,
+    maxAttempts,
+  };
+}
+
+function context(clock = now): JobExecutionContext {
+  return {
+    workspaceId,
+    jobId,
+    attempt: 1,
+    maxAttempts: 5,
+    lease: {
+      owner: "password-reset-worker",
+      token: "81000000-0000-4000-8000-000000000004",
+      generation: 1,
+      expiresAt: new Date("2026-08-12T05:01:00.000Z"),
+    },
+    signal: new AbortController().signal,
+    providerCalls: {
+      async reserve() { throw new Error("not used"); },
+      async succeed() { throw new Error("not used"); },
+      async fail() { throw new Error("not used"); },
+    },
+    now: () => clock,
+    async audit() {},
+  };
+}
+
+test("password reset worker는 처리 직전에만 복호화하고 Resend stable idempotency 후 양쪽 payload를 scrub한다", async () => {
+  const sent: Record<string, unknown>[] = [];
+  const scrubbed: PasswordResetEmailScrubInput[] = [];
+  const handler = createPasswordResetEmailJobHandler({
+    crypto,
+    sender: {
+      async sendTransactional(input) {
+        sent.push({ ...input });
+        return { providerMessageId: "resend-reset-message-1" };
+      },
+    },
+    store: { async scrub(input) { scrubbed.push(input); } },
+  });
+
+  const payload = encryptedPayload();
+  assert.equal(JSON.stringify(payload).includes("owner@example.com"), false);
+  assert.equal(JSON.stringify(payload).includes("secure-reset-token"), false);
+  assert.deepEqual(await handler(job(payload), context()), {
+    status: "succeeded",
+    metadata: { resetId, deliveryStatus: "delivered" },
+  });
+  assert.equal(sent.length, 1);
+  assert.deepEqual(sent[0], {
+    recipient: "owner@example.com",
+    subject: "SEMForge 비밀번호 재설정",
+    html: '<p>요청한 비밀번호 재설정 링크입니다.</p><p><a href="https://app.semforge.test/reset-password/secure-reset-token">비밀번호 재설정</a></p><p>이 링크는 30분 후 만료됩니다.</p>',
+    idempotencyKey: `password-reset:${resetId}`,
+  });
+  assert.deepEqual(scrubbed, [{
+    workspaceId,
+    jobId,
+    resetId,
+    state: "delivered",
+    scrubbedAt: now,
+    providerMessageId: "resend-reset-message-1",
+  }]);
+});
+
+test("retryable provider 실패는 암호문을 유지하고 마지막 attempt에서만 terminal scrub한다", async () => {
+  const scrubbed: PasswordResetEmailScrubInput[] = [];
+  const handler = createPasswordResetEmailJobHandler({
+    crypto,
+    sender: {
+      async sendTransactional() {
+        throw new ReportEmailSenderError("retryable", "provider detail must be hidden");
+      },
+    },
+    store: { async scrub(input) { scrubbed.push(input); } },
+  });
+
+  assert.deepEqual(await handler(job(encryptedPayload(), 2, 5), context()), {
+    status: "retryable",
+    error: "PASSWORD_RESET_EMAIL_RETRYABLE",
+  });
+  assert.deepEqual([...scrubbed], []);
+  assert.deepEqual(await handler(job(encryptedPayload(), 5, 5), context()), {
+    status: "dead",
+    error: "PASSWORD_RESET_EMAIL_RETRY_EXHAUSTED",
+  });
+  assert.equal(scrubbed.at(-1)?.state, "retry_exhausted");
+});
+
+test("provider reject와 만료 delivery는 평문 복호화 결과를 남기지 않고 terminal scrub한다", async () => {
+  const scrubbed: PasswordResetEmailScrubInput[] = [];
+  let sendCalls = 0;
+  const rejected = createPasswordResetEmailJobHandler({
+    crypto,
+    sender: {
+      async sendTransactional() {
+        sendCalls += 1;
+        throw new ReportEmailSenderError("rejected", "recipient PII");
+      },
+    },
+    store: { async scrub(input) { scrubbed.push(input); } },
+  });
+  assert.deepEqual(await rejected(job(), context()), {
+    status: "dead",
+    error: "PASSWORD_RESET_EMAIL_REJECTED",
+  });
+  assert.equal(scrubbed.at(-1)?.state, "rejected");
+
+  const expired = createPasswordResetEmailJobHandler({
+    crypto,
+    sender: { async sendTransactional() { sendCalls += 1; return { providerMessageId: "must-not-send" }; } },
+    store: { async scrub(input) { scrubbed.push(input); } },
+  });
+  assert.deepEqual(
+    await expired(job(encryptedPayload(new Date("2026-08-12T04:59:59.000Z"))), context()),
+    { status: "dead", error: "PASSWORD_RESET_EMAIL_EXPIRED" },
+  );
+  assert.equal(scrubbed.at(-1)?.state, "expired");
+  assert.equal(sendCalls, 1);
+});
+
+test("전송 후 crash로 scrubbed marker만 남은 재실행은 provider를 호출하지 않고 확정 상태를 재생한다", async () => {
+  let sendCalls = 0;
+  const handler = createPasswordResetEmailJobHandler({
+    crypto,
+    sender: { async sendTransactional() { sendCalls += 1; return { providerMessageId: "duplicate" }; } },
+    store: { async scrub() { throw new Error("must not scrub twice"); } },
+  });
+
+  assert.deepEqual(await handler(job({
+    kind: "password_reset_scrubbed",
+    resetId,
+    state: "delivered",
+    scrubbedAt: now.toISOString(),
+  }), context()), {
+    status: "succeeded",
+    metadata: { resetId, deliveryStatus: "already_delivered" },
+  });
+  assert.equal(sendCalls, 0);
+});
+
+test("provider 성공 뒤 scrub 실패는 같은 Resend idempotency key로 재시도해 중복 발송을 막는다", async () => {
+  const keys: string[] = [];
+  let scrubCalls = 0;
+  const handler = createPasswordResetEmailJobHandler({
+    crypto,
+    sender: {
+      async sendTransactional(input) {
+        keys.push(input.idempotencyKey);
+        return { providerMessageId: "resend-stable-message" };
+      },
+    },
+    store: {
+      async scrub() {
+        scrubCalls += 1;
+        if (scrubCalls === 1) throw new Error("transient database outage");
+      },
+    },
+  });
+
+  assert.deepEqual(await handler(job(encryptedPayload(), 1, 5), context()), {
+    status: "retryable",
+    error: "PASSWORD_RESET_EMAIL_SCRUB_RETRYABLE",
+  });
+  assert.equal((await handler(job(encryptedPayload(), 2, 5), context())).status, "succeeded");
+  assert.deepEqual(keys, [`password-reset:${resetId}`, `password-reset:${resetId}`]);
+});
+
+test("AAD가 다른 workspace로 이동하거나 암호문이 변조되면 provider 호출 없이 invalid scrub한다", async () => {
+  const scrubbed: PasswordResetEmailScrubInput[] = [];
+  let sendCalls = 0;
+  const handler = createPasswordResetEmailJobHandler({
+    crypto,
+    sender: { async sendTransactional() { sendCalls += 1; return { providerMessageId: "must-not-send" }; } },
+    store: { async scrub(input) { scrubbed.push(input); } },
+  });
+  const payload = encryptedPayload();
+  const encrypted = String(payload.encryptedDelivery);
+  payload.encryptedDelivery = `${encrypted.slice(0, -1)}${encrypted.endsWith("A") ? "B" : "A"}`;
+
+  assert.deepEqual(await handler(job(payload), context()), {
+    status: "dead",
+    error: "PASSWORD_RESET_EMAIL_INVALID_PAYLOAD",
+  });
+  assert.equal(sendCalls, 0);
+  assert.equal(scrubbed[0]?.state, "invalid");
+});
+
+test("형식이 손상된 reset payload도 식별자가 있으면 scrub하고 DB 장애 시 dead 전에 재시도한다", async () => {
+  const invalidPayload = {
+    kind: "password_reset",
+    resetId,
+    encryptedDelivery: "plaintext-must-not-survive",
+    expiresAt: expiresAt.toISOString(),
+  };
+  const scrubbed: PasswordResetEmailScrubInput[] = [];
+  const scrubbedHandler = createPasswordResetEmailJobHandler({
+    crypto,
+    sender: { async sendTransactional() { throw new Error("must not send"); } },
+    store: { async scrub(input) { scrubbed.push(input); } },
+  });
+  assert.deepEqual(await scrubbedHandler(job(invalidPayload, 5, 5), context()), {
+    status: "dead",
+    error: "PASSWORD_RESET_EMAIL_INVALID_PAYLOAD",
+  });
+  assert.equal(scrubbed[0]?.state, "invalid");
+
+  const unavailableStoreHandler = createPasswordResetEmailJobHandler({
+    crypto,
+    sender: { async sendTransactional() { throw new Error("must not send"); } },
+    store: { async scrub() { throw new Error("temporary database outage"); } },
+  });
+  assert.deepEqual(await unavailableStoreHandler(job(invalidPayload, 5, 5), context()), {
+    status: "retryable",
+    error: "PASSWORD_RESET_EMAIL_SCRUB_RETRYABLE",
+  });
+});

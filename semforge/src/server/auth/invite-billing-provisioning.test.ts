@@ -10,9 +10,11 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 
 import { PostgresAuthStore } from "@/server/auth/postgres-store";
+import { approvedLegalReleaseManifest } from "@/server/privacy/legal-documents.test-fixture";
 
 const pg = new PGlite();
 const migrationsFolder = path.join(process.cwd(), "src", "db", "migrations");
+process.env.LEGAL_RELEASE_MANIFEST = approvedLegalReleaseManifest;
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -26,18 +28,21 @@ before(async () => {
 after(async () => pg.close());
 
 test("acceptInviteAtomic provisions billing_customers and account_created subscription in the same transaction", async () => {
-  const now = new Date("2026-08-11T03:00:00.000Z");
+  // Keep creation just behind PostgreSQL's real clock: expiry remains future,
+  // while the DB-generated acceptance timestamp cannot precede creation.
+  const now = new Date(Date.now() - 1_000);
   const tokenHash = sha256("invite-billing-token");
   const store = new PostgresAuthStore(drizzle(pg) as never);
 
   await pg.query(
-    `insert into invites (email, token_hash, workspace_name, workspace_slug, expires_at)
-     values ($1, $2, $3, $4, $5)`,
+    `insert into invites (email, token_hash, workspace_name, workspace_slug, created_at, expires_at)
+     values ($1, $2, $3, $4, $5, $6)`,
     [
       "billing-owner@example.com",
       tokenHash,
       "Billing Agency",
       "billing-agency",
+      now,
       new Date(now.getTime() + 86_400_000),
     ],
   );

@@ -2,6 +2,7 @@
 // @SPEC docs/planning/06-tasks.md#p2-a1-t1--초대-전용-인증과-세션
 // @TEST src/server/auth/http.test.ts
 import { createHash } from "node:crypto";
+import { isIP } from "node:net";
 
 import { z, ZodError } from "zod";
 
@@ -35,7 +36,7 @@ type AuthSessionResult = {
 
 type LoginHttpInput = z.output<typeof loginRequestSchema> & {
   readonly currentSessionToken?: string;
-  readonly throttleKey?: string;
+  readonly clientAddressHash?: string;
 };
 
 type AcceptInviteHttpInput = z.output<typeof acceptInviteRequestSchema> & {
@@ -49,7 +50,7 @@ export interface AuthHttpService {
   getSession(sessionToken: string | undefined): Promise<AuthSessionPrincipal | null>;
   requestPasswordReset(input: {
     readonly email: string;
-    readonly throttleKey?: string;
+    readonly clientAddressHash?: string;
   }): Promise<{ readonly accepted: true }>;
   resetPassword(input: {
     readonly token: string;
@@ -74,6 +75,12 @@ const acceptInviteRequestSchema = acceptInviteInputSchema
     email: true,
     password: true,
     displayName: true,
+    legalAccepted: true,
+    legalTermsVersion: true,
+    legalTermsSha256: true,
+    legalPrivacyVersion: true,
+    legalPrivacySha256: true,
+    legalPresentedAt: true,
   })
   .strict();
 
@@ -141,37 +148,53 @@ function publicSession(result: AuthSessionResult) {
   };
 }
 
-function normalizedHeader(request: Request, name: string): string {
-  const value = request.headers.get(name)?.normalize("NFKC").trim() ?? "";
-  return value.slice(0, 256);
+function canonicalIp(value: string): string | undefined {
+  const candidate = value.normalize("NFKC").trim().toLocaleLowerCase("en-US");
+  const version = isIP(candidate);
+  if (version === 4) return candidate.split(".").map(Number).join(".");
+  if (version === 6) {
+    try {
+      return new URL(`http://[${candidate}]`).hostname.slice(1, -1);
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
 }
 
-function firstForwardedFor(request: Request): string {
-  const value = normalizedHeader(request, "x-forwarded-for");
-  return value.split(",")[0]?.trim().slice(0, 128) ?? "";
-}
-
-function authThrottleKey(
+/**
+ * nginx가 client-provided XFF를 append하더라도 오른쪽 hop은 proxy가 관측한 주소다.
+ * 두 proxy header가 충돌하거나 trust opt-in이 없으면 IP bucket을 사용하지 않는다.
+ */
+function trustedClientAddress(
   request: Request,
   trustedProxyHeaders: boolean,
-): string {
-  const url = new URL(request.url);
-  const signal = {
-    host: url.host.toLocaleLowerCase("en-US"),
-    userAgent: normalizedHeader(request, "user-agent"),
-    acceptLanguage: normalizedHeader(request, "accept-language"),
-    secChUa: normalizedHeader(request, "sec-ch-ua"),
-    secChUaPlatform: normalizedHeader(request, "sec-ch-ua-platform"),
-    secFetchSite: normalizedHeader(request, "sec-fetch-site"),
-    proxy: trustedProxyHeaders
-      ? {
-          forwardedFor: firstForwardedFor(request),
-          realIp: normalizedHeader(request, "x-real-ip").slice(0, 128),
-        }
-      : undefined,
-  };
+): string | undefined {
+  if (!trustedProxyHeaders) return undefined;
+  const realIpHeader = request.headers.get("x-real-ip")?.slice(0, 128) ?? "";
+  const realAddress = realIpHeader ? canonicalIp(realIpHeader) : undefined;
+  if (!realAddress) return undefined;
+
+  const forwarded = request.headers.get("x-forwarded-for") ?? "";
+  const rightmostForwarded = forwarded
+    ? forwarded.slice(forwarded.lastIndexOf(",") + 1).trim().slice(0, 128)
+    : "";
+  const forwardedAddress = rightmostForwarded
+    ? canonicalIp(rightmostForwarded)
+    : undefined;
+  if ((forwarded && !forwardedAddress) || (realIpHeader && !realAddress)) return undefined;
+  if (forwardedAddress && realAddress && forwardedAddress !== realAddress) return undefined;
+  return realAddress;
+}
+
+function clientAddressHash(
+  request: Request,
+  trustedProxyHeaders: boolean,
+): string | undefined {
+  const address = trustedClientAddress(request, trustedProxyHeaders);
+  if (!address) return undefined;
   return createHash("sha256")
-    .update(`semforge-auth-http-throttle-v1:${JSON.stringify(signal)}`)
+    .update(`semforge-auth-client-address-v1:${address}`)
     .digest("hex");
 }
 
@@ -186,13 +209,14 @@ export function createAuthHttpHandlers(dependencies: AuthHttpDependencies) {
     login: withApiV1(async (request) => {
       const body = await parseJsonBody(request, loginRequestSchema);
       const currentSessionToken = readSessionTokenFromRequest(request) ?? undefined;
+      const addressHash = clientAddressHash(
+        request,
+        dependencies.trustedProxyHeaders ?? false,
+      );
       const result = await callAuth(() =>
         dependencies.getService().login({
           ...body,
-          throttleKey: authThrottleKey(
-            request,
-            dependencies.trustedProxyHeaders ?? false,
-          ),
+          ...(addressHash ? { clientAddressHash: addressHash } : {}),
           ...(currentSessionToken ? { currentSessionToken } : {}),
         }),
       );
@@ -253,13 +277,14 @@ export function createAuthHttpHandlers(dependencies: AuthHttpDependencies) {
 
     forgotPassword: withApiV1(async (request) => {
       const body = await parseJsonBody(request, forgotPasswordRequestSchema);
+      const addressHash = clientAddressHash(
+        request,
+        dependencies.trustedProxyHeaders ?? false,
+      );
       const result = await callAuth(() =>
         dependencies.getService().requestPasswordReset({
           ...body,
-          throttleKey: authThrottleKey(
-            request,
-            dependencies.trustedProxyHeaders ?? false,
-          ),
+          ...(addressHash ? { clientAddressHash: addressHash } : {}),
         }),
       );
       return apiSuccess(result, { status: 202 });

@@ -6,8 +6,9 @@ const REQUIRED_BY_PROFILE = Object.freeze({
   web: Object.freeze([
     "DATABASE_URL",
     "AUTH_DATABASE_URL",
-    "OPERATOR_DATABASE_URL",
     "BILLING_DATABASE_URL",
+    "BILLING_TENANT_DATABASE_URL",
+    "LEGAL_RELEASE_MANIFEST",
     "APP_PUBLIC_URL",
     "APP_SECRET",
     "APP_SECRET_CURRENT_KEY_ID",
@@ -48,6 +49,7 @@ const REQUIRED_BY_PROFILE = Object.freeze({
   ]),
   relay: Object.freeze(["DISPATCHER_DATABASE_URL"]),
   scheduler: Object.freeze(["SCHEDULER_DATABASE_URL"]),
+  privacy: Object.freeze(["PRIVACY_DATABASE_URL", "PRIVACY_RETENTION_POLICY"]),
   migrate: Object.freeze(["MIGRATION_DATABASE_URL"]),
 });
 
@@ -59,6 +61,8 @@ const DATABASE_KEYS = new Set([
   "DISPATCHER_DATABASE_URL",
   "SCHEDULER_DATABASE_URL",
   "BILLING_DATABASE_URL",
+  "BILLING_TENANT_DATABASE_URL",
+  "PRIVACY_DATABASE_URL",
   "MIGRATION_DATABASE_URL",
 ]);
 
@@ -72,6 +76,143 @@ export class RuntimeConfigurationError extends Error {
 
 function isPresent(value) {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+const LEGAL_PLACEHOLDER_PATTERN =
+  /(?:<[^>]+>|\b(?:todo|tbd|placeholder|change-me)\b|미정|추후\s*확정|법률\s*검토\s*후|최종\s*문서가\s*아님|example\.(?:com|org|net))/iu;
+
+function isPublishedText(value, minimum = 2) {
+  return isPresent(value) && value.trim().length >= minimum &&
+    !LEGAL_PLACEHOLDER_PATTERN.test(value);
+}
+
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasExactKeys(value, expected) {
+  if (!isRecord(value)) return false;
+  const actual = Object.keys(value).sort();
+  return actual.length === expected.length &&
+    actual.every((key, index) => key === [...expected].sort()[index]);
+}
+
+function isIsoDate(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/u.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.valueOf()) && date.toISOString().startsWith(value);
+}
+
+function isPublishedEmail(value) {
+  return isPublishedText(value) && /^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(value);
+}
+
+function everyExactPublishedItem(items, keys) {
+  return Array.isArray(items) && items.every((item) =>
+    hasExactKeys(item, keys) && keys.every((key) => isPublishedText(item[key]))
+  );
+}
+
+function hasApprovedLegalReleaseManifest(raw) {
+  if (!isPresent(raw) || raw.length > 64 * 1024) return false;
+  let manifest;
+  try {
+    manifest = JSON.parse(raw);
+  } catch {
+    return false;
+  }
+  const release = manifest?.release;
+  const operator = manifest?.operator;
+  const privacy = manifest?.privacy;
+  const terms = manifest?.terms;
+  if (
+    !hasExactKeys(manifest, ["schemaVersion", "release", "operator", "privacy", "terms"]) ||
+    !hasExactKeys(release, ["status", "documentVersion", "approvedAt", "approvedBy", "attestation"]) ||
+    !hasExactKeys(operator, [
+      "businessName",
+      "representativeName",
+      "businessRegistrationNumber",
+      "mailOrderRegistration",
+      "businessAddress",
+      "supportEmail",
+      "supportPhone",
+    ]) ||
+    !hasExactKeys(privacy, [
+      "effectiveDate",
+      "officerName",
+      "contactEmail",
+      "rightsRequestMethod",
+      "deletionProcedure",
+      "securityMeasures",
+      "retentionRules",
+      "processors",
+      "thirdPartyDisclosures",
+      "overseasTransfers",
+    ]) ||
+    !hasExactKeys(terms, [
+      "effectiveDate",
+      "priceKrw",
+      "vatIncluded",
+      "billingPeriod",
+      "cancellationTiming",
+      "refundPolicy",
+      "withdrawalPolicy",
+      "disputeProcedure",
+    ]) ||
+    manifest?.schemaVersion !== 1 ||
+    release?.status !== "approved" ||
+    release?.attestation !== "paid-beta-legal-review-approved" ||
+    !/^\d{4}-\d{2}-\d{2}\.\d+$/u.test(release?.documentVersion ?? "") ||
+    !isPublishedText(release?.approvedAt) || Number.isNaN(Date.parse(release?.approvedAt)) ||
+    !isPublishedText(release?.approvedBy) ||
+    !isPublishedText(operator?.businessName) ||
+    !isPublishedText(operator?.representativeName) ||
+    !/^\d{3}-\d{2}-\d{5}$/u.test(operator?.businessRegistrationNumber ?? "") ||
+    !(operator?.mailOrderRegistration === null || (
+      hasExactKeys(operator?.mailOrderRegistration, ["number", "authority"]) &&
+      isPublishedText(operator.mailOrderRegistration.number) &&
+      isPublishedText(operator.mailOrderRegistration.authority)
+    )) ||
+    !isPublishedText(operator?.businessAddress, 8) ||
+    !isPublishedEmail(operator?.supportEmail) ||
+    !/^[+0-9][0-9()+.\-\s]{6,30}$/u.test(operator?.supportPhone ?? "") ||
+    !isIsoDate(privacy?.effectiveDate) ||
+    !isPublishedText(privacy?.officerName) ||
+    !isPublishedEmail(privacy?.contactEmail) ||
+    !isPublishedText(privacy?.rightsRequestMethod, 10) ||
+    !isPublishedText(privacy?.deletionProcedure, 10) ||
+    !isPublishedText(privacy?.securityMeasures, 10) ||
+    !everyExactPublishedItem(privacy?.retentionRules, ["category", "period", "basis"]) ||
+    privacy?.retentionRules.length < 1 || privacy.retentionRules.length > 50 ||
+    !everyExactPublishedItem(privacy?.processors, ["provider", "purpose", "retention"]) ||
+    privacy?.processors.length > 50 ||
+    !everyExactPublishedItem(privacy?.thirdPartyDisclosures, [
+      "recipient",
+      "purpose",
+      "items",
+      "retention",
+    ]) ||
+    privacy?.thirdPartyDisclosures.length > 50 ||
+    !everyExactPublishedItem(privacy?.overseasTransfers, [
+      "recipient",
+      "country",
+      "purpose",
+      "items",
+      "method",
+      "timing",
+      "retention",
+    ]) ||
+    privacy?.overseasTransfers.length > 50 ||
+    terms?.priceKrw !== 49_000 ||
+    terms?.vatIncluded !== true ||
+    terms?.billingPeriod !== "monthly" ||
+    terms?.cancellationTiming !== "end_of_current_period" ||
+    !isIsoDate(terms?.effectiveDate) ||
+    !isPublishedText(terms?.refundPolicy, 10) ||
+    !isPublishedText(terms?.withdrawalPolicy, 10) ||
+    !isPublishedText(terms?.disputeProcedure, 10)
+  ) return false;
+  return true;
 }
 
 export function validateRuntimeEnvironment(profile, environment) {
@@ -88,6 +229,9 @@ export function validateRuntimeEnvironment(profile, environment) {
   }
   if ((environment.PGSSLMODE ?? "verify-full") !== "verify-full") {
     issues.push("PGSSLMODE must be verify-full in production");
+  }
+  if (profile === "web" && environment.AUTH_TRUST_PROXY_HEADERS !== "true") {
+    issues.push("AUTH_TRUST_PROXY_HEADERS must equal true for web");
   }
   for (const key of required) {
     const value = environment[key];
@@ -109,6 +253,16 @@ export function validateRuntimeEnvironment(profile, environment) {
         issues.push(`${key} must be a valid PostgreSQL URL`);
       }
     }
+  }
+  if (isPresent(environment.OPERATOR_DATABASE_URL)) {
+    issues.push("OPERATOR_DATABASE_URL is only allowed for the operator service");
+  }
+  if (
+    profile === "web" &&
+    isPresent(environment.LEGAL_RELEASE_MANIFEST) &&
+    !hasApprovedLegalReleaseManifest(environment.LEGAL_RELEASE_MANIFEST)
+  ) {
+    issues.push("LEGAL_RELEASE_MANIFEST is not approved for paid beta");
   }
   if (
     isPresent(environment.APP_PUBLIC_URL) &&

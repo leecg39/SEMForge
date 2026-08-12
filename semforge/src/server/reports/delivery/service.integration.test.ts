@@ -113,6 +113,10 @@ class MemoryStorage implements PrivateObjectStorage {
     return object.body;
   }
 
+  async deletePrivate(key: string) {
+    this.objects.delete(key);
+  }
+
   async createSignedGetUrl(): Promise<SignedObjectUrl> {
     throw new Error("not used");
   }
@@ -249,6 +253,47 @@ test("provider가 idempotency payload를 거부하면 terminal 상태를 보존�
     status: "failed",
     last_error: "REPORT_EMAIL_PROVIDER_REJECTED",
   }]);
+});
+
+test("suppressed recipient는 worker 발송 직전 차단되고 provider를 호출하지 않는다", async () => {
+  const database = await databaseWithReport();
+  await database.query(
+    "insert into email_suppressions (workspace_id, email_hash, reason) values ($1, $2, 'privacy_erasure')",
+    [workspaceId, createHash("sha256").update("customer@example.test", "utf8").digest("hex")],
+  );
+  let sends = 0;
+  const service = createReportDeliveryService({
+    store: new PostgresReportDeliveryStore(database),
+    storage: new MemoryStorage(),
+    renderer: {
+      async render(value) {
+        const hash = snapshotSha256(value);
+        return {
+          pdf: new TextEncoder().encode("%PDF-1.7 suppressed"),
+          html: `<html data-snapshot-sha256="${hash}"></html>`,
+          snapshotSha256: hash,
+        };
+      },
+    },
+    email: {
+      async send() {
+        sends += 1;
+        return { providerMessageId: "must-not-send" };
+      },
+    },
+    appPublicUrl: "https://app.semforge.example",
+  });
+
+  await assert.rejects(
+    service.deliverEmail({ workspaceId, reportId, recipient: "Customer@Example.test" }),
+    /REPORT_EMAIL_PROVIDER_REJECTED/u,
+  );
+  assert.equal(sends, 0);
+  const deliveries = await database.query<{ count: number }>(
+    "select count(*)::int as count from deliveries where workspace_id = $1",
+    [workspaceId],
+  );
+  assert.equal(deliveries.rows[0]!.count, 0);
 });
 
 test("Resend 24시간 멱등 보장 창이 끝난 in-doubt delivery는 재발송해 중복을 만들지 않는다", async () => {

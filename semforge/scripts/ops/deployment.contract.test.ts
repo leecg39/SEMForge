@@ -2,12 +2,29 @@
 // @SPEC docs/planning/06-tasks.md#p4-o1-t1--node-24-docker와-운영-도구
 // @TEST Dockerfile, docker-compose.yml, deploy/**, next.config.ts
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
 async function source(relativePath: string): Promise<string> {
   return readFile(path.join(process.cwd(), relativePath), "utf8");
+}
+
+function runDeploymentPreflight(
+  manifestPaths: readonly string[],
+  environment: Readonly<Record<string, string>>,
+) {
+  return spawnSync(
+    process.execPath,
+    ["scripts/ops/deployment-preflight.mjs", ...manifestPaths],
+    {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: { ...process.env, ...environment },
+    },
+  );
 }
 
 test("Next production build는 standalone output을 생성한다", async () => {
@@ -27,7 +44,8 @@ test("package build script는 secret 없는 build service profile을 강제한�
 test("Dockerfile은 Node 24 web/pipeline/migrator target과 non-root Chromium/Noto runtime을 제공한다", async () => {
   const dockerfile = await source("Dockerfile");
 
-  assert.match(dockerfile, /FROM node:24-bookworm-slim/u);
+  assert.match(dockerfile, /^ARG NODE_BASE_IMAGE=node:24-bookworm-slim$/mu);
+  assert.equal((dockerfile.match(/^FROM \$\{NODE_BASE_IMAGE\}/gmu) ?? []).length, 2);
   for (const target of ["web", "worker", "relay", "scheduler", "migrator"]) {
     assert.match(dockerfile, new RegExp(`FROM \\S+ AS ${target}`));
   }
@@ -46,6 +64,29 @@ test("Dockerfile은 Node 24 web/pipeline/migrator target과 non-root Chromium/No
   );
   assert.match(builder, /SEMFORGE_SERVICE=build/u);
   assert.doesNotMatch(builder, /(?:ARG|ENV)\s+\w*(?:SECRET|TOKEN|DATABASE_URL)/u);
+});
+
+test("배포 산출물은 proprietary 제품 고지와 production dependency 라이선스 고지를 포함한다", async () => {
+  const [dockerfile, license, notice, thirdParty, packageJson] = await Promise.all([
+    source("Dockerfile"),
+    source("LICENSE"),
+    source("NOTICE"),
+    source("THIRD_PARTY_NOTICES.md"),
+    source("package.json"),
+  ]);
+  const manifest = JSON.parse(packageJson) as {
+    license?: string;
+    scripts?: Record<string, string>;
+  };
+
+  assert.equal(manifest.license, "UNLICENSED");
+  assert.equal(manifest.scripts?.["license:check"], "node scripts/license/generate-third-party-notices.mjs --check");
+  assert.match(license, /Proprietary and confidential/u);
+  assert.match(notice, /SEMForge/u);
+  assert.match(thirdParty, /@fontsource\/noto-sans-kr/u);
+  assert.match(thirdParty, /SIL OPEN FONT LICENSE Version 1\.1/u);
+  assert.match(thirdParty, /This product includes third-party production dependencies/u);
+  assert.match(dockerfile, /COPY --chown=semforge:semforge LICENSE NOTICE THIRD_PARTY_NOTICES\.md \.\/legal\//u);
 });
 
 test("Docker worker는 dispatcher claim과 tenant DB가 분리된 production composition을 사용한다", async () => {
@@ -174,14 +215,71 @@ test("환경 예시는 report delivery 변수 이름만 제공하고 역할별 e
   assert.doesNotMatch(compose, /(?:RESEND_API_KEY|S3_SECRET_ACCESS_KEY):\s*[^$\n]/u);
 });
 
-test("nginx 예시는 TLS 1.2+, auth rate limit, streaming proxy 보안을 포함한다", async () => {
-  const nginx = await source("deploy/nginx/nginx.conf");
+test("nginx 예시는 TLS, browser 격리 header, spoof 불가능한 client IP 전달을 포함한다", async () => {
+  const [nginx, proxyHeaders] = await Promise.all([
+    source("deploy/nginx/nginx.conf"),
+    source("deploy/nginx/semforge-proxy-headers.conf"),
+  ]);
 
   assert.match(nginx, /ssl_protocols TLSv1\.2 TLSv1\.3/u);
   assert.match(nginx, /limit_req_zone/u);
   assert.match(nginx, /limit_req zone=auth/u);
-  assert.match(nginx, /proxy_buffering off/u);
-  assert.match(nginx, /proxy_set_header X-Forwarded-Proto \$scheme/u);
+  assert.match(proxyHeaders, /proxy_buffering off/u);
+  assert.match(nginx, /Content-Security-Policy[^\n]*frame-ancestors 'none'/u);
+  assert.match(nginx, /Referrer-Policy "strict-origin-when-cross-origin"/u);
+  assert.match(nginx, /Permissions-Policy/u);
+  assert.match(proxyHeaders, /proxy_set_header X-Forwarded-Proto \$scheme/u);
+  assert.match(proxyHeaders, /proxy_set_header X-Forwarded-For \$remote_addr/u);
+  assert.doesNotMatch(`${nginx}\n${proxyHeaders}`, /\$proxy_add_x_forwarded_for/u);
+});
+
+test("PostgreSQL 16 test compose는 host loopback에만 포트를 공개한다", async () => {
+  const compose = await source("compose.pg16.yml");
+
+  assert.match(compose, /image: "\$\{SEMFORGE_POSTGRES_IMAGE:-postgres:16-alpine\}"/u);
+  assert.match(compose, /127\.0\.0\.1:\$\{SEMFORGE_PG16_PORT:-55432\}:5432/u);
+});
+
+test("production deployment preflight는 digest placeholder와 mutable base image를 fail-closed한다", () => {
+  const placeholder = runDeploymentPreflight(
+    ["deploy/kubernetes/pipeline-runtime.yaml", "deploy/kubernetes/release-job.yaml"],
+    {
+      SEMFORGE_NODE_BASE_IMAGE: "node:24-bookworm-slim",
+      SEMFORGE_POSTGRES_IMAGE: "postgres:16-alpine",
+    },
+  );
+
+  assert.equal(placeholder.status, 78);
+  assert.match(placeholder.stderr, /NODE_BASE_IMAGE.*sha256/u);
+  assert.match(placeholder.stderr, /POSTGRES_IMAGE.*sha256/u);
+  assert.match(placeholder.stderr, /REPLACE_WITH_DIGEST/u);
+});
+
+test("production deployment preflight는 실제 sha256 digest로 렌더링된 manifest만 허용한다", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "semforge-deployment-preflight-"));
+  try {
+    const pipelinePath = path.join(directory, "pipeline-runtime.yaml");
+    const releasePath = path.join(directory, "release-job.yaml");
+    const digest = "a".repeat(64);
+    const [pipeline, release] = await Promise.all([
+      source("deploy/kubernetes/pipeline-runtime.yaml"),
+      source("deploy/kubernetes/release-job.yaml"),
+    ]);
+    await Promise.all([
+      writeFile(pipelinePath, pipeline.replaceAll("REPLACE_WITH_DIGEST", digest), "utf8"),
+      writeFile(releasePath, release.replaceAll("REPLACE_WITH_DIGEST", digest), "utf8"),
+    ]);
+
+    const result = runDeploymentPreflight([pipelinePath, releasePath], {
+      SEMFORGE_NODE_BASE_IMAGE: `node:24-bookworm-slim@sha256:${"b".repeat(64)}`,
+      SEMFORGE_POSTGRES_IMAGE: `postgres:16-alpine@sha256:${"c".repeat(64)}`,
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /deployment preflight passed/u);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("운영 runbook은 TLS/PITR, object version restore, backup, previous-image rollback을 실행 순서로 고정한다", async () => {

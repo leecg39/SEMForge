@@ -1,0 +1,5 @@
+
+> semforge@0.1.0 ci:route-manifest
+> node scripts/ci/route-manifest.mjs
+
+route manifest passed: pages=14 routes=29

@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "release": {
+    "status": "draft",
+    "documentVersion": "<YYYY-MM-DD.REVISION>",
+    "approvedAt": "<ISO-8601 DATETIME WITH OFFSET>",
+    "approvedBy": "<APPROVER NAME OR ROLE>",
+    "attestation": "<SET TO paid-beta-legal-review-approved ONLY AFTER APPROVAL>"
+  },
+  "operator": {
+    "businessName": "<LEGAL BUSINESS NAME>",
+    "representativeName": "<REPRESENTATIVE NAME>",
+    "businessRegistrationNumber": "<000-00-00000>",
+    "mailOrderRegistration": {
+      "number": "<MAIL-ORDER REGISTRATION NUMBER>",
+      "authority": "<REGISTRATION AUTHORITY>"
+    },
+    "businessAddress": "<BUSINESS ADDRESS>",
+    "supportEmail": "<SUPPORT EMAIL>",
+    "supportPhone": "<SUPPORT PHONE>"
+  },
+  "privacy": {
+    "effectiveDate": "<YYYY-MM-DD>",
+    "officerName": "<PRIVACY OFFICER NAME OR ROLE>",
+    "contactEmail": "<PRIVACY CONTACT EMAIL>",
+    "rightsRequestMethod": "<IDENTITY VERIFICATION AND RIGHTS REQUEST PROCEDURE>",
+    "deletionProcedure": "<DELETION TIMING, PROCEDURE, AND METHOD>",
+    "securityMeasures": "<ACTUAL ADMINISTRATIVE, TECHNICAL, AND PHYSICAL MEASURES>",
+    "retentionRules": [
+      {
+        "category": "<PERSONAL DATA CATEGORY>",
+        "period": "<RETENTION PERIOD>",
+        "basis": "<PURPOSE OR LEGAL BASIS>"
+      }
+    ],
+    "processors": [
+      {
+        "provider": "<PROCESSOR LEGAL NAME>",
+        "purpose": "<PROCESSING PURPOSE>",
+        "retention": "<PROCESSOR RETENTION PERIOD>"
+      }
+    ],
+    "thirdPartyDisclosures": [
+      {
+        "recipient": "<THIRD-PARTY RECIPIENT>",
+        "purpose": "<DISCLOSURE PURPOSE>",
+        "items": "<DISCLOSED PERSONAL DATA>",
+        "retention": "<RECIPIENT RETENTION PERIOD>"
+      }
+    ],
+    "overseasTransfers": [
+      {
+        "recipient": "<RECIPIENT LEGAL NAME AND CONTACT>",
+        "country": "<DESTINATION COUNTRY>",
+        "purpose": "<TRANSFER PURPOSE>",
+        "items": "<TRANSFERRED PERSONAL DATA>",
+        "method": "<TRANSFER METHOD>",
+        "timing": "<TRANSFER TIMING>",
+        "retention": "<RECIPIENT RETENTION PERIOD>"
+      }
+    ]
+  },
+  "terms": {
+    "effectiveDate": "<YYYY-MM-DD>",
+    "priceKrw": 49000,
+    "vatIncluded": true,
+    "billingPeriod": "monthly",
+    "cancellationTiming": "end_of_current_period",
+    "refundPolicy": "<APPROVED REFUND POLICY INCLUDING ERROR AND DUPLICATE PAYMENTS>",
+    "withdrawalPolicy": "<APPROVED WITHDRAWAL ELIGIBILITY, PERIOD, METHOD, AND EFFECT>",
+    "disputeProcedure": "<CUSTOMER ESCALATION AND DISPUTE PROCEDURE>"
+  }
+}

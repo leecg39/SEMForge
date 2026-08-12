@@ -1,0 +1,12 @@
+✔ release gate는 CI에서 호출 가능한 단일 npm entrypoint로 고정된다 (3.078875ms)
+✔ release gate runner는 필수 검증 단계와 evidence 산출물을 선언한다 (2.473958ms)
+✔ route/forbidden-surface와 3파트너 9사이트 harness는 직접 실행 가능한 npm entrypoint다 (0.511791ms)
+✔ GitHub Actions workflow는 Node 24, PostgreSQL 16, Chromium을 release gate에 공급한다 (0.783958ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 744.109958

@@ -1,0 +1,1 @@
+{"command":"forward-migration-audit","pass":true,"externalWrites":[],"filesScanned":1,"destructiveFindings":[],"requiredProperties":["additive SQL only","previous application image remains compatible with migrated schema","no automatic down migration"]}

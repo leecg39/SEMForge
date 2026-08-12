@@ -18,6 +18,7 @@ export const createInviteInputSchema = z.object({
     .max(100)
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u),
   email: normalizedEmailSchema,
+  releaseTarget: z.enum(["sandbox", "staging", "paid-production"]).default("paid-production"),
 }).strict();
 
 export const opaqueTokenSchema = z
@@ -42,6 +43,12 @@ export const acceptInviteInputSchema = z.object({
   email: normalizedEmailSchema,
   password: credentialPasswordSchema,
   displayName: z.string().trim().min(1).max(100).optional(),
+  legalAccepted: z.boolean(),
+  legalTermsVersion: z.string().trim().min(1).max(80),
+  legalTermsSha256: z.string().trim().regex(/^[0-9a-f]{64}$/u),
+  legalPrivacyVersion: z.string().trim().min(1).max(80),
+  legalPrivacySha256: z.string().trim().regex(/^[0-9a-f]{64}$/u),
+  legalPresentedAt: z.string().trim().datetime({ offset: true }),
   currentSessionToken: opaqueTokenSchema.optional(),
 }).strict();
 
@@ -50,12 +57,12 @@ export const loginInputSchema = z.object({
   password: credentialPasswordSchema,
   workspaceId: z.uuid().optional(),
   currentSessionToken: opaqueTokenSchema.optional(),
-  throttleKey: z.string().trim().min(1).max(512).optional(),
+  clientAddressHash: z.string().regex(/^[0-9a-f]{64}$/u).optional(),
 }).strict();
 
 export const requestPasswordResetInputSchema = z.object({
   email: normalizedEmailSchema,
-  throttleKey: z.string().trim().min(1).max(512).optional(),
+  clientAddressHash: z.string().regex(/^[0-9a-f]{64}$/u).optional(),
 }).strict();
 
 export const resetPasswordInputSchema = z.object({

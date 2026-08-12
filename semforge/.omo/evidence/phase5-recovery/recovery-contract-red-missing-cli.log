@@ -1,0 +1,247 @@
+✖ doctor는 Docker/MinIO 가능 여부만 점검하고 운영 리소스 변경은 하지 않는다 (1337.307792ms)
+✖ PG PITR 계획은 원본 DB를 덮어쓰지 않고 새 인스턴스 검증과 증거 필드를 요구한다 (2154.118125ms)
+✖ object-version-restore는 로컬 fixture에서 이전 버전을 복구 prefix로 복사하고 checksum을 검증한다 (1858.557667ms)
+✖ previous-image rollback 계획은 scheduler suspend, worker drain, 이전 digest 적용, health 검증 순서를 고정한다 (1276.86825ms)
+✖ forward-compatible migration 감사는 additive 변경을 통과시키고 destructive SQL을 실패시킨다 (1230.291166ms)
+✖ Toss reconciliation은 조회 조정과 수동 법정환불 ledger 절차만 만들고 결제/환불 API를 호출하지 않는다 (745.909417ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 0
+ℹ fail 6
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12326.590959
+
+✖ failing tests:
+
+test at scripts/recovery/recovery.contract.test.ts:2:2008
+✖ doctor는 Docker/MinIO 가능 여부만 점검하고 운영 리소스 변경은 하지 않는다 (1337.307792ms)
+  AssertionError [ERR_ASSERTION]: node:internal/modules/esm/resolve:275
+      throw new ERR_MODULE_NOT_FOUND(
+            ^
+  
+  Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/scripts/recovery/cli.ts' imported from /Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/
+      at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+      at moduleResolve (node:internal/modules/esm/resolve:865:10)
+      at defaultResolve (node:internal/modules/esm/resolve:991:11)
+      at #cachedDefaultResolve (node:internal/modules/esm/loader:712:20)
+      at #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:729:38)
+      at nextStep (node:internal/modules/customization_hooks:189:26)
+      at resolveBaseSync (file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:9102)
+      at resolveDirectorySync (file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:10315)
+      at resolveTsPathsSync (file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:11547)
+      at resolve (file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:13365) {
+    code: 'ERR_MODULE_NOT_FOUND',
+    url: 'file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/scripts/recovery/cli.ts'
+  }
+  
+  Node.js v25.4.0
+  
+  
+  1 !== 0
+  
+      at recoveryCli (/Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/scripts/recovery/recovery.contract.test.ts:38:12)
+      at async TestContext.<anonymous> (/Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/scripts/recovery/recovery.contract.test.ts:48:18)
+      at async Test.run (node:internal/test_runner/test:1102:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at scripts/recovery/recovery.contract.test.ts:2:2804
+✖ PG PITR 계획은 원본 DB를 덮어쓰지 않고 새 인스턴스 검증과 증거 필드를 요구한다 (2154.118125ms)
+  AssertionError [ERR_ASSERTION]: node:internal/modules/esm/resolve:275
+      throw new ERR_MODULE_NOT_FOUND(
+            ^
+  
+  Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/scripts/recovery/cli.ts' imported from /Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/
+      at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+      at moduleResolve (node:internal/modules/esm/resolve:865:10)
+      at defaultResolve (node:internal/modules/esm/resolve:991:11)
+      at #cachedDefaultResolve (node:internal/modules/esm/loader:712:20)
+      at #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:729:38)
+      at nextStep (node:internal/modules/customization_hooks:189:26)
+      at resolveBaseSync (file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:9102)
+      at resolveDirectorySync (file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:10315)
+      at resolveTsPathsSync (file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:11547)
+      at resolve (file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:13365) {
+    code: 'ERR_MODULE_NOT_FOUND',
+    url: 'file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/scripts/recovery/cli.ts'
+  }
+  
+  Node.js v25.4.0
+  
+  
+  1 !== 0
+  
+      at recoveryCli (/Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/scripts/recovery/recovery.contract.test.ts:38:12)
+      at async TestContext.<anonymous> (/Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/scripts/recovery/recovery.contract.test.ts:61:18)
+      at async Test.run (node:internal/test_runner/test:1102:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:777:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at scripts/recovery/recovery.contract.test.ts:2:4189
+✖ object-version-restore는 로컬 fixture에서 이전 버전을 복구 prefix로 복사하고 checksum을 검증한다 (1858.557667ms)
+  AssertionError [ERR_ASSERTION]: node:internal/modules/esm/resolve:275
+      throw new ERR_MODULE_NOT_FOUND(
+            ^
+  
+  Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/scripts/recovery/cli.ts' imported from /Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/
+      at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+      at moduleResolve (node:internal/modules/esm/resolve:865:10)
+      at defaultResolve (node:internal/modules/esm/resolve:991:11)
+      at #cachedDefaultResolve (node:internal/modules/esm/loader:712:20)
+      at #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:729:38)
+      at nextStep (node:internal/modules/customization_hooks:189:26)
+      at resolveBaseSync (file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:9102)
+      at resolveDirectorySync (file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:10315)
+      at resolveTsPathsSync (file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:11547)
+      at resolve (file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:13365) {
+    code: 'ERR_MODULE_NOT_FOUND',
+    url: 'file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/scripts/recovery/cli.ts'
+  }
+  
+  Node.js v25.4.0
+  
+  
+  1 !== 0
+  
+      at recoveryCli (/Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/scripts/recovery/recovery.contract.test.ts:38:12)
+      at async TestContext.<anonymous> (/Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/scripts/recovery/recovery.contract.test.ts:106:20)
+      at async Test.run (node:internal/test_runner/test:1102:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:777:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at scripts/recovery/recovery.contract.test.ts:2:5951
+✖ previous-image rollback 계획은 scheduler suspend, worker drain, 이전 digest 적용, health 검증 순서를 고정한다 (1276.86825ms)
+  AssertionError [ERR_ASSERTION]: node:internal/modules/esm/resolve:275
+      throw new ERR_MODULE_NOT_FOUND(
+            ^
+  
+  Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/scripts/recovery/cli.ts' imported from /Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/
+      at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+      at moduleResolve (node:internal/modules/esm/resolve:865:10)
+      at defaultResolve (node:internal/modules/esm/resolve:991:11)
+      at #cachedDefaultResolve (node:internal/modules/esm/loader:712:20)
+      at #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:729:38)
+      at nextStep (node:internal/modules/customization_hooks:189:26)
+      at resolveBaseSync (file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:9102)
+      at resolveDirectorySync (file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:10315)
+      at resolveTsPathsSync (file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:11547)
+      at resolve (file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:13365) {
+    code: 'ERR_MODULE_NOT_FOUND',
+    url: 'file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/scripts/recovery/cli.ts'
+  }
+  
+  Node.js v25.4.0
+  
+  
+  1 !== 0
+  
+      at recoveryCli (/Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/scripts/recovery/recovery.contract.test.ts:38:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (/Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/scripts/recovery/recovery.contract.test.ts:132:18)
+      at async Test.run (node:internal/test_runner/test:1102:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:777:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at scripts/recovery/recovery.contract.test.ts:2:7151
+✖ forward-compatible migration 감사는 additive 변경을 통과시키고 destructive SQL을 실패시킨다 (1230.291166ms)
+  AssertionError [ERR_ASSERTION]: node:internal/modules/esm/resolve:275
+      throw new ERR_MODULE_NOT_FOUND(
+            ^
+  
+  Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/scripts/recovery/cli.ts' imported from /Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/
+      at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+      at moduleResolve (node:internal/modules/esm/resolve:865:10)
+      at defaultResolve (node:internal/modules/esm/resolve:991:11)
+      at #cachedDefaultResolve (node:internal/modules/esm/loader:712:20)
+      at #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:729:38)
+      at nextStep (node:internal/modules/customization_hooks:189:26)
+      at resolveBaseSync (file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:9102)
+      at resolveDirectorySync (file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:10315)
+      at resolveTsPathsSync (file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:11547)
+      at resolve (file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:13365) {
+    code: 'ERR_MODULE_NOT_FOUND',
+    url: 'file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/scripts/recovery/cli.ts'
+  }
+  
+  Node.js v25.4.0
+  
+  
+  1 !== 0
+  
+      at recoveryCli (/Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/scripts/recovery/recovery.contract.test.ts:38:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (/Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/scripts/recovery/recovery.contract.test.ts:171:33)
+      at async Test.run (node:internal/test_runner/test:1102:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:777:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at scripts/recovery/recovery.contract.test.ts:2:8530
+✖ Toss reconciliation은 조회 조정과 수동 법정환불 ledger 절차만 만들고 결제/환불 API를 호출하지 않는다 (745.909417ms)
+  AssertionError [ERR_ASSERTION]: node:internal/modules/esm/resolve:275
+      throw new ERR_MODULE_NOT_FOUND(
+            ^
+  
+  Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/scripts/recovery/cli.ts' imported from /Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/
+      at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+      at moduleResolve (node:internal/modules/esm/resolve:865:10)
+      at defaultResolve (node:internal/modules/esm/resolve:991:11)
+      at #cachedDefaultResolve (node:internal/modules/esm/loader:712:20)
+      at #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:729:38)
+      at nextStep (node:internal/modules/customization_hooks:189:26)
+      at resolveBaseSync (file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:9102)
+      at resolveDirectorySync (file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:10315)
+      at resolveTsPathsSync (file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:11547)
+      at resolve (file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:13365) {
+    code: 'ERR_MODULE_NOT_FOUND',
+    url: 'file:///Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/scripts/recovery/cli.ts'
+  }
+  
+  Node.js v25.4.0
+  
+  
+  1 !== 0
+  
+      at recoveryCli (/Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/scripts/recovery/recovery.contract.test.ts:38:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (/Users/user01/Music/SEMForge-worktrees/phase-5-recovery/semforge/scripts/recovery/recovery.contract.test.ts:223:20)
+      at async Test.run (node:internal/test_runner/test:1102:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:777:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

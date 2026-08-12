@@ -2,7 +2,7 @@
 // @SPEC docs/planning/06-tasks.md#p1-d1-t1--postgresql-16-핵심-스키마와-암호화-기반
 import { sql } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
-import { Pool, type PoolConfig } from "pg";
+import { Pool, type PoolClient, type PoolConfig } from "pg";
 
 import * as schema from "@/db/schema";
 import { getServerEnv, type ServerEnv } from "@/lib/env";
@@ -15,7 +15,9 @@ export type DatabaseRole =
   | "dispatcher"
   | "scheduler"
   | "worker"
-  | "billing";
+  | "billing"
+  | "billingTenant"
+  | "privacy";
 export type SemforgeDatabase = NodePgDatabase<typeof schema>;
 
 const globalPools = globalThis as unknown as {
@@ -37,6 +39,8 @@ export function resolveDatabaseUrl(role: DatabaseRole, env: ServerEnv): string {
     scheduler: "SCHEDULER_DATABASE_URL",
     worker: "WORKER_DATABASE_URL",
     billing: "BILLING_DATABASE_URL",
+    billingTenant: "BILLING_TENANT_DATABASE_URL",
+    privacy: "PRIVACY_DATABASE_URL",
   } as const satisfies Record<DatabaseRole, keyof ServerEnv>;
   const envKey = key[role];
   const value = env[envKey];
@@ -63,6 +67,30 @@ export function getPool(role: DatabaseRole = "web"): Pool {
 
 export function getDatabase(role: DatabaseRole = "web"): SemforgeDatabase {
   return drizzle(getPool(role), { schema });
+}
+
+// @TASK P5-SEC-ROLES - Share one fail-closed RLS transaction boundary across tenant services.
+export async function withWorkspacePoolTransaction<T>(
+  pool: Pick<Pool, "connect">,
+  workspaceId: string,
+  operation: (client: PoolClient) => Promise<T>,
+): Promise<T> {
+  if (!workspaceId || workspaceId !== workspaceId.trim()) {
+    throw new Error("workspaceId가 필요합니다.");
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
+    const result = await operation(client);
+    await client.query("commit");
+    return result;
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function withWorkspace<T>(

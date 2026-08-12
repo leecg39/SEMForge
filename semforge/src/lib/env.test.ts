@@ -7,17 +7,75 @@ import { test } from "node:test";
 
 import { EnvironmentValidationError, parseServerEnv } from "@/lib/env";
 
+const privacyRetentionPolicy = JSON.stringify({
+  expiredSessionsDays: 30,
+  consumedInvitesDays: 30,
+  passwordResetsDays: 7,
+  oauthStatesDays: 7,
+  publishedOutboxDays: 30,
+  terminalJobsDays: 30,
+  providerRawMetadataDays: 30,
+  deliveryRecipientDays: 90,
+});
+
+const approvedLegalReleaseManifest = JSON.stringify({
+  schemaVersion: 1,
+  release: {
+    status: "approved",
+    documentVersion: "2026-08-12.1",
+    approvedAt: "2026-08-12T09:00:00+09:00",
+    approvedBy: "법무 검토 책임자",
+    attestation: "paid-beta-legal-review-approved",
+  },
+  operator: {
+    businessName: "검증용 주식회사",
+    representativeName: "검증 책임자",
+    businessRegistrationNumber: "123-45-67890",
+    mailOrderRegistration: null,
+    businessAddress: "서울특별시 검증구 검증로 100",
+    supportEmail: "support@approved-fixture.co.kr",
+    supportPhone: "02-1234-5678",
+  },
+  privacy: {
+    effectiveDate: "2026-08-19",
+    officerName: "개인정보 보호책임자",
+    contactEmail: "privacy@approved-fixture.co.kr",
+    rightsRequestMethod: "개인정보 문의 이메일로 본인 확인 후 요청합니다.",
+    deletionProcedure: "목적 달성 후 복구할 수 없는 방식으로 지체 없이 파기합니다.",
+    securityMeasures: "접근 권한 통제, 전송구간 보호, 암호화와 감사 로그를 운영합니다.",
+    retentionRules: [{ category: "계정 정보", period: "계약 종료 후 30일", basis: "계약 이행" }],
+    processors: [],
+    thirdPartyDisclosures: [],
+    overseasTransfers: [],
+  },
+  terms: {
+    effectiveDate: "2026-08-19",
+    priceKrw: 49000,
+    vatIncluded: true,
+    billingPeriod: "monthly",
+    cancellationTiming: "end_of_current_period",
+    refundPolicy: "중복·오류 결제와 법정 환불 사유를 확인한 뒤 처리합니다.",
+    withdrawalPolicy: "관련 법령상 청약철회 가능 여부와 절차를 개별 안내합니다.",
+    disputeProcedure: "고객지원 문의 후 합의가 되지 않으면 관할 절차를 따릅니다.",
+  },
+});
+
 const productionEnv = {
   NODE_ENV: "production",
   DATABASE_URL: "postgresql://semforge_web_login:test@db.example.com:5432/semforge",
   AUTH_DATABASE_URL: "postgresql://semforge_auth_login:test@db.example.com:5432/semforge",
-  OPERATOR_DATABASE_URL: "postgresql://semforge_operator_login:test@db.example.com:5432/semforge",
   WORKER_DATABASE_URL: "postgresql://semforge_worker_login:test@db.example.com:5432/semforge",
   DISPATCHER_DATABASE_URL: "postgresql://semforge_dispatcher_login:test@db.example.com:5432/semforge",
   SCHEDULER_DATABASE_URL: "postgresql://semforge_scheduler_login:test@db.example.com:5432/semforge",
   BILLING_DATABASE_URL: "postgresql://semforge_billing_login:test@db.example.com:5432/semforge",
+  BILLING_TENANT_DATABASE_URL:
+    "postgresql://semforge_billing_tenant_login:test@db.example.com:5432/semforge",
+  PRIVACY_DATABASE_URL: "postgresql://semforge_privacy_login:test@db.example.com:5432/semforge",
+  PRIVACY_RETENTION_POLICY: privacyRetentionPolicy,
   MIGRATION_DATABASE_URL: "postgresql://semforge_owner_login:test@db.example.com:5432/semforge",
+  LEGAL_RELEASE_MANIFEST: approvedLegalReleaseManifest,
   APP_PUBLIC_URL: "https://app.semforge.example",
+  AUTH_TRUST_PROXY_HEADERS: "true",
   APP_SECRET: "production-secret-material-that-is-at-least-32-bytes",
   APP_SECRET_CURRENT_KEY_ID: "key-2026-08",
   TOSS_CLIENT_KEY: "test_ck_semforge_toss_client",
@@ -45,12 +103,15 @@ test("production은 database, encryption, billing, Google, NAVER 자격증명을
   for (const missing of [
     "DATABASE_URL",
     "AUTH_DATABASE_URL",
-    "OPERATOR_DATABASE_URL",
     "WORKER_DATABASE_URL",
     "DISPATCHER_DATABASE_URL",
     "SCHEDULER_DATABASE_URL",
     "BILLING_DATABASE_URL",
+    "BILLING_TENANT_DATABASE_URL",
+    "PRIVACY_DATABASE_URL",
+    "PRIVACY_RETENTION_POLICY",
     "MIGRATION_DATABASE_URL",
+    "LEGAL_RELEASE_MANIFEST",
     "APP_PUBLIC_URL",
     "APP_SECRET",
     "APP_SECRET_CURRENT_KEY_ID",
@@ -115,6 +176,19 @@ test("AUTH_TRUST_PROXY_HEADERS는 명시적인 true/false만 허용한다", () =
   );
 });
 
+test("production web은 nginx가 덮어쓰는 proxy header trust를 명시적으로 요구한다", () => {
+  assert.throws(
+    () => parseServerEnv({ ...productionEnv, SEMFORGE_SERVICE: "web", AUTH_TRUST_PROXY_HEADERS: "false" }),
+    (error: unknown) => {
+      assert.ok(error instanceof EnvironmentValidationError);
+      assert.deepEqual(error.issues, [
+        "AUTH_TRUST_PROXY_HEADERS must be true for production web service",
+      ]);
+      return true;
+    },
+  );
+});
+
 test("previous key map은 유효한 JSON object와 32-byte secret만 허용한다", () => {
   assert.throws(
     () => parseServerEnv({ ...productionEnv, APP_SECRET_PREVIOUS_KEYS: "[]" }),
@@ -148,6 +222,27 @@ test("migrate profile은 migration owner DSN과 verify-full TLS만으로 시작�
 
   assert.equal(env.SEMFORGE_SERVICE, "migrate");
   assert.equal(env.MIGRATION_DATABASE_URL?.includes("owner"), true);
+});
+
+test("operator profile은 초대 CLI DSN만 요구하고 web/all은 operator DSN을 요구하지 않는다", () => {
+  const operator = parseServerEnv({
+    NODE_ENV: "production",
+    SEMFORGE_SERVICE: "operator",
+    OPERATOR_DATABASE_URL: "postgresql://operator:test@db.example.com:5432/semforge",
+    PGSSLMODE: "verify-full",
+  });
+  assert.equal(operator.OPERATOR_DATABASE_URL?.includes("operator"), true);
+  assert.equal(operator.DATABASE_URL, undefined);
+
+  const allWithoutOperator: Record<string, string | undefined> = { ...productionEnv };
+  assert.doesNotThrow(() => parseServerEnv(allWithoutOperator));
+  assert.throws(
+    () => parseServerEnv({
+      ...allWithoutOperator,
+      OPERATOR_DATABASE_URL: "postgresql://operator:test@db.example.com:5432/semforge",
+    }),
+    /OPERATOR_DATABASE_URL is only allowed for the operator service/u,
+  );
 });
 
 test("worker profile은 dispatcher claim DB와 tenant worker DB를 분리해 요구한다", () => {
@@ -252,6 +347,7 @@ test("web profile은 signed URL용 S3 credentials만 요구하고 email·Chromiu
     "DISPATCHER_DATABASE_URL",
     "SCHEDULER_DATABASE_URL",
     "MIGRATION_DATABASE_URL",
+    "OPERATOR_DATABASE_URL",
     "TALORDATA_API_TOKEN",
     "NAVER_OPEN_API_CLIENT_ID",
     "NAVER_OPEN_API_CLIENT_SECRET",
@@ -269,14 +365,68 @@ test("web profile은 signed URL용 S3 credentials만 요구하고 email·Chromiu
   assert.equal(parsed.SEMFORGE_SERVICE, "web");
   assert.equal(parsed.RESEND_API_KEY, undefined);
   assert.equal(parsed.CHROMIUM_EXECUTABLE_PATH, undefined);
+  assert.equal(parsed.OPERATOR_DATABASE_URL, undefined);
 
   for (const missing of [
+    "LEGAL_RELEASE_MANIFEST",
     "S3_ENDPOINT",
     "S3_REGION",
     "S3_BUCKET",
     "S3_ACCESS_KEY_ID",
     "S3_SECRET_ACCESS_KEY",
   ] as const) {
+    const candidate = { ...webEnv };
+    delete candidate[missing];
+    assert.throws(
+      () => parseServerEnv(candidate),
+      (error: unknown) => {
+        assert.ok(error instanceof EnvironmentValidationError);
+        assert.deepEqual(error.issues, [`${missing} is required in production`]);
+        return true;
+      },
+    );
+  }
+});
+
+test("web profile은 operator CLI DSN 없이 시작하고 tenant/global billing DSN은 분리해 요구한다", () => {
+  const webEnv: Record<string, string | undefined> = {
+    ...productionEnv,
+    SEMFORGE_SERVICE: "web",
+  };
+  for (const unnecessary of [
+    "OPERATOR_DATABASE_URL",
+    "WORKER_DATABASE_URL",
+    "DISPATCHER_DATABASE_URL",
+    "SCHEDULER_DATABASE_URL",
+    "MIGRATION_DATABASE_URL",
+    "TALORDATA_API_TOKEN",
+    "NAVER_OPEN_API_CLIENT_ID",
+    "NAVER_OPEN_API_CLIENT_SECRET",
+    "NAVER_SEARCH_AD_ACCESS_LICENSE",
+    "NAVER_SEARCH_AD_SECRET_KEY",
+    "NAVER_SEARCH_AD_CUSTOMER_ID",
+    "RESEND_API_KEY",
+    "RESEND_FROM_EMAIL",
+    "CHROMIUM_EXECUTABLE_PATH",
+  ] as const) {
+    delete webEnv[unnecessary];
+  }
+
+  assert.doesNotThrow(() => parseServerEnv(webEnv));
+  assert.throws(
+    () => parseServerEnv({
+      ...webEnv,
+      OPERATOR_DATABASE_URL: "postgresql://operator:test@db.example.com:5432/semforge",
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof EnvironmentValidationError);
+      assert.deepEqual(error.issues, [
+        "OPERATOR_DATABASE_URL is only allowed for the operator service",
+      ]);
+      return true;
+    },
+  );
+  for (const missing of ["BILLING_DATABASE_URL", "BILLING_TENANT_DATABASE_URL"] as const) {
     const candidate = { ...webEnv };
     delete candidate[missing];
     assert.throws(
@@ -321,6 +471,42 @@ test("build profile은 image build 중 운영 secret을 읽지 않는다", () =>
 
   assert.equal(env.SEMFORGE_SERVICE, "build");
   assert.equal(env.DATABASE_URL, undefined);
+});
+
+test("production web과 all은 승인된 법률 release manifest 없이는 시작하지 않는다", () => {
+  for (const service of ["web", "all"] as const) {
+    const candidate: Record<string, string | undefined> = {
+      ...productionEnv,
+      SEMFORGE_SERVICE: service,
+    };
+    delete candidate.LEGAL_RELEASE_MANIFEST;
+    assert.throws(
+      () => parseServerEnv(candidate),
+      (error: unknown) => {
+        assert.ok(error instanceof EnvironmentValidationError);
+        assert.deepEqual(error.issues, [
+          "LEGAL_RELEASE_MANIFEST is required in production",
+        ]);
+        return true;
+      },
+    );
+  }
+});
+
+test("production web은 손상되거나 placeholder인 법률 manifest를 거부한다", () => {
+  for (const invalid of [
+    "{",
+    approvedLegalReleaseManifest.replace("검증용 주식회사", "TODO"),
+  ]) {
+    assert.throws(
+      () => parseServerEnv({
+        ...productionEnv,
+        SEMFORGE_SERVICE: "web",
+        LEGAL_RELEASE_MANIFEST: invalid,
+      }),
+      EnvironmentValidationError,
+    );
+  }
 });
 
 test("production object storage endpoint는 https만 허용한다", () => {

@@ -17,10 +17,11 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 # 데이터 연동 원칙 (사용자 지침, 2026-07-29)
 
 - **실제 데이터는 항상 실제 외부 API로 연동한다.** 모의/하드코딩 데이터를 대신 쓰지 않는다.
-  - SERP·순위·키워드 데이터 → **TalorData API** (`.env.local`의 `TALORDATA_API_TOKEN`, 클라이언트는 `src/server/talordata/`)
-  - 사이트 크롤링 데이터 → **Firecrawl API** (`.env.local`의 `FIRECRAWL_API_KEY`, 클라이언트는 `src/server/siteaudit/firecrawl.ts`)
-- 외부 API 호출 비용은 **사용자가 승인한 상태**다. "지금 순위 수집"/"지금 크롤" 같은 실비용 동작도 묻지 말고 실행해도 된다.
-- 수집 실패 시에는 정직하게 오류/빈 상태를 표시하고, 가짜 숫자를 만들어 채우지 않는다. 수집 데이터는 출처(`source: "talordata"` 등)와 provenance 배지로 구분해 표시한다.
+  - Google 순위·AI Overview → **TalorData API** (`TALORDATA_API_TOKEN`, `src/server/talordata/`)
+  - Google Search Console → readonly OAuth와 `src/server/collectors/gsc/`
+  - NAVER 수요·추이·인구통계·블로그 결과 규모 → 공식 Search Ads/Open API와 `src/server/providers/naver/`
+- 외부 API 호출은 가입 후 최초 수집 1회와 주간 예약 수집만 허용한다. 임의 수동 새로고침이나 삭제된 사이트 감사·크롤 기능을 추가하지 않는다.
+- 수집 실패 시에는 정직하게 오류/빈/부분 상태를 표시하고, 가짜 숫자를 만들어 채우지 않는다. 수집 데이터는 공급자와 provenance를 보존한다.
 - API 키는 코드·로그·스크린샷·커밋에 노출하지 않는다 (`.env*`는 gitignore).
 
 # Lessons Learned
@@ -38,3 +39,17 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - **원인**: PostgreSQL은 stored generated expression 전체가 immutable이길 요구하지만 `jsonb`의 text 변환은 immutable로 선언되지 않았다.
 - **해결**: BEFORE INSERT/UPDATE trigger가 정규화된 `jsonb::text`와 주요 필드로 `request_hash`를 항상 덮어쓰도록 만들었다.
 - **교훈**: PostgreSQL canonical serialization을 generated column에 넣기 전 함수 volatility를 확인하고, DB 강제가 필요하면 trigger와 drift 테스트를 함께 사용한다.
+
+### [2026-08-12] 권한 거부 테스트와 transaction 복구 (PostgreSQL, SAVEPOINT, roles)
+- **상황**: 최소권한 역할이 여러 민감 테이블을 연속으로 읽지 못하는지 실제 PostgreSQL 16에서 검증했다.
+- **문제**: 첫 `permission denied` 뒤 같은 트랜잭션의 다음 검증이 `current transaction is aborted`로 실패했다.
+- **원인**: PostgreSQL은 statement 오류 후 명시적 rollback 전까지 현재 트랜잭션을 aborted 상태로 유지한다.
+- **해결**: 각 예상 권한 오류를 독립된 `SAVEPOINT`와 `ROLLBACK TO SAVEPOINT`로 격리했다.
+- **교훈**: 한 트랜잭션에서 여러 negative SQL 권한 테스트를 실행할 때는 각 오류 경계를 savepoint로 감싼다.
+
+### [2026-08-12] 비밀 payload의 queue 종료 경계 (PostgreSQL, outbox, encryption)
+- **상황**: 비밀번호 재설정 이메일을 AES-GCM 암호문으로 outbox/job에 보관하고 terminal 처리 뒤 제거하려 했다.
+- **문제**: handler만 scrub하면 worker crash나 job 생성 전 relay DLQ 경로에서 암호문이 남고, 느슨한 envelope/key 제약은 평문 위장 payload를 허용할 수 있었다.
+- **원인**: 애플리케이션 성공 경로만 정리 경계로 보고 outbox와 job의 독립적인 terminal 전환을 모두 모델링하지 않았다.
+- **해결**: 전체 envelope 형식과 reset ID/idempotency key 관계를 DB 제약으로 강제하고, handler scrub 외에 outbox/job terminal trigger를 최종 정리 경계로 추가했다.
+- **교훈**: 비밀을 담는 durable queue는 생산자·relay·consumer 각각의 crash terminal 경로를 열거하고 DB 수준 형식 검증과 멱등 scrub을 함께 둔다.

@@ -1,0 +1,5 @@
+
+> semforge@0.1.0 ci:forbidden-surface
+> node scripts/ci/forbidden-surface.mjs
+
+forbidden surface passed: checkedFiles=261

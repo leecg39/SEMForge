@@ -1,6 +1,6 @@
 {
-  "id": "29a9d713-87b5-4e63-83f4-87315b87b027",
-  "prevId": "00000000-0000-0000-0000-000000000000",
+  "id": "e2bcc0ea-254d-49ae-9856-3cd63848fd2e",
+  "prevId": "3d10537a-07b5-4310-8eca-47445e32aa70",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -446,6 +446,98 @@
       },
       "isRLSEnabled": false
     },
+    "public.backup_deletion_markers": {
+      "name": "backup_deletion_markers",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "marker_key": {
+          "name": "marker_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "runbook_ref": {
+          "name": "runbook_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "backup_deletion_markers_request_fk": {
+          "name": "backup_deletion_markers_request_fk",
+          "tableFrom": "backup_deletion_markers",
+          "tableTo": "privacy_requests",
+          "columnsFrom": [
+            "workspace_id",
+            "request_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "backup_deletion_markers_workspace_id_uq": {
+          "name": "backup_deletion_markers_workspace_id_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "id"
+          ]
+        },
+        "backup_deletion_markers_request_marker_uq": {
+          "name": "backup_deletion_markers_request_marker_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "request_id",
+            "marker_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.billing_customers": {
       "name": "billing_customers",
       "schema": "",
@@ -793,6 +885,113 @@
       },
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.email_suppressions": {
+      "name": "email_suppressions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email_hash": {
+          "name": "email_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'privacy_erasure'"
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "email_suppressions_workspace_id_workspaces_id_fk": {
+          "name": "email_suppressions_workspace_id_workspaces_id_fk",
+          "tableFrom": "email_suppressions",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "email_suppressions_request_fk": {
+          "name": "email_suppressions_request_fk",
+          "tableFrom": "email_suppressions",
+          "tableTo": "privacy_requests",
+          "columnsFrom": [
+            "workspace_id",
+            "request_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "email_suppressions_workspace_id_uq": {
+          "name": "email_suppressions_workspace_id_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "id"
+          ]
+        },
+        "email_suppressions_workspace_hash_uq": {
+          "name": "email_suppressions_workspace_hash_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "email_hash"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "email_suppressions_hash_ck": {
+          "name": "email_suppressions_hash_ck",
+          "value": "\"email_suppressions\".\"email_hash\" ~ '^[0-9a-f]{64}$'"
+        },
+        "email_suppressions_reason_ck": {
+          "name": "email_suppressions_reason_ck",
+          "value": "\"email_suppressions\".\"reason\" in ('privacy_erasure', 'operator_block')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.gsc_connections": {
@@ -1230,6 +1429,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "release_target": {
+          "name": "release_target",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'paid-production'"
+        },
         "role": {
           "name": "role",
           "type": "membership_role",
@@ -1374,6 +1580,10 @@
         "invites_owner_role_ck": {
           "name": "invites_owner_role_ck",
           "value": "\"invites\".\"role\" = 'owner'"
+        },
+        "invites_release_target_ck": {
+          "name": "invites_release_target_ck",
+          "value": "\"invites\".\"release_target\" in ('sandbox', 'staging', 'paid-production')"
         },
         "invites_intent_text_ck": {
           "name": "invites_intent_text_ck",
@@ -1607,6 +1817,127 @@
         "jobs_lease_ck": {
           "name": "jobs_lease_ck",
           "value": "(\"jobs\".\"status\" <> 'leased') or (\"jobs\".\"lease_owner\" is not null and \"jobs\".\"lease_token\" is not null and \"jobs\".\"lease_expires_at\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.legal_acceptances": {
+      "name": "legal_acceptances",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "terms_version": {
+          "name": "terms_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "terms_sha256": {
+          "name": "terms_sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "privacy_version": {
+          "name": "privacy_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "privacy_sha256": {
+          "name": "privacy_sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "presented_at": {
+          "name": "presented_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "accepted_at": {
+          "name": "accepted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "legal_acceptances_membership_fk": {
+          "name": "legal_acceptances_membership_fk",
+          "tableFrom": "legal_acceptances",
+          "tableTo": "memberships",
+          "columnsFrom": [
+            "workspace_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "user_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "legal_acceptances_workspace_id_uq": {
+          "name": "legal_acceptances_workspace_id_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "id"
+          ]
+        },
+        "legal_acceptances_workspace_user_uq": {
+          "name": "legal_acceptances_workspace_user_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "user_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "legal_acceptances_terms_sha_ck": {
+          "name": "legal_acceptances_terms_sha_ck",
+          "value": "\"legal_acceptances\".\"terms_sha256\" ~ '^[0-9a-f]{64}$'"
+        },
+        "legal_acceptances_privacy_sha_ck": {
+          "name": "legal_acceptances_privacy_sha_ck",
+          "value": "\"legal_acceptances\".\"privacy_sha256\" ~ '^[0-9a-f]{64}$'"
+        },
+        "legal_acceptances_time_ck": {
+          "name": "legal_acceptances_time_ck",
+          "value": "\"legal_acceptances\".\"accepted_at\" >= \"legal_acceptances\".\"presented_at\""
         }
       },
       "isRLSEnabled": false
@@ -2711,6 +3042,345 @@
         "payments_attempt_ck": {
           "name": "payments_attempt_ck",
           "value": "\"payments\".\"attempt\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.privacy_billing_tombstones": {
+      "name": "privacy_billing_tombstones",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "customer_key_hash": {
+          "name": "customer_key_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "legal_hold": {
+          "name": "legal_hold",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "retained_reason": {
+          "name": "retained_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "privacy_billing_tombstones_request_fk": {
+          "name": "privacy_billing_tombstones_request_fk",
+          "tableFrom": "privacy_billing_tombstones",
+          "tableTo": "privacy_requests",
+          "columnsFrom": [
+            "workspace_id",
+            "request_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "privacy_billing_tombstones_workspace_id_uq": {
+          "name": "privacy_billing_tombstones_workspace_id_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "id"
+          ]
+        },
+        "privacy_billing_tombstones_request_uq": {
+          "name": "privacy_billing_tombstones_request_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "request_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "privacy_billing_tombstones_hash_ck": {
+          "name": "privacy_billing_tombstones_hash_ck",
+          "value": "\"privacy_billing_tombstones\".\"customer_key_hash\" ~ '^[0-9a-f]{64}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.privacy_request_steps": {
+      "name": "privacy_request_steps",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "step_key": {
+          "name": "step_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "privacy_request_steps_request_fk": {
+          "name": "privacy_request_steps_request_fk",
+          "tableFrom": "privacy_request_steps",
+          "tableTo": "privacy_requests",
+          "columnsFrom": [
+            "workspace_id",
+            "request_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "privacy_request_steps_workspace_id_uq": {
+          "name": "privacy_request_steps_workspace_id_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "id"
+          ]
+        },
+        "privacy_request_steps_key_uq": {
+          "name": "privacy_request_steps_key_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "request_id",
+            "step_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "privacy_request_steps_status_ck": {
+          "name": "privacy_request_steps_status_ck",
+          "value": "\"privacy_request_steps\".\"status\" in ('pending', 'succeeded', 'failed', 'skipped')"
+        },
+        "privacy_request_steps_attempts_ck": {
+          "name": "privacy_request_steps_attempts_ck",
+          "value": "\"privacy_request_steps\".\"attempts\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.privacy_requests": {
+      "name": "privacy_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'queued'"
+        },
+        "operator_id": {
+          "name": "operator_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject_user_id": {
+          "name": "subject_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "requested_at": {
+          "name": "requested_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "privacy_requests_workspace_fk": {
+          "name": "privacy_requests_workspace_fk",
+          "tableFrom": "privacy_requests",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "privacy_requests_workspace_id_uq": {
+          "name": "privacy_requests_workspace_id_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "id"
+          ]
+        },
+        "privacy_requests_request_id_uq": {
+          "name": "privacy_requests_request_id_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "request_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "privacy_requests_type_ck": {
+          "name": "privacy_requests_type_ck",
+          "value": "\"privacy_requests\".\"type\" in ('export', 'correction', 'deletion')"
+        },
+        "privacy_requests_status_ck": {
+          "name": "privacy_requests_status_ck",
+          "value": "\"privacy_requests\".\"status\" in ('queued', 'running', 'completed', 'failed')"
         }
       },
       "isRLSEnabled": false

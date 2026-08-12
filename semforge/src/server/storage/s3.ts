@@ -29,6 +29,7 @@ export interface SignedObjectUrl {
 export interface PrivateObjectStorage {
   putPrivate(input: PutPrivateObjectInput): Promise<PutPrivateObjectResult>;
   getPrivate(key: string): Promise<Uint8Array>;
+  deletePrivate(key: string): Promise<void>;
   createSignedGetUrl(key: string, input: { expiresInSeconds: number }): Promise<SignedObjectUrl>;
 }
 
@@ -228,6 +229,21 @@ export class S3PrivateObjectStorage implements PrivateObjectStorage {
     if (response.status === 404) throw new ObjectStorageError("NOT_FOUND");
     if (!response.ok) throw new ObjectStorageError("PROVIDER_ERROR");
     return boundedBody(response);
+  }
+
+  async deletePrivate(rawKey: string): Promise<void> {
+    const url = this.objectUrl(requireKey(rawKey));
+    const payloadHash = EMPTY_SHA256;
+    const headers: Record<string, string> = { "x-amz-content-sha256": payloadHash };
+    headers.authorization = this.authorization("DELETE", url, headers, payloadHash, this.clock());
+    let response: Response;
+    try {
+      response = await this.fetcher(url, { method: "DELETE", headers });
+    } catch {
+      throw new ObjectStorageError("PROVIDER_ERROR");
+    }
+    if (response.status === 404) return;
+    if (!response.ok) throw new ObjectStorageError("PROVIDER_ERROR");
   }
 
   async createSignedGetUrl(

@@ -6,10 +6,12 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, gt, isNull, or, sql } from "drizzle-orm";
 
 import { getDatabase, type SemforgeDatabase } from "@/db/client";
+import { encryptSecret, type SecretCrypto } from "@/lib/crypto";
 import {
   authActionThrottles,
   billingCustomers,
   invites,
+  legalAcceptances,
   memberships,
   outbox,
   passwordResets,
@@ -44,6 +46,7 @@ import {
   DEFAULT_AUTH_THROTTLE_WINDOW_MS,
 } from "@/server/auth/store";
 import { createInviteInputSchema } from "@/server/auth/schemas";
+import { currentLegalDocuments } from "@/server/privacy/legal-documents";
 
 function normalizeEmail(value: string): string {
   return value.normalize("NFKC").trim().toLocaleLowerCase("en-US");
@@ -85,6 +88,10 @@ function deriveTossCustomerKey(workspaceId: string): string {
   return `semforge_${workspaceId.replaceAll("-", "")}`;
 }
 
+export function passwordResetDeliveryAad(workspaceId: string, resetId: string): string {
+  return `workspace:${workspaceId}:password-reset:${resetId}:delivery`;
+}
+
 /** pending invite의 workspace provisioning intent만 쓰는 운영자 전용 경계다. */
 export class PostgresOperatorInviteStore implements OperatorInviteStore {
   constructor(
@@ -97,6 +104,7 @@ export class PostgresOperatorInviteStore implements OperatorInviteStore {
       email: input.email,
       workspaceName: input.workspaceName,
       workspaceSlug: input.workspaceSlug,
+      releaseTarget: input.releaseTarget,
     });
     if (!validation.success) {
       const issue = validation.error.issues[0];
@@ -109,6 +117,9 @@ export class PostgresOperatorInviteStore implements OperatorInviteStore {
       }
       if (field === "workspaceSlug") {
         throw new TypeError("유효한 workspace slug를 입력하세요.");
+      }
+      if (field === "releaseTarget") {
+        throw new TypeError("유효한 release target을 입력하세요.");
       }
       throw new TypeError("초대 입력값이 올바르지 않습니다.");
     }
@@ -147,6 +158,7 @@ export class PostgresOperatorInviteStore implements OperatorInviteStore {
         .values({
           workspaceName,
           workspaceSlug,
+          releaseTarget: validation.data.releaseTarget,
           email,
           tokenHash: input.tokenHash,
           expiresAt: input.expiresAt,
@@ -159,6 +171,7 @@ export class PostgresOperatorInviteStore implements OperatorInviteStore {
         workspaceName,
         workspaceSlug,
         email,
+        releaseTarget: validation.data.releaseTarget,
         role: "owner",
         expiresAt: input.expiresAt,
       };
@@ -174,6 +187,7 @@ export class PostgresOperatorInviteStore implements OperatorInviteStore {
 export class PostgresAuthStore implements AuthStore {
   constructor(
     private readonly database: SemforgeDatabase = getDatabase("auth"),
+    private readonly crypto: Pick<SecretCrypto, "encrypt"> = { encrypt: encryptSecret },
   ) {}
 
   async prepareInviteAcceptance(
@@ -309,13 +323,33 @@ export class PostgresAuthStore implements AuthStore {
           })
           .onConflictDoNothing();
 
+        const legalDocuments = currentLegalDocuments();
+        const legalAcceptance = input.legalAcceptance ?? {
+          termsVersion: legalDocuments.terms.version,
+          termsSha256: legalDocuments.terms.sha256,
+          privacyVersion: legalDocuments.privacy.version,
+          privacySha256: legalDocuments.privacy.sha256,
+          presentedAt: input.now,
+        };
+        await tx.insert(legalAcceptances).values({
+          workspaceId: workspace.id,
+          userId: user.id,
+          termsVersion: legalAcceptance.termsVersion,
+          termsSha256: legalAcceptance.termsSha256,
+          privacyVersion: legalAcceptance.privacyVersion,
+          privacySha256: legalAcceptance.privacySha256,
+          presentedAt: legalAcceptance.presentedAt,
+          acceptedAt: input.now,
+          createdAt: input.now,
+        });
+
         const consumed = await tx
           .update(invites)
           .set({
             acceptedWorkspaceId: workspace.id,
-          acceptedAt: sql`now()`,
-          acceptedByUserId: user.id,
-        })
+            acceptedAt: sql`now()`,
+            acceptedByUserId: user.id,
+          })
           .where(
             and(
               eq(invites.id, invite.id),
@@ -567,6 +601,16 @@ export class PostgresAuthStore implements AuthStore {
           throw new Error("비밀번호 재설정 outbox workspace를 찾을 수 없습니다.");
         }
 
+        const expiresAt = input.delivery.expiresAt.toISOString();
+        const encryptedDelivery = this.crypto.encrypt(
+          JSON.stringify({
+            email: normalizeEmail(input.delivery.email),
+            resetUrl: input.delivery.resetUrl,
+            expiresAt,
+          }),
+          passwordResetDeliveryAad(membership.workspaceId, reset.id),
+        );
+
         await tx
           .insert(outbox)
           .values({
@@ -574,9 +618,9 @@ export class PostgresAuthStore implements AuthStore {
             topic: "email.password_reset",
             payload: {
               kind: "password_reset",
-              email: input.delivery.email,
-              resetUrl: input.delivery.resetUrl,
-              expiresAt: input.delivery.expiresAt.toISOString(),
+              resetId: reset.id,
+              encryptedDelivery,
+              expiresAt,
             },
             idempotencyKey: `password-reset:${reset.id}`,
             availableAt: input.now,
