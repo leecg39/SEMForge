@@ -1,0 +1,12 @@
+{
+  "status": "failed",
+  "projectRoot": "/Users/user01/Music/SEMForge-worktrees/phase-5-ci/semforge",
+  "evidenceDir": "/Users/user01/Music/SEMForge-worktrees/phase-5-ci/semforge/.omo/evidence/phase5-ci/latest",
+  "node": "v25.4.0",
+  "nodeExecPath": "/opt/homebrew/Cellar/node/25.4.0/bin/node",
+  "platform": "darwin 25.5.0",
+  "startedAt": "2026-08-12T04:25:43.872Z",
+  "steps": [],
+  "error": "release gate requires Node 24.x, got 25.4.0",
+  "endedAt": "2026-08-12T04:25:43.874Z"
+}
