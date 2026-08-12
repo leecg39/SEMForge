@@ -79,6 +79,13 @@ export interface AcceptInviteInput {
   readonly tokenHash: string;
   readonly email: string;
   readonly user: AcceptInviteUser;
+  readonly legalAcceptance?: {
+    readonly termsVersion: string;
+    readonly termsSha256: string;
+    readonly privacyVersion: string;
+    readonly privacySha256: string;
+    readonly presentedAt: Date;
+  };
   readonly sessionTokenHash: string;
   /** 초대 수락 후 교체할 현재 쿠키의 hash다. 다른 사용자의 session은 건드리지 않는다. */
   readonly currentSessionTokenHash?: string;

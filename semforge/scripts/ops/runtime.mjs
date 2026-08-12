@@ -8,6 +8,7 @@ const REQUIRED_BY_PROFILE = Object.freeze({
     "AUTH_DATABASE_URL",
     "BILLING_DATABASE_URL",
     "BILLING_TENANT_DATABASE_URL",
+    "LEGAL_RELEASE_MANIFEST",
     "APP_PUBLIC_URL",
     "APP_SECRET",
     "APP_SECRET_CURRENT_KEY_ID",
@@ -21,7 +22,6 @@ const REQUIRED_BY_PROFILE = Object.freeze({
     "S3_BUCKET",
     "S3_ACCESS_KEY_ID",
     "S3_SECRET_ACCESS_KEY",
-    "LEGAL_RELEASE_MANIFEST",
   ]),
   worker: Object.freeze([
     "AUTH_DATABASE_URL",
@@ -49,6 +49,7 @@ const REQUIRED_BY_PROFILE = Object.freeze({
   ]),
   relay: Object.freeze(["DISPATCHER_DATABASE_URL"]),
   scheduler: Object.freeze(["SCHEDULER_DATABASE_URL"]),
+  privacy: Object.freeze(["PRIVACY_DATABASE_URL", "PRIVACY_RETENTION_POLICY"]),
   migrate: Object.freeze(["MIGRATION_DATABASE_URL"]),
 });
 
@@ -61,6 +62,7 @@ const DATABASE_KEYS = new Set([
   "SCHEDULER_DATABASE_URL",
   "BILLING_DATABASE_URL",
   "BILLING_TENANT_DATABASE_URL",
+  "PRIVACY_DATABASE_URL",
   "MIGRATION_DATABASE_URL",
 ]);
 

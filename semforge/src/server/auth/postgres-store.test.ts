@@ -16,11 +16,14 @@ import {
   PostgresAuthStore,
   PostgresOperatorInviteStore,
 } from "@/server/auth/postgres-store";
+import { currentLegalDocuments } from "@/server/privacy/legal-documents";
+import { approvedLegalReleaseManifest } from "@/server/privacy/legal-documents.test-fixture";
 
 const databases: PGlite[] = [];
 const MINUTE_MS = 60 * 1_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
+process.env.LEGAL_RELEASE_MANIFEST = approvedLegalReleaseManifest;
 
 /** raw label은 테스트 가독성에만 쓰고 DB에는 실제 SHA-256 lower-hex만 전달한다. */
 function digest(rawLabel: string): string {
@@ -118,6 +121,71 @@ test("새 workspace 초대 수락은 사용자·membership·session·초대 소�
   });
   assert.equal(reused.status, "invalid");
   assert.equal(await store.findSessionByTokenHash(digest("session-hash-2"), now), null);
+});
+
+test("초대 수락은 final 약관·개인정보 version/SHA와 presented/accepted 시각을 같은 transaction에 기록한다", async () => {
+  const { auth: store, operator, database } = await createStores();
+  const now = testNow();
+  const presentedAt = addMs(now, -MINUTE_MS);
+  const documents = currentLegalDocuments();
+  await operator.createInvite({
+    workspaceName: "Consent Agency",
+    workspaceSlug: "consent-agency",
+    email: "consent@example.com",
+    tokenHash: digest("consent-invite-hash"),
+    role: "owner",
+    expiresAt: addMs(now, 7 * DAY_MS),
+    now,
+  });
+
+  const result = await store.acceptInviteAtomic({
+    tokenHash: digest("consent-invite-hash"),
+    email: "consent@example.com",
+    user: {
+      kind: "new",
+      passwordHash: "scrypt:test-password-hash",
+      displayName: "Consent Owner",
+    },
+    sessionTokenHash: digest("consent-session-hash"),
+    sessionExpiresAt: addMs(now, 30 * DAY_MS),
+    now,
+    legalAcceptance: {
+      termsVersion: documents.terms.version,
+      termsSha256: documents.terms.sha256,
+      privacyVersion: documents.privacy.version,
+      privacySha256: documents.privacy.sha256,
+      presentedAt,
+    },
+  });
+  assert.equal(result.status, "accepted");
+  if (result.status !== "accepted") return;
+
+  const rows = await database.execute<{
+    workspace_id: string;
+    user_id: string;
+    terms_version: string;
+    terms_sha256: string;
+    privacy_version: string;
+    privacy_sha256: string;
+    presented_at: Date;
+    accepted_at: Date;
+  }>(
+    `select workspace_id::text, user_id::text, terms_version, terms_sha256,
+            privacy_version, privacy_sha256, presented_at, accepted_at
+       from legal_acceptances
+      where workspace_id = '${result.principal.workspaceId}'`,
+  );
+  assert.equal(rows.rows.length, 1);
+  assert.deepEqual(rows.rows[0], {
+    workspace_id: result.principal.workspaceId,
+    user_id: result.principal.userId,
+    terms_version: documents.terms.version,
+    terms_sha256: documents.terms.sha256,
+    privacy_version: documents.privacy.version,
+    privacy_sha256: documents.privacy.sha256,
+    presented_at: presentedAt.toISOString().replace("T", " ").replace(".000Z", "+00"),
+    accepted_at: now.toISOString().replace("T", " ").replace(".000Z", "+00"),
+  });
 });
 
 test("invite preflight은 유효한 token과 일치 email만 ready로 공개하고 나머지는 invalid로 합친다", async () => {

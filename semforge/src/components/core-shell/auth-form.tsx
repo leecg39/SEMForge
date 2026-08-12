@@ -10,6 +10,11 @@ export type AuthVariant = "login" | "invite" | "forgot" | "reset";
 
 type ApiError = { code?: string; message?: string; fields?: Record<string, string> };
 type ApiEnvelope = { data?: unknown; error?: ApiError | null; requestId?: string };
+type InviteLegalDocuments = {
+  terms: { version: string; sha256: string };
+  privacy: { version: string; sha256: string };
+  presentedAt: string;
+};
 
 const endpoints: Record<AuthVariant, string> = {
   login: "/api/v1/auth/login",
@@ -31,17 +36,28 @@ function getText(formData: FormData, key: string) {
 }
 
 export function buildAuthPayload(formData: FormData, token?: string) {
-  const payload: Record<string, string> = {};
+  const payload: Record<string, string | boolean> = {};
   for (const [key, value] of formData.entries()) {
     if (typeof value === "string" && key !== "passwordConfirmation") {
       payload[key] = key === "password" ? value : value.trim();
     }
   }
+  if (formData.has("legalTermsVersion")) {
+    payload.legalAccepted = formData.get("legalAccepted") === "on";
+  }
   if (token) payload.token = token;
   return payload;
 }
 
-export function AuthForm({ variant, token }: { variant: AuthVariant; token?: string }) {
+export function AuthForm({
+  variant,
+  token,
+  legalDocuments,
+}: {
+  variant: AuthVariant;
+  token?: string;
+  legalDocuments?: InviteLegalDocuments;
+}) {
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
@@ -121,7 +137,7 @@ export function AuthForm({ variant, token }: { variant: AuthVariant; token?: str
       {variant === "invite" && (
         <label className="sf-field">
           <span>담당자 이름</span>
-          <input name="name" type="text" autoComplete="name" required maxLength={80} />
+          <input name="displayName" type="text" autoComplete="name" required maxLength={80} />
         </label>
       )}
 
@@ -153,6 +169,24 @@ export function AuthForm({ variant, token }: { variant: AuthVariant; token?: str
             minLength={12}
           />
         </label>
+      )}
+
+      {variant === "invite" && legalDocuments && (
+        <fieldset className="sf-field">
+          <legend>약관 및 개인정보 처리방침 동의</legend>
+          <input type="hidden" name="legalTermsVersion" value={legalDocuments.terms.version} />
+          <input type="hidden" name="legalTermsSha256" value={legalDocuments.terms.sha256} />
+          <input type="hidden" name="legalPrivacyVersion" value={legalDocuments.privacy.version} />
+          <input type="hidden" name="legalPrivacySha256" value={legalDocuments.privacy.sha256} />
+          <input type="hidden" name="legalPresentedAt" value={legalDocuments.presentedAt} />
+          <label className="sf-checkbox">
+            <input name="legalAccepted" type="checkbox" required />
+            <span>
+              <Link href="/legal/terms" target="_blank">이용약관</Link> 및{" "}
+              <Link href="/legal/privacy" target="_blank">개인정보 처리방침</Link>에 동의합니다.
+            </span>
+          </label>
+        </fieldset>
       )}
 
       {message && (

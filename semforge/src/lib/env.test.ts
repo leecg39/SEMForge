@@ -7,6 +7,17 @@ import { test } from "node:test";
 
 import { EnvironmentValidationError, parseServerEnv } from "@/lib/env";
 
+const privacyRetentionPolicy = JSON.stringify({
+  expiredSessionsDays: 30,
+  consumedInvitesDays: 30,
+  passwordResetsDays: 7,
+  oauthStatesDays: 7,
+  publishedOutboxDays: 30,
+  terminalJobsDays: 30,
+  providerRawMetadataDays: 30,
+  deliveryRecipientDays: 90,
+});
+
 const approvedLegalReleaseManifest = JSON.stringify({
   schemaVersion: 1,
   release: {
@@ -59,7 +70,10 @@ const productionEnv = {
   BILLING_DATABASE_URL: "postgresql://semforge_billing_login:test@db.example.com:5432/semforge",
   BILLING_TENANT_DATABASE_URL:
     "postgresql://semforge_billing_tenant_login:test@db.example.com:5432/semforge",
+  PRIVACY_DATABASE_URL: "postgresql://semforge_privacy_login:test@db.example.com:5432/semforge",
+  PRIVACY_RETENTION_POLICY: privacyRetentionPolicy,
   MIGRATION_DATABASE_URL: "postgresql://semforge_owner_login:test@db.example.com:5432/semforge",
+  LEGAL_RELEASE_MANIFEST: approvedLegalReleaseManifest,
   APP_PUBLIC_URL: "https://app.semforge.example",
   APP_SECRET: "production-secret-material-that-is-at-least-32-bytes",
   APP_SECRET_CURRENT_KEY_ID: "key-2026-08",
@@ -82,7 +96,6 @@ const productionEnv = {
   S3_ACCESS_KEY_ID: "semforge-production-access-key",
   S3_SECRET_ACCESS_KEY: "semforge-production-secret-key-material",
   CHROMIUM_EXECUTABLE_PATH: "/usr/bin/chromium",
-  LEGAL_RELEASE_MANIFEST: approvedLegalReleaseManifest,
 };
 
 test("production은 database, encryption, billing, Google, NAVER 자격증명을 모두 요구한다", () => {
@@ -94,7 +107,10 @@ test("production은 database, encryption, billing, Google, NAVER 자격증명을
     "SCHEDULER_DATABASE_URL",
     "BILLING_DATABASE_URL",
     "BILLING_TENANT_DATABASE_URL",
+    "PRIVACY_DATABASE_URL",
+    "PRIVACY_RETENTION_POLICY",
     "MIGRATION_DATABASE_URL",
+    "LEGAL_RELEASE_MANIFEST",
     "APP_PUBLIC_URL",
     "APP_SECRET",
     "APP_SECRET_CURRENT_KEY_ID",
@@ -117,7 +133,6 @@ test("production은 database, encryption, billing, Google, NAVER 자격증명을
     "S3_ACCESS_KEY_ID",
     "S3_SECRET_ACCESS_KEY",
     "CHROMIUM_EXECUTABLE_PATH",
-    "LEGAL_RELEASE_MANIFEST",
   ] as const) {
     const candidate = { ...productionEnv };
     delete candidate[missing];
@@ -339,6 +354,7 @@ test("web profile은 signed URL용 S3 credentials만 요구하고 email·Chromiu
   assert.equal(parsed.OPERATOR_DATABASE_URL, undefined);
 
   for (const missing of [
+    "LEGAL_RELEASE_MANIFEST",
     "S3_ENDPOINT",
     "S3_REGION",
     "S3_BUCKET",

@@ -284,6 +284,134 @@ export const auditEvents = pgTable(
   ],
 );
 
+export const legalAcceptances = pgTable(
+  "legal_acceptances",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull(),
+    userId: uuid("user_id").notNull(),
+    termsVersion: text("terms_version").notNull(),
+    termsSha256: text("terms_sha256").notNull(),
+    privacyVersion: text("privacy_version").notNull(),
+    privacySha256: text("privacy_sha256").notNull(),
+    presentedAt: timestamp("presented_at", { withTimezone: true }).notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("legal_acceptances_workspace_id_uq").on(table.workspaceId, table.id),
+    unique("legal_acceptances_workspace_user_uq").on(table.workspaceId, table.userId),
+    foreignKey({
+      columns: [table.workspaceId, table.userId],
+      foreignColumns: [memberships.workspaceId, memberships.userId],
+      name: "legal_acceptances_membership_fk",
+    }).onDelete("restrict"),
+    check("legal_acceptances_terms_sha_ck", sql`${table.termsSha256} ~ '^[0-9a-f]{64}$'`),
+    check("legal_acceptances_privacy_sha_ck", sql`${table.privacySha256} ~ '^[0-9a-f]{64}$'`),
+    check("legal_acceptances_time_ck", sql`${table.acceptedAt} >= ${table.presentedAt}`),
+  ],
+);
+
+export const privacyRequests = pgTable(
+  "privacy_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull(),
+    requestId: text("request_id").notNull(),
+    type: text("type").notNull(),
+    status: text("status").notNull().default("queued"),
+    operatorId: text("operator_id").notNull(),
+    subjectUserId: uuid("subject_user_id"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("privacy_requests_workspace_id_uq").on(table.workspaceId, table.id),
+    unique("privacy_requests_request_id_uq").on(table.workspaceId, table.requestId),
+    foreignKey({
+      columns: [table.workspaceId],
+      foreignColumns: [workspaces.id],
+      name: "privacy_requests_workspace_fk",
+    }).onDelete("cascade"),
+    check("privacy_requests_type_ck", sql`${table.type} in ('export', 'correction', 'deletion')`),
+    check("privacy_requests_status_ck", sql`${table.status} in ('queued', 'running', 'completed', 'failed')`),
+  ],
+);
+
+export const privacyRequestSteps = pgTable(
+  "privacy_request_steps",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull(),
+    requestId: uuid("request_id").notNull(),
+    stepKey: text("step_key").notNull(),
+    status: text("status").notNull(),
+    attempts: integer("attempts").notNull().default(1),
+    lastError: text("last_error"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("privacy_request_steps_workspace_id_uq").on(table.workspaceId, table.id),
+    unique("privacy_request_steps_key_uq").on(table.workspaceId, table.requestId, table.stepKey),
+    foreignKey({
+      columns: [table.workspaceId, table.requestId],
+      foreignColumns: [privacyRequests.workspaceId, privacyRequests.id],
+      name: "privacy_request_steps_request_fk",
+    }).onDelete("cascade"),
+    check("privacy_request_steps_status_ck", sql`${table.status} in ('pending', 'succeeded', 'failed', 'skipped')`),
+    check("privacy_request_steps_attempts_ck", sql`${table.attempts} > 0`),
+  ],
+);
+
+export const privacyBillingTombstones = pgTable(
+  "privacy_billing_tombstones",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull(),
+    requestId: uuid("request_id").notNull(),
+    customerKeyHash: text("customer_key_hash").notNull(),
+    legalHold: boolean("legal_hold").notNull().default(true),
+    retainedReason: text("retained_reason").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("privacy_billing_tombstones_workspace_id_uq").on(table.workspaceId, table.id),
+    unique("privacy_billing_tombstones_request_uq").on(table.workspaceId, table.requestId),
+    foreignKey({
+      columns: [table.workspaceId, table.requestId],
+      foreignColumns: [privacyRequests.workspaceId, privacyRequests.id],
+      name: "privacy_billing_tombstones_request_fk",
+    }).onDelete("cascade"),
+    check("privacy_billing_tombstones_hash_ck", sql`${table.customerKeyHash} ~ '^[0-9a-f]{64}$'`),
+  ],
+);
+
+export const backupDeletionMarkers = pgTable(
+  "backup_deletion_markers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull(),
+    requestId: uuid("request_id").notNull(),
+    markerKey: text("marker_key").notNull(),
+    runbookRef: text("runbook_ref").notNull(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("backup_deletion_markers_workspace_id_uq").on(table.workspaceId, table.id),
+    unique("backup_deletion_markers_request_marker_uq").on(table.workspaceId, table.requestId, table.markerKey),
+    foreignKey({
+      columns: [table.workspaceId, table.requestId],
+      foreignColumns: [privacyRequests.workspaceId, privacyRequests.id],
+      name: "backup_deletion_markers_request_fk",
+    }).onDelete("cascade"),
+  ],
+);
+
 export const sites = pgTable(
   "sites",
   {
@@ -972,6 +1100,11 @@ export const preTenantTables = [
 export const tenantTables = [
   memberships,
   auditEvents,
+  legalAcceptances,
+  privacyRequests,
+  privacyRequestSteps,
+  privacyBillingTombstones,
+  backupDeletionMarkers,
   sites,
   trackedQueries,
   gscConnections,

@@ -101,14 +101,15 @@ test("web role은 transaction-local workspace 밖의 row를 볼 수 없다", asy
   }
 });
 
-test("web, dispatcher, scheduler, worker, global/tenant billing role은 BYPASSRLS가 아니다", async () => {
+test("web, dispatcher, scheduler, worker, global/tenant billing, privacy role은 BYPASSRLS가 아니다", async () => {
   const roles = await pg.query<{ rolname: string; rolbypassrls: boolean }>(
-    "select rolname, rolbypassrls from pg_roles where rolname in ('semforge_billing', 'semforge_billing_tenant', 'semforge_dispatcher', 'semforge_scheduler', 'semforge_web', 'semforge_worker') order by rolname",
+    "select rolname, rolbypassrls from pg_roles where rolname in ('semforge_billing', 'semforge_billing_tenant', 'semforge_dispatcher', 'semforge_privacy', 'semforge_scheduler', 'semforge_web', 'semforge_worker') order by rolname",
   );
   assert.deepEqual(roles.rows, [
     { rolname: "semforge_billing", rolbypassrls: false },
     { rolname: "semforge_billing_tenant", rolbypassrls: false },
     { rolname: "semforge_dispatcher", rolbypassrls: false },
+    { rolname: "semforge_privacy", rolbypassrls: false },
     { rolname: "semforge_scheduler", rolbypassrls: false },
     { rolname: "semforge_web", rolbypassrls: false },
     { rolname: "semforge_worker", rolbypassrls: false },
@@ -341,6 +342,93 @@ test("tenant billing role은 app.workspace_id 밖 결제 row를 보거나 변경
   } finally {
     await pg.query("rollback");
   }
+});
+
+test("privacy erasure만 immutable report 삭제를 수행하고 billing ledger는 tombstone으로 보존한다", async () => {
+  const workspaceId = "00000000-0000-4000-8000-00000000e501";
+  const siteId = "00000000-0000-4000-8000-00000000e502";
+  const reportId = "00000000-0000-4000-8000-00000000e503";
+  const customerId = "00000000-0000-4000-8000-00000000e504";
+  const privacyRequestId = "00000000-0000-4000-8000-00000000e505";
+  await pg.query("insert into workspaces (id, name, slug) values ($1, 'Privacy Tenant', 'privacy-tenant')", [
+    workspaceId,
+  ]);
+  await pg.query("insert into sites (id, workspace_id, name, domain) values ($1, $2, 'Privacy Site', 'privacy.example')", [
+    siteId,
+    workspaceId,
+  ]);
+  await pg.query(
+    `insert into weekly_reports
+       (id, workspace_id, site_id, status, period_start, period_end, comparison_start, comparison_end, snapshot, brand_name, accent_color, snapshot_ready_at)
+     values
+       ($1, $2, $3, 'delivered', '2026-08-03', '2026-08-09', '2026-07-27', '2026-08-02', '{"pii":"subject"}'::jsonb, 'Privacy', '#2563EB', now())`,
+    [reportId, workspaceId, siteId],
+  );
+  await pg.query(
+    "insert into report_assets (workspace_id, report_id, kind, storage_key, content_type, checksum_sha256, size_bytes) values ($1, $2, 'pdf', 'reports/privacy.pdf', 'application/pdf', repeat('a', 64), 10)",
+    [workspaceId, reportId],
+  );
+  await pg.query(
+    "insert into deliveries (workspace_id, report_id, channel, recipient, status, idempotency_key) values ($1, $2, 'email', 'owner@privacy.example', 'delivered', 'privacy-delivery')",
+    [workspaceId, reportId],
+  );
+  await pg.query(
+    "insert into billing_customers (id, workspace_id, toss_customer_key) values ($1, $2, 'customer-privacy')",
+    [customerId, workspaceId],
+  );
+  await pg.query(
+    `insert into billing_ledger_events
+       (workspace_id, type, entity_id, request_id, occurred_at, amount_krw, order_id, payment_status, metadata)
+     values
+       ($1, 'charge.succeeded', 'payment-privacy', 'charge-privacy', now(), 49000, 'order-privacy', 'paid', '{"email":"owner@privacy.example"}'::jsonb)`,
+    [workspaceId],
+  );
+  await pg.query(
+    "insert into privacy_requests (id, workspace_id, request_id, type, status, operator_id, requested_at) values ($1, $2, 'req-privacy', 'deletion', 'running', 'operator@example.com', now())",
+    [privacyRequestId, workspaceId],
+  );
+
+  await pg.query("begin");
+  try {
+    await pg.query("set local role semforge_worker");
+    await pg.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
+    await pg.query("select set_config('app.privacy_erasure_request_id', $1, true)", [privacyRequestId]);
+    await pg.query("select set_config('app.privacy_erasure_procedure', 'privacy_erase_workspace', true)");
+    await assert.rejects(pg.query("delete from weekly_reports where workspace_id = $1", [workspaceId]));
+  } finally {
+    await pg.query("rollback");
+  }
+
+  await pg.query("begin");
+  try {
+    await pg.query("set local role semforge_privacy");
+    await pg.query("select privacy_erase_workspace($1::uuid, $2::uuid, 'operator@example.com')", [
+      workspaceId,
+      privacyRequestId,
+    ]);
+    await pg.query("commit");
+  } catch (error) {
+    await pg.query("rollback");
+    throw error;
+  }
+
+  const reportRows = await pg.query<{ count: number }>(
+    "select count(*)::int as count from weekly_reports where workspace_id = $1",
+    [workspaceId],
+  );
+  assert.equal(reportRows.rows[0]!.count, 0);
+
+  const ledger = await pg.query<{ count: number; erased: boolean }>(
+    "select count(*)::int as count, bool_and((metadata->>'privacyErased')::boolean) as erased from billing_ledger_events where workspace_id = $1",
+    [workspaceId],
+  );
+  assert.deepEqual(ledger.rows[0], { count: 1, erased: true });
+
+  const tombstone = await pg.query<{ count: number; legal_hold: boolean }>(
+    "select count(*)::int as count, bool_and(legal_hold) as legal_hold from privacy_billing_tombstones where workspace_id = $1 and request_id = $2",
+    [workspaceId, privacyRequestId],
+  );
+  assert.deepEqual(tombstone.rows[0], { count: 1, legal_hold: true });
 });
 
 test("web role은 billing 고객·결제수단·구독 테이블 권한을 전혀 갖지 않는다", async () => {
@@ -854,6 +942,7 @@ test("auth role은 pre-tenant 인증 트랜잭션에 필요한 최소 권한과 
     "auth_action_throttles:UPDATE",
     "billing_customers:INSERT",
     "invites:SELECT",
+    "legal_acceptances:INSERT",
     "memberships:INSERT",
     "memberships:SELECT",
     "password_resets:INSERT",
@@ -908,6 +997,7 @@ test("auth role은 pre-tenant 인증 트랜잭션에 필요한 최소 권한과 
       "billing_customers_auth_insert:INSERT",
       "invites_auth_select:SELECT",
       "invites_auth_update:UPDATE",
+      "legal_acceptances_auth_insert:INSERT",
       "memberships_auth_insert:INSERT",
       "memberships_auth_select:SELECT",
       "outbox_auth_insert:INSERT",

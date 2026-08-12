@@ -74,6 +74,12 @@ const acceptInviteRequestSchema = acceptInviteInputSchema
     email: true,
     password: true,
     displayName: true,
+    legalAccepted: true,
+    legalTermsVersion: true,
+    legalTermsSha256: true,
+    legalPrivacyVersion: true,
+    legalPrivacySha256: true,
+    legalPresentedAt: true,
   })
   .strict();
 
