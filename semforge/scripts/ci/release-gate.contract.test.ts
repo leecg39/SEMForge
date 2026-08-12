@@ -163,6 +163,94 @@ test("release gate runner는 generated notice/schema drift가 생기면 실패�
   );
 });
 
+test("release gate npm-build 단계는 CI 전역 credential env를 secretless build에서 제거한다", async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "semforge-release-build-env-"));
+  const evidenceDir = path.join(temp, ".omo", "evidence", "phase5-ci", "latest");
+  const observedEnvPath = path.join(temp, ".omo", "evidence", "build-env-observed.json");
+  fs.mkdirSync(path.dirname(observedEnvPath), { recursive: true });
+  const buildScript = [
+    "const fs=require('node:fs')",
+    "const forbidden=['DATABASE_URL','AUTH_DATABASE_URL','OPERATOR_DATABASE_URL','WORKER_DATABASE_URL','DISPATCHER_DATABASE_URL','SCHEDULER_DATABASE_URL','BILLING_DATABASE_URL','BILLING_TENANT_DATABASE_URL','PRIVACY_DATABASE_URL','PRIVACY_RETENTION_DATABASE_URL','MIGRATION_DATABASE_URL','APP_SECRET','APP_SECRET_CURRENT_KEY_ID','APP_SECRET_PREVIOUS_KEYS','TOSS_SECRET_KEY','GOOGLE_CLIENT_SECRET','TALORDATA_API_TOKEN','NAVER_OPEN_API_CLIENT_SECRET','NAVER_SEARCH_AD_SECRET_KEY','BILLING_FINGERPRINT_SECRET','RESEND_API_KEY','S3_ACCESS_KEY_ID','S3_SECRET_ACCESS_KEY']",
+    "const leaked=forbidden.filter((key)=>process.env[key])",
+    `fs.writeFileSync(${JSON.stringify(observedEnvPath)}, JSON.stringify({ci:process.env.CI,service:process.env.SEMFORGE_SERVICE,leaked}, null, 2))`,
+    "if(leaked.length){console.error('leaked build credentials: '+leaked.join(','));process.exit(42)}",
+  ].join(";");
+  fs.writeFileSync(
+    path.join(temp, "package.json"),
+    `${JSON.stringify({
+      private: true,
+      scripts: {
+        build: `SEMFORGE_SERVICE=build node -e ${JSON.stringify(buildScript)}`,
+      },
+    }, null, 2)}\n`,
+  );
+  execFileSync("git", ["init"], { cwd: temp, stdio: "ignore" });
+  execFileSync("git", ["add", "package.json"], { cwd: temp, stdio: "ignore" });
+  execFileSync(
+    "git",
+    ["-c", "user.email=test@example.invalid", "-c", "user.name=Test", "commit", "-m", "source"],
+    { cwd: temp, stdio: "ignore" },
+  );
+
+  const injectedCredentialEnv: Record<string, string> = {
+    DATABASE_URL: "postgresql://semforge:secret@localhost:5432/semforge_ci",
+    AUTH_DATABASE_URL: "postgresql://auth:secret@localhost:5432/semforge_ci",
+    OPERATOR_DATABASE_URL: "postgresql://operator:secret@localhost:5432/semforge_ci",
+    TOSS_SECRET_KEY: "test_toss_secret",
+    GOOGLE_CLIENT_SECRET: "google-client-secret",
+    S3_SECRET_ACCESS_KEY: "s3-secret",
+  };
+  const previousEnv = new Map(
+    Object.keys(injectedCredentialEnv).map((key) => [key, process.env[key]]),
+  );
+  for (const [key, value] of Object.entries(injectedCredentialEnv)) {
+    process.env[key] = value;
+  }
+
+  try {
+    const { defaultSteps, runReleaseGate } = await import(
+      pathToFileURL(path.join(projectRoot, "scripts/ci/run-release-gate.mjs")).href
+    ) as {
+      defaultSteps: Array<[string, string, string[], { scrubCredentialEnv?: boolean }?]>;
+      runReleaseGate: (options: {
+        projectRoot: string;
+        evidenceDir: string;
+        steps: Array<[string, string, string[], { scrubCredentialEnv?: boolean }?]>;
+        supplementalEvidence: [];
+      }) => Promise<{
+        status: string;
+        failedStep?: string;
+        steps?: Array<{ name: string; ok: boolean }>;
+      }>;
+    };
+    const npmBuildStep = defaultSteps.find(([name]) => name === "npm-build");
+    assert.ok(npmBuildStep, "defaultSteps must include npm-build");
+
+    const summary = await runReleaseGate({
+      projectRoot: temp,
+      evidenceDir,
+      steps: [npmBuildStep],
+      supplementalEvidence: [],
+    });
+
+    assert.equal(summary.status, "passed", JSON.stringify(summary));
+    assert.equal(summary.steps?.find((step) => step.name === "npm-build")?.ok, true);
+    const observed = JSON.parse(fs.readFileSync(observedEnvPath, "utf8")) as {
+      ci?: string;
+      service?: string;
+      leaked: string[];
+    };
+    assert.equal(observed.ci, "true");
+    assert.equal(observed.service, "build");
+    assert.deepEqual(observed.leaked, []);
+  } finally {
+    for (const [key, previous] of previousEnv) {
+      if (previous === undefined) delete process.env[key];
+      else process.env[key] = previous;
+    }
+  }
+});
+
 test("release gate runner는 커밋된 release-range whitespace도 실패시킨다", () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "semforge-release-range-"));
   fs.writeFileSync(path.join(temp, "source.txt"), "clean\n");

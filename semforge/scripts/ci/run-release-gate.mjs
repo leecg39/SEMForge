@@ -149,21 +149,66 @@ function persistSummary(projectRoot, evidenceDir, summary, supplementalEvidence)
   fs.writeFileSync(path.join(evidenceDir, "summary.md"), renderMarkdown(summary));
 }
 
+const credentialEnvKeys = Object.freeze([
+  "DATABASE_URL",
+  "AUTH_DATABASE_URL",
+  "OPERATOR_DATABASE_URL",
+  "WORKER_DATABASE_URL",
+  "DISPATCHER_DATABASE_URL",
+  "SCHEDULER_DATABASE_URL",
+  "BILLING_DATABASE_URL",
+  "BILLING_TENANT_DATABASE_URL",
+  "PRIVACY_DATABASE_URL",
+  "PRIVACY_RETENTION_DATABASE_URL",
+  "MIGRATION_DATABASE_URL",
+  "PG16_TEST_DATABASE_URL",
+  "APP_SECRET",
+  "APP_SECRET_CURRENT_KEY_ID",
+  "APP_SECRET_PREVIOUS_KEYS",
+  "TOSS_CLIENT_KEY",
+  "TOSS_SECRET_KEY",
+  "GOOGLE_CLIENT_ID",
+  "GOOGLE_CLIENT_SECRET",
+  "TALORDATA_API_TOKEN",
+  "NAVER_OPEN_API_CLIENT_ID",
+  "NAVER_OPEN_API_CLIENT_SECRET",
+  "NAVER_SEARCH_AD_ACCESS_LICENSE",
+  "NAVER_SEARCH_AD_SECRET_KEY",
+  "NAVER_SEARCH_AD_CUSTOMER_ID",
+  "BILLING_FINGERPRINT_SECRET",
+  "RESEND_API_KEY",
+  "S3_ACCESS_KEY_ID",
+  "S3_SECRET_ACCESS_KEY",
+]);
+
+function buildStepEnv(baseEnv, optionsEnv, scrubCredentialEnv = false) {
+  const env = {
+    ...baseEnv,
+    ...optionsEnv,
+  };
+  if (scrubCredentialEnv) {
+    for (const key of credentialEnvKeys) {
+      delete env[key];
+    }
+  }
+  return env;
+}
+
 function runStep(projectRoot, evidenceDir, name, command, args, options = {}) {
   const logPath = path.join(evidenceDir, `${name}.log`);
   const startedAt = new Date().toISOString();
   const nodeBinDir = path.dirname(process.execPath);
+  const baseEnv = {
+    ...process.env,
+    CI: "true",
+    PATH: `${nodeBinDir}${path.delimiter}${process.env.PATH ?? ""}`,
+    SEMFORGE_EXTERNAL_NETWORK: "disabled",
+  };
 
   return new Promise((resolve) => {
     const child = spawn(command, args, {
       cwd: projectRoot,
-      env: {
-        ...process.env,
-        CI: "true",
-        PATH: `${nodeBinDir}${path.delimiter}${process.env.PATH ?? ""}`,
-        SEMFORGE_EXTERNAL_NETWORK: "disabled",
-        ...options.env,
-      },
+      env: buildStepEnv(baseEnv, options.env ?? {}, options.scrubCredentialEnv === true),
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -217,7 +262,7 @@ export const defaultSteps = [
     },
   ],
   ["npm-verify", "npm", ["run", "verify"]], // npm run verify
-  ["npm-build", "npm", ["run", "build"]], // npm run build
+  ["npm-build", "npm", ["run", "build"], { scrubCredentialEnv: true }], // npm run build
   ["npm-audit-full", "npm", ["audit", "--audit-level=high"]], // npm audit --audit-level=high
   ["npm-audit-production", "npm", ["audit", "--omit=dev", "--audit-level=high"]], // npm audit --omit=dev --audit-level=high
   ["license-check", "npm", ["run", "license:check"]], // npm run license:check
