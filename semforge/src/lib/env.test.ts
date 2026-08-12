@@ -53,11 +53,12 @@ const productionEnv = {
   NODE_ENV: "production",
   DATABASE_URL: "postgresql://semforge_web_login:test@db.example.com:5432/semforge",
   AUTH_DATABASE_URL: "postgresql://semforge_auth_login:test@db.example.com:5432/semforge",
-  OPERATOR_DATABASE_URL: "postgresql://semforge_operator_login:test@db.example.com:5432/semforge",
   WORKER_DATABASE_URL: "postgresql://semforge_worker_login:test@db.example.com:5432/semforge",
   DISPATCHER_DATABASE_URL: "postgresql://semforge_dispatcher_login:test@db.example.com:5432/semforge",
   SCHEDULER_DATABASE_URL: "postgresql://semforge_scheduler_login:test@db.example.com:5432/semforge",
   BILLING_DATABASE_URL: "postgresql://semforge_billing_login:test@db.example.com:5432/semforge",
+  BILLING_TENANT_DATABASE_URL:
+    "postgresql://semforge_billing_tenant_login:test@db.example.com:5432/semforge",
   MIGRATION_DATABASE_URL: "postgresql://semforge_owner_login:test@db.example.com:5432/semforge",
   APP_PUBLIC_URL: "https://app.semforge.example",
   APP_SECRET: "production-secret-material-that-is-at-least-32-bytes",
@@ -88,11 +89,11 @@ test("production은 database, encryption, billing, Google, NAVER 자격증명을
   for (const missing of [
     "DATABASE_URL",
     "AUTH_DATABASE_URL",
-    "OPERATOR_DATABASE_URL",
     "WORKER_DATABASE_URL",
     "DISPATCHER_DATABASE_URL",
     "SCHEDULER_DATABASE_URL",
     "BILLING_DATABASE_URL",
+    "BILLING_TENANT_DATABASE_URL",
     "MIGRATION_DATABASE_URL",
     "APP_PUBLIC_URL",
     "APP_SECRET",
@@ -192,6 +193,27 @@ test("migrate profile은 migration owner DSN과 verify-full TLS만으로 시작�
 
   assert.equal(env.SEMFORGE_SERVICE, "migrate");
   assert.equal(env.MIGRATION_DATABASE_URL?.includes("owner"), true);
+});
+
+test("operator profile은 초대 CLI DSN만 요구하고 web/all은 operator DSN을 요구하지 않는다", () => {
+  const operator = parseServerEnv({
+    NODE_ENV: "production",
+    SEMFORGE_SERVICE: "operator",
+    OPERATOR_DATABASE_URL: "postgresql://operator:test@db.example.com:5432/semforge",
+    PGSSLMODE: "verify-full",
+  });
+  assert.equal(operator.OPERATOR_DATABASE_URL?.includes("operator"), true);
+  assert.equal(operator.DATABASE_URL, undefined);
+
+  const allWithoutOperator: Record<string, string | undefined> = { ...productionEnv };
+  assert.doesNotThrow(() => parseServerEnv(allWithoutOperator));
+  assert.throws(
+    () => parseServerEnv({
+      ...allWithoutOperator,
+      OPERATOR_DATABASE_URL: "postgresql://operator:test@db.example.com:5432/semforge",
+    }),
+    /OPERATOR_DATABASE_URL is only allowed for the operator service/u,
+  );
 });
 
 test("worker profile은 dispatcher claim DB와 tenant worker DB를 분리해 요구한다", () => {
@@ -296,6 +318,7 @@ test("web profile은 signed URL용 S3 credentials만 요구하고 email·Chromiu
     "DISPATCHER_DATABASE_URL",
     "SCHEDULER_DATABASE_URL",
     "MIGRATION_DATABASE_URL",
+    "OPERATOR_DATABASE_URL",
     "TALORDATA_API_TOKEN",
     "NAVER_OPEN_API_CLIENT_ID",
     "NAVER_OPEN_API_CLIENT_SECRET",
@@ -313,6 +336,7 @@ test("web profile은 signed URL용 S3 credentials만 요구하고 email·Chromiu
   assert.equal(parsed.SEMFORGE_SERVICE, "web");
   assert.equal(parsed.RESEND_API_KEY, undefined);
   assert.equal(parsed.CHROMIUM_EXECUTABLE_PATH, undefined);
+  assert.equal(parsed.OPERATOR_DATABASE_URL, undefined);
 
   for (const missing of [
     "S3_ENDPOINT",
@@ -321,6 +345,58 @@ test("web profile은 signed URL용 S3 credentials만 요구하고 email·Chromiu
     "S3_ACCESS_KEY_ID",
     "S3_SECRET_ACCESS_KEY",
   ] as const) {
+    const candidate = { ...webEnv };
+    delete candidate[missing];
+    assert.throws(
+      () => parseServerEnv(candidate),
+      (error: unknown) => {
+        assert.ok(error instanceof EnvironmentValidationError);
+        assert.deepEqual(error.issues, [`${missing} is required in production`]);
+        return true;
+      },
+    );
+  }
+});
+
+test("web profile은 operator CLI DSN 없이 시작하고 tenant/global billing DSN은 분리해 요구한다", () => {
+  const webEnv: Record<string, string | undefined> = {
+    ...productionEnv,
+    SEMFORGE_SERVICE: "web",
+  };
+  for (const unnecessary of [
+    "OPERATOR_DATABASE_URL",
+    "WORKER_DATABASE_URL",
+    "DISPATCHER_DATABASE_URL",
+    "SCHEDULER_DATABASE_URL",
+    "MIGRATION_DATABASE_URL",
+    "TALORDATA_API_TOKEN",
+    "NAVER_OPEN_API_CLIENT_ID",
+    "NAVER_OPEN_API_CLIENT_SECRET",
+    "NAVER_SEARCH_AD_ACCESS_LICENSE",
+    "NAVER_SEARCH_AD_SECRET_KEY",
+    "NAVER_SEARCH_AD_CUSTOMER_ID",
+    "RESEND_API_KEY",
+    "RESEND_FROM_EMAIL",
+    "CHROMIUM_EXECUTABLE_PATH",
+  ] as const) {
+    delete webEnv[unnecessary];
+  }
+
+  assert.doesNotThrow(() => parseServerEnv(webEnv));
+  assert.throws(
+    () => parseServerEnv({
+      ...webEnv,
+      OPERATOR_DATABASE_URL: "postgresql://operator:test@db.example.com:5432/semforge",
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof EnvironmentValidationError);
+      assert.deepEqual(error.issues, [
+        "OPERATOR_DATABASE_URL is only allowed for the operator service",
+      ]);
+      return true;
+    },
+  );
+  for (const missing of ["BILLING_DATABASE_URL", "BILLING_TENANT_DATABASE_URL"] as const) {
     const candidate = { ...webEnv };
     delete candidate[missing];
     assert.throws(

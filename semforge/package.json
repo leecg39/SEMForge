@@ -33,6 +33,7 @@
     "license:check": "node scripts/license/generate-third-party-notices.mjs --check",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
+    "invite": "SEMFORGE_SERVICE=operator tsx scripts/invite.ts",
     "worker:start": "tsx scripts/worker.ts",
     "outbox:relay": "tsx scripts/outbox-relay.ts",
     "collections:schedule": "tsx scripts/weekly-collections.ts"

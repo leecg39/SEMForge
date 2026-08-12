@@ -572,3 +572,39 @@ test("취소 API는 예약 outcome과 public subscription 요약만 응답한다
     /billing-key|fingerprint|payment-key|order-id|idempotency-internal|internal-(customer|subscription|payment)/i,
   );
 });
+
+test("인증 사용자 요청은 tenant service, Toss webhook은 global service만 선택한다", async () => {
+  const scopes: string[] = [];
+  const handlers = createBillingHttpHandlers({
+    requireAuth: async () => principal,
+    getService(scope) {
+      scopes.push(scope);
+      return serviceStub();
+    },
+  });
+
+  assert.equal((await handlers.summary(
+    new Request("https://semforge.example/api/v1/billing"),
+  )).status, 200);
+  assert.equal((await handlers.webhook(
+    new Request("https://semforge.example/api/v1/webhooks/toss", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "tosspayments-webhook-transmission-id": "role-split-transmission",
+        "x-forwarded-for": "203.0.113.79",
+      },
+      body: JSON.stringify({
+        eventType: "PAYMENT_STATUS_CHANGED",
+        createdAt: "2026-08-12T12:00:00+09:00",
+        data: {
+          orderId: "order-role-split",
+          paymentKey: "payment-role-split",
+          status: "DONE",
+        },
+      }),
+    }),
+  )).status, 200);
+
+  assert.deepEqual(scopes, ["tenant", "global"]);
+});

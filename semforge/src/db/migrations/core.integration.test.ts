@@ -101,12 +101,13 @@ test("web role은 transaction-local workspace 밖의 row를 볼 수 없다", asy
   }
 });
 
-test("web, dispatcher, scheduler, worker, billing role은 BYPASSRLS가 아니다", async () => {
+test("web, dispatcher, scheduler, worker, global/tenant billing role은 BYPASSRLS가 아니다", async () => {
   const roles = await pg.query<{ rolname: string; rolbypassrls: boolean }>(
-    "select rolname, rolbypassrls from pg_roles where rolname in ('semforge_billing', 'semforge_dispatcher', 'semforge_scheduler', 'semforge_web', 'semforge_worker') order by rolname",
+    "select rolname, rolbypassrls from pg_roles where rolname in ('semforge_billing', 'semforge_billing_tenant', 'semforge_dispatcher', 'semforge_scheduler', 'semforge_web', 'semforge_worker') order by rolname",
   );
   assert.deepEqual(roles.rows, [
     { rolname: "semforge_billing", rolbypassrls: false },
+    { rolname: "semforge_billing_tenant", rolbypassrls: false },
     { rolname: "semforge_dispatcher", rolbypassrls: false },
     { rolname: "semforge_scheduler", rolbypassrls: false },
     { rolname: "semforge_web", rolbypassrls: false },
@@ -121,6 +122,225 @@ test("web, dispatcher, scheduler, worker, billing role은 BYPASSRLS가 아니다
       (policy) => policy.policyname === "sites_tenant_isolation" && policy.roles.includes("semforge_web"),
     ),
   );
+});
+
+test("tenant billing role은 app.workspace_id 밖 결제 row를 보거나 변경할 수 없고 global billing만 대사할 수 있다", async () => {
+  const grants = await pg.query<{
+    grantee: string;
+    table_name: string;
+    privilege_type: string;
+  }>(
+    `select grantee, table_name, privilege_type
+       from information_schema.role_table_grants
+      where grantee in ('semforge_billing', 'semforge_billing_tenant')
+        and table_schema = 'public'
+      order by grantee, table_name, privilege_type`,
+  );
+  const expectedGlobalTables = [
+    "billing_customers:SELECT",
+    "payment_methods:SELECT",
+    "payments:SELECT",
+    "provider_events:SELECT",
+    "subscriptions:SELECT",
+  ];
+  assert.deepEqual(
+    grants.rows
+      .filter((grant) => grant.grantee === "semforge_billing")
+      .map((grant) => `${grant.table_name}:${grant.privilege_type}`),
+    expectedGlobalTables,
+  );
+  assert.deepEqual(
+    grants.rows
+      .filter((grant) => grant.grantee === "semforge_billing_tenant")
+      .map((grant) => `${grant.table_name}:${grant.privilege_type}`),
+    expectedGlobalTables.filter((grant) => grant !== "provider_events:SELECT"),
+  );
+
+  const mutationColumns = await pg.query<{
+    grantee: string;
+    table_name: string;
+    column_name: string;
+    privilege_type: string;
+  }>(
+    `select grantee, table_name, column_name, privilege_type
+       from information_schema.role_column_grants
+      where grantee in ('semforge_billing', 'semforge_billing_tenant')
+        and table_schema = 'public'
+        and privilege_type in ('INSERT', 'UPDATE')
+      order by grantee, table_name, privilege_type, column_name`,
+  );
+  const formattedMutations = (role: string) => mutationColumns.rows
+    .filter((grant) => grant.grantee === role)
+    .map((grant) => `${grant.table_name}:${grant.privilege_type}:${grant.column_name}`);
+  const sharedMutations = [
+    "billing_ledger_events:INSERT:actor_user_id",
+    "billing_ledger_events:INSERT:amount_krw",
+    "billing_ledger_events:INSERT:entity_id",
+    "billing_ledger_events:INSERT:id",
+    "billing_ledger_events:INSERT:occurred_at",
+    "billing_ledger_events:INSERT:order_id",
+    "billing_ledger_events:INSERT:payment_status",
+    "billing_ledger_events:INSERT:provider_code",
+    "billing_ledger_events:INSERT:request_id",
+    "billing_ledger_events:INSERT:type",
+    "billing_ledger_events:INSERT:workspace_id",
+    "payment_methods:UPDATE:active",
+    "payment_methods:UPDATE:replaced_at",
+    "payment_methods:UPDATE:updated_at",
+    "payments:UPDATE:failure_code",
+    "payments:UPDATE:failure_message",
+    "payments:UPDATE:paid_at",
+    "payments:UPDATE:status",
+    "payments:UPDATE:toss_payment_key",
+    "payments:UPDATE:updated_at",
+    "subscriptions:UPDATE:canceled_at",
+    "subscriptions:UPDATE:current_period_end",
+    "subscriptions:UPDATE:current_period_start",
+    "subscriptions:UPDATE:grace_ends_at",
+    "subscriptions:UPDATE:payment_method_id",
+    "subscriptions:UPDATE:status",
+    "subscriptions:UPDATE:updated_at",
+  ];
+  const globalOnlyMutations = [
+    "provider_events:INSERT:event_type",
+    "provider_events:INSERT:id",
+    "provider_events:INSERT:payload",
+    "provider_events:INSERT:provider",
+    "provider_events:INSERT:provider_event_id",
+    "provider_events:INSERT:received_at",
+    "provider_events:INSERT:workspace_id",
+    "provider_events:UPDATE:processed_at",
+    "provider_events:UPDATE:processing_error",
+  ];
+  const tenantOnlyMutations = [
+    "payment_methods:INSERT:active",
+    "payment_methods:INSERT:billing_customer_id",
+    "payment_methods:INSERT:billing_key_encrypted",
+    "payment_methods:INSERT:billing_key_fingerprint",
+    "payment_methods:INSERT:card_brand",
+    "payment_methods:INSERT:card_last4",
+    "payment_methods:INSERT:id",
+    "payment_methods:INSERT:replaced_at",
+    "payment_methods:INSERT:workspace_id",
+    "payments:INSERT:amount_krw",
+    "payments:INSERT:attempt",
+    "payments:INSERT:billing_period_end",
+    "payments:INSERT:billing_period_start",
+    "payments:INSERT:failure_code",
+    "payments:INSERT:failure_message",
+    "payments:INSERT:id",
+    "payments:INSERT:idempotency_key",
+    "payments:INSERT:order_id",
+    "payments:INSERT:paid_at",
+    "payments:INSERT:status",
+    "payments:INSERT:subscription_id",
+    "payments:INSERT:toss_payment_key",
+    "payments:INSERT:workspace_id",
+  ];
+  assert.deepEqual(
+    formattedMutations("semforge_billing"),
+    [...sharedMutations, ...globalOnlyMutations].sort(),
+  );
+  assert.deepEqual(
+    formattedMutations("semforge_billing_tenant"),
+    [...sharedMutations, ...tenantOnlyMutations].sort(),
+  );
+
+  const billingPolicies = await pg.query<{ role_name: string; tablename: string }>(
+    `select role_name, tablename
+       from (
+         select 'semforge_billing' as role_name, tablename
+           from pg_policies where 'semforge_billing' = any(roles)
+         union all
+         select 'semforge_billing_tenant' as role_name, tablename
+           from pg_policies where 'semforge_billing_tenant' = any(roles)
+       ) policies
+      order by role_name, tablename`,
+  );
+  assert.deepEqual(
+    billingPolicies.rows.filter((policy) => policy.role_name === "semforge_billing")
+      .map((policy) => policy.tablename),
+    [
+      "billing_customers",
+      "billing_ledger_events",
+      "payment_methods",
+      "payments",
+      "provider_events",
+      "subscriptions",
+    ],
+  );
+  assert.deepEqual(
+    billingPolicies.rows.filter((policy) => policy.role_name === "semforge_billing_tenant")
+      .map((policy) => policy.tablename),
+    [
+      "billing_customers",
+      "billing_ledger_events",
+      "payment_methods",
+      "payments",
+      "subscriptions",
+    ],
+  );
+
+  const tenantA = "00000000-0000-4000-8000-00000000f5b1";
+  const tenantB = "00000000-0000-4000-8000-00000000f5b2";
+  const customerA = "00000000-0000-4000-8000-00000000f5b3";
+  const customerB = "00000000-0000-4000-8000-00000000f5b4";
+  await pg.query(
+    "insert into workspaces (id, name, slug) values ($1, 'Billing Tenant A', 'billing-tenant-a'), ($2, 'Billing Tenant B', 'billing-tenant-b')",
+    [tenantA, tenantB],
+  );
+  await pg.query(
+    "insert into billing_customers (id, workspace_id, toss_customer_key) values ($1, $2, 'billing-tenant-a'), ($3, $4, 'billing-tenant-b')",
+    [customerA, tenantA, customerB, tenantB],
+  );
+  await pg.query(
+    "insert into subscriptions (workspace_id, billing_customer_id, status) values ($1, $2, 'account_created'), ($3, $4, 'account_created')",
+    [tenantA, customerA, tenantB, customerB],
+  );
+
+  await pg.query("begin");
+  try {
+    await pg.query("set local role semforge_billing_tenant");
+    assert.deepEqual((await pg.query("select workspace_id from subscriptions")).rows, []);
+    await pg.query("select set_config('app.workspace_id', $1, true)", [tenantA]);
+    assert.deepEqual(
+      (await pg.query<{ workspace_id: string }>("select workspace_id from subscriptions")).rows,
+      [{ workspace_id: tenantA }],
+    );
+    assert.deepEqual(
+      (await pg.query("update subscriptions set status = 'billing_authorized' where workspace_id = $1 returning id", [tenantB])).rows,
+      [],
+    );
+    await pg.query("savepoint billing_tenant_escape");
+    await assert.rejects(
+      pg.query(
+        `insert into payment_methods
+          (id, workspace_id, billing_customer_id, billing_key_encrypted, billing_key_fingerprint)
+         values ('00000000-0000-4000-8000-00000000f5b5', $1, $2,
+           'enc:v1:key:iviviviviviviviv:tagtagtagtagtagtagta:cipher', repeat('b', 64))`,
+        [tenantB, customerB],
+      ),
+      /row-level security/i,
+    );
+    await pg.query("rollback to savepoint billing_tenant_escape");
+    await pg.query("rollback");
+  } catch (error) {
+    await pg.query("rollback");
+    throw error;
+  }
+
+  await pg.query("begin");
+  try {
+    await pg.query("set local role semforge_billing");
+    const visible = await pg.query<{ workspace_id: string }>(
+      "select workspace_id from subscriptions where workspace_id in ($1, $2) order by workspace_id",
+      [tenantA, tenantB],
+    );
+    assert.deepEqual(visible.rows, [{ workspace_id: tenantA }, { workspace_id: tenantB }]);
+    await assert.rejects(pg.query("select token_hash from sessions"), /permission denied/i);
+  } finally {
+    await pg.query("rollback");
+  }
 });
 
 test("web role은 billing 고객·결제수단·구독 테이블 권한을 전혀 갖지 않는다", async () => {
@@ -530,7 +750,7 @@ test("NAVER/GSC provenance schema는 source/status와 tenant 복합 FK를 실제
   ]);
 });
 
-test("billing role은 fingerprint 결제수단과 append-only ledger만 변경한다", async () => {
+test("tenant billing role은 fingerprint 결제수단과 append-only ledger만 변경한다", async () => {
   const workspaceId = "00000000-0000-4000-8000-0000000000d1";
   const customerId = "00000000-0000-4000-8000-0000000000d2";
   const subscriptionId = "00000000-0000-4000-8000-0000000000d3";
@@ -550,7 +770,8 @@ test("billing role은 fingerprint 결제수단과 append-only ledger만 변경�
 
   await pg.query("begin");
   try {
-    await pg.query("set local role semforge_billing");
+    await pg.query("set local role semforge_billing_tenant");
+    await pg.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
     await pg.query(
       `insert into payment_methods
         (id, workspace_id, billing_customer_id, billing_key_encrypted, billing_key_fingerprint, card_last4)

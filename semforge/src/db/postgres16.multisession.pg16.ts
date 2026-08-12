@@ -15,6 +15,7 @@ import {
   type JobExecutionContext,
   type JobHandlerInput,
 } from "@/server/jobs/contracts";
+import { createPostgresBillingStore } from "@/server/billing/postgres-store";
 import { createBillingAccessGuardedJobHandler } from "@/worker/billing-gate";
 import {
   PostgresWeeklyCollectionScheduler,
@@ -164,12 +165,12 @@ test("PostgreSQL 16 실제 세션은 SKIP LOCKED, provider canonical visibility,
       await Promise.all([providerA.end(), providerB.end()]);
     }
 
-    await pool.query(
-      `insert into outbox (workspace_id, topic, payload, idempotency_key)
-       values ($1, 'collection.google.weekly', '{"siteId":"pg16"}'::jsonb, 'pg16-crash')`,
-      [workspaceA],
-    );
     const initialTime = new Date("2026-08-12T03:00:00.000Z");
+    await pool.query(
+      `insert into outbox (workspace_id, topic, payload, idempotency_key, available_at)
+       values ($1, 'collection.google.weekly', '{"siteId":"pg16"}'::jsonb, 'pg16-crash', $2)`,
+      [workspaceA, initialTime],
+    );
     await firstClient.query("begin");
     await firstClient.query("set local role semforge_dispatcher");
     const firstLease = (await new PostgresOutboxRelay(firstClient).claim({
@@ -426,5 +427,149 @@ test("PostgreSQL 16 실제 role은 구독 후보·report 동시 멱등·billing 
     assert.deepEqual(audits, ["job.billing_access.skipped", "job.billing_access.skipped"]);
   } finally {
     await Promise.all([schedulerA.end(), schedulerB.end(), worker.end(), web.end()]);
+  }
+});
+
+test("PostgreSQL 16 실제 tenant billing role은 설정된 workspace만 허용하고 global role만 대사한다", async () => {
+  const workspaceA = "f5000000-0000-4000-8000-000000000001";
+  const workspaceB = "f5000000-0000-4000-8000-000000000002";
+  const customerA = "f5100000-0000-4000-8000-000000000001";
+  const customerB = "f5100000-0000-4000-8000-000000000002";
+  const paymentMethodA = "f5200000-0000-4000-8000-000000000001";
+  await pool.query(
+    "insert into workspaces (id, name, slug) values ($1, 'PG billing tenant A', 'pg-billing-tenant-a'), ($2, 'PG billing tenant B', 'pg-billing-tenant-b')",
+    [workspaceA, workspaceB],
+  );
+  await pool.query(
+    "insert into billing_customers (id, workspace_id, toss_customer_key) values ($1, $2, 'pg-billing-tenant-a'), ($3, $4, 'pg-billing-tenant-b')",
+    [customerA, workspaceA, customerB, workspaceB],
+  );
+  await pool.query(
+    "insert into subscriptions (workspace_id, billing_customer_id, status) values ($1, $2, 'account_created'), ($3, $4, 'account_created')",
+    [workspaceA, customerA, workspaceB, customerB],
+  );
+
+  const tenant = await pool.connect();
+  const global = await pool.connect();
+  try {
+    await tenant.query("begin");
+    await tenant.query("set local role semforge_billing_tenant");
+    assert.deepEqual((await tenant.query("select workspace_id from subscriptions")).rows, []);
+    await tenant.query("select set_config('app.workspace_id', $1, true)", [workspaceA]);
+    assert.deepEqual(
+      (await tenant.query<{ workspace_id: string }>("select workspace_id::text from subscriptions")).rows,
+      [{ workspace_id: workspaceA }],
+    );
+    assert.deepEqual(
+      (await tenant.query("update subscriptions set status = 'billing_authorized' where workspace_id = $1 returning id", [workspaceB])).rows,
+      [],
+    );
+    await tenant.query("savepoint tenant_escape");
+    await assert.rejects(
+      tenant.query(
+        `insert into payment_methods
+          (id, workspace_id, billing_customer_id, billing_key_encrypted, billing_key_fingerprint)
+         values ('f5200000-0000-4000-8000-000000000001', $1, $2,
+           'enc:v1:key:iviviviviviviviv:tagtagtagtagtagtagta:cipher', repeat('b', 64))`,
+        [workspaceB, customerB],
+      ),
+      /row-level security/i,
+    );
+    await tenant.query("rollback to savepoint tenant_escape");
+
+    await global.query("begin");
+    await global.query("set local role semforge_billing");
+    const globalRows = await global.query<{ workspace_id: string }>(
+      "select workspace_id::text from subscriptions where workspace_id in ($1, $2) order by workspace_id",
+      [workspaceA, workspaceB],
+    );
+    assert.deepEqual(globalRows.rows, [{ workspace_id: workspaceA }, { workspace_id: workspaceB }]);
+    for (const [savepoint, statement] of [
+      ["global_sessions_denied", "select token_hash from sessions"],
+      ["global_memberships_denied", "select role from memberships"],
+    ] as const) {
+      await global.query(`savepoint ${savepoint}`);
+      await assert.rejects(global.query(statement), /permission denied/i);
+      await global.query(`rollback to savepoint ${savepoint}`);
+    }
+  } finally {
+    await Promise.all([
+      tenant.query("rollback").catch(() => undefined),
+      global.query("rollback").catch(() => undefined),
+    ]);
+    tenant.release();
+    global.release();
+  }
+
+  const tenantRuntimePool = new Pool({
+    connectionString: databaseUrl,
+    max: 1,
+    ssl: false,
+    options: "-c role=semforge_billing_tenant",
+  });
+  const globalRuntimePool = new Pool({
+    connectionString: databaseUrl,
+    max: 1,
+    ssl: false,
+    options: "-c role=semforge_billing",
+  });
+  const fingerprintSecret = "pg16-billing-fingerprint-secret-32-bytes";
+  try {
+    const tenantStore = createPostgresBillingStore({
+      pool: tenantRuntimePool,
+      fingerprintSecret,
+      scope: "tenant",
+    });
+    const saved = await tenantStore.savePaymentMethod({
+      workspaceId: workspaceA,
+      expectedCustomerKey: "pg-billing-tenant-a",
+      paymentMethod: {
+        id: paymentMethodA,
+        workspaceId: workspaceA,
+        billingCustomerId: customerA,
+        billingKeyEncrypted:
+          "enc:v1:key:iviviviviviviviv:tagtagtagtagtagtagta:cipher",
+        billingKeyFingerprint: "a".repeat(64),
+        cardBrand: "TEST",
+        cardLast4: "1234",
+        active: true,
+        replacedAt: null,
+      },
+      ledger: {
+        id: "f5300000-0000-4000-8000-000000000001",
+        workspaceId: workspaceA,
+        type: "payment_method.authorized",
+        entityId: paymentMethodA,
+        actorUserId: null,
+        requestId: "pg16-tenant-store",
+        occurredAt: new Date("2026-08-12T03:00:00.000Z"),
+      },
+    });
+    assert.equal(saved.created, true);
+    assert.equal(saved.account.subscription.workspaceId, workspaceA);
+    assert.equal(saved.account.paymentMethod?.id, paymentMethodA);
+    await assert.rejects(
+      tenantStore.findPaymentByOrderId("global-only-order"),
+      /global billing store/u,
+    );
+
+    const globalStore = createPostgresBillingStore({
+      pool: globalRuntimePool,
+      fingerprintSecret,
+      scope: "global",
+    });
+    assert.equal((await globalStore.getAccount(workspaceB))?.subscription.workspaceId, workspaceB);
+    await assert.rejects(
+      globalRuntimePool.query(
+        `insert into payment_methods
+          (id, workspace_id, billing_customer_id, billing_key_encrypted, billing_key_fingerprint)
+         values ('f5200000-0000-4000-8000-000000000002', $1, $2,
+           'enc:v1:key:iviviviviviviviv:tagtagtagtagtagtagta:cipher', repeat('b', 64))`,
+        [workspaceB, customerB],
+      ),
+      /permission denied/i,
+    );
+  } finally {
+    await Promise.all([tenantRuntimePool.end(), globalRuntimePool.end()]);
   }
 });

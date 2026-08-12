@@ -738,11 +738,12 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_scheduler') THEN CREATE ROLE semforge_scheduler NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_worker') THEN CREATE ROLE semforge_worker NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_billing') THEN CREATE ROLE semforge_billing NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_billing_tenant') THEN CREATE ROLE semforge_billing_tenant NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
 END
 $$;--> statement-breakpoint
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC;--> statement-breakpoint
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;--> statement-breakpoint
-GRANT USAGE ON SCHEMA public TO semforge_web, semforge_auth, semforge_operator, semforge_dispatcher, semforge_scheduler, semforge_worker, semforge_billing;--> statement-breakpoint
+GRANT USAGE ON SCHEMA public TO semforge_web, semforge_auth, semforge_operator, semforge_dispatcher, semforge_scheduler, semforge_worker, semforge_billing, semforge_billing_tenant;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON
   workspaces, memberships, sites, tracked_queries,
   gsc_connections, oauth_states, gsc_property_bindings
@@ -786,9 +787,22 @@ TO semforge_worker;--> statement-breakpoint
 GRANT INSERT (workspace_id, topic, payload, idempotency_key)
   ON outbox TO semforge_worker;--> statement-breakpoint
 GRANT INSERT ON audit_events TO semforge_worker;--> statement-breakpoint
-GRANT SELECT ON sessions, memberships TO semforge_billing;--> statement-breakpoint
-GRANT SELECT, INSERT, UPDATE ON billing_customers, payment_methods, subscriptions, payments, provider_events TO semforge_billing;--> statement-breakpoint
-GRANT INSERT ON billing_ledger_events TO semforge_billing;--> statement-breakpoint
+GRANT SELECT ON billing_customers TO semforge_billing;--> statement-breakpoint
+GRANT SELECT ON subscriptions, payment_methods, payments, provider_events TO semforge_billing;--> statement-breakpoint
+GRANT UPDATE (payment_method_id, status, current_period_start, current_period_end, grace_ends_at, canceled_at, updated_at) ON subscriptions TO semforge_billing;--> statement-breakpoint
+GRANT UPDATE (active, replaced_at, updated_at) ON payment_methods TO semforge_billing;--> statement-breakpoint
+GRANT UPDATE (status, toss_payment_key, failure_code, failure_message, paid_at, updated_at) ON payments TO semforge_billing;--> statement-breakpoint
+GRANT INSERT (id, workspace_id, provider, provider_event_id, event_type, payload, received_at) ON provider_events TO semforge_billing;--> statement-breakpoint
+GRANT UPDATE (processed_at, processing_error) ON provider_events TO semforge_billing;--> statement-breakpoint
+GRANT INSERT (id, workspace_id, type, entity_id, actor_user_id, request_id, occurred_at, amount_krw, order_id, payment_status, provider_code) ON billing_ledger_events TO semforge_billing;--> statement-breakpoint
+GRANT SELECT ON billing_customers TO semforge_billing_tenant;--> statement-breakpoint
+GRANT SELECT ON subscriptions, payment_methods, payments TO semforge_billing_tenant;--> statement-breakpoint
+GRANT UPDATE (payment_method_id, status, current_period_start, current_period_end, grace_ends_at, canceled_at, updated_at) ON subscriptions TO semforge_billing_tenant;--> statement-breakpoint
+GRANT INSERT (id, workspace_id, billing_customer_id, billing_key_encrypted, billing_key_fingerprint, card_brand, card_last4, active, replaced_at) ON payment_methods TO semforge_billing_tenant;--> statement-breakpoint
+GRANT UPDATE (active, replaced_at, updated_at) ON payment_methods TO semforge_billing_tenant;--> statement-breakpoint
+GRANT INSERT (id, workspace_id, subscription_id, order_id, idempotency_key, toss_payment_key, status, amount_krw, billing_period_start, billing_period_end, attempt, failure_code, failure_message, paid_at) ON payments TO semforge_billing_tenant;--> statement-breakpoint
+GRANT UPDATE (status, toss_payment_key, failure_code, failure_message, paid_at, updated_at) ON payments TO semforge_billing_tenant;--> statement-breakpoint
+GRANT INSERT (id, workspace_id, type, entity_id, actor_user_id, request_id, occurred_at, amount_krw, order_id, payment_status, provider_code) ON billing_ledger_events TO semforge_billing_tenant;--> statement-breakpoint
 
 ALTER TABLE gsc_connections ADD CONSTRAINT gsc_connections_encrypted_tokens_ck
   CHECK (access_token_encrypted ~ '^enc:v[0-9]+:' AND refresh_token_encrypted ~ '^enc:v[0-9]+:');--> statement-breakpoint
@@ -830,7 +844,6 @@ END
 $$;--> statement-breakpoint
 CREATE POLICY memberships_auth_select ON memberships FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
 CREATE POLICY memberships_auth_insert ON memberships FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
-CREATE POLICY memberships_billing_select ON memberships FOR SELECT TO semforge_billing USING (true);--> statement-breakpoint
 CREATE POLICY billing_customers_auth_insert ON billing_customers FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY subscriptions_auth_insert ON subscriptions FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
@@ -856,7 +869,6 @@ CREATE POLICY sessions_auth_select ON sessions FOR SELECT TO semforge_auth USING
 CREATE POLICY sessions_auth_insert ON sessions FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY sessions_auth_update ON sessions FOR UPDATE TO semforge_auth USING (true) WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY sessions_auth_delete ON sessions FOR DELETE TO semforge_auth USING (true);--> statement-breakpoint
-CREATE POLICY sessions_billing_select ON sessions FOR SELECT TO semforge_billing USING (true);--> statement-breakpoint
 ALTER TABLE password_resets ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE password_resets FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY password_resets_auth_select ON password_resets FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
@@ -939,4 +951,17 @@ BEGIN
   END LOOP;
 END
 $$;--> statement-breakpoint
-REVOKE UPDATE, DELETE ON billing_ledger_events FROM semforge_billing, semforge_web, semforge_worker;--> statement-breakpoint
+DO $$
+DECLARE billing_table text;
+BEGIN
+  FOREACH billing_table IN ARRAY ARRAY[
+    'billing_customers', 'payment_methods', 'subscriptions', 'payments', 'billing_ledger_events'
+  ] LOOP
+    EXECUTE format(
+      'CREATE POLICY %I ON %I TO semforge_billing_tenant USING (workspace_id = nullif(current_setting(''app.workspace_id'', true), '''')::uuid) WITH CHECK (workspace_id = nullif(current_setting(''app.workspace_id'', true), '''')::uuid)',
+      billing_table || '_billing_tenant_access', billing_table
+    );
+  END LOOP;
+END
+$$;--> statement-breakpoint
+REVOKE UPDATE, DELETE ON billing_ledger_events FROM semforge_billing, semforge_billing_tenant, semforge_web, semforge_worker;--> statement-breakpoint

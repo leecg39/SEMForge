@@ -26,7 +26,9 @@ before(async () => {
 after(async () => pg.close());
 
 test("acceptInviteAtomic provisions billing_customers and account_created subscription in the same transaction", async () => {
-  const now = new Date();
+  // Keep creation just behind PostgreSQL's real clock: expiry remains future,
+  // while the DB-generated acceptance timestamp cannot precede creation.
+  const now = new Date(Date.now() - 1_000);
   const tokenHash = sha256("invite-billing-token");
   const store = new PostgresAuthStore(drizzle(pg) as never);
 
