@@ -1,5 +1,5 @@
 $ npm run ci:pg16
-startedAt=2026-08-12T11:17:02.176Z
+startedAt=2026-08-12T12:46:13.576Z
 
 > semforge@0.1.0 ci:pg16
 > bash scripts/test-pg16.sh
@@ -26,17 +26,17 @@ startedAt=2026-08-12T11:17:02.176Z
 > semforge@0.1.0 test:pg16
 > tsx --test src/db/postgres16.multisession.pg16.ts
 
-✔ PostgreSQL 16 NAVER/AIO read route는 web-role PoolClient transaction-local RLS로 정상 tenant data만 반환한다 (160.957333ms)
-✔ PostgreSQL 16 실제 세션은 SKIP LOCKED, provider canonical visibility, outbox crash recovery와 RLS 경계를 보장한다 (143.8125ms)
-✔ PostgreSQL 16 실제 role은 구독 후보·report 동시 멱등·billing gate와 최소 권한을 강제한다 (344.448292ms)
-✔ PostgreSQL 16 실제 tenant billing role은 설정된 workspace만 허용하고 global role만 대사한다 (77.197333ms)
-✔ PostgreSQL 16 privacy erasure procedure는 PUBLIC과 일반 runtime role을 거부하고 privacy role만 허용한다 (34.018167ms)
-✔ PostgreSQL 16 privacy erasure procedure는 workspace의 실행 중 deletion 요청과 operator가 정확히 일치해야 한다 (30.642041ms)
-✔ PostgreSQL 16 workspace 파기는 공유 계정을 보존하고 전용 계정과 tenant PII만 지운다 (86.629583ms)
-✔ PostgreSQL 16 email suppression은 privacy request에 귀속되고 worker가 현재 tenant에서 읽기만 할 수 있다 (78.935333ms)
-✔ PostgreSQL 16 privacy 운영 역할은 raw table 대신 승인 request 함수만 실행한다 (41.348042ms)
-✔ PostgreSQL 16 privacy issuer/executor와 retention은 요청 위조 및 직접 domain DML을 거부한다 (93.538166ms)
-✔ PostgreSQL 16 workspace privacy control은 active 자동 생성 후 단방향 fence와 신규 write 차단을 강제한다 (47.795333ms)
+✔ PostgreSQL 16 NAVER/AIO read route는 web-role PoolClient transaction-local RLS로 정상 tenant data만 반환한다 (124.625334ms)
+✔ PostgreSQL 16 실제 세션은 SKIP LOCKED, provider canonical visibility, outbox crash recovery와 RLS 경계를 보장한다 (182.453666ms)
+✔ PostgreSQL 16 실제 role은 구독 후보·report 동시 멱등·billing gate와 최소 권한을 강제한다 (229.757833ms)
+✔ PostgreSQL 16 실제 tenant billing role은 설정된 workspace만 허용하고 global role만 대사한다 (93.303833ms)
+✔ PostgreSQL 16 privacy erasure procedure는 PUBLIC과 일반 runtime role을 거부하고 privacy role만 허용한다 (93.173583ms)
+✔ PostgreSQL 16 privacy erasure procedure는 workspace의 실행 중 deletion 요청과 operator가 정확히 일치해야 한다 (52.49425ms)
+✔ PostgreSQL 16 workspace 파기는 공유 계정을 보존하고 전용 계정과 tenant PII만 지운다 (58.443166ms)
+✔ PostgreSQL 16 email suppression은 privacy request에 귀속되고 worker가 현재 tenant에서 읽기만 할 수 있다 (34.578917ms)
+✔ PostgreSQL 16 privacy 운영 역할은 raw table 대신 승인 request 함수만 실행한다 (26.320917ms)
+✔ PostgreSQL 16 privacy issuer/executor와 retention은 요청 위조 및 직접 domain DML을 거부한다 (47.698958ms)
+✔ PostgreSQL 16 workspace privacy control은 active 자동 생성 후 단방향 fence와 신규 write 차단을 강제한다 (31.797375ms)
 ℹ tests 11
 ℹ suites 0
 ℹ pass 11
@@ -44,8 +44,8 @@ startedAt=2026-08-12T11:17:02.176Z
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 1684.882875
+ℹ duration_ms 1431.643791
 
-endedAt=2026-08-12T11:17:13.503Z
+endedAt=2026-08-12T12:46:21.231Z
 exitCode=0
 signal=null

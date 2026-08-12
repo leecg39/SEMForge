@@ -1,11 +1,11 @@
 $ npm run db:generate
-startedAt=2026-08-12T11:16:59.382Z
+startedAt=2026-08-12T12:46:11.390Z
 
 > semforge@0.1.0 db:generate
 > drizzle-kit generate
 
 No config path provided, using default 'drizzle.config.ts'
-Reading config file '/Users/user01/Music/SEMForge-worktrees/phase-5-finalize/semforge/drizzle.config.ts'
+Reading config file '/Users/user01/Music/SEMForge-worktrees/final-hardening/semforge/drizzle.config.ts'
 40 tables
 aio_citations 7 columns 0 indexes 1 fks
 aio_observations 10 columns 1 indexes 2 fks
@@ -32,7 +32,7 @@ payment_methods 11 columns 1 indexes 1 fks
 payments 16 columns 0 indexes 1 fks
 privacy_billing_tombstones 7 columns 0 indexes 1 fks
 privacy_request_steps 10 columns 0 indexes 1 fks
-privacy_requests 11 columns 0 indexes 1 fks
+privacy_requests 11 columns 0 indexes 2 fks
 provider_calls 11 columns 1 indexes 1 fks
 provider_events 9 columns 1 indexes 1 fks
 rank_observations 11 columns 1 indexes 2 fks
@@ -50,6 +50,6 @@ workspaces 7 columns 0 indexes 0 fks
 
 No schema changes, nothing to migrate 😴
 
-endedAt=2026-08-12T11:17:00.977Z
+endedAt=2026-08-12T12:46:12.904Z
 exitCode=0
 signal=null
