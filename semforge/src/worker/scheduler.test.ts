@@ -50,7 +50,7 @@ async function setPrivacyState(
   const request = await database.query<{ id: string }>(
     `insert into privacy_requests
        (workspace_id, request_id, type, status, operator_id, requested_at)
-     values ($1, $2, 'deletion', 'running', 'scheduler-fixture', $3)
+     values ($1, $2, 'workspace_deletion', 'running', 'scheduler-fixture', $3)
      returning id::text`,
     [workspaceId, `scheduler:${workspaceId}:${state}`, new Date("2026-08-23T23:59:00.000Z")],
   );
