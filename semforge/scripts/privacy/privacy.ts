@@ -4,7 +4,7 @@
 import { getPool } from "@/db/client";
 import {
   createPrivacyService,
-  defaultBetaRetentionPolicy,
+  readPrivacyRetentionPolicy,
   runPrivacyRetention,
 } from "@/server/privacy/service";
 
@@ -52,7 +52,7 @@ async function main() {
     const result = await runPrivacyRetention({
       db: getPool("privacy"),
       now,
-      policy: defaultBetaRetentionPolicy(),
+      policy: readPrivacyRetentionPolicy(),
       dryRun: dryRun !== "false",
     });
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

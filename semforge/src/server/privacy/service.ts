@@ -39,6 +39,17 @@ export interface PrivacyRetentionResult {
   readonly items: readonly { readonly target: string; readonly matched: number }[];
 }
 
+const retentionPolicyKeys = [
+  "expiredSessionsDays",
+  "consumedInvitesDays",
+  "passwordResetsDays",
+  "oauthStatesDays",
+  "publishedOutboxDays",
+  "terminalJobsDays",
+  "providerRawMetadataDays",
+  "deliveryRecipientDays",
+] as const satisfies readonly (keyof PrivacyRetentionPolicy)[];
+
 function digest(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
@@ -120,6 +131,42 @@ async function finishRequest(
   );
 }
 
+export function parsePrivacyRetentionPolicy(raw: string | undefined): PrivacyRetentionPolicy {
+  if (!raw?.trim()) throw new Error("PRIVACY_RETENTION_POLICY is required");
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(raw);
+  } catch {
+    throw new Error("PRIVACY_RETENTION_POLICY must be valid JSON");
+  }
+  if (!decoded || Array.isArray(decoded) || typeof decoded !== "object") {
+    throw new Error("PRIVACY_RETENTION_POLICY must be a JSON object");
+  }
+  const record = decoded as Record<string, unknown>;
+  const policy = Object.fromEntries(
+    retentionPolicyKeys.map((key) => {
+      const value = record[key];
+      if (typeof value !== "number" || !Number.isInteger(value) || value <= 0 || value > 3_650) {
+        throw new Error(`PRIVACY_RETENTION_POLICY.${key} must be an integer from 1 to 3650`);
+      }
+      return [key, value];
+    }),
+  ) as unknown as PrivacyRetentionPolicy;
+  const extra = Object.keys(record).filter(
+    (key) => !(retentionPolicyKeys as readonly string[]).includes(key),
+  );
+  if (extra.length > 0) {
+    throw new Error(`PRIVACY_RETENTION_POLICY has unknown keys: ${extra.sort().join(", ")}`);
+  }
+  return policy;
+}
+
+export function readPrivacyRetentionPolicy(
+  source: Record<string, string | undefined> = process.env,
+): PrivacyRetentionPolicy {
+  return parsePrivacyRetentionPolicy(source.PRIVACY_RETENTION_POLICY);
+}
+
 function since(now: Date, days: number): Date {
   return new Date(now.getTime() - days * 24 * 60 * 60 * 1_000);
 }
@@ -137,26 +184,13 @@ async function countOrApply(
   return { target, matched: Number(count) };
 }
 
-export function defaultBetaRetentionPolicy(): PrivacyRetentionPolicy {
-  return {
-    expiredSessionsDays: 30,
-    consumedInvitesDays: 30,
-    passwordResetsDays: 7,
-    oauthStatesDays: 7,
-    publishedOutboxDays: 30,
-    terminalJobsDays: 30,
-    providerRawMetadataDays: 30,
-    deliveryRecipientDays: 90,
-  };
-}
-
 export async function runPrivacyRetention(input: {
   db: PrivacySql;
   now: Date;
   policy?: PrivacyRetentionPolicy;
   dryRun: boolean;
 }): Promise<PrivacyRetentionResult> {
-  const policy = input.policy ?? defaultBetaRetentionPolicy();
+  const policy = input.policy ?? readPrivacyRetentionPolicy();
   const items = [
     await countOrApply(
       input.db,

@@ -11,8 +11,10 @@ import { hashPassword, verifyPassword } from "@/server/auth/password";
 import { createAuthService } from "@/server/auth/service";
 import type { AuthStore, OperatorInviteStore } from "@/server/auth/store";
 import { currentLegalDocuments } from "@/server/privacy/legal-documents";
+import { approvedLegalReleaseManifest } from "@/server/privacy/legal-documents.test-fixture";
 
 const NOW = new Date("2026-08-11T03:00:00.000Z");
+process.env.LEGAL_RELEASE_MANIFEST = approvedLegalReleaseManifest;
 
 function legalConsent() {
   const documents = currentLegalDocuments();

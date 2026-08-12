@@ -17,11 +17,13 @@ import {
   PostgresOperatorInviteStore,
 } from "@/server/auth/postgres-store";
 import { currentLegalDocuments } from "@/server/privacy/legal-documents";
+import { approvedLegalReleaseManifest } from "@/server/privacy/legal-documents.test-fixture";
 
 const databases: PGlite[] = [];
 const MINUTE_MS = 60 * 1_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
+process.env.LEGAL_RELEASE_MANIFEST = approvedLegalReleaseManifest;
 
 /** raw label은 테스트 가독성에만 쓰고 DB에는 실제 SHA-256 lower-hex만 전달한다. */
 function digest(rawLabel: string): string {

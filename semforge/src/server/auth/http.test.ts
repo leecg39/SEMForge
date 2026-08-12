@@ -12,8 +12,10 @@ import {
   type AuthHttpService,
 } from "@/server/auth/http";
 import { currentLegalDocuments } from "@/server/privacy/legal-documents";
+import { approvedLegalReleaseManifest } from "@/server/privacy/legal-documents.test-fixture";
 
 const NOW = new Date("2026-08-11T05:00:00.000Z");
+process.env.LEGAL_RELEASE_MANIFEST = approvedLegalReleaseManifest;
 const EXPIRES_AT = new Date("2026-09-10T05:00:00.000Z");
 const RAW_SESSION_TOKEN = "s".repeat(43);
 const RAW_INVITE_TOKEN = "i".repeat(43);

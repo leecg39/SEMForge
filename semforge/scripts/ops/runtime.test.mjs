@@ -22,7 +22,12 @@ const validWebEnvironment = {
   DISPATCHER_DATABASE_URL: "postgresql://dispatcher:password@db.example.com/semforge",
   SCHEDULER_DATABASE_URL: "postgresql://scheduler:password@db.example.com/semforge",
   BILLING_DATABASE_URL: "postgresql://billing:password@db.example.com/semforge",
+  PRIVACY_DATABASE_URL: "postgresql://privacy:password@db.example.com/semforge",
   MIGRATION_DATABASE_URL: "postgresql://owner:password@db.example.com/semforge",
+  LEGAL_RELEASE_MANIFEST: JSON.stringify({
+    schemaVersion: 1,
+    release: { status: "approved", documentVersion: "2026-08-12.1" },
+  }),
   APP_PUBLIC_URL: "https://app.semforge.example",
   APP_SECRET: "app-secret-material-that-is-at-least-32-bytes",
   APP_SECRET_CURRENT_KEY_ID: "key-2026-08",
@@ -42,6 +47,16 @@ const validWebEnvironment = {
   S3_BUCKET: "semforge-private",
   S3_ACCESS_KEY_ID: "semforge-web-access-key",
   S3_SECRET_ACCESS_KEY: "semforge-web-secret-key",
+  PRIVACY_RETENTION_POLICY: JSON.stringify({
+    expiredSessionsDays: 30,
+    consumedInvitesDays: 30,
+    passwordResetsDays: 7,
+    oauthStatesDays: 7,
+    publishedOutboxDays: 30,
+    terminalJobsDays: 30,
+    providerRawMetadataDays: 30,
+    deliveryRecipientDays: 90,
+  }),
 };
 
 const validWorkerEnvironment = {
@@ -56,16 +71,42 @@ test("web preflight는 필수 secret 누락을 값 없이 한 번에 보고한�
   const candidate = { ...validWebEnvironment };
   delete candidate.APP_SECRET;
   delete candidate.TOSS_SECRET_KEY;
+  delete candidate.LEGAL_RELEASE_MANIFEST;
 
   assert.throws(
     () => validateRuntimeEnvironment("web", candidate),
     (error) => {
       assert.ok(error instanceof RuntimeConfigurationError);
       assert.deepEqual(error.issues, [
+        "LEGAL_RELEASE_MANIFEST is required",
         "APP_SECRET is required",
         "TOSS_SECRET_KEY is required",
       ]);
       assert.doesNotMatch(error.message, /password|google-client-id|talordata-token/u);
+      return true;
+    },
+  );
+});
+
+test("privacy preflight는 전용 DB와 명시 retention policy 없이는 시작하지 않는다", () => {
+  assert.doesNotThrow(() => validateRuntimeEnvironment("privacy", {
+    NODE_ENV: "production",
+    SEMFORGE_SERVICE: "privacy",
+    PGSSLMODE: "verify-full",
+    PRIVACY_DATABASE_URL: "postgresql://privacy:password@db.example.com/semforge",
+    PRIVACY_RETENTION_POLICY: validWebEnvironment.PRIVACY_RETENTION_POLICY,
+  }));
+
+  assert.throws(
+    () => validateRuntimeEnvironment("privacy", {
+      NODE_ENV: "production",
+      SEMFORGE_SERVICE: "privacy",
+      PGSSLMODE: "verify-full",
+      PRIVACY_DATABASE_URL: "postgresql://privacy:password@db.example.com/semforge",
+    }),
+    (error) => {
+      assert.ok(error instanceof RuntimeConfigurationError);
+      assert.deepEqual(error.issues, ["PRIVACY_RETENTION_POLICY is required"]);
       return true;
     },
   );

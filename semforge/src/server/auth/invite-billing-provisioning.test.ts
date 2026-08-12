@@ -10,9 +10,11 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 
 import { PostgresAuthStore } from "@/server/auth/postgres-store";
+import { approvedLegalReleaseManifest } from "@/server/privacy/legal-documents.test-fixture";
 
 const pg = new PGlite();
 const migrationsFolder = path.join(process.cwd(), "src", "db", "migrations");
+process.env.LEGAL_RELEASE_MANIFEST = approvedLegalReleaseManifest;
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");

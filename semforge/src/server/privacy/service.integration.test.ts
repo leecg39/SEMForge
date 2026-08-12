@@ -11,9 +11,10 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 
 import {
   createPrivacyService,
-  defaultBetaRetentionPolicy,
+  parsePrivacyRetentionPolicy,
   runPrivacyRetention,
   type PrivacyProcessorClient,
+  type PrivacyRetentionPolicy,
 } from "@/server/privacy/service";
 
 const databases: PGlite[] = [];
@@ -25,6 +26,16 @@ const reportA = "00000000-0000-4000-8000-00000000a503";
 const siteA = "00000000-0000-4000-8000-00000000a504";
 const gscA = "00000000-0000-4000-8000-00000000a505";
 const assetA = "00000000-0000-4000-8000-00000000a506";
+const syntheticRetentionPolicy: PrivacyRetentionPolicy = {
+  expiredSessionsDays: 30,
+  consumedInvitesDays: 30,
+  passwordResetsDays: 7,
+  oauthStatesDays: 7,
+  publishedOutboxDays: 30,
+  terminalJobsDays: 30,
+  providerRawMetadataDays: 30,
+  deliveryRecipientDays: 90,
+};
 
 function digest(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
@@ -105,6 +116,18 @@ async function seedPrivacySubject(pg: PGlite) {
 
 afterEach(async () => {
   await Promise.all(databases.splice(0).map((db) => db.close()));
+});
+
+test("retention policy는 운영자가 주입한 명시 JSON만 허용하고 기본 기간을 코드에서 만들지 않는다", () => {
+  assert.throws(() => parsePrivacyRetentionPolicy(undefined), /PRIVACY_RETENTION_POLICY is required/u);
+  assert.throws(
+    () => parsePrivacyRetentionPolicy(JSON.stringify({ ...syntheticRetentionPolicy, extra: 1 })),
+    /unknown keys/u,
+  );
+  assert.deepEqual(
+    parsePrivacyRetentionPolicy(JSON.stringify(syntheticRetentionPolicy)),
+    syntheticRetentionPolicy,
+  );
 });
 
 test("운영자 DSAR export는 tenant 경계를 지키고 token/billing key 원문을 내보내지 않는다", async () => {
@@ -255,7 +278,7 @@ test("retention dry-run은 만료 대상만 계산하고 apply에서 세션·초
     [workspaceA, new Date("2026-01-01T00:00:00.000Z")],
   );
 
-  const policy = defaultBetaRetentionPolicy();
+  const policy = syntheticRetentionPolicy;
   const dryRun = await runPrivacyRetention({ db: pg, now, policy, dryRun: true });
   assert.equal(dryRun.dryRun, true);
   assert.ok(dryRun.items.find((item) => item.target === "sessions")!.matched >= 1);
