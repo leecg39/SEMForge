@@ -1,13 +1,12 @@
 // @TASK P2-B1-T1 - Billing HTTP runtime wiring
 // @SPEC docs/planning/06-tasks.md#p2-b1-t1--toss-자동결제-상태-머신과-ledger
-import { createHash } from "node:crypto";
-
 import type { Pool } from "pg";
 
 import { getPool } from "@/db/client";
-import { ApiError, assertSameOrigin } from "@/lib/api-v1";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { getServerEnv } from "@/lib/env";
+import { createRequireAuth } from "@/server/auth/guard";
+import { hashOpaqueToken } from "@/server/auth/tokens";
 import { createBillingKeyVault } from "@/server/billing/domain";
 import { createBillingHttpHandlers, type RequireAuth } from "@/server/billing/http";
 import {
@@ -17,59 +16,63 @@ import {
 import { createBillingService } from "@/server/billing/service";
 import { createTossBillingClient } from "@/server/billing/toss-client";
 
-const SESSION_COOKIE = "semforge_session";
-
-function cookie(request: Request, name: string): string | null {
-  const header = request.headers.get("cookie");
-  if (!header) return null;
-  for (const part of header.split(";")) {
-    const [rawKey, ...rawValue] = part.trim().split("=");
-    if (rawKey === name) return decodeURIComponent(rawValue.join("="));
-  }
-  return null;
-}
-
-function sha256(value: string): string {
-  return createHash("sha256").update(value, "utf8").digest("hex");
-}
-
 export function createSessionRequireAuth(
-  pool: Pool = getPool("billing"),
+  pool: Pool = getPool("auth"),
   trustedOrigin?: string,
 ): RequireAuth {
-  return async (request, options) => {
-    if (options.csrf) {
-      assertSameOrigin(request, trustedOrigin);
-    }
-
-    const sessionToken = cookie(request, SESSION_COOKIE);
-    if (!sessionToken || sessionToken !== sessionToken.trim()) {
-      throw new ApiError("UNAUTHENTICATED");
-    }
-    const result = await pool.query<{
-      user_id: string;
-      workspace_id: string;
-      role: "owner" | "admin" | "member";
-    }>(
-      `select s.user_id::text, s.workspace_id::text, m.role::text
+  const requireAuth = createRequireAuth({
+    trustedOrigin,
+    getService: () => ({
+      async getSession(sessionToken) {
+        if (!sessionToken) return null;
+        const result = await pool.query<{
+          session_id: string;
+          user_id: string;
+          workspace_id: string;
+          email: string;
+          display_name: string | null;
+          role: "owner" | "admin" | "member";
+          expires_at: Date;
+          disabled_at: Date | null;
+        }>(
+          `select s.id::text as session_id,
+                  s.user_id::text,
+                  s.workspace_id::text,
+                  u.email,
+                  u.display_name,
+                  m.role::text,
+                  s.expires_at,
+                  u.disabled_at
        from sessions s
+       join users u on u.id = s.user_id
        join memberships m on m.workspace_id = s.workspace_id and m.user_id = s.user_id
        where s.token_hash = $1
          and s.expires_at > now()
          and s.revoked_at is null
+         and u.disabled_at is null
        limit 1`,
-      [sha256(sessionToken)],
-    );
-    const principal = result.rows[0];
-    if (!principal) throw new ApiError("UNAUTHENTICATED");
-    if (!options.roles.includes(principal.role)) throw new ApiError("FORBIDDEN");
-    return {
-      userId: principal.user_id,
-      workspaceId: principal.workspace_id,
-      role: principal.role,
-      requestId: request.headers.get("x-request-id") ?? "",
-    };
-  };
+          [hashOpaqueToken(sessionToken)],
+        );
+        const principal = result.rows[0];
+        if (!principal || principal.disabled_at) return null;
+        return {
+          sessionId: principal.session_id,
+          userId: principal.user_id,
+          workspaceId: principal.workspace_id,
+          email: principal.email,
+          displayName: principal.display_name,
+          role: principal.role,
+          expiresAt: principal.expires_at,
+        };
+      },
+    }),
+  });
+
+  return async (request, options) =>
+    requireAuth(request, {
+      csrf: options.csrf,
+      roles: options.roles,
+    });
 }
 
 export function createBillingHandlers() {

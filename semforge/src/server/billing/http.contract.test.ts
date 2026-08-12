@@ -141,7 +141,41 @@ test("빌링 callback POST는 CSRF·owner/admin RequireAuth 경계와 필수 멱
       serviceStub({
         async completeAuthorization(input) {
           serviceInput = input;
-          return { outcome: "paid", account: { subscription: { status: "active" } } };
+          return {
+            outcome: "paid",
+            account: {
+              customer: {
+                id: "internal-customer-id",
+                tossCustomerKey: "internal-toss-customer-key",
+              },
+              subscription: {
+                id: "internal-subscription-id",
+                status: "active",
+              },
+              paymentMethod: {
+                id: "internal-payment-method-id",
+                billingKeyEncrypted: "enc:v1:billing-key-secret",
+                billingKeyFingerprint: "billing-key-fingerprint-secret",
+              },
+              latestPayment: {
+                id: "internal-payment-id",
+                orderId: "internal-order-id",
+                idempotencyKey: "internal-idempotency-key",
+                tossPaymentKey: "internal-payment-key",
+              },
+            },
+          };
+        },
+        async getSummary() {
+          return {
+            status: "active",
+            amountKrw: 49_000,
+            currentPeriodStart: new Date("2026-08-12T00:00:00.000Z"),
+            currentPeriodEnd: new Date("2026-09-12T00:00:00.000Z"),
+            graceEndsAt: null,
+            cancelAtPeriodEnd: false,
+            nextRetryAt: null,
+          };
         },
       }),
   });
@@ -168,7 +202,28 @@ test("빌링 callback POST는 CSRF·owner/admin RequireAuth 경계와 필수 멱
     idempotencyKey: "browser-idempotency-1",
   });
   assert.equal(body.requestId, principal.requestId);
-  assert.equal(body.data.account.subscription.status, "active");
+  assert.deepEqual(body.data, {
+    outcome: "paid",
+    subscription: {
+      status: "active",
+      amountKrw: 49_000,
+      currentPeriodStart: "2026-08-12T00:00:00.000Z",
+      currentPeriodEnd: "2026-09-12T00:00:00.000Z",
+      graceEndsAt: null,
+      cancelAtPeriodEnd: false,
+      nextRetryAt: null,
+      policy: {
+        timing: "period_end",
+        proratedRefund: false,
+        statutoryExceptionsApply: true,
+        notice: "일할 환불은 제공하지 않으며, 관련 법령상 필수 환불·철회 예외는 적용됩니다.",
+      },
+    },
+  });
+  assert.doesNotMatch(
+    JSON.stringify(body),
+    /billing-key|fingerprint|payment-key|order-id|idempotency-key|internal-(customer|subscription|payment)/i,
+  );
   assert.equal(body.error, null);
 });
 
@@ -227,6 +282,80 @@ test("본문 workspaceId를 받지 않아 auth principal의 tenant를 바꿀 수
 
   assert.equal(response.status, 400);
   assert.equal(calls, 0);
+});
+
+test("재결제 API는 outcome과 public subscription 요약만 반환한다", async () => {
+  const handlers = createBillingHttpHandlers({
+    requireAuth: async () => principal,
+    getService: () =>
+      serviceStub({
+        async retryPastDue() {
+          return {
+            outcome: "pending",
+            account: {
+              customer: { id: "internal-customer-id" },
+              subscription: { id: "internal-subscription-id", status: "charge_pending" },
+              paymentMethod: {
+                billingKeyEncrypted: "enc:v1:retry-secret",
+                billingKeyFingerprint: "retry-fingerprint-secret",
+              },
+              latestPayment: {
+                id: "internal-payment-id",
+                orderId: "retry-order-id",
+                idempotencyKey: "retry-idempotency-key",
+                tossPaymentKey: "retry-payment-key",
+              },
+            },
+          };
+        },
+        async getSummary() {
+          return {
+            status: "charge_pending",
+            amountKrw: 49_000,
+            currentPeriodStart: new Date("2026-08-12T00:00:00.000Z"),
+            currentPeriodEnd: new Date("2026-09-12T00:00:00.000Z"),
+            graceEndsAt: new Date("2026-08-19T00:00:00.000Z"),
+            cancelAtPeriodEnd: false,
+            nextRetryAt: new Date("2026-08-13T00:00:00.000Z"),
+          };
+        },
+      }),
+  });
+  const response = await handlers.retry(
+    new Request("https://semforge.example/api/v1/billing/retry", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": "retry-browser-key",
+      },
+      body: "{}",
+    }),
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(body.data, {
+    outcome: "pending",
+    subscription: {
+      status: "charge_pending",
+      amountKrw: 49_000,
+      currentPeriodStart: "2026-08-12T00:00:00.000Z",
+      currentPeriodEnd: "2026-09-12T00:00:00.000Z",
+      graceEndsAt: "2026-08-19T00:00:00.000Z",
+      cancelAtPeriodEnd: false,
+      nextRetryAt: "2026-08-13T00:00:00.000Z",
+      policy: {
+        timing: "period_end",
+        proratedRefund: false,
+        statutoryExceptionsApply: true,
+        notice: "일할 환불은 제공하지 않으며, 관련 법령상 필수 환불·철회 예외는 적용됩니다.",
+      },
+    },
+  });
+  assert.doesNotMatch(
+    JSON.stringify(body),
+    /billing-key|fingerprint|payment-key|order-id|idempotency-key|internal-(customer|subscription|payment)/i,
+  );
 });
 
 test("웹훅은 세션 auth를 요구하지 않고 공식 transmission id로 dedupe한다", async () => {
@@ -352,10 +481,60 @@ test("웹훅은 과대 본문과 초당 rate limit 초과를 서비스 호출 �
   assert.equal(calls, 60);
 });
 
-test("취소 API는 효력 발생일과 무일할환불·법정예외 정책을 응답한다", async () => {
+test("취소 API는 예약 outcome과 public subscription 요약만 응답한다", async () => {
   const handlers = createBillingHttpHandlers({
     requireAuth: async () => principal,
-    getService: () => serviceStub(),
+    getService: () =>
+      serviceStub({
+        async cancelAtPeriodEnd() {
+          return {
+            effectiveAt: new Date("2026-09-01T00:00:00.000Z"),
+            policy: {
+              timing: "period_end",
+              proratedRefund: false,
+              statutoryExceptionsApply: true,
+              notice: "일할 환불은 제공하지 않으며, 관련 법령상 필수 환불·철회 예외는 적용됩니다.",
+            },
+            account: {
+              customer: {
+                id: "internal-customer-id",
+                tossCustomerKey: "cancel-toss-customer-key",
+              },
+              subscription: {
+                id: "internal-subscription-id",
+                status: "cancel_at_period_end",
+              },
+              paymentMethod: {
+                billingKeyEncrypted: "enc:v1:cancel-secret",
+                billingKeyFingerprint: "cancel-fingerprint-secret",
+              },
+              latestPayment: {
+                id: "internal-payment-id",
+                orderId: "cancel-order-id",
+                idempotencyKey: "cancel-idempotency-internal",
+                tossPaymentKey: "cancel-payment-key",
+              },
+            },
+          };
+        },
+        async getSummary() {
+          return {
+            status: "cancel_at_period_end",
+            amountKrw: 49_000,
+            currentPeriodStart: new Date("2026-08-01T00:00:00.000Z"),
+            currentPeriodEnd: new Date("2026-09-01T00:00:00.000Z"),
+            graceEndsAt: null,
+            cancelAtPeriodEnd: true,
+            nextRetryAt: null,
+            policy: {
+              timing: "period_end",
+              proratedRefund: false,
+              statutoryExceptionsApply: true,
+              notice: "일할 환불은 제공하지 않으며, 관련 법령상 필수 환불·철회 예외는 적용됩니다.",
+            },
+          };
+        },
+      }),
   });
   const response = await handlers.cancel(
     new Request("https://semforge.example/api/v1/billing/cancel", {
@@ -370,7 +549,26 @@ test("취소 API는 효력 발생일과 무일할환불·법정예외 정책을 
   const body = await response.json();
 
   assert.equal(response.status, 200);
-  assert.equal(body.data.effectiveAt, "2026-09-01T00:00:00.000Z");
-  assert.equal(body.data.policy.proratedRefund, false);
-  assert.equal(body.data.policy.statutoryExceptionsApply, true);
+  assert.deepEqual(body.data, {
+    outcome: "cancel_scheduled",
+    subscription: {
+      status: "cancel_at_period_end",
+      amountKrw: 49_000,
+      currentPeriodStart: "2026-08-01T00:00:00.000Z",
+      currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+      graceEndsAt: null,
+      cancelAtPeriodEnd: true,
+      nextRetryAt: null,
+      policy: {
+        timing: "period_end",
+        proratedRefund: false,
+        statutoryExceptionsApply: true,
+        notice: "일할 환불은 제공하지 않으며, 관련 법령상 필수 환불·철회 예외는 적용됩니다.",
+      },
+    },
+  });
+  assert.doesNotMatch(
+    JSON.stringify(body),
+    /billing-key|fingerprint|payment-key|order-id|idempotency-internal|internal-(customer|subscription|payment)/i,
+  );
 });
