@@ -75,7 +75,7 @@ export function BillingSummaryView({
         </dl>
       </ContentCard>
       {summary.status === "account_created" || summary.status === "invited" ? (
-        <StatusPanel status="partial" title="결제 수단 연결 화면을 준비 중입니다" description="서버는 Toss authKey 완료 계약만 제공합니다. 승인되지 않은 임의 결제 입력은 만들지 않았습니다." />
+        <StatusPanel status="partial" title="Toss 자동결제 인증이 필요합니다" description="위 결제 수단 연결 카드에서 Toss 자동결제 인증을 완료하세요. 첫 49,000원 결제가 성공하면 구독이 활성화됩니다." />
       ) : null}
       <p className="sf-policy-note">{summary.policy.notice}</p>
     </div>

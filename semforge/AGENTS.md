@@ -17,10 +17,11 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 # 데이터 연동 원칙 (사용자 지침, 2026-07-29)
 
 - **실제 데이터는 항상 실제 외부 API로 연동한다.** 모의/하드코딩 데이터를 대신 쓰지 않는다.
-  - SERP·순위·키워드 데이터 → **TalorData API** (`.env.local`의 `TALORDATA_API_TOKEN`, 클라이언트는 `src/server/talordata/`)
-  - 사이트 크롤링 데이터 → **Firecrawl API** (`.env.local`의 `FIRECRAWL_API_KEY`, 클라이언트는 `src/server/siteaudit/firecrawl.ts`)
-- 외부 API 호출 비용은 **사용자가 승인한 상태**다. "지금 순위 수집"/"지금 크롤" 같은 실비용 동작도 묻지 말고 실행해도 된다.
-- 수집 실패 시에는 정직하게 오류/빈 상태를 표시하고, 가짜 숫자를 만들어 채우지 않는다. 수집 데이터는 출처(`source: "talordata"` 등)와 provenance 배지로 구분해 표시한다.
+  - Google 순위·AI Overview → **TalorData API** (`TALORDATA_API_TOKEN`, `src/server/talordata/`)
+  - Google Search Console → readonly OAuth와 `src/server/collectors/gsc/`
+  - NAVER 수요·추이·인구통계·블로그 결과 규모 → 공식 Search Ads/Open API와 `src/server/providers/naver/`
+- 외부 API 호출은 가입 후 최초 수집 1회와 주간 예약 수집만 허용한다. 임의 수동 새로고침이나 삭제된 사이트 감사·크롤 기능을 추가하지 않는다.
+- 수집 실패 시에는 정직하게 오류/빈/부분 상태를 표시하고, 가짜 숫자를 만들어 채우지 않는다. 수집 데이터는 공급자와 provenance를 보존한다.
 - API 키는 코드·로그·스크린샷·커밋에 노출하지 않는다 (`.env*`는 gitignore).
 
 # Lessons Learned

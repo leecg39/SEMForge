@@ -204,6 +204,36 @@ test("past_due 구독은 과거 리포트 외 화면을 읽기 전용으로 만�
   assert.match(html, /49,000원/);
 });
 
+test("결제 대기 구독은 이미 제공되는 Toss 연결 화면을 정확히 안내한다", () => {
+  const summary = parseBillingSummary({
+    status: "account_created",
+    amountKrw: 49000,
+    currentPeriodStart: null,
+    currentPeriodEnd: null,
+    graceEndsAt: null,
+    cancelAtPeriodEnd: false,
+    nextRetryAt: null,
+    policy: {
+      timing: "period_end",
+      proratedRefund: false,
+      statutoryExceptionsApply: true,
+      notice: "일할 환불은 제공하지 않으며 법정 예외는 적용됩니다.",
+    },
+  });
+
+  assert.ok(summary);
+  const html = render(
+    createElement(BillingSummaryView, {
+      summary,
+      pendingAction: null,
+      onRetry: () => undefined,
+      onCancel: () => undefined,
+    }),
+  );
+  assert.match(html, /위 결제 수단 연결 카드에서 Toss 자동결제 인증을 완료하세요/);
+  assert.doesNotMatch(html, /결제 수단 연결 화면을 준비 중입니다/);
+});
+
 test("계약 파서는 임의 KPI·잘못된 색상·불완전 tenant 응답을 수용하지 않는다", () => {
   assert.equal(parseSiteDetail({ site: { name: "ID 없음" }, tracking: { rank: [], aio: [] }, gscBinding: null }), null);
   assert.equal(parseReportDetail({ status: "partial", snapshot: { version: 2 } }), null);
