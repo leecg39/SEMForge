@@ -14,7 +14,13 @@ import {
 } from "./contracts";
 import { BillingSummaryView } from "./billing-workspace";
 import { OverviewReadyView } from "./overview-dashboard";
-import { ReportSnapshotView } from "./report-detail-workspace";
+import {
+  ReportPdfDownload,
+  ReportSnapshotView,
+  openReportPdf,
+  parseReportPdfDownload,
+  reserveReportPdfPopup,
+} from "./report-detail-workspace";
 import { GscConnectionsReadyView } from "./settings-workspace";
 import { SiteDetailView } from "./site-detail-workspace";
 import { SitesReadyView } from "./sites-workspace";
@@ -240,4 +246,86 @@ test("GSC 연결 목록은 readonly scope와 실제 만료 시각만 보여 주�
   assert.match(html, /읽기 전용/);
   assert.match(html, /disabled=""/);
   assert.doesNotMatch(html, /workspaceId|0198a219-0000-7000-8000-000000000001/);
+});
+
+test("리포트 PDF 다운로드는 signed URL을 메모리에만 두고 새 창에서 연다", async () => {
+  const signedUrl = "https://objects.example.test/report.pdf?X-Amz-Signature=short-lived";
+  assert.deepEqual(parseReportPdfDownload({
+    url: signedUrl,
+    expiresAt: "2026-08-12T01:01:00.000Z",
+    snapshotSha256: "a".repeat(64),
+  }), { url: signedUrl, expiresAt: "2026-08-12T01:01:00.000Z" });
+  assert.equal(parseReportPdfDownload({ url: "javascript:alert(1)", expiresAt: "2026-08-12T01:01:00.000Z" }), null);
+
+  const fetchCalls: Array<{ input: string; init?: RequestInit }> = [];
+  const opened: Array<{ url: string; target: string }> = [];
+  const navigated: string[] = [];
+  let closed = 0;
+  const popup = {
+    opener: {} as unknown,
+    location: { replace: (url: string) => navigated.push(url) },
+    close: () => { closed += 1; },
+  };
+  const reserved = reserveReportPdfPopup((url, target) => {
+    opened.push({ url, target });
+    return popup;
+  });
+  await openReportPdf(
+    "0198a219-4d49-7dce-9d9a-536822c04dc0",
+    reserved,
+    async (input, init) => {
+      fetchCalls.push({ input: String(input), init });
+      return Response.json({ data: { url: signedUrl, expiresAt: "2026-08-12T01:01:00.000Z", snapshotSha256: "a".repeat(64) }, error: null, requestId: "pdf-1" });
+    },
+  );
+
+  assert.equal(fetchCalls[0]?.input, "/api/v1/reports/0198a219-4d49-7dce-9d9a-536822c04dc0/pdf");
+  assert.equal(fetchCalls[0]?.init?.credentials, "same-origin");
+  assert.equal(fetchCalls[0]?.init?.cache, "no-store");
+  assert.deepEqual(opened, [{ url: "about:blank", target: "_blank" }]);
+  assert.equal(popup.opener, null);
+  assert.deepEqual(navigated, [signedUrl]);
+  assert.equal(closed, 0);
+});
+
+test("리포트 PDF 팝업은 차단 또는 준비 실패를 성공으로 오인하지 않는다", async () => {
+  assert.throws(
+    () => reserveReportPdfPopup(() => null),
+    /새 창을 열지 못했습니다/,
+  );
+
+  let closed = 0;
+  const popup = {
+    opener: null,
+    location: { replace: () => assert.fail("준비되지 않은 PDF로 이동하면 안 됩니다") },
+    close: () => { closed += 1; },
+  };
+  await assert.rejects(
+    () => openReportPdf(
+      "0198a219-4d49-7dce-9d9a-536822c04dc0",
+      popup,
+      async () => Response.json(
+        { data: null, error: { code: "not_found", message: "not ready" }, requestId: "pdf-404" },
+        { status: 404 },
+      ),
+    ),
+    /PDF 파일을 준비하고 있습니다/,
+  );
+  assert.equal(closed, 1);
+});
+
+test("리포트 PDF 버튼은 준비·로딩·미납 차단 상태를 명확히 렌더한다", () => {
+  const ready = render(createElement(ReportPdfDownload, {
+    reportId: "0198a219-4d49-7dce-9d9a-536822c04dc0",
+    blockedByPastDue: false,
+  }));
+  const blocked = render(createElement(ReportPdfDownload, {
+    reportId: "0198a219-4d49-7dce-9d9a-536822c04dc0",
+    blockedByPastDue: true,
+  }));
+
+  assert.match(ready, /PDF 열기/);
+  assert.match(ready, /min-height/);
+  assert.match(blocked, /PDF는 과거 리포트에서만 열 수 있습니다/);
+  assert.match(blocked, /disabled=""/);
 });
