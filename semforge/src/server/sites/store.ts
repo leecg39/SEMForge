@@ -323,6 +323,7 @@ export async function createSite(
 export async function listSites(
   db: SqlQueryable,
   input: { workspaceId: string; limit?: number; cursor?: string | null },
+  options: Pick<StoreRequestContext, "transaction"> = {},
 ): Promise<{ items: SiteRecord[]; nextCursor: string | null }> {
   const limit = Math.min(Math.max(input.limit ?? 20, 1), 50);
   const cursor = input.cursor ? decodeCursor(input.cursor) : null;
@@ -345,7 +346,7 @@ export async function listSites(
           ? encodeCursor({ createdAt: new Date(last.created_at).toISOString(), id: last.id })
           : null,
     };
-  });
+  }, options.transaction);
 }
 
 // @TASK P4-B1 - UI site-detail API contract
@@ -353,6 +354,7 @@ export async function listSites(
 export async function getSiteDetail(
   db: SqlQueryable,
   input: { workspaceId: string; siteId: string },
+  options: Pick<StoreRequestContext, "transaction"> = {},
 ): Promise<SiteDetailRecord | null> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(input.siteId)) {
     return null;
@@ -403,7 +405,7 @@ export async function getSiteDetail(
           }
         : null,
     };
-  });
+  }, options.transaction);
 }
 
 function encodeCursor(value: { createdAt: string; id: string }): string {

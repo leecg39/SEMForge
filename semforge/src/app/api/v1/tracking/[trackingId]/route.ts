@@ -4,4 +4,8 @@ import { createRuntimeSitesRouteHandlers } from "@/server/sites/routes";
 
 const handlers = createRuntimeSitesRouteHandlers();
 
-export const PATCH = handlers.trackingById.PATCH;
+type TrackingRouteContext = { params: Promise<{ trackingId: string }> };
+
+export function PATCH(request: Request, context: TrackingRouteContext): Promise<Response> {
+  return handlers.trackingById.PATCH(request, context);
+}

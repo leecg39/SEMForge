@@ -83,6 +83,34 @@ test("production site/tracking route composition은 concrete privacy guard를 �
   assert.doesNotThrow(() => createRuntimeSitesRouteHandlers());
 });
 
+test("동적 route wrapper는 Next의 params context를 내부 handler에 보존한다", async () => {
+  const siteId = "20000000-0000-4000-8000-000000000041";
+  await pg.query(
+    "insert into sites (id, workspace_id, name, domain) values ($1, $2, 'Wrapped Site', 'wrapped.example.com')",
+    [siteId, workspaceId],
+  );
+  const handlers = handlersFor();
+  const wrappedPatch = async (
+    request: Request,
+    context: { params: Promise<{ siteId: string }> },
+  ) => handlers.siteById.PATCH(request, context);
+
+  const response = await wrappedPatch(
+    new Request(`https://app.semforge.test/api/v1/sites/${siteId}`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://app.semforge.test",
+        "idempotency-key": "wrapped-site-disable",
+      },
+      body: JSON.stringify({ active: false }),
+    }),
+    { params: Promise.resolve({ siteId }) },
+  );
+  assert.equal(response.status, 200);
+  assert.equal(((await readEnvelope(response)).data as { active: boolean }).active, false);
+});
+
 test("account_created는 sites/tracking read와 write 직접 API 우회를 403 envelope로 차단한다", async () => {
   const deniedCalls: string[] = [];
   const handlers = handlersFor(workspaceId, async ({ capability }) => {

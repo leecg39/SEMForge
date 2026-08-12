@@ -125,7 +125,7 @@ export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
               workspaceId: session.workspaceId,
               limit: Number.isFinite(limit) ? limit : 20,
               cursor,
-            });
+            }, { transaction: "existing" });
           },
         );
         return apiSuccess(page);
@@ -177,7 +177,7 @@ export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
             const existing = await getSiteDetail(db, {
               workspaceId: session.workspaceId,
               siteId,
-            });
+            }, { transaction: "existing" });
             if (!existing) throw new ApiError("NOT_FOUND");
             await requireBilling(session.workspaceId, "workspace:read");
             return existing;
@@ -200,7 +200,7 @@ export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
             const existing = await getSiteDetail(db, {
               workspaceId: session.workspaceId,
               siteId,
-            });
+            }, { transaction: "existing" });
             if (!existing) throw new ApiError("NOT_FOUND");
             await requireBilling(session.workspaceId, "workspace:write");
             return body.active

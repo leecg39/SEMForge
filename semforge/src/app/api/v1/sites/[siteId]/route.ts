@@ -4,5 +4,12 @@ import { createRuntimeSitesRouteHandlers } from "@/server/sites/routes";
 
 const handlers = createRuntimeSitesRouteHandlers();
 
-export const GET = handlers.siteById.GET;
-export const PATCH = handlers.siteById.PATCH;
+type SiteRouteContext = { params: Promise<{ siteId: string }> };
+
+export function GET(request: Request, context: SiteRouteContext): Promise<Response> {
+  return handlers.siteById.GET(request, context);
+}
+
+export function PATCH(request: Request, context: SiteRouteContext): Promise<Response> {
+  return handlers.siteById.PATCH(request, context);
+}
