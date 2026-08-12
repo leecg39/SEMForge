@@ -144,6 +144,7 @@ const webhookBodySchema = z.discriminatedUnion("eventType", [
 const WEBHOOK_MAX_BODY_BYTES = 64 * 1024;
 const WEBHOOK_RATE_LIMIT_WINDOW_MS = 1_000;
 const WEBHOOK_RATE_LIMIT_MAX = 60;
+const WEBHOOK_RATE_LIMIT_MAX_BUCKETS = 1_024;
 const webhookRateBuckets = new Map<string, { windowStartedAt: number; count: number }>();
 
 function requiredIdempotencyKey(request: Request): string {
@@ -232,7 +233,22 @@ function enforceWebhookRateLimit(request: Request, now: Date): void {
     "unknown";
   const nowMs = now.getTime();
   const bucket = webhookRateBuckets.get(key);
-  if (!bucket || nowMs - bucket.windowStartedAt >= WEBHOOK_RATE_LIMIT_WINDOW_MS) {
+  if (
+    !bucket ||
+    nowMs < bucket.windowStartedAt ||
+    nowMs - bucket.windowStartedAt >= WEBHOOK_RATE_LIMIT_WINDOW_MS
+  ) {
+    for (const [candidateKey, candidate] of webhookRateBuckets) {
+      if (
+        nowMs < candidate.windowStartedAt ||
+        nowMs - candidate.windowStartedAt >= WEBHOOK_RATE_LIMIT_WINDOW_MS
+      ) {
+        webhookRateBuckets.delete(candidateKey);
+      }
+    }
+    if (webhookRateBuckets.size >= WEBHOOK_RATE_LIMIT_MAX_BUCKETS) {
+      throw new ApiError("RATE_LIMITED", undefined, { retryAfterSeconds: 1 });
+    }
     webhookRateBuckets.set(key, { windowStartedAt: nowMs, count: 1 });
     return;
   }

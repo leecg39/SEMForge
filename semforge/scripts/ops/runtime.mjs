@@ -148,6 +148,92 @@ const DATABASE_KEYS = new Set([
   "MIGRATION_DATABASE_URL",
 ]);
 
+const PROFILE_SCOPED_CREDENTIAL_KEYS = Object.freeze([
+  "DATABASE_URL",
+  "AUTH_DATABASE_URL",
+  "OPERATOR_DATABASE_URL",
+  "WORKER_DATABASE_URL",
+  "DISPATCHER_DATABASE_URL",
+  "SCHEDULER_DATABASE_URL",
+  "BILLING_DATABASE_URL",
+  "BILLING_TENANT_DATABASE_URL",
+  "PRIVACY_DATABASE_URL",
+  "PRIVACY_RETENTION_DATABASE_URL",
+  "MIGRATION_DATABASE_URL",
+  "APP_SECRET",
+  "APP_SECRET_CURRENT_KEY_ID",
+  "APP_SECRET_PREVIOUS_KEYS",
+  "TOSS_CLIENT_KEY",
+  "TOSS_SECRET_KEY",
+  "GOOGLE_CLIENT_ID",
+  "GOOGLE_CLIENT_SECRET",
+  "TALORDATA_API_TOKEN",
+  "NAVER_OPEN_API_CLIENT_ID",
+  "NAVER_OPEN_API_CLIENT_SECRET",
+  "NAVER_SEARCH_AD_ACCESS_LICENSE",
+  "NAVER_SEARCH_AD_SECRET_KEY",
+  "NAVER_SEARCH_AD_CUSTOMER_ID",
+  "BILLING_FINGERPRINT_SECRET",
+  "RESEND_API_KEY",
+  "S3_ACCESS_KEY_ID",
+  "S3_SECRET_ACCESS_KEY",
+]);
+
+const ALLOWED_CREDENTIALS_BY_PROFILE = Object.freeze({
+  web: new Set([
+    "DATABASE_URL",
+    "AUTH_DATABASE_URL",
+    "BILLING_DATABASE_URL",
+    "BILLING_TENANT_DATABASE_URL",
+    "APP_SECRET",
+    "APP_SECRET_CURRENT_KEY_ID",
+    "APP_SECRET_PREVIOUS_KEYS",
+    "TOSS_CLIENT_KEY",
+    "TOSS_SECRET_KEY",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "BILLING_FINGERPRINT_SECRET",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+  ]),
+  worker: new Set([
+    "AUTH_DATABASE_URL",
+    "WORKER_DATABASE_URL",
+    "DISPATCHER_DATABASE_URL",
+    "APP_SECRET",
+    "APP_SECRET_CURRENT_KEY_ID",
+    "APP_SECRET_PREVIOUS_KEYS",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "TALORDATA_API_TOKEN",
+    "NAVER_OPEN_API_CLIENT_ID",
+    "NAVER_OPEN_API_CLIENT_SECRET",
+    "NAVER_SEARCH_AD_ACCESS_LICENSE",
+    "NAVER_SEARCH_AD_SECRET_KEY",
+    "NAVER_SEARCH_AD_CUSTOMER_ID",
+    "RESEND_API_KEY",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+  ]),
+  relay: new Set(["DISPATCHER_DATABASE_URL"]),
+  scheduler: new Set(["SCHEDULER_DATABASE_URL"]),
+  privacy: new Set([
+    "PRIVACY_DATABASE_URL",
+    "APP_SECRET",
+    "APP_SECRET_CURRENT_KEY_ID",
+    "APP_SECRET_PREVIOUS_KEYS",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+  ]),
+  retention: new Set([
+    "PRIVACY_RETENTION_DATABASE_URL",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+  ]),
+  operator: new Set(["OPERATOR_DATABASE_URL"]),
+  migrate: new Set(["MIGRATION_DATABASE_URL"]),
+});
+
 export class RuntimeConfigurationError extends Error {
   constructor(issues) {
     super(`runtime configuration invalid: ${issues.join(", ")}`);
@@ -381,8 +467,20 @@ export function validateRuntimeEnvironment(profile, environment) {
       }
     }
   }
-  for (const key of FORBIDDEN_BY_PROFILE[profile] ?? []) {
+  const explicitlyForbidden = new Set(FORBIDDEN_BY_PROFILE[profile] ?? []);
+  for (const key of explicitlyForbidden) {
     if (isPresent(environment[key])) {
+      issues.push(`${key} is forbidden for ${profile}`);
+    }
+  }
+  const allowedCredentials = ALLOWED_CREDENTIALS_BY_PROFILE[profile];
+  for (const key of PROFILE_SCOPED_CREDENTIAL_KEYS) {
+    if (
+      key !== "OPERATOR_DATABASE_URL" &&
+      !allowedCredentials.has(key) &&
+      !explicitlyForbidden.has(key) &&
+      isPresent(environment[key])
+    ) {
       issues.push(`${key} is forbidden for ${profile}`);
     }
   }

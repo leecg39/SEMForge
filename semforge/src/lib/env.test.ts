@@ -113,6 +113,33 @@ const productionEnv = {
   CHROMIUM_EXECUTABLE_PATH: "/usr/bin/chromium",
 };
 
+function webProductionEnvironment(): Record<string, string | undefined> {
+  const result: Record<string, string | undefined> = {
+    ...productionEnv,
+    SEMFORGE_SERVICE: "web",
+  };
+  for (const unnecessary of [
+    "WORKER_DATABASE_URL",
+    "DISPATCHER_DATABASE_URL",
+    "SCHEDULER_DATABASE_URL",
+    "PRIVACY_DATABASE_URL",
+    "PRIVACY_RETENTION_DATABASE_URL",
+    "MIGRATION_DATABASE_URL",
+    "TALORDATA_API_TOKEN",
+    "NAVER_OPEN_API_CLIENT_ID",
+    "NAVER_OPEN_API_CLIENT_SECRET",
+    "NAVER_SEARCH_AD_ACCESS_LICENSE",
+    "NAVER_SEARCH_AD_SECRET_KEY",
+    "NAVER_SEARCH_AD_CUSTOMER_ID",
+    "RESEND_API_KEY",
+    "RESEND_FROM_EMAIL",
+    "CHROMIUM_EXECUTABLE_PATH",
+  ]) {
+    delete result[unnecessary];
+  }
+  return result;
+}
+
 test("production은 database, encryption, billing, Google, NAVER 자격증명을 모두 요구한다", () => {
   for (const missing of [
     "DATABASE_URL",
@@ -193,7 +220,7 @@ test("AUTH_TRUST_PROXY_HEADERS는 명시적인 true/false만 허용한다", () =
 
 test("production web은 nginx가 덮어쓰는 proxy header trust를 명시적으로 요구한다", () => {
   assert.throws(
-    () => parseServerEnv({ ...productionEnv, SEMFORGE_SERVICE: "web", AUTH_TRUST_PROXY_HEADERS: "false" }),
+    () => parseServerEnv({ ...webProductionEnvironment(), AUTH_TRUST_PROXY_HEADERS: "false" }),
     (error: unknown) => {
       assert.ok(error instanceof EnvironmentValidationError);
       assert.deepEqual(error.issues, [
@@ -353,28 +380,7 @@ test("worker profile은 dispatcher claim DB와 tenant worker DB를 분리해 요
 });
 
 test("web profile은 signed URL용 S3 credentials만 요구하고 email·Chromium secret은 요구하지 않는다", () => {
-  const webEnv: Record<string, string | undefined> = {
-    ...productionEnv,
-    SEMFORGE_SERVICE: "web",
-  };
-  for (const unnecessary of [
-    "WORKER_DATABASE_URL",
-    "DISPATCHER_DATABASE_URL",
-    "SCHEDULER_DATABASE_URL",
-    "MIGRATION_DATABASE_URL",
-    "OPERATOR_DATABASE_URL",
-    "TALORDATA_API_TOKEN",
-    "NAVER_OPEN_API_CLIENT_ID",
-    "NAVER_OPEN_API_CLIENT_SECRET",
-    "NAVER_SEARCH_AD_ACCESS_LICENSE",
-    "NAVER_SEARCH_AD_SECRET_KEY",
-    "NAVER_SEARCH_AD_CUSTOMER_ID",
-    "RESEND_API_KEY",
-    "RESEND_FROM_EMAIL",
-    "CHROMIUM_EXECUTABLE_PATH",
-  ] as const) {
-    delete webEnv[unnecessary];
-  }
+  const webEnv = webProductionEnvironment();
 
   const parsed = parseServerEnv(webEnv);
   assert.equal(parsed.SEMFORGE_SERVICE, "web");
@@ -404,28 +410,7 @@ test("web profile은 signed URL용 S3 credentials만 요구하고 email·Chromiu
 });
 
 test("web profile은 operator CLI DSN 없이 시작하고 tenant/global billing DSN은 분리해 요구한다", () => {
-  const webEnv: Record<string, string | undefined> = {
-    ...productionEnv,
-    SEMFORGE_SERVICE: "web",
-  };
-  for (const unnecessary of [
-    "OPERATOR_DATABASE_URL",
-    "WORKER_DATABASE_URL",
-    "DISPATCHER_DATABASE_URL",
-    "SCHEDULER_DATABASE_URL",
-    "MIGRATION_DATABASE_URL",
-    "TALORDATA_API_TOKEN",
-    "NAVER_OPEN_API_CLIENT_ID",
-    "NAVER_OPEN_API_CLIENT_SECRET",
-    "NAVER_SEARCH_AD_ACCESS_LICENSE",
-    "NAVER_SEARCH_AD_SECRET_KEY",
-    "NAVER_SEARCH_AD_CUSTOMER_ID",
-    "RESEND_API_KEY",
-    "RESEND_FROM_EMAIL",
-    "CHROMIUM_EXECUTABLE_PATH",
-  ] as const) {
-    delete webEnv[unnecessary];
-  }
+  const webEnv = webProductionEnvironment();
 
   assert.doesNotThrow(() => parseServerEnv(webEnv));
   assert.throws(
@@ -475,6 +460,30 @@ test("relay와 scheduler profile은 각자의 최소권한 PostgreSQL 역할만 
   assert.equal(scheduler.SEMFORGE_SERVICE, "scheduler");
   assert.equal(scheduler.WORKER_DATABASE_URL, undefined);
   assert.equal(scheduler.DISPATCHER_DATABASE_URL, undefined);
+});
+
+test("production service는 profile allowlist 밖의 credential을 fail-closed한다", () => {
+  assert.throws(
+    () => parseServerEnv({
+      NODE_ENV: "production",
+      SEMFORGE_SERVICE: "relay",
+      DISPATCHER_DATABASE_URL:
+        "postgresql://dispatcher:test@db.example.com:5432/semforge",
+      WORKER_DATABASE_URL:
+        "postgresql://worker:test@db.example.com:5432/semforge",
+      TOSS_SECRET_KEY: "must-not-reach-relay",
+      PGSSLMODE: "verify-full",
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof EnvironmentValidationError);
+      assert.deepEqual(error.issues, [
+        "WORKER_DATABASE_URL is not allowed for the relay service",
+        "TOSS_SECRET_KEY is not allowed for the relay service",
+      ]);
+      assert.doesNotMatch(error.message, /must-not-reach-relay/u);
+      return true;
+    },
+  );
 });
 
 // @TASK P1-FINAL-PRIVACY - Split DSAR executor from global TTL retention
@@ -545,10 +554,9 @@ test("build profile은 image build 중 운영 secret을 읽지 않는다", () =>
 
 test("production web과 all은 승인된 법률 release manifest 없이는 시작하지 않는다", () => {
   for (const service of ["web", "all"] as const) {
-    const candidate: Record<string, string | undefined> = {
-      ...productionEnv,
-      SEMFORGE_SERVICE: service,
-    };
+    const candidate = service === "web"
+      ? webProductionEnvironment()
+      : { ...productionEnv, SEMFORGE_SERVICE: service };
     delete candidate.LEGAL_RELEASE_MANIFEST;
     assert.throws(
       () => parseServerEnv(candidate),
@@ -570,8 +578,7 @@ test("production web은 손상되거나 placeholder인 법률 manifest를 거부
   ]) {
     assert.throws(
       () => parseServerEnv({
-        ...productionEnv,
-        SEMFORGE_SERVICE: "web",
+        ...webProductionEnvironment(),
         LEGAL_RELEASE_MANIFEST: invalid,
       }),
       EnvironmentValidationError,

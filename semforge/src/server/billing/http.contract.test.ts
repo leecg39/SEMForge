@@ -499,6 +499,61 @@ test("웹훅은 과대 본문과 초당 rate limit 초과를 서비스 호출 �
   assert.equal(calls, 60);
 });
 
+test("웹훅 rate limit은 bucket 용량 초과를 fail-closed하고 기존 제한을 유지한다", async () => {
+  const handlers = createBillingHttpHandlers({
+    workspaceOperations: allowWorkspaceOperations,
+    requireAuth: async () => principal,
+    getService: () => serviceStub(),
+    now: () => new Date("2026-08-11T03:03:00.000Z"),
+  });
+  const validBody = JSON.stringify({
+    eventType: "PAYMENT_STATUS_CHANGED",
+    createdAt: "2026-08-11T12:03:00.000000+09:00",
+    data: {
+      orderId: "sf_order_bounded_bucket",
+      paymentKey: "payment-key-bounded-bucket",
+      status: "DONE",
+    },
+  });
+  const request = (ip: string, transmissionId: string) =>
+    new Request("https://semforge.example/api/v1/webhooks/toss", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "tosspayments-webhook-transmission-id": transmissionId,
+        "x-forwarded-for": ip,
+      },
+      body: validBody,
+    });
+  const originalIp = "198.51.100.1";
+  for (let index = 0; index < 60; index += 1) {
+    assert.equal(
+      (await handlers.webhook(request(originalIp, `bounded-prime-${index}`))).status,
+      200,
+    );
+  }
+
+  for (let index = 0; index < 1_023; index += 1) {
+    const second = Math.floor(index / 256);
+    const fourth = index % 256;
+    assert.equal(
+      (await handlers.webhook(
+        request(`192.0.${second}.${fourth}`, `bounded-fill-${index}`),
+      )).status,
+      200,
+    );
+  }
+
+  assert.equal(
+    (await handlers.webhook(request("192.0.4.0", "bounded-capacity-overflow"))).status,
+    429,
+  );
+  assert.equal(
+    (await handlers.webhook(request(originalIp, "bounded-after-capacity"))).status,
+    429,
+  );
+});
+
 test("취소 API는 예약 outcome과 public subscription 요약만 응답한다", async () => {
   const handlers = createBillingHttpHandlers({
     workspaceOperations: allowWorkspaceOperations,

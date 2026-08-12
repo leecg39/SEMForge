@@ -16,6 +16,7 @@ spec:
       labels: *worker-labels
     spec:
       terminationGracePeriodSeconds: 45
+      automountServiceAccountToken: false
       securityContext: &pod-security
         runAsNonRoot: true
         runAsUser: 10001
@@ -94,6 +95,7 @@ spec:
       labels: *relay-labels
     spec:
       terminationGracePeriodSeconds: 45
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -139,6 +141,7 @@ spec:
             app.kubernetes.io/component: scheduler
         spec:
           restartPolicy: Never
+          automountServiceAccountToken: false
           securityContext:
             runAsNonRoot: true
             runAsUser: 10001
@@ -244,6 +247,7 @@ spec:
             app.kubernetes.io/component: report-scheduler
         spec:
           restartPolicy: Never
+          automountServiceAccountToken: false
           securityContext:
             runAsNonRoot: true
             runAsUser: 10001

@@ -256,6 +256,97 @@ const databaseUrlKeys = [
   "MIGRATION_DATABASE_URL",
 ] as const satisfies readonly (keyof z.infer<typeof rawServerEnvSchema>)[];
 
+const profileScopedCredentialKeys = [
+  "DATABASE_URL",
+  "AUTH_DATABASE_URL",
+  "OPERATOR_DATABASE_URL",
+  "WORKER_DATABASE_URL",
+  "DISPATCHER_DATABASE_URL",
+  "SCHEDULER_DATABASE_URL",
+  "BILLING_DATABASE_URL",
+  "BILLING_TENANT_DATABASE_URL",
+  "PRIVACY_DATABASE_URL",
+  "PRIVACY_RETENTION_DATABASE_URL",
+  "MIGRATION_DATABASE_URL",
+  "APP_SECRET",
+  "APP_SECRET_CURRENT_KEY_ID",
+  "APP_SECRET_PREVIOUS_KEYS",
+  "TOSS_CLIENT_KEY",
+  "TOSS_SECRET_KEY",
+  "GOOGLE_CLIENT_ID",
+  "GOOGLE_CLIENT_SECRET",
+  "TALORDATA_API_TOKEN",
+  "NAVER_OPEN_API_CLIENT_ID",
+  "NAVER_OPEN_API_CLIENT_SECRET",
+  "NAVER_SEARCH_AD_ACCESS_LICENSE",
+  "NAVER_SEARCH_AD_SECRET_KEY",
+  "NAVER_SEARCH_AD_CUSTOMER_ID",
+  "BILLING_FINGERPRINT_SECRET",
+  "RESEND_API_KEY",
+  "S3_ACCESS_KEY_ID",
+  "S3_SECRET_ACCESS_KEY",
+] as const satisfies readonly (keyof z.infer<typeof rawServerEnvSchema>)[];
+
+type ServiceProfile = z.infer<typeof rawServerEnvSchema>["SEMFORGE_SERVICE"];
+type ProfileCredential = (typeof profileScopedCredentialKeys)[number];
+
+const allowedCredentialsByService: Readonly<Record<ServiceProfile, ReadonlySet<ProfileCredential>>> = {
+  all: new Set(profileScopedCredentialKeys.filter((key) => key !== "OPERATOR_DATABASE_URL")),
+  web: new Set([
+    "DATABASE_URL",
+    "AUTH_DATABASE_URL",
+    "BILLING_DATABASE_URL",
+    "BILLING_TENANT_DATABASE_URL",
+    "APP_SECRET",
+    "APP_SECRET_CURRENT_KEY_ID",
+    "APP_SECRET_PREVIOUS_KEYS",
+    "TOSS_CLIENT_KEY",
+    "TOSS_SECRET_KEY",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "BILLING_FINGERPRINT_SECRET",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+  ]),
+  worker: new Set([
+    "AUTH_DATABASE_URL",
+    "WORKER_DATABASE_URL",
+    "DISPATCHER_DATABASE_URL",
+    "APP_SECRET",
+    "APP_SECRET_CURRENT_KEY_ID",
+    "APP_SECRET_PREVIOUS_KEYS",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "TALORDATA_API_TOKEN",
+    "NAVER_OPEN_API_CLIENT_ID",
+    "NAVER_OPEN_API_CLIENT_SECRET",
+    "NAVER_SEARCH_AD_ACCESS_LICENSE",
+    "NAVER_SEARCH_AD_SECRET_KEY",
+    "NAVER_SEARCH_AD_CUSTOMER_ID",
+    "RESEND_API_KEY",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+  ]),
+  relay: new Set(["DISPATCHER_DATABASE_URL"]),
+  scheduler: new Set(["SCHEDULER_DATABASE_URL"]),
+  privacy: new Set([
+    "PRIVACY_DATABASE_URL",
+    "APP_SECRET",
+    "APP_SECRET_CURRENT_KEY_ID",
+    "APP_SECRET_PREVIOUS_KEYS",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+  ]),
+  retention: new Set([
+    "PRIVACY_RETENTION_DATABASE_URL",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+  ]),
+  operator: new Set(["OPERATOR_DATABASE_URL"]),
+  migrate: new Set(["MIGRATION_DATABASE_URL"]),
+  build: new Set(),
+};
+
 export function parseServerEnv(source: Record<string, string | undefined>): ServerEnv {
   const parsed = rawServerEnvSchema.safeParse(source);
   if (!parsed.success) {
@@ -289,6 +380,19 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
         }
       } catch {
         issues.push(`${key} must be a valid PostgreSQL URL`);
+      }
+    }
+    const allowedCredentials = allowedCredentialsByService[parsed.data.SEMFORGE_SERVICE];
+    for (const key of profileScopedCredentialKeys) {
+      const value = parsed.data[key];
+      if (
+        key !== "OPERATOR_DATABASE_URL" &&
+        !(key === "MIGRATION_DATABASE_URL" && parsed.data.SEMFORGE_SERVICE === "retention") &&
+        !allowedCredentials.has(key) &&
+        typeof value === "string" &&
+        value.trim().length > 0
+      ) {
+        issues.push(`${key} is not allowed for the ${parsed.data.SEMFORGE_SERVICE} service`);
       }
     }
     if (

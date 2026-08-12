@@ -358,6 +358,21 @@ test("Kubernetes 예시는 worker/relay와 일요일 collection·월요일 repor
   }
 });
 
+test("모든 Kubernetes workload는 service account token 자동 마운트를 차단한다", async () => {
+  const manifests = await Promise.all([
+    source("deploy/kubernetes/pipeline-runtime.yaml"),
+    source("deploy/kubernetes/release-job.yaml"),
+  ]);
+  const workloads = manifests
+    .flatMap((manifest) => manifest.split(/^---$/mu))
+    .filter((document) => /^kind:\s*(?:Deployment|CronJob|Job)$/mu.test(document));
+
+  assert.equal(workloads.length, 6);
+  for (const workload of workloads) {
+    assert.match(workload, /automountServiceAccountToken:\s*false/u);
+  }
+});
+
 test("환경 예시는 report delivery 변수 이름만 제공하고 역할별 env_file secret 주입을 유지한다", async () => {
   const [example, compose] = await Promise.all([
     source(".env.example"),

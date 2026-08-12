@@ -72,14 +72,9 @@ const validWebEnvironment = {
   PGSSLMODE: "verify-full",
   DATABASE_URL: "postgresql://web:password@db.example.com/semforge",
   AUTH_DATABASE_URL: "postgresql://auth:password@db.example.com/semforge",
-  WORKER_DATABASE_URL: "postgresql://worker:password@db.example.com/semforge",
-  DISPATCHER_DATABASE_URL: "postgresql://dispatcher:password@db.example.com/semforge",
-  SCHEDULER_DATABASE_URL: "postgresql://scheduler:password@db.example.com/semforge",
   BILLING_DATABASE_URL: "postgresql://billing:password@db.example.com/semforge",
   BILLING_TENANT_DATABASE_URL:
     "postgresql://billing-tenant:password@db.example.com/semforge",
-  PRIVACY_DATABASE_URL: "postgresql://privacy:password@db.example.com/semforge",
-  MIGRATION_DATABASE_URL: "postgresql://owner:password@db.example.com/semforge",
   APP_PUBLIC_URL: "https://app.semforge.example",
   AUTH_TRUST_PROXY_HEADERS: "true",
   APP_SECRET: "app-secret-material-that-is-at-least-32-bytes",
@@ -88,12 +83,6 @@ const validWebEnvironment = {
   TOSS_SECRET_KEY: "test-toss-secret",
   GOOGLE_CLIENT_ID: "google-client-id",
   GOOGLE_CLIENT_SECRET: "google-client-secret",
-  NAVER_OPEN_API_CLIENT_ID: "naver-client-id",
-  NAVER_OPEN_API_CLIENT_SECRET: "naver-client-secret",
-  NAVER_SEARCH_AD_ACCESS_LICENSE: "naver-license",
-  NAVER_SEARCH_AD_SECRET_KEY: "naver-search-secret",
-  NAVER_SEARCH_AD_CUSTOMER_ID: "naver-customer",
-  TALORDATA_API_TOKEN: "talordata-token",
   BILLING_FINGERPRINT_SECRET: "billing-fingerprint-secret-at-least-32-bytes",
   S3_ENDPOINT: "https://objects.semforge.example",
   S3_REGION: "ap-northeast-2",
@@ -101,25 +90,34 @@ const validWebEnvironment = {
   S3_ACCESS_KEY_ID: "semforge-web-access-key",
   S3_SECRET_ACCESS_KEY: "semforge-web-secret-key",
   LEGAL_RELEASE_MANIFEST: approvedLegalReleaseManifest,
-  PRIVACY_RETENTION_POLICY: JSON.stringify({
-    expiredSessionsDays: 30,
-    consumedInvitesDays: 30,
-    passwordResetsDays: 7,
-    oauthStatesDays: 7,
-    publishedOutboxDays: 30,
-    terminalJobsDays: 30,
-    providerRawMetadataDays: 30,
-    deliveryRecipientDays: 90,
-  }),
 };
 
 const validWorkerEnvironment = {
   ...validWebEnvironment,
   SEMFORGE_SERVICE: "worker",
+  WORKER_DATABASE_URL: "postgresql://worker:password@db.example.com/semforge",
+  DISPATCHER_DATABASE_URL: "postgresql://dispatcher:password@db.example.com/semforge",
+  NAVER_OPEN_API_CLIENT_ID: "naver-client-id",
+  NAVER_OPEN_API_CLIENT_SECRET: "naver-client-secret",
+  NAVER_SEARCH_AD_ACCESS_LICENSE: "naver-license",
+  NAVER_SEARCH_AD_SECRET_KEY: "naver-search-secret",
+  NAVER_SEARCH_AD_CUSTOMER_ID: "naver-customer",
+  TALORDATA_API_TOKEN: "talordata-token",
   RESEND_API_KEY: "re_worker_delivery_key",
   RESEND_FROM_EMAIL: "SEMForge <reports@semforge.example>",
   CHROMIUM_EXECUTABLE_PATH: "/usr/bin/chromium",
 };
+for (const key of [
+  "DATABASE_URL",
+  "BILLING_DATABASE_URL",
+  "BILLING_TENANT_DATABASE_URL",
+  "LEGAL_RELEASE_MANIFEST",
+  "TOSS_CLIENT_KEY",
+  "TOSS_SECRET_KEY",
+  "BILLING_FINGERPRINT_SECRET",
+]) {
+  delete validWorkerEnvironment[key];
+}
 
 const validPrivacyEnvironment = {
   NODE_ENV: "production",
@@ -141,7 +139,16 @@ const validRetentionEnvironment = {
   PGSSLMODE: "verify-full",
   PRIVACY_RETENTION_DATABASE_URL:
     "postgresql://retention:password@db.example.com/semforge",
-  PRIVACY_RETENTION_POLICY: validWebEnvironment.PRIVACY_RETENTION_POLICY,
+  PRIVACY_RETENTION_POLICY: JSON.stringify({
+    expiredSessionsDays: 30,
+    consumedInvitesDays: 30,
+    passwordResetsDays: 7,
+    oauthStatesDays: 7,
+    publishedOutboxDays: 30,
+    terminalJobsDays: 30,
+    providerRawMetadataDays: 30,
+    deliveryRecipientDays: 90,
+  }),
   S3_ENDPOINT: "https://objects.semforge.example",
   S3_REGION: "ap-northeast-2",
   S3_BUCKET: "semforge-private",
@@ -228,7 +235,7 @@ test("privacy와 retention preflight는 상대 역할의 DSN과 고권한 secret
       ...validPrivacyEnvironment,
       PRIVACY_RETENTION_DATABASE_URL:
         "postgresql://retention:password@db.example.com/semforge",
-      PRIVACY_RETENTION_POLICY: validWebEnvironment.PRIVACY_RETENTION_POLICY,
+      PRIVACY_RETENTION_POLICY: validRetentionEnvironment.PRIVACY_RETENTION_POLICY,
     }),
     (error) => {
       assert.ok(error instanceof RuntimeConfigurationError);
@@ -606,6 +613,30 @@ test("relay와 scheduler preflight는 분리된 DB role만으로 시작한다", 
     PGSSLMODE: "verify-full",
     SCHEDULER_DATABASE_URL: "postgresql://scheduler:password@db.example.com/semforge",
   }));
+});
+
+test("production preflight는 profile allowlist 밖의 credential을 fail-closed한다", () => {
+  assert.throws(
+    () => validateRuntimeEnvironment("relay", {
+      NODE_ENV: "production",
+      SEMFORGE_SERVICE: "relay",
+      PGSSLMODE: "verify-full",
+      DISPATCHER_DATABASE_URL:
+        "postgresql://dispatcher:password@db.example.com/semforge",
+      WORKER_DATABASE_URL:
+        "postgresql://worker:password@db.example.com/semforge",
+      TOSS_SECRET_KEY: "must-not-reach-relay",
+    }),
+    (error) => {
+      assert.ok(error instanceof RuntimeConfigurationError);
+      assert.deepEqual(error.issues, [
+        "WORKER_DATABASE_URL is forbidden for relay",
+        "TOSS_SECRET_KEY is forbidden for relay",
+      ]);
+      assert.doesNotMatch(error.message, /must-not-reach-relay/u);
+      return true;
+    },
+  );
 });
 
 test("preflight는 image profile과 SEMFORGE_SERVICE 불일치를 거부한다", () => {
