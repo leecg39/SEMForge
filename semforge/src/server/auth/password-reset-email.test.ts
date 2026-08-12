@@ -9,6 +9,7 @@ import { passwordResetDeliveryAad } from "@/server/auth/postgres-store";
 import {
   createPasswordResetEmailJobHandler,
   PASSWORD_RESET_EMAIL_JOB,
+  PostgresPasswordResetEmailStore,
   PostgresPasswordResetEmailSuppressionPolicy,
   type PasswordResetEmailScrubInput,
 } from "@/server/auth/password-reset-email";
@@ -390,4 +391,170 @@ test("suppression 조회 장애는 fail-open 발송 없이 retryable로 남긴�
     error: "PASSWORD_RESET_EMAIL_SUPPRESSION_RETRYABLE",
   });
   assert.equal(sendCalls, 0);
+});
+
+test("password reset delivery fence는 shared recipient lock부터 suppression 재확인·Resend·scrub commit까지 같은 connection에 고정한다", async () => {
+  const secondWorkspaceId = "81000000-0000-4000-8000-000000000005";
+  const events: string[] = [];
+  let activeWorkspace = "";
+  const fenceConnection = {
+    async query<T = unknown>(text: string, values?: readonly unknown[]) {
+      if (text === "begin" || text === "commit" || text === "rollback") {
+        events.push(text);
+        return { rows: [] as T[] };
+      }
+      if (text.includes("set_config")) {
+        activeWorkspace = String(values?.[0]);
+        events.push(`tenant:${activeWorkspace}`);
+        return { rows: [] as T[] };
+      }
+      if (text.includes("privacy_lock_recipient_email_shared")) {
+        events.push(`lock:${activeWorkspace}:${values?.[1]}`);
+        return { rows: [] as T[] };
+      }
+      if (text.includes("from email_suppressions")) {
+        events.push(`suppression:${activeWorkspace}:${values?.[1]}`);
+        return { rows: [{ suppressed: false }] as T[] };
+      }
+      if (text.includes("scrub_password_reset_delivery")) {
+        events.push(`scrub:${activeWorkspace}:${values?.[3]}:${values?.[5]}`);
+        return { rows: [{ scrubbed: true }] as T[] };
+      }
+      throw new Error(`unexpected query: ${text}`);
+    },
+    release(error?: Error) {
+      events.push(error ? `release:${error.message}` : "release");
+    },
+  };
+  const policy = new PostgresPasswordResetEmailSuppressionPolicy({
+    identityDatabase: {
+      async query<T = unknown>() {
+        return { rows: [{ workspace_id: secondWorkspaceId }] as T[] };
+      },
+    },
+    tenantDatabase: {
+      async connect() { throw new Error("non-fenced suppression pool must not be used"); },
+    },
+    deliveryFenceDatabase: {
+      async connect() { return fenceConnection; },
+    },
+  });
+  const handler = createPasswordResetEmailJobHandler({
+    crypto,
+    suppression: policy,
+    sender: {
+      async sendTransactional(input) {
+        events.push(`send:${input.recipient}:${input.idempotencyKey}`);
+        return { providerMessageId: "resend-fenced-message" };
+      },
+    },
+    store: new PostgresPasswordResetEmailStore({
+      async query() { throw new Error("default scrub pool must not be used"); },
+    }),
+  });
+
+  assert.deepEqual(await handler(job(encryptedPayload()), context()), {
+    status: "succeeded",
+    metadata: { resetId, deliveryStatus: "delivered" },
+  });
+  const expectedHash = "c8cd3c6427301eaf6665bccacd65ddb614527acc843a15463e3faba57124c351";
+  assert.deepEqual(events, [
+    "begin",
+    `tenant:${workspaceId}`,
+    `lock:${workspaceId}:${expectedHash}`,
+    `tenant:${secondWorkspaceId}`,
+    `lock:${secondWorkspaceId}:${expectedHash}`,
+    `tenant:${workspaceId}`,
+    `suppression:${workspaceId}:${expectedHash}`,
+    `tenant:${secondWorkspaceId}`,
+    `suppression:${secondWorkspaceId}:${expectedHash}`,
+    `tenant:${workspaceId}`,
+    `send:owner@example.com:password-reset:${resetId}`,
+    `scrub:${workspaceId}:delivered:resend-fenced-message`,
+    "commit",
+    "release",
+  ]);
+});
+
+test("password reset delivery fence는 lock 내부 suppression 발견 시 Resend 0회로 terminal scrub을 같은 transaction에서 commit한다", async () => {
+  const secondWorkspaceId = "81000000-0000-4000-8000-000000000005";
+  const events: string[] = [];
+  let activeWorkspace = "";
+  const fenceConnection = {
+    async query<T = unknown>(text: string, values?: readonly unknown[]) {
+      if (text === "begin" || text === "commit" || text === "rollback") {
+        events.push(text);
+        return { rows: [] as T[] };
+      }
+      if (text.includes("set_config")) {
+        activeWorkspace = String(values?.[0]);
+        events.push(`tenant:${activeWorkspace}`);
+        return { rows: [] as T[] };
+      }
+      if (text.includes("privacy_lock_recipient_email_shared")) {
+        events.push(`lock:${activeWorkspace}`);
+        return { rows: [] as T[] };
+      }
+      if (text.includes("from email_suppressions")) {
+        events.push(`suppression:${activeWorkspace}`);
+        return { rows: [{ suppressed: activeWorkspace === secondWorkspaceId }] as T[] };
+      }
+      if (text.includes("scrub_password_reset_delivery")) {
+        events.push(`scrub:${activeWorkspace}:${values?.[3]}`);
+        return { rows: [{ scrubbed: true }] as T[] };
+      }
+      throw new Error(`unexpected query: ${text}`);
+    },
+    release(error?: Error) {
+      events.push(error ? `release:${error.message}` : "release");
+    },
+  };
+  const policy = new PostgresPasswordResetEmailSuppressionPolicy({
+    identityDatabase: {
+      async query<T = unknown>() {
+        return { rows: [{ workspace_id: secondWorkspaceId }] as T[] };
+      },
+    },
+    tenantDatabase: {
+      async connect() { throw new Error("non-fenced suppression pool must not be used"); },
+    },
+    deliveryFenceDatabase: {
+      async connect() { return fenceConnection; },
+    },
+  });
+  let sendCalls = 0;
+  const handler = createPasswordResetEmailJobHandler({
+    crypto,
+    suppression: policy,
+    sender: {
+      async sendTransactional() {
+        sendCalls += 1;
+        return { providerMessageId: "must-not-send" };
+      },
+    },
+    store: new PostgresPasswordResetEmailStore({
+      async query() { throw new Error("default scrub pool must not be used"); },
+    }),
+  });
+
+  assert.deepEqual(await handler(job(encryptedPayload()), context()), {
+    status: "dead",
+    error: "PASSWORD_RESET_EMAIL_SUPPRESSED",
+  });
+  assert.equal(sendCalls, 0);
+  assert.deepEqual(events, [
+    "begin",
+    `tenant:${workspaceId}`,
+    `lock:${workspaceId}`,
+    `tenant:${secondWorkspaceId}`,
+    `lock:${secondWorkspaceId}`,
+    `tenant:${workspaceId}`,
+    `suppression:${workspaceId}`,
+    `tenant:${secondWorkspaceId}`,
+    `suppression:${secondWorkspaceId}`,
+    `tenant:${workspaceId}`,
+    `scrub:${workspaceId}:rejected`,
+    "commit",
+    "release",
+  ]);
 });

@@ -162,6 +162,7 @@ export function createProductionWorkerComposition(
     suppression: new PostgresPasswordResetEmailSuppressionPolicy({
       identityDatabase: authPool,
       tenantDatabase: workerPool,
+      deliveryFenceDatabase: dispatcherPool,
     }),
     sender: new ResendEmailSender({
       apiKey: requireEnv(env, "RESEND_API_KEY"),

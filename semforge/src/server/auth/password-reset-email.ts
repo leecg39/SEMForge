@@ -68,7 +68,7 @@ export interface PasswordResetEmailScrubInput {
 }
 
 export interface PasswordResetEmailStore {
-  scrub(input: PasswordResetEmailScrubInput): Promise<void>;
+  scrub(input: PasswordResetEmailScrubInput, database?: SqlQueryable): Promise<void>;
 }
 
 export interface PasswordResetEmailSuppressionPolicy {
@@ -76,10 +76,20 @@ export interface PasswordResetEmailSuppressionPolicy {
     readonly workspaceId: string;
     readonly recipient: string;
   }): Promise<boolean>;
+  withDeliveryFence?<T>(
+    input: {
+      readonly workspaceId: string;
+      readonly recipient: string;
+    },
+    operation: (
+      database: SqlQueryable,
+      state: { readonly suppressed: boolean },
+    ) => Promise<T>,
+  ): Promise<T>;
 }
 
 interface PasswordResetEmailSqlConnection extends SqlQueryable {
-  release(): void;
+  release(error?: Error): void;
 }
 
 export interface PasswordResetEmailTenantSqlSource {
@@ -118,6 +128,10 @@ function replayScrubbed(payload: z.infer<typeof ScrubbedPayload>) {
     : jobDead(terminalError(payload.state));
 }
 
+function recipientHash(recipient: string): string {
+  return createHash("sha256").update(recipient, "utf8").digest("hex");
+}
+
 export function createPasswordResetEmailJobHandler(
   dependencies: PasswordResetEmailJobDependencies,
 ): JobHandler<Record<string, unknown>> {
@@ -154,24 +168,31 @@ export function createPasswordResetEmailJobHandler(
     const scrub = async (
       state: PasswordResetEmailScrubState,
       providerMessageId?: string,
-    ) => dependencies.store.scrub({
-      workspaceId: job.workspaceId,
-      jobId: job.id,
-      resetId: parsed.data.resetId,
-      state,
-      scrubbedAt: context.now(),
-      ...(providerMessageId ? { providerMessageId } : {}),
-    });
+      database?: SqlQueryable,
+    ) => dependencies.store.scrub(
+      {
+        workspaceId: job.workspaceId,
+        jobId: job.id,
+        resetId: parsed.data.resetId,
+        state,
+        scrubbedAt: context.now(),
+        ...(providerMessageId ? { providerMessageId } : {}),
+      },
+      database,
+    );
 
     const terminalAfterScrub = async (
       state: Exclude<PasswordResetEmailScrubState, "delivered">,
       error: string,
+      database?: SqlQueryable,
+      throwOnScrubFailure = false,
     ) => {
       try {
-        await scrub(state);
+        await scrub(state, undefined, database);
         return jobDead(error);
       } catch {
-        return jobRetryable("PASSWORD_RESET_EMAIL_SCRUB_RETRYABLE");
+        if (!throwOnScrubFailure) return jobRetryable("PASSWORD_RESET_EMAIL_SCRUB_RETRYABLE");
+        throw new Error("PASSWORD_RESET_EMAIL_SCRUB_RETRYABLE");
       }
     };
 
@@ -199,60 +220,86 @@ export function createPasswordResetEmailJobHandler(
       return terminalAfterScrub("invalid", "PASSWORD_RESET_EMAIL_INVALID_PAYLOAD");
     }
 
+    const sendAndScrub = async (database?: SqlQueryable) => {
+      let sent: { providerMessageId: string };
+      try {
+        sent = await dependencies.sender.sendTransactional({
+          recipient: delivery.email,
+          subject: "SEMForge 비밀번호 재설정",
+          html: `<p>요청한 비밀번호 재설정 링크입니다.</p><p><a href="${escapeHtml(delivery.resetUrl)}">비밀번호 재설정</a></p><p>이 링크는 30분 후 만료됩니다.</p>`,
+          idempotencyKey: `password-reset:${parsed.data.resetId}`,
+        });
+      } catch (error) {
+        if (error instanceof ReportEmailSenderError && error.disposition === "rejected") {
+          return terminalAfterScrub("rejected", "PASSWORD_RESET_EMAIL_REJECTED", database);
+        }
+        if (job.attempt >= job.maxAttempts) {
+          return terminalAfterScrub(
+            "retry_exhausted",
+            "PASSWORD_RESET_EMAIL_RETRY_EXHAUSTED",
+            database,
+          );
+        }
+        return jobRetryable("PASSWORD_RESET_EMAIL_RETRYABLE");
+      }
+
+      try {
+        await scrub("delivered", sent.providerMessageId, database);
+      } catch {
+        // Provider replay uses the same key, so a DB outage remains safely retryable.
+        throw new Error("PASSWORD_RESET_EMAIL_SCRUB_RETRYABLE");
+      }
+      await context.audit("auth.password_reset_email.delivered", {
+        resetId: parsed.data.resetId,
+      }).catch(() => undefined);
+      return jobSucceeded({
+        resetId: parsed.data.resetId,
+        deliveryStatus: "delivered",
+      });
+    };
+
     try {
+      if (dependencies.suppression.withDeliveryFence) {
+        return await dependencies.suppression.withDeliveryFence({
+          workspaceId: job.workspaceId,
+          recipient: delivery.email,
+        }, (database, state) => state.suppressed
+          ? terminalAfterScrub(
+            "rejected",
+            "PASSWORD_RESET_EMAIL_SUPPRESSED",
+            database,
+            true,
+          )
+          : sendAndScrub(database));
+      }
       if (await dependencies.suppression.isSuppressed({
         workspaceId: job.workspaceId,
         recipient: delivery.email,
       })) {
         return terminalAfterScrub("rejected", "PASSWORD_RESET_EMAIL_SUPPRESSED");
       }
-    } catch {
-      // suppression 확인 실패는 발송 허용으로 폴백하지 않는다.
+      return await sendAndScrub();
+    } catch (error) {
+      if (error instanceof Error && error.message === "PASSWORD_RESET_EMAIL_SUPPRESSED") {
+        try {
+          return await terminalAfterScrub("rejected", "PASSWORD_RESET_EMAIL_SUPPRESSED");
+        } catch {
+          return jobRetryable("PASSWORD_RESET_EMAIL_SCRUB_RETRYABLE");
+        }
+      }
+      if (error instanceof Error && error.message === "PASSWORD_RESET_EMAIL_SCRUB_RETRYABLE") {
+        return jobRetryable("PASSWORD_RESET_EMAIL_SCRUB_RETRYABLE");
+      }
       return jobRetryable("PASSWORD_RESET_EMAIL_SUPPRESSION_RETRYABLE");
     }
-
-    let sent: { providerMessageId: string };
-    try {
-      sent = await dependencies.sender.sendTransactional({
-        recipient: delivery.email,
-        subject: "SEMForge 비밀번호 재설정",
-        html: `<p>요청한 비밀번호 재설정 링크입니다.</p><p><a href="${escapeHtml(delivery.resetUrl)}">비밀번호 재설정</a></p><p>이 링크는 30분 후 만료됩니다.</p>`,
-        idempotencyKey: `password-reset:${parsed.data.resetId}`,
-      });
-    } catch (error) {
-      if (error instanceof ReportEmailSenderError && error.disposition === "rejected") {
-        return terminalAfterScrub("rejected", "PASSWORD_RESET_EMAIL_REJECTED");
-      }
-      if (job.attempt >= job.maxAttempts) {
-        return terminalAfterScrub(
-          "retry_exhausted",
-          "PASSWORD_RESET_EMAIL_RETRY_EXHAUSTED",
-        );
-      }
-      return jobRetryable("PASSWORD_RESET_EMAIL_RETRYABLE");
-    }
-
-    try {
-      await scrub("delivered", sent.providerMessageId);
-    } catch {
-      // Provider replay uses the same key, so a DB outage remains safely retryable.
-      return jobRetryable("PASSWORD_RESET_EMAIL_SCRUB_RETRYABLE");
-    }
-    await context.audit("auth.password_reset_email.delivered", {
-      resetId: parsed.data.resetId,
-    }).catch(() => undefined);
-    return jobSucceeded({
-      resetId: parsed.data.resetId,
-      deliveryStatus: "delivered",
-    });
   });
 }
 
 export class PostgresPasswordResetEmailStore implements PasswordResetEmailStore {
   constructor(private readonly database: SqlQueryable) {}
 
-  async scrub(input: PasswordResetEmailScrubInput): Promise<void> {
-    const result = await this.database.query<{ scrubbed: boolean }>(
+  async scrub(input: PasswordResetEmailScrubInput, database: SqlQueryable = this.database): Promise<void> {
+    const result = await database.query<{ scrubbed: boolean }>(
       `select scrub_password_reset_delivery($1, $2, $3, $4, $5, $6) as scrubbed`,
       [
         input.workspaceId,
@@ -278,31 +325,79 @@ implements PasswordResetEmailSuppressionPolicy {
   constructor(private readonly options: {
     readonly identityDatabase: SqlQueryable;
     readonly tenantDatabase: PasswordResetEmailTenantSqlSource;
+    readonly deliveryFenceDatabase?: PasswordResetEmailTenantSqlSource;
   }) {}
+
+  private async recipientWorkspaceIds(input: {
+    readonly workspaceId: string;
+    readonly recipient: string;
+  }): Promise<readonly string[]> {
+    const memberships = await this.options.identityDatabase.query<{ workspace_id: string }>(
+      `select distinct memberships.workspace_id::text as workspace_id
+         from memberships
+         inner join users on users.id = memberships.user_id
+        where lower(btrim(users.email)) = $1
+          and users.disabled_at is null
+        order by memberships.workspace_id::text`,
+      [input.recipient],
+    );
+    return [...new Set<string>([
+      input.workspaceId,
+      ...memberships.rows.map((row) => row.workspace_id),
+    ])].sort();
+  }
 
   private async isSuppressedInWorkspace(
     workspaceId: string,
     recipientHash: string,
+    connection?: PasswordResetEmailSqlConnection,
   ): Promise<boolean> {
-    const connection = await this.options.tenantDatabase.connect();
+    const database = connection ?? await this.options.tenantDatabase.connect();
     try {
-      await connection.query("begin");
-      await connection.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
-      const result = await connection.query<{ suppressed: boolean }>(
+      await database.query("begin");
+      await database.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
+      const result = await database.query<{ suppressed: boolean }>(
         `select exists(
            select 1 from email_suppressions
             where workspace_id = $1 and recipient_hash = $2
          ) as suppressed`,
         [workspaceId, recipientHash],
       );
-      await connection.query("commit");
+      await database.query("commit");
       return result.rows[0]?.suppressed === true;
     } catch (error) {
-      await connection.query("rollback").catch(() => undefined);
+      await database.query("rollback").catch(() => undefined);
       throw error;
     } finally {
-      connection.release();
+      if (!connection) database.release();
     }
+  }
+
+  private async isSuppressedInWorkspaces(
+    workspaceIds: readonly string[],
+    hash: string,
+    connection?: PasswordResetEmailSqlConnection,
+  ): Promise<boolean> {
+    for (const workspaceId of workspaceIds) {
+      if (await this.isSuppressedInWorkspace(workspaceId, hash, connection)) return true;
+    }
+    return false;
+  }
+
+  private async isSuppressedInActiveTransaction(
+    connection: PasswordResetEmailSqlConnection,
+    workspaceId: string,
+    hash: string,
+  ): Promise<boolean> {
+    await connection.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
+    const result = await connection.query<{ suppressed: boolean }>(
+      `select exists(
+         select 1 from email_suppressions
+          where workspace_id = $1 and recipient_hash = $2
+       ) as suppressed`,
+      [workspaceId, hash],
+    );
+    return result.rows[0]?.suppressed === true;
   }
 
   async isSuppressed(input: {
@@ -312,23 +407,57 @@ implements PasswordResetEmailSuppressionPolicy {
     const parsedRecipient = SuppressionRecipient.safeParse(input.recipient);
     if (!parsedRecipient.success) throw new Error("PASSWORD_RESET_EMAIL_SUPPRESSION_INVALID_RECIPIENT");
     const recipient = parsedRecipient.data;
-    const recipientHash = createHash("sha256").update(recipient, "utf8").digest("hex");
-    const memberships = await this.options.identityDatabase.query<{ workspace_id: string }>(
-      `select distinct memberships.workspace_id::text as workspace_id
-         from memberships
-         inner join users on users.id = memberships.user_id
-        where lower(btrim(users.email)) = $1
-          and users.disabled_at is null
-        order by memberships.workspace_id::text`,
-      [recipient],
+    return this.isSuppressedInWorkspaces(
+      await this.recipientWorkspaceIds({ workspaceId: input.workspaceId, recipient }),
+      recipientHash(recipient),
     );
-    const workspaceIds = new Set<string>([
-      input.workspaceId,
-      ...memberships.rows.map((row) => row.workspace_id),
-    ]);
-    for (const workspaceId of workspaceIds) {
-      if (await this.isSuppressedInWorkspace(workspaceId, recipientHash)) return true;
+  }
+
+  async withDeliveryFence<T>(
+    input: {
+      readonly workspaceId: string;
+      readonly recipient: string;
+    },
+    operation: (
+      database: SqlQueryable,
+      state: { readonly suppressed: boolean },
+    ) => Promise<T>,
+  ): Promise<T> {
+    const parsedRecipient = SuppressionRecipient.safeParse(input.recipient);
+    if (!parsedRecipient.success) throw new Error("PASSWORD_RESET_EMAIL_SUPPRESSION_INVALID_RECIPIENT");
+    const recipient = parsedRecipient.data;
+    const hash = recipientHash(recipient);
+    const workspaceIds = await this.recipientWorkspaceIds({ workspaceId: input.workspaceId, recipient });
+    const connection = await (this.options.deliveryFenceDatabase ?? this.options.tenantDatabase).connect();
+    let destroyConnection = false;
+    try {
+      await connection.query("begin");
+      for (const workspaceId of workspaceIds) {
+        await connection.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
+        await connection.query(
+          `select privacy_lock_recipient_email_shared($1::uuid, $2::text)`,
+          [workspaceId, hash],
+        );
+      }
+      let suppressed = false;
+      for (const workspaceId of workspaceIds) {
+        if (await this.isSuppressedInActiveTransaction(connection, workspaceId, hash)) {
+          suppressed = true;
+          break;
+        }
+      }
+      await connection.query("select set_config('app.workspace_id', $1, true)", [input.workspaceId]);
+      const result = await operation(connection, { suppressed });
+      await connection.query("commit");
+      return result;
+    } catch (error) {
+      await connection.query("rollback").catch(() => undefined);
+      if (!(error instanceof Error && error.message === "PASSWORD_RESET_EMAIL_SUPPRESSED")) {
+        destroyConnection = true;
+      }
+      throw error;
+    } finally {
+      connection.release(destroyConnection ? new Error("PASSWORD_RESET_EMAIL_FENCE_UNLOCK_FAILED") : undefined);
     }
-    return false;
   }
 }
