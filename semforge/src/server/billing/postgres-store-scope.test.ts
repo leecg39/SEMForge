@@ -7,6 +7,7 @@ import type { Pool } from "pg";
 
 import {
   billingDatabaseRole,
+  canSettlePaymentStatus,
   createPostgresBillingStore,
 } from "@/server/billing/postgres-store";
 
@@ -68,4 +69,38 @@ test("tenant billing store는 workspace 없는 webhook/reconcile 조회를 fail-
     /global billing store/u,
   );
   assert.deepEqual(boundary.statements, []);
+});
+
+test("billing settlement 상태 전이는 provider replay가 terminal 상태를 되돌리지 못하게 제한한다", () => {
+  const statuses = ["pending", "authorized", "paid", "failed", "refunded", "canceled"] as const;
+  const allowed = new Set([
+    "pending->pending",
+    "pending->authorized",
+    "pending->paid",
+    "pending->failed",
+    "pending->refunded",
+    "pending->canceled",
+    "authorized->authorized",
+    "authorized->paid",
+    "authorized->failed",
+    "authorized->refunded",
+    "authorized->canceled",
+    "paid->paid",
+    "paid->refunded",
+    "paid->canceled",
+    "failed->failed",
+    "refunded->refunded",
+    "refunded->canceled",
+    "canceled->canceled",
+  ]);
+
+  for (const current of statuses) {
+    for (const next of statuses) {
+      assert.equal(
+        canSettlePaymentStatus(current, next),
+        allowed.has(`${current}->${next}`),
+        `${current}->${next}`,
+      );
+    }
+  }
 });

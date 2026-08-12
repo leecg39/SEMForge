@@ -228,6 +228,90 @@ async function loadPayment(client: PoolClient, orderId: string): Promise<Payment
   return payment(result.rows[0] ?? {});
 }
 
+async function loadPaymentForSettlement(
+  client: PoolClient,
+  workspaceId: string,
+  orderId: string,
+): Promise<PaymentAttempt | null> {
+  const result = await client.query<Row>(
+    `select workspace_id, id as payment_id, subscription_id as payment_subscription_id,
+       order_id, idempotency_key, toss_payment_key, status as payment_status,
+       amount_krw as payment_amount_krw, billing_period_start, billing_period_end,
+       attempt, failure_code, failure_message, paid_at
+     from payments
+     where workspace_id = $1 and order_id = $2
+     for update`,
+    [workspaceId, orderId],
+  );
+  return payment(result.rows[0] ?? {});
+}
+
+async function lockSubscriptionForWorkspace(
+  client: PoolClient,
+  workspaceId: string,
+): Promise<SubscriptionRecord | null> {
+  const result = await client.query<Row>(
+    `select
+       id as subscription_id,
+       workspace_id,
+       billing_customer_id as subscription_billing_customer_id,
+       payment_method_id as subscription_payment_method_id,
+       status as subscription_status,
+       amount_krw as subscription_amount_krw,
+       current_period_start,
+       current_period_end,
+       grace_ends_at,
+       canceled_at
+     from subscriptions
+     where workspace_id = $1
+     for update`,
+    [workspaceId],
+  );
+  return result.rows[0] ? subscription(result.rows[0]) : null;
+}
+
+async function lockSubscriptionForPaymentOrder(
+  client: PoolClient,
+  workspaceId: string,
+  orderId: string,
+): Promise<SubscriptionRecord | null> {
+  const result = await client.query<Row>(
+    `select
+       s.id as subscription_id,
+       s.workspace_id,
+       s.billing_customer_id as subscription_billing_customer_id,
+       s.payment_method_id as subscription_payment_method_id,
+       s.status as subscription_status,
+       s.amount_krw as subscription_amount_krw,
+       s.current_period_start,
+       s.current_period_end,
+       s.grace_ends_at,
+       s.canceled_at
+     from subscriptions s
+     join payments p on p.workspace_id = s.workspace_id and p.subscription_id = s.id
+     where p.workspace_id = $1 and p.order_id = $2
+     for update of s`,
+    [workspaceId, orderId],
+  );
+  return result.rows[0] ? subscription(result.rows[0]) : null;
+}
+
+const allowedPaymentStatusTransitions: Readonly<Record<PaymentStatus, readonly PaymentStatus[]>> = {
+  pending: ["authorized", "paid", "failed", "refunded", "canceled"],
+  authorized: ["paid", "failed", "refunded", "canceled"],
+  paid: ["refunded", "canceled"],
+  failed: [],
+  refunded: ["canceled"],
+  canceled: [],
+};
+
+export function canSettlePaymentStatus(
+  current: PaymentStatus,
+  next: PaymentStatus,
+): boolean {
+  return current === next || allowedPaymentStatusTransitions[current].includes(next);
+}
+
 async function loadPaymentByIdempotencyKey(
   client: PoolClient,
   workspaceId: string,
@@ -373,18 +457,24 @@ export function createPostgresBillingStore(options: {
 
     async settleCharge(input) {
       return workspaceTransaction(input.workspaceId, async (client) => {
-        const existing = await loadPayment(client, input.orderId);
+        const lockedSubscription = await lockSubscriptionForPaymentOrder(
+          client,
+          input.workspaceId,
+          input.orderId,
+        );
+        if (!lockedSubscription) throw new Error("payment attempt not found");
+        const existing = await loadPaymentForSettlement(client, input.workspaceId, input.orderId);
         if (!existing) throw new Error("payment attempt not found");
-        if (existing.status === input.status) {
+        if (!canSettlePaymentStatus(existing.status, input.status) || existing.status === input.status) {
           const unchanged = await loadAccount(client, input.workspaceId);
           if (!unchanged) throw new Error("billing account not found");
           return { account: unchanged, changed: false };
         }
-        await client.query(
+        const updatedPayment = await client.query(
           `update payments
            set status = $3, toss_payment_key = $4, failure_code = $5,
                failure_message = $6, paid_at = $7, updated_at = now()
-           where workspace_id = $1 and order_id = $2`,
+           where workspace_id = $1 and order_id = $2 and status = $8`,
           [
             input.workspaceId,
             input.orderId,
@@ -393,8 +483,12 @@ export function createPostgresBillingStore(options: {
             input.failureCode,
             input.failureMessage,
             input.paidAt,
+            existing.status,
           ],
         );
+        if ((updatedPayment.rowCount ?? 0) !== 1) {
+          throw new Error("payment settlement concurrency invariant failed");
+        }
         if (input.status === "paid") {
           await client.query(
             `update subscriptions
@@ -403,7 +497,9 @@ export function createPostgresBillingStore(options: {
                  current_period_end = $4,
                  grace_ends_at = null,
                  updated_at = now()
-             where workspace_id = $1 and id = $2`,
+             where workspace_id = $1
+               and id = $2
+               and status not in ('cancel_at_period_end', 'past_due')`,
             [
               input.workspaceId,
               existing.subscriptionId,
@@ -432,9 +528,11 @@ export function createPostgresBillingStore(options: {
 
     async scheduleCancellation(input) {
       return workspaceTransaction(input.workspaceId, async (client) => {
-        const current = await loadAccount(client, input.workspaceId);
-        if (!current) throw new Error("billing account not found");
-        if (current.subscription.status === "cancel_at_period_end") {
+        const currentSubscription = await lockSubscriptionForWorkspace(client, input.workspaceId);
+        if (!currentSubscription) throw new Error("billing account not found");
+        if (currentSubscription.status !== "active") {
+          const current = await loadAccount(client, input.workspaceId);
+          if (!current) throw new Error("billing account not found");
           return { account: current, changed: false };
         }
         await client.query(
@@ -501,6 +599,8 @@ export function createPostgresBillingStore(options: {
 
     async disablePaymentMethod(input) {
       return globalTransaction(async (client) => {
+        const lockedSubscription = await lockSubscriptionForWorkspace(client, input.workspaceId);
+        if (!lockedSubscription) throw new Error("billing account not found");
         const current = await loadAccount(client, input.workspaceId);
         if (!current) throw new Error("billing account not found");
         const disabled = await client.query(

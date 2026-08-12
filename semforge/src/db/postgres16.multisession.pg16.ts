@@ -688,6 +688,405 @@ test("PostgreSQL 16 실제 tenant billing role은 설정된 workspace만 허용�
   }
 });
 
+test("PostgreSQL 16 billing settle은 동일 provider payment 동시 재처리에도 ledger를 한 번만 기록한다", async () => {
+  const workspaceId = "f5400000-0000-4000-8000-000000000001";
+  const customerId = "f5400000-0000-4000-8000-000000000002";
+  const subscriptionId = "f5400000-0000-4000-8000-000000000003";
+  const paymentId = "f5400000-0000-4000-8000-000000000004";
+  const orderId = "pg16-settle-race-order";
+  await pool.query(
+    "insert into workspaces (id, name, slug) values ($1, 'PG billing settle race', 'pg-billing-settle-race')",
+    [workspaceId],
+  );
+  await pool.query(
+    "insert into billing_customers (id, workspace_id, toss_customer_key) values ($1, $2, 'pg-billing-settle-race')",
+    [customerId, workspaceId],
+  );
+  await pool.query(
+    "insert into subscriptions (id, workspace_id, billing_customer_id, status) values ($1, $2, $3, 'charge_pending')",
+    [subscriptionId, workspaceId, customerId],
+  );
+  await pool.query(
+    `insert into payments
+      (id, workspace_id, subscription_id, order_id, idempotency_key, status, amount_krw,
+       billing_period_start, billing_period_end, attempt)
+     values ($1, $2, $3, $4, 'pg16-settle-race-idempotency', 'pending', 49000,
+       '2026-08-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z', 1)`,
+    [paymentId, workspaceId, subscriptionId, orderId],
+  );
+
+  await pool.query(`
+    create or replace function semforge_pg16_sleep_on_billing_settle()
+    returns trigger
+    language plpgsql
+    as $$
+    begin
+      if old.order_id = 'pg16-settle-race-order' and old.status <> new.status then
+        perform pg_sleep(0.2);
+      end if;
+      return new;
+    end;
+    $$;
+  `);
+  await pool.query(`
+    create trigger semforge_pg16_sleep_on_billing_settle
+    before update of status on payments
+    for each row
+    execute function semforge_pg16_sleep_on_billing_settle();
+  `);
+
+  const globalRuntimePool = new Pool({
+    connectionString: databaseUrl,
+    max: 2,
+    ssl: false,
+    options: "-c role=semforge_billing",
+  });
+  try {
+    const globalStore = createPostgresBillingStore({
+      pool: globalRuntimePool,
+      fingerprintSecret: "pg16-billing-settle-race-secret-32-bytes",
+      scope: "global",
+    });
+    const settleInput = {
+      workspaceId,
+      orderId,
+      status: "paid" as const,
+      tossPaymentKey: "toss-pg16-settle-race",
+      failureCode: null,
+      failureMessage: null,
+      paidAt: new Date("2026-08-12T04:00:00.000Z"),
+      graceEndsAt: null,
+    };
+    const [first, second] = await Promise.all([
+      globalStore.settleCharge({
+        ...settleInput,
+        ledger: {
+          id: "f5400000-0000-4000-8000-000000000005",
+          workspaceId,
+          type: "charge.succeeded",
+          entityId: paymentId,
+          actorUserId: null,
+          requestId: "pg16-settle-race-a",
+          occurredAt: new Date("2026-08-12T04:00:01.000Z"),
+          amountKrw: 49_000,
+          orderId,
+          paymentStatus: "paid",
+        },
+      }),
+      globalStore.settleCharge({
+        ...settleInput,
+        ledger: {
+          id: "f5400000-0000-4000-8000-000000000006",
+          workspaceId,
+          type: "charge.succeeded",
+          entityId: paymentId,
+          actorUserId: null,
+          requestId: "pg16-settle-race-b",
+          occurredAt: new Date("2026-08-12T04:00:02.000Z"),
+          amountKrw: 49_000,
+          orderId,
+          paymentStatus: "paid",
+        },
+      }),
+    ]);
+    assert.deepEqual(
+      [first.changed, second.changed].sort(),
+      [false, true],
+    );
+    const ledger = await pool.query<{ count: number; request_ids: string[] }>(
+      `select count(*)::int as count, array_agg(request_id order by request_id) as request_ids
+       from billing_ledger_events
+       where workspace_id = $1 and type = 'charge.succeeded' and order_id = $2`,
+      [workspaceId, orderId],
+    );
+    assert.equal(ledger.rows[0]?.count, 1);
+    assert.equal(ledger.rows[0]?.request_ids.length, 1);
+    assert.match(ledger.rows[0]!.request_ids[0]!, /^pg16-settle-race-[ab]$/u);
+  } finally {
+    await globalRuntimePool.end();
+    await pool.query("drop trigger if exists semforge_pg16_sleep_on_billing_settle on payments");
+    await pool.query("drop function if exists semforge_pg16_sleep_on_billing_settle()");
+  }
+});
+
+test("PostgreSQL 16 billing settle은 terminal cancel/refund 이후 stale DONE을 no-op 처리한다", async () => {
+  const cases = [
+    {
+      workspaceId: "f5410000-0000-4000-8000-000000000001",
+      customerId: "f5410000-0000-4000-8000-000000000002",
+      subscriptionId: "f5410000-0000-4000-8000-000000000003",
+      paymentId: "f5410000-0000-4000-8000-000000000004",
+      slug: "pg-billing-stale-done-canceled",
+      orderId: "pg16-stale-done-canceled",
+      terminalStatus: "canceled",
+    },
+    {
+      workspaceId: "f5420000-0000-4000-8000-000000000001",
+      customerId: "f5420000-0000-4000-8000-000000000002",
+      subscriptionId: "f5420000-0000-4000-8000-000000000003",
+      paymentId: "f5420000-0000-4000-8000-000000000004",
+      slug: "pg-billing-stale-done-refunded",
+      orderId: "pg16-stale-done-refunded",
+      terminalStatus: "refunded",
+    },
+  ] as const;
+
+  for (const fixture of cases) {
+    await pool.query(
+      "insert into workspaces (id, name, slug) values ($1, $2, $3)",
+      [fixture.workspaceId, `PG ${fixture.slug}`, fixture.slug],
+    );
+    await pool.query(
+      "insert into billing_customers (id, workspace_id, toss_customer_key) values ($1, $2, $3)",
+      [fixture.customerId, fixture.workspaceId, fixture.slug],
+    );
+    await pool.query(
+      "insert into subscriptions (id, workspace_id, billing_customer_id, status) values ($1, $2, $3, 'past_due')",
+      [fixture.subscriptionId, fixture.workspaceId, fixture.customerId],
+    );
+    await pool.query(
+      `insert into payments
+        (id, workspace_id, subscription_id, order_id, idempotency_key, toss_payment_key, status,
+         amount_krw, billing_period_start, billing_period_end, attempt)
+       values ($1, $2, $3, $4, $5, 'already-terminal', $6, 49000,
+         '2026-08-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z', 1)`,
+      [
+        fixture.paymentId,
+        fixture.workspaceId,
+        fixture.subscriptionId,
+        fixture.orderId,
+        `${fixture.orderId}-idempotency`,
+        fixture.terminalStatus,
+      ],
+    );
+  }
+
+  const globalRuntimePool = new Pool({
+    connectionString: databaseUrl,
+    max: 1,
+    ssl: false,
+    options: "-c role=semforge_billing",
+  });
+  try {
+    const globalStore = createPostgresBillingStore({
+      pool: globalRuntimePool,
+      fingerprintSecret: "pg16-billing-stale-done-secret-32-bytes",
+      scope: "global",
+    });
+    for (const fixture of cases) {
+      const result = await globalStore.settleCharge({
+        workspaceId: fixture.workspaceId,
+        orderId: fixture.orderId,
+        status: "paid",
+        tossPaymentKey: "stale-done-after-terminal",
+        failureCode: null,
+        failureMessage: null,
+        paidAt: new Date("2026-08-12T04:30:00.000Z"),
+        graceEndsAt: null,
+        ledger: {
+          id: fixture.terminalStatus === "canceled"
+            ? "f5410000-0000-4000-8000-000000000005"
+            : "f5420000-0000-4000-8000-000000000005",
+          workspaceId: fixture.workspaceId,
+          type: "charge.succeeded",
+          entityId: fixture.paymentId,
+          actorUserId: null,
+          requestId: `${fixture.orderId}-stale-done`,
+          occurredAt: new Date("2026-08-12T04:30:01.000Z"),
+          amountKrw: 49_000,
+          orderId: fixture.orderId,
+          paymentStatus: "paid",
+        },
+      });
+      assert.equal(result.changed, false);
+    }
+
+    const rows = await pool.query<{ order_id: string; status: string; ledger_count: number }>(
+      `select p.order_id, p.status::text, count(ble.id)::int as ledger_count
+       from payments p
+       left join billing_ledger_events ble
+        on ble.workspace_id = p.workspace_id
+       and ble.order_id = p.order_id
+       and ble.type = 'charge.succeeded'
+       where p.order_id in ('pg16-stale-done-canceled', 'pg16-stale-done-refunded')
+       group by p.order_id, p.status
+       order by p.order_id`,
+    );
+    assert.deepEqual(rows.rows, [
+      { order_id: "pg16-stale-done-canceled", status: "canceled", ledger_count: 0 },
+      { order_id: "pg16-stale-done-refunded", status: "refunded", ledger_count: 0 },
+    ]);
+  } finally {
+    await globalRuntimePool.end();
+  }
+});
+
+test("PostgreSQL 16 billing subscription race는 cancel/disable을 stale settle로 되돌리지 않는다", async () => {
+  const fixtures = [
+    {
+      workspaceId: "f5430000-0000-4000-8000-000000000001",
+      customerId: "f5430000-0000-4000-8000-000000000002",
+      subscriptionId: "f5430000-0000-4000-8000-000000000003",
+      paymentId: "f5430000-0000-4000-8000-000000000004",
+      paymentMethodId: "f5430000-0000-4000-8000-000000000005",
+      orderId: "pg16-settle-vs-cancel",
+      slug: "pg16-settle-vs-cancel",
+      mode: "cancel",
+      expectedSubscriptionStatus: "cancel_at_period_end",
+    },
+    {
+      workspaceId: "f5440000-0000-4000-8000-000000000001",
+      customerId: "f5440000-0000-4000-8000-000000000002",
+      subscriptionId: "f5440000-0000-4000-8000-000000000003",
+      paymentId: "f5440000-0000-4000-8000-000000000004",
+      paymentMethodId: "f5440000-0000-4000-8000-000000000005",
+      orderId: "pg16-settle-vs-disable",
+      slug: "pg16-settle-vs-disable",
+      mode: "disable",
+      expectedSubscriptionStatus: "past_due",
+    },
+  ] as const;
+
+  for (const fixture of fixtures) {
+    await pool.query(
+      "insert into workspaces (id, name, slug) values ($1, $2, $3)",
+      [fixture.workspaceId, `PG ${fixture.slug}`, fixture.slug],
+    );
+    await pool.query(
+      "insert into billing_customers (id, workspace_id, toss_customer_key) values ($1, $2, $3)",
+      [fixture.customerId, fixture.workspaceId, fixture.slug],
+    );
+    await pool.query(
+      `insert into payment_methods
+        (id, workspace_id, billing_customer_id, billing_key_encrypted, billing_key_fingerprint, active)
+       values ($1, $2, $3, 'enc:v1:key:iviviviviviviviv:tagtagtagtagtagtagta:cipher', $4, true)`,
+      [
+        fixture.paymentMethodId,
+        fixture.workspaceId,
+        fixture.customerId,
+        fixture.mode === "cancel" ? "c".repeat(64) : "d".repeat(64),
+      ],
+    );
+    await pool.query(
+      `insert into subscriptions
+        (id, workspace_id, billing_customer_id, payment_method_id, status)
+       values ($1, $2, $3, $4, 'active')`,
+      [fixture.subscriptionId, fixture.workspaceId, fixture.customerId, fixture.paymentMethodId],
+    );
+    await pool.query(
+      `insert into payments
+        (id, workspace_id, subscription_id, order_id, idempotency_key, status, amount_krw,
+         billing_period_start, billing_period_end, attempt)
+       values ($1, $2, $3, $4, $5, 'pending', 49000,
+         '2026-08-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z', 1)`,
+      [
+        fixture.paymentId,
+        fixture.workspaceId,
+        fixture.subscriptionId,
+        fixture.orderId,
+        `${fixture.orderId}-idempotency`,
+      ],
+    );
+  }
+
+  const globalRuntimePool = new Pool({
+    connectionString: databaseUrl,
+    max: 2,
+    ssl: false,
+    options: "-c role=semforge_billing",
+  });
+  try {
+    const globalStore = createPostgresBillingStore({
+      pool: globalRuntimePool,
+      fingerprintSecret: "pg16-billing-subscription-race-secret-32-bytes",
+      scope: "global",
+    });
+
+    for (const fixture of fixtures) {
+      const settle = globalStore.settleCharge({
+        workspaceId: fixture.workspaceId,
+        orderId: fixture.orderId,
+        status: "paid",
+        tossPaymentKey: `${fixture.orderId}-payment-key`,
+        failureCode: null,
+        failureMessage: null,
+        paidAt: new Date("2026-08-12T05:00:00.000Z"),
+        graceEndsAt: null,
+        ledger: {
+          id: fixture.mode === "cancel"
+            ? "f5430000-0000-4000-8000-000000000006"
+            : "f5440000-0000-4000-8000-000000000006",
+          workspaceId: fixture.workspaceId,
+          type: "charge.succeeded",
+          entityId: fixture.paymentId,
+          actorUserId: null,
+          requestId: `${fixture.orderId}-settle`,
+          occurredAt: new Date("2026-08-12T05:00:01.000Z"),
+          amountKrw: 49_000,
+          orderId: fixture.orderId,
+          paymentStatus: "paid",
+        },
+      });
+      const blocker = fixture.mode === "cancel"
+        ? globalStore.scheduleCancellation({
+            workspaceId: fixture.workspaceId,
+            effectiveAt: new Date("2026-09-01T00:00:00.000Z"),
+            ledger: {
+              id: "f5430000-0000-4000-8000-000000000007",
+              workspaceId: fixture.workspaceId,
+              type: "subscription.cancel_scheduled",
+              entityId: fixture.subscriptionId,
+              actorUserId: null,
+              requestId: `${fixture.orderId}-cancel`,
+              occurredAt: new Date("2026-08-12T05:00:02.000Z"),
+            },
+          })
+        : globalStore.disablePaymentMethod({
+            workspaceId: fixture.workspaceId,
+            paymentMethodId: fixture.paymentMethodId,
+          });
+      await Promise.all([settle, blocker]);
+    }
+
+    const rows = await pool.query<{
+      order_id: string;
+      payment_status: string;
+      subscription_status: string;
+      payment_method_active: boolean | null;
+    }>(
+      `select p.order_id,
+              p.status::text as payment_status,
+              s.status::text as subscription_status,
+              pm.active as payment_method_active
+       from payments p
+       join subscriptions s on s.workspace_id = p.workspace_id and s.id = p.subscription_id
+       left join payment_methods pm on pm.workspace_id = s.workspace_id and pm.id = $1
+       where p.order_id in ('pg16-settle-vs-cancel', 'pg16-settle-vs-disable')
+       order by p.order_id`,
+      ["f5440000-0000-4000-8000-000000000005"],
+    );
+    assert.deepEqual(rows.rows.map(({ order_id, payment_status, subscription_status }) => ({
+      order_id,
+      payment_status,
+      subscription_status,
+    })), [
+      {
+        order_id: "pg16-settle-vs-cancel",
+        payment_status: "paid",
+        subscription_status: "cancel_at_period_end",
+      },
+      {
+        order_id: "pg16-settle-vs-disable",
+        payment_status: "paid",
+        subscription_status: "past_due",
+      },
+    ]);
+    assert.equal(rows.rows[1]?.payment_method_active, false);
+  } finally {
+    await globalRuntimePool.end();
+  }
+});
+
 // @TASK P5-PRIVACY - Privacy erasure database authorization and tenant lifecycle
 // @SPEC docs/ops/privacy-erasure-runbook.md
 test("PostgreSQL 16 password reset delivery fence는 worker 역할로 suppression을 읽고 dispatcher 역할을 거부한다", async () => {
