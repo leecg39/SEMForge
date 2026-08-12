@@ -474,12 +474,12 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
         const service = options.getService("global");
         const canonicalWorkspaceId = await service.resolveWebhookWorkspace(event);
         if (!canonicalWorkspaceId) {
-          const result = await service.handleWebhook({
-            transmissionId,
-            event,
-            receivedAt,
-          });
-          return { data: serializeResult(result) };
+          return {
+            data: {
+              outcome: "ignored" as const,
+              reason: "canonical_workspace_not_found",
+            },
+          };
         }
         const fenced = await options.workspaceOperations.withShared(
           canonicalWorkspaceId,

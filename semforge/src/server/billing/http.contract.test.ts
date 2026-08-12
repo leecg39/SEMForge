@@ -709,6 +709,53 @@ for (const state of ["blocking", "erased"] as const) {
   });
 }
 
+test("canonical workspace를 찾지 못한 webhook은 lookup race를 재시도하지 않고 200 terminal ACK한다", async () => {
+  let webhookCalls = 0;
+  let fenceCalls = 0;
+  const handlers = createBillingHttpHandlers({
+    requireAuth: async () => principal,
+    getService: () => serviceStub({
+      async resolveWebhookWorkspace() {
+        return null;
+      },
+      async handleWebhook() {
+        webhookCalls += 1;
+        return { outcome: "processed" };
+      },
+    }),
+    workspaceOperations: {
+      async withShared(_workspaceId, operation) {
+        fenceCalls += 1;
+        return { disposition: "executed", value: await operation() };
+      },
+    },
+    now: () => new Date("2026-08-12T04:02:00.000Z"),
+  });
+
+  const response = await handlers.webhook(new Request("https://app.semforge.example/api/v1/webhooks/toss", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "tosspayments-webhook-transmission-id": "canonical-workspace-missing",
+      "x-forwarded-for": "203.0.113.94",
+    },
+    body: JSON.stringify({
+      eventType: "PAYMENT_STATUS_CHANGED",
+      createdAt: "2026-08-12T13:02:00+09:00",
+      data: { orderId: "unknown-order", paymentKey: "unknown-payment", status: "DONE" },
+    }),
+  }));
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(body.data, {
+    outcome: "ignored",
+    reason: "canonical_workspace_not_found",
+  });
+  assert.equal(fenceCalls, 0);
+  assert.equal(webhookCalls, 0);
+});
+
 test("billing summary는 fence 없이 읽고 active canonical webhook만 fence 안에서 법정 ledger 경로를 유지한다", async () => {
   let fenceCalls = 0;
   let summaryCalls = 0;
