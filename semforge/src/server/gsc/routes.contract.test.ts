@@ -157,21 +157,36 @@ test("connect POST는 실제 auth guard에 CSRF와 owner/admin role을 요구하
 });
 
 test("callback GET은 code/state와 현재 session principal을 service에 전달하고 raw token을 응답하지 않는다", async () => {
+  const executionOrder: string[] = [];
   let serviceInput: unknown;
   let resolvedInput: unknown;
   const handlers = createGscRouteHandlers({
-    workspaceOperations: allowWorkspaceOperations,
-    authorizeBilling: allowBillingAccess,
+    workspaceOperations: {
+      async withShared(_workspaceId, operation) {
+        executionOrder.push("privacy-lock-acquired");
+        const value = await operation();
+        executionOrder.push("privacy-lock-released-after-result");
+        return { disposition: "executed", value };
+      },
+    },
+    authorizeBilling: async (input) => {
+      executionOrder.push("billing-authorized");
+      return allowBillingAccess(input);
+    },
     requireAuth: async () => principal,
     getService: () =>
       service({
         async resolveCallbackWorkspace(input) {
+          executionOrder.push("persisted-workspace-resolved");
           resolvedInput = input;
           return principal.workspaceId;
         },
         async completeCallback(input) {
+          executionOrder.push("provider-and-mutation-started");
           serviceInput = input;
-          return service().completeCallback(input);
+          const result = await service().completeCallback(input);
+          executionOrder.push("provider-and-mutation-result-committed");
+          return result;
         },
       }),
   });
@@ -196,9 +211,18 @@ test("callback GET은 code/state와 현재 session principal을 service에 전�
   });
   assert.equal((body.data as { returnPath: string }).returnPath, "/app/settings");
   assert.doesNotMatch(serialized, /accessToken|refreshToken|auth-code/);
+  assert.deepEqual(executionOrder, [
+    "privacy-lock-acquired",
+    "billing-authorized",
+    "persisted-workspace-resolved",
+    "provider-and-mutation-started",
+    "provider-and-mutation-result-committed",
+    "privacy-lock-released-after-result",
+  ]);
 });
 
-test("callback은 persisted oauth_state workspace가 principal과 다르면 fence와 token exchange 전에 거부한다", async () => {
+test("callback은 privacy fence 안에서 persisted oauth_state workspace를 검증하고 token exchange 전에 거부한다", async () => {
+  const executionOrder: string[] = [];
   let fenceCalls = 0;
   let callbackCalls = 0;
   const handlers = createGscRouteHandlers({
@@ -207,11 +231,17 @@ test("callback은 persisted oauth_state workspace가 principal과 다르면 fenc
     workspaceOperations: {
       async withShared(_workspaceId, operation) {
         fenceCalls += 1;
-        return { disposition: "executed", value: await operation() };
+        executionOrder.push("privacy-lock-acquired");
+        try {
+          return { disposition: "executed", value: await operation() };
+        } finally {
+          executionOrder.push("privacy-lock-released");
+        }
       },
     },
     getService: () => service({
       async resolveCallbackWorkspace() {
+        executionOrder.push("persisted-workspace-resolved");
         return "32000000-0000-4000-8000-000000000099";
       },
       async completeCallback(input) {
@@ -228,8 +258,13 @@ test("callback은 persisted oauth_state workspace가 principal과 다르면 fenc
 
   assert.equal(response.status, 400);
   assert.equal((await envelope(response)).error?.code, "BAD_REQUEST");
-  assert.equal(fenceCalls, 0);
+  assert.equal(fenceCalls, 1);
   assert.equal(callbackCalls, 0);
+  assert.deepEqual(executionOrder, [
+    "privacy-lock-acquired",
+    "persisted-workspace-resolved",
+    "privacy-lock-released",
+  ]);
 });
 
 test("properties, bindings, disconnect는 인증된 workspace만 사용하고 connection/site ID를 body/header tenant로 덮어쓰지 않는다", async () => {
@@ -352,20 +387,36 @@ test("account_created는 GSC read/write 직접 API 우회를 차단하고 servic
   assert.equal(serviceCalled, false);
 });
 
-for (const state of ["blocking", "erased"] as const) {
-  test(`${state} privacy fence는 GSC read/provider/write API를 409로 막고 service 호출을 0으로 유지한다`, async (t) => {
+for (const scenario of [
+  { name: "blocking", state: "blocking" },
+  { name: "erased", state: "erased" },
+  { name: "privacy control missing", state: "blocking" },
+] as const) {
+  test(`${scenario.name} privacy fence는 tenant-adjacent delegate 전에 GSC API를 409로 막는다`, async (t) => {
+    let billingCalls = 0;
+    let callbackWorkspaceResolverCalls = 0;
     let serviceCalls = 0;
     let fenceCalls = 0;
     const handlers = createGscRouteHandlers({
       requireAuth: async () => principal,
-      authorizeBilling: allowBillingAccess,
+      authorizeBilling: async () => {
+        billingCalls += 1;
+        return allowBillingAccess({
+          workspaceId: principal.workspaceId,
+          capability: "workspace:read",
+        });
+      },
       workspaceOperations: {
         async withShared() {
           fenceCalls += 1;
-          return { disposition: "skipped", state };
+          return { disposition: "skipped", state: scenario.state };
         },
       },
       getService: () => service({
+        async resolveCallbackWorkspace() {
+          callbackWorkspaceResolverCalls += 1;
+          return principal.workspaceId;
+        },
         async startConnection() {
           serviceCalls += 1;
           return service().startConnection({
@@ -428,6 +479,8 @@ for (const state of ["blocking", "erased"] as const) {
       });
     }
     assert.equal(fenceCalls, requests.length);
+    assert.equal(billingCalls, 0);
+    assert.equal(callbackWorkspaceResolverCalls, 0);
     assert.equal(serviceCalls, 0);
   });
 }

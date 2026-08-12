@@ -144,16 +144,17 @@ export function createGscRouteHandlers(options: GscRouteHandlerOptions) {
           roles: ["owner", "admin"],
           requestId: apiContext.requestId,
         });
-        await requireBilling(principal.workspaceId, "workspace:write");
         const body = await parseJsonBody(request, connectBodySchema);
         try {
-          const result = await runWorkspaceOperation(principal.workspaceId, () =>
-            options.getService().startConnection({
+          const result = await runWorkspaceOperation(principal.workspaceId, async () => {
+            await requireBilling(principal.workspaceId, "workspace:write");
+            return options.getService().startConnection({
               workspaceId: principal.workspaceId,
               userId: principal.userId,
               label: body.label,
               returnPath: body.returnPath,
-            }));
+            });
+          });
           return apiSuccess(result, { status: 201 });
         } catch (error) {
           mapGscError(error);
@@ -172,24 +173,25 @@ export function createGscRouteHandlers(options: GscRouteHandlerOptions) {
           roles: ["owner", "admin"],
           requestId: apiContext.requestId,
         });
-        await requireBilling(principal.workspaceId, "workspace:write");
         try {
-          const service = options.getService();
-          const canonicalWorkspaceId = await service.resolveCallbackWorkspace({
-            workspaceId: principal.workspaceId,
-            userId: principal.userId,
-            state,
-          });
-          if (!canonicalWorkspaceId || canonicalWorkspaceId !== principal.workspaceId) {
-            throw new GscServiceError("INVALID_STATE");
-          }
-          const result = await runWorkspaceOperation(canonicalWorkspaceId, () =>
-            service.completeCallback({
+          const result = await runWorkspaceOperation(principal.workspaceId, async () => {
+            await requireBilling(principal.workspaceId, "workspace:write");
+            const service = options.getService();
+            const canonicalWorkspaceId = await service.resolveCallbackWorkspace({
               workspaceId: principal.workspaceId,
+              userId: principal.userId,
+              state,
+            });
+            if (!canonicalWorkspaceId || canonicalWorkspaceId !== principal.workspaceId) {
+              throw new GscServiceError("INVALID_STATE");
+            }
+            return service.completeCallback({
+              workspaceId: canonicalWorkspaceId,
               userId: principal.userId,
               code,
               state,
-            }));
+            });
+          });
           return apiSuccess({
             returnPath: result.returnPath,
             connection: publicConnection(result.connection),
@@ -207,12 +209,13 @@ export function createGscRouteHandlers(options: GscRouteHandlerOptions) {
           roles: ["owner", "admin", "member"],
           requestId: apiContext.requestId,
         });
-        await requireBilling(principal.workspaceId, "workspace:read");
         try {
-          const connections = await runWorkspaceOperation(principal.workspaceId, () =>
-            options.getService().listConnections({
+          const connections = await runWorkspaceOperation(principal.workspaceId, async () => {
+            await requireBilling(principal.workspaceId, "workspace:read");
+            return options.getService().listConnections({
               workspaceId: principal.workspaceId,
-            }));
+            });
+          });
           return apiSuccess({ items: connections.map(publicConnection) });
         } catch (error) {
           mapGscError(error);
@@ -227,14 +230,15 @@ export function createGscRouteHandlers(options: GscRouteHandlerOptions) {
           roles: ["owner", "admin"],
           requestId: apiContext.requestId,
         });
-        await requireBilling(principal.workspaceId, "workspace:write");
         const { connectionId } = await context.params;
         try {
-          await runWorkspaceOperation(principal.workspaceId, () =>
-            options.getService().disconnect({
+          await runWorkspaceOperation(principal.workspaceId, async () => {
+            await requireBilling(principal.workspaceId, "workspace:write");
+            return options.getService().disconnect({
               workspaceId: principal.workspaceId,
               connectionId,
-            }));
+            });
+          });
           return apiSuccess({ disconnected: true });
         } catch (error) {
           mapGscError(error);
@@ -249,14 +253,15 @@ export function createGscRouteHandlers(options: GscRouteHandlerOptions) {
           roles: ["owner", "admin", "member"],
           requestId: apiContext.requestId,
         });
-        await requireBilling(principal.workspaceId, "workspace:read");
         const { connectionId } = await context.params;
         try {
-          const properties = await runWorkspaceOperation(principal.workspaceId, () =>
-            options.getService().listProperties({
+          const properties = await runWorkspaceOperation(principal.workspaceId, async () => {
+            await requireBilling(principal.workspaceId, "workspace:read");
+            return options.getService().listProperties({
               workspaceId: principal.workspaceId,
               connectionId,
-            }));
+            });
+          });
           return apiSuccess({ items: publicProperties(properties) });
         } catch (error) {
           mapGscError(error);
@@ -271,16 +276,17 @@ export function createGscRouteHandlers(options: GscRouteHandlerOptions) {
           roles: ["owner", "admin"],
           requestId: apiContext.requestId,
         });
-        await requireBilling(principal.workspaceId, "workspace:write");
         const body = await parseJsonBody(request, bindingBodySchema);
         try {
-          const binding = await runWorkspaceOperation(principal.workspaceId, () =>
-            options.getService().bindProperty({
+          const binding = await runWorkspaceOperation(principal.workspaceId, async () => {
+            await requireBilling(principal.workspaceId, "workspace:write");
+            return options.getService().bindProperty({
               workspaceId: principal.workspaceId,
               siteId: body.siteId,
               connectionId: body.connectionId,
               propertyUri: body.propertyUri,
-            }));
+            });
+          });
           return apiSuccess(publicBinding(binding), { status: 201 });
         } catch (error) {
           mapGscError(error);
