@@ -519,13 +519,14 @@ test("scheduler role은 최소 subscription/outbox 컬럼과 제한된 topic 정
   const policies = await pg.query<{ policyname: string; cmd: string }>(
     `select policyname, cmd from pg_policies
       where 'semforge_scheduler' = any(roles)
-        and tablename in ('outbox', 'subscriptions')
+        and tablename in ('outbox', 'subscriptions', 'workspace_privacy_controls')
       order by policyname`,
   );
   assert.deepEqual(policies.rows, [
     { policyname: "outbox_scheduler_insert", cmd: "INSERT" },
     { policyname: "outbox_scheduler_select", cmd: "SELECT" },
     { policyname: "subscriptions_scheduler_read", cmd: "SELECT" },
+    { policyname: "workspace_privacy_controls_pipeline_select", cmd: "SELECT" },
   ]);
 });
 
@@ -723,6 +724,16 @@ test("dispatcher role은 jobs/outbox만 전역 처리하고 tenant domain row는
     await pg.query("savepoint dispatcher_provider_denied");
     await assert.rejects(pg.query("select id from provider_calls"));
     await pg.query("rollback to savepoint dispatcher_provider_denied");
+    const controls = await pg.query<{ count: number }>(
+      "select count(*)::int as count from workspace_privacy_controls",
+    );
+    assert.ok(controls.rows[0]!.count >= 1);
+    await pg.query("savepoint dispatcher_control_update_denied");
+    await assert.rejects(
+      pg.query("update workspace_privacy_controls set generation = generation + 1"),
+      /permission denied/i,
+    );
+    await pg.query("rollback to savepoint dispatcher_control_update_denied");
   } finally {
     await pg.query("rollback");
   }

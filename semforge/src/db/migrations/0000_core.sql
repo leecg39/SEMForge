@@ -2054,8 +2054,11 @@ CREATE POLICY email_suppressions_worker_select ON email_suppressions FOR SELECT 
 ALTER TABLE workspace_privacy_controls ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE workspace_privacy_controls FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY workspace_privacy_controls_tenant_select ON workspace_privacy_controls FOR SELECT
-  TO semforge_web, semforge_auth, semforge_worker, semforge_scheduler, semforge_dispatcher, semforge_billing, semforge_billing_tenant
+  TO semforge_web, semforge_auth, semforge_worker, semforge_billing, semforge_billing_tenant
   USING (workspace_id = nullif(current_setting('app.workspace_id', true), '')::uuid);--> statement-breakpoint
+CREATE POLICY workspace_privacy_controls_pipeline_select ON workspace_privacy_controls FOR SELECT
+  TO semforge_scheduler, semforge_dispatcher
+  USING (true);--> statement-breakpoint
 CREATE POLICY workspaces_privacy_owner_access ON workspaces TO semforge_privacy_owner
   USING (true) WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY users_privacy_owner_access ON users TO semforge_privacy_owner

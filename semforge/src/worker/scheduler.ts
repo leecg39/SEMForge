@@ -80,7 +80,6 @@ async function insertPrivacyFencedOutbox(
          from workspace_privacy_controls privacy
          cross join privacy_lock
         where privacy.workspace_id = $1::uuid and privacy.state = 'active'
-        for share of privacy
      ), inserted as (
        insert into outbox
          (workspace_id, topic, payload, idempotency_key, available_at)

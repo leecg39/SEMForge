@@ -331,7 +331,6 @@ export class PostgresOutboxRelay {
            from workspace_privacy_controls privacy
            cross join privacy_lock
           where privacy.workspace_id = $1::uuid
-          for share of privacy
        ), source as (
          select ${OUTBOX_COLUMNS}
            from outbox event

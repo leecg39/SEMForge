@@ -1163,7 +1163,7 @@ test("PostgreSQL 16 privacy issuer/executor와 retention은 요청 위조 및 �
     runtime_member: boolean;
   }>(
     `select owner.rolname, owner.rolcanlogin,
-            has_role(runtime.oid, owner.oid, 'MEMBER') as runtime_member
+            pg_has_role(runtime.oid, owner.oid, 'MEMBER') as runtime_member
        from pg_roles owner
        join pg_roles runtime on runtime.rolname = case owner.rolname
          when 'semforge_privacy_owner' then 'semforge_privacy'
