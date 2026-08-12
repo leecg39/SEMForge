@@ -1183,7 +1183,33 @@ BEGIN
       'subject_user_id', request.subject_user_id::text
     ),
     'workspace', jsonb_build_object('id', p_workspace_id::text),
-    'subject', to_jsonb(subject),
+    'subject', jsonb_build_object(
+      'id', subject.id,
+      'email', subject.email,
+      'display_name', subject.display_name,
+      'role', subject.role,
+      'createdAt', subject.created_at,
+      'updatedAt', subject.updated_at,
+      'emailVerifiedAt', subject.email_verified_at,
+      'disabledAt', subject.disabled_at,
+      'membershipCreatedAt', subject.membership_created_at
+    ),
+    'acceptedInvites', coalesce((SELECT jsonb_agg(jsonb_build_object(
+      'id', invite.id::text,
+      'email', invite.email,
+      'workspaceName', invite.workspace_name,
+      'workspaceSlug', invite.workspace_slug,
+      'releaseTarget', invite.release_target,
+      'role', invite.role,
+      'expiresAt', invite.expires_at,
+      'acceptedAt', invite.accepted_at,
+      'acceptedErasedAt', invite.accepted_erased_at,
+      'createdAt', invite.created_at
+    ) ORDER BY invite.created_at, invite.id)
+      FROM invites invite
+     WHERE invite.accepted_workspace_id = p_workspace_id
+       AND invite.accepted_by_user_id = p_subject_user_id
+       AND invite.accepted_at IS NOT NULL), '[]'::jsonb),
     'legalAcceptances', coalesce((SELECT jsonb_agg(to_jsonb(legal)) FROM (
       SELECT terms_version, terms_sha256, privacy_version, privacy_sha256, presented_at, accepted_at
         FROM legal_acceptances WHERE workspace_id = p_workspace_id AND user_id = p_subject_user_id
@@ -1193,11 +1219,77 @@ BEGIN
              CASE WHEN revoked_at IS NULL AND expires_at > now() THEN 'active' ELSE 'inactive' END AS status
         FROM sessions
        WHERE workspace_id = p_workspace_id AND user_id = p_subject_user_id
-    ) session_row), '[]'::jsonb)
+    ) session_row), '[]'::jsonb),
+    'auditEvents', coalesce((SELECT jsonb_agg(jsonb_build_object(
+      'id', event.id::text,
+      'action', event.action,
+      'entityType', event.entity_type,
+      'metadataKeys', to_jsonb(CASE jsonb_typeof(event.metadata)
+        WHEN 'object' THEN ARRAY(
+          SELECT metadata_key
+            FROM jsonb_object_keys(event.metadata) metadata_key
+           ORDER BY metadata_key
+        )
+        ELSE ARRAY[]::text[]
+      END),
+      'createdAt', event.created_at
+    ) ORDER BY event.created_at, event.id)
+      FROM audit_events event
+     WHERE event.workspace_id = p_workspace_id
+       AND event.actor_user_id = p_subject_user_id), '[]'::jsonb),
+    'deliveries', coalesce((SELECT jsonb_agg(jsonb_build_object(
+      'channel', delivery.channel,
+      'status', delivery.status,
+      'attempts', delivery.attempts,
+      'deliveredAt', delivery.delivered_at,
+      'createdAt', delivery.created_at
+    ) ORDER BY delivery.created_at, delivery.id)
+     FROM deliveries delivery
+     WHERE delivery.workspace_id = p_workspace_id
+       AND (
+         lower(delivery.recipient) = lower(subject.email)
+         OR delivery.recipient = 'erased:' || encode(sha256(subject.email::bytea), 'hex')
+       )), '[]'::jsonb),
+    'privacyRequests', coalesce((SELECT jsonb_agg(jsonb_build_object(
+      'id', subject_request.id::text,
+      'externalId', subject_request.request_id,
+      'type', subject_request.type,
+      'status', subject_request.status,
+      'requestedAt', subject_request.requested_at,
+      'completedAt', subject_request.completed_at,
+      'createdAt', subject_request.created_at
+    ) ORDER BY subject_request.requested_at, subject_request.id)
+      FROM privacy_requests subject_request
+     WHERE subject_request.workspace_id = p_workspace_id
+       AND subject_request.subject_user_id = p_subject_user_id), '[]'::jsonb),
+    'privacyRequestSteps', coalesce((SELECT jsonb_agg(jsonb_build_object(
+      'requestId', step.request_id::text,
+      'stepKey', step.step_key,
+      'status', step.status,
+      'attempts', step.attempts,
+      'metadataKeys', to_jsonb(CASE jsonb_typeof(step.metadata)
+        WHEN 'object' THEN ARRAY(
+          SELECT metadata_key
+            FROM jsonb_object_keys(step.metadata) metadata_key
+           ORDER BY metadata_key
+        )
+        ELSE ARRAY[]::text[]
+      END),
+      'completedAt', step.completed_at,
+      'createdAt', step.created_at
+    ) ORDER BY step.created_at, step.id)
+      FROM privacy_request_steps step
+      JOIN privacy_requests subject_request
+        ON subject_request.workspace_id = step.workspace_id
+       AND subject_request.id = step.request_id
+     WHERE step.workspace_id = p_workspace_id
+       AND subject_request.subject_user_id = p_subject_user_id), '[]'::jsonb)
   ) INTO result
   FROM privacy_requests request
   JOIN (
-    SELECT users.id::text, users.email, users.display_name, memberships.role
+    SELECT users.id::text, users.email, users.display_name, memberships.role,
+           users.created_at, users.updated_at, users.email_verified_at, users.disabled_at,
+           memberships.created_at AS membership_created_at
       FROM memberships JOIN users ON users.id = memberships.user_id
      WHERE memberships.workspace_id = p_workspace_id
        AND memberships.user_id = p_subject_user_id
@@ -1209,10 +1301,20 @@ BEGIN
   SELECT p_workspace_id, 'privacy.export.read', 'privacy_request', p_request_id::text,
          request.request_id,
          jsonb_build_object(
-           'categories', jsonb_build_array('workspace_membership', 'subject_profile', 'legal_acceptances', 'sessions'),
+           'categories', jsonb_build_array(
+             'workspace_membership', 'subject_profile', 'accepted_invites',
+             'legal_acceptances', 'sessions', 'actor_audit_events',
+             'recipient_deliveries', 'subject_privacy_requests',
+             'subject_privacy_request_steps'
+           ),
            'subjectCount', 1,
+           'acceptedInviteCount', jsonb_array_length(result->'acceptedInvites'),
            'legalAcceptanceCount', jsonb_array_length(result->'legalAcceptances'),
-           'sessionCount', jsonb_array_length(result->'sessions')
+           'sessionCount', jsonb_array_length(result->'sessions'),
+           'actorAuditEventCount', jsonb_array_length(result->'auditEvents'),
+           'deliveryCount', jsonb_array_length(result->'deliveries'),
+           'privacyRequestCount', jsonb_array_length(result->'privacyRequests'),
+           'privacyRequestStepCount', jsonb_array_length(result->'privacyRequestSteps')
          )
     FROM privacy_requests request
    WHERE request.workspace_id = p_workspace_id AND request.id = p_request_id;

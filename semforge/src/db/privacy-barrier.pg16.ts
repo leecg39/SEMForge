@@ -197,6 +197,24 @@ async function openApprovedSubjectErasure(input: {
   }
 }
 
+async function openApprovedSubjectExport(input: {
+  readonly workspaceId: string;
+  readonly requestId: string;
+  readonly operatorId: string;
+  readonly subjectUserId: string;
+}): Promise<void> {
+  const operator = rolePool("semforge_operator", "pg16-privacy-subject-export-operator");
+  try {
+    await operator.query(
+      `select id::text
+         from privacy_open_request($1::uuid, $2::text, 'export', $3::text, now(), $4::uuid)`,
+      [input.workspaceId, input.requestId, input.operatorId, input.subjectUserId],
+    );
+  } finally {
+    await operator.end();
+  }
+}
+
 function dbBackedSuppressionProcessor(database: { query<T = unknown>(
   text: string,
   values?: readonly unknown[],
@@ -219,6 +237,197 @@ function dbBackedSuppressionProcessor(database: { query<T = unknown>(
     },
   };
 }
+
+test("PostgreSQL 16 DSAR export는 subject PII 범주를 완전하게 반환하고 비밀·다른 member 값을 제외한다", {
+  timeout: 30_000,
+}, async () => {
+  const workspaceId = "fb110000-0000-4000-8000-000000000001";
+  const subjectUserId = "fb110000-0000-4000-8000-000000000011";
+  const otherUserId = "fb110000-0000-4000-8000-000000000012";
+  const siteId = "fb110000-0000-4000-8000-000000000021";
+  const reportId = "fb110000-0000-4000-8000-000000000022";
+  const priorRequestId = "fb110000-0000-4000-8000-000000000031";
+  const operatorId = "operator:pg16-subject-export";
+  const externalRequestId = "pg16-subject-export";
+
+  await admin.query("begin");
+  try {
+    await admin.query(
+      `insert into users
+         (id, email, password_hash, display_name, email_verified_at, disabled_at, created_at, updated_at)
+       values
+         ($1, 'pg16-export-subject@example.test', 'scrypt:subject', 'PG16 Export Subject',
+          '2026-01-02T03:05:05Z', null, '2026-01-02T03:04:05Z', '2026-02-03T04:05:06Z'),
+         ($2, 'pg16-export-other@example.test', 'scrypt:other', 'PG16 Export Other',
+          now(), null, now(), now())`,
+      [subjectUserId, otherUserId],
+    );
+    await admin.query(
+      `insert into workspaces (id, name, slug)
+       values ($1, 'PG16 Subject Export', 'pg16-subject-export')`,
+      [workspaceId],
+    );
+    await admin.query(
+      `insert into memberships (workspace_id, user_id, role, created_at)
+       values ($1, $2, 'owner', '2026-01-02T03:04:06Z'),
+              ($1, $3, 'owner', now())`,
+      [workspaceId, subjectUserId, otherUserId],
+    );
+    await admin.query(
+      `insert into sites (id, workspace_id, name, domain)
+       values ($1, $2, 'PG16 Export Site', 'pg16-export.example.test')`,
+      [siteId, workspaceId],
+    );
+    await admin.query(
+      `insert into weekly_reports
+         (id, workspace_id, site_id, status, period_start, period_end,
+          comparison_start, comparison_end, brand_name, accent_color)
+       values ($1, $2, $3, 'collecting', '2026-08-03', '2026-08-09',
+         '2026-07-27', '2026-08-02', 'PG16 Export', '#2563EB')`,
+      [reportId, workspaceId, siteId],
+    );
+    await admin.query(
+      `insert into invites
+         (id, email, token_hash, workspace_name, workspace_slug, role, created_at,
+          expires_at, accepted_at, accepted_workspace_id, accepted_by_user_id)
+       values
+         ('fb110000-0000-4000-8000-000000000041', 'pg16-export-subject@example.test', $1,
+          'PG16 Subject Export', 'pg16-subject-export', 'owner', '2026-01-01T00:00:00Z',
+          '2026-01-08T00:00:00Z', '2026-01-02T00:00:00Z', $2, $3),
+         ('fb110000-0000-4000-8000-000000000042', 'pg16-export-other@example.test', $4,
+          'PG16 Subject Export', 'pg16-subject-export', 'owner', '2026-01-01T00:00:00Z',
+          '2026-01-08T00:00:00Z', '2026-01-02T00:00:00Z', $2, $5)`,
+      [digest("pg16-export-subject-invite"), workspaceId, subjectUserId,
+        digest("pg16-export-other-invite"), otherUserId],
+    );
+    await admin.query(
+      `insert into audit_events
+         (id, workspace_id, actor_user_id, action, entity_type, entity_id, request_id, metadata, created_at)
+       values
+         ('fb110000-0000-4000-8000-000000000051', $1, $2, 'subject.action',
+          'sensitive-record', 'pg16-export-other@example.test', 'other-request',
+          '{"email":"pg16-export-other@example.test","token":"pg16-audit-token-secret"}'::jsonb,
+         '2026-03-04T05:06:07Z'),
+         ('fb110000-0000-4000-8000-000000000052', $1, $3, 'other.action',
+          'other-record', null, null, '{}'::jsonb, '2026-03-04T05:06:08Z'),
+         ('fb110000-0000-4000-8000-000000000053', $1, $2, 'subject.scalar-metadata',
+          'scalar-record', null, null, '["not-an-object"]'::jsonb, '2026-03-04T05:06:09Z')`,
+      [workspaceId, subjectUserId, otherUserId],
+    );
+    await admin.query(
+      `insert into deliveries
+         (workspace_id, report_id, channel, recipient, status, idempotency_key,
+          last_error, delivered_at, created_at)
+       values
+         ($1, $2, 'email', 'pg16-export-subject@example.test', 'delivered',
+          'pg16-subject-delivery', 'pg16-delivery-provider-secret',
+          '2026-04-05T06:08:08Z', '2026-04-05T06:07:08Z'),
+         ($1, $2, 'email', 'pg16-export-other@example.test', 'delivered',
+          'pg16-other-delivery', null, now(), now()),
+         ($1, $2, 'email', $3, 'delivered', 'pg16-retained-subject-delivery', null,
+          '2026-04-05T06:09:08Z', '2026-04-05T06:09:07Z')`,
+      [workspaceId, reportId, `erased:${digest("pg16-export-subject@example.test")}`],
+    );
+    await admin.query(
+      `insert into privacy_requests
+         (id, workspace_id, request_id, type, status, operator_id, subject_user_id,
+          metadata, requested_at, completed_at, created_at)
+       values
+         ($1, $2, 'pg16-prior-subject-request', 'correction', 'completed',
+          'operator-private@example.test', $3, '{"token":"pg16-request-token-secret"}'::jsonb,
+          '2026-05-06T07:08:09Z', '2026-05-06T07:09:09Z', '2026-05-06T07:08:09Z'),
+         (gen_random_uuid(), $2, 'pg16-other-subject-request', 'export', 'completed',
+          'operator:other', $4, '{}'::jsonb, now(), now(), now())`,
+      [priorRequestId, workspaceId, subjectUserId, otherUserId],
+    );
+    await admin.query(
+      `insert into privacy_request_steps
+         (workspace_id, request_id, step_key, status, attempts, last_error, metadata,
+          completed_at, created_at)
+       values ($1, $2, 'correction.applied', 'succeeded', 1, 'pg16-step-secret',
+         '{"field":"display_name","token":"pg16-step-token-secret"}'::jsonb,
+         '2026-05-06T07:09:09Z', '2026-05-06T07:08:10Z')`,
+      [workspaceId, priorRequestId],
+    );
+    await admin.query("commit");
+  } catch (error) {
+    await admin.query("rollback").catch(() => undefined);
+    throw error;
+  }
+
+  await openApprovedSubjectExport({
+    workspaceId,
+    requestId: externalRequestId,
+    operatorId,
+    subjectUserId,
+  });
+  const privacyPool = rolePool("semforge_privacy", "pg16-privacy-subject-export-service");
+  let exported: Awaited<ReturnType<ReturnType<typeof createPrivacyService>["exportWorkspaceSubject"]>>;
+  try {
+    exported = await createPrivacyService({ db: privacyPool }).exportWorkspaceSubject({
+      workspaceId,
+      operatorId,
+      requestId: externalRequestId,
+      subjectUserId,
+      now: new Date("2026-08-12T02:00:00.000Z"),
+    });
+  } finally {
+    await privacyPool.end();
+  }
+
+  assert.equal(exported.subject.email, "pg16-export-subject@example.test");
+  assert.equal(exported.subject.createdAt, "2026-01-02T03:04:05+00:00");
+  assert.equal(exported.acceptedInvites.length, 1);
+  assert.equal(exported.auditEvents.length, 2);
+  assert.equal(exported.deliveries.length, 2);
+  assert.equal(Object.hasOwn(exported.deliveries[0] as object, "recipient"), false);
+  assert.equal(exported.privacyRequests.length, 2);
+  assert.equal(exported.privacyRequestSteps.length, 1);
+  assert.deepEqual(exported.auditEvents[0]?.metadataKeys, ["email", "token"]);
+  assert.deepEqual(exported.auditEvents[1]?.metadataKeys, []);
+  const exportJson = JSON.stringify(exported);
+  for (const forbidden of [
+    digest("pg16-export-subject-invite"),
+    "pg16-export-other@example.test",
+    "pg16-audit-token-secret",
+    "pg16-delivery-provider-secret",
+    "pg16-other-delivery",
+    "operator-private@example.test",
+    "pg16-request-token-secret",
+    "pg16-step-secret",
+    "pg16-step-token-secret",
+  ]) {
+    assert.equal(exportJson.includes(forbidden), false, `export leaked ${forbidden}`);
+  }
+
+  const audit = await admin.query<{ metadata: Record<string, unknown> }>(
+    `select metadata
+       from audit_events
+      where workspace_id = $1 and action = 'privacy.export.read'`,
+    [workspaceId],
+  );
+  assert.deepEqual(audit.rows[0]!.metadata, {
+    categories: [
+      "workspace_membership",
+      "subject_profile",
+      "accepted_invites",
+      "legal_acceptances",
+      "sessions",
+      "actor_audit_events",
+      "recipient_deliveries",
+      "subject_privacy_requests",
+      "subject_privacy_request_steps",
+    ],
+    subjectCount: 1,
+    acceptedInviteCount: 1,
+    legalAcceptanceCount: 0,
+    sessionCount: 0,
+    actorAuditEventCount: 2,
+    deliveryCount: 2,
+    privacyRequestCount: 2,
+    privacyRequestStepCount: 1,
+  });
+});
 
 async function applicationPid(applicationName: string): Promise<number | undefined> {
   const result = await admin.query<{ pid: number }>(

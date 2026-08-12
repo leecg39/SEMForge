@@ -61,6 +61,55 @@ export interface PrivacyRetentionResult {
   readonly items: readonly { readonly target: string; readonly matched: number }[];
 }
 
+interface PrivacyExportAcceptedInvite {
+  readonly id: string;
+  readonly email: string;
+  readonly workspaceName: string;
+  readonly workspaceSlug: string;
+  readonly releaseTarget: string;
+  readonly role: string;
+  readonly expiresAt: string;
+  readonly acceptedAt: string;
+  readonly acceptedErasedAt: string | null;
+  readonly createdAt: string;
+}
+
+interface PrivacyExportAuditEvent {
+  readonly id: string;
+  readonly action: string;
+  readonly entityType: string;
+  readonly metadataKeys: readonly string[];
+  readonly createdAt: string;
+}
+
+interface PrivacyExportDelivery {
+  readonly channel: string;
+  readonly status: string;
+  readonly attempts: number;
+  readonly deliveredAt: string | null;
+  readonly createdAt: string;
+}
+
+interface PrivacyExportRequestRecord {
+  readonly id: string;
+  readonly externalId: string;
+  readonly type: string;
+  readonly status: string;
+  readonly requestedAt: string;
+  readonly completedAt: string | null;
+  readonly createdAt: string;
+}
+
+interface PrivacyExportRequestStep {
+  readonly requestId: string;
+  readonly stepKey: string;
+  readonly status: string;
+  readonly attempts: number;
+  readonly metadataKeys: readonly string[];
+  readonly completedAt: string | null;
+  readonly createdAt: string;
+}
+
 interface PrivacyExportPayload {
   readonly request: {
     readonly id: string;
@@ -74,9 +123,19 @@ interface PrivacyExportPayload {
     readonly email: string;
     readonly display_name: string | null;
     readonly role: string;
+    readonly createdAt: string;
+    readonly updatedAt: string;
+    readonly emailVerifiedAt: string | null;
+    readonly disabledAt: string | null;
+    readonly membershipCreatedAt: string;
   };
+  readonly acceptedInvites: readonly PrivacyExportAcceptedInvite[];
   readonly legalAcceptances: readonly unknown[];
   readonly sessions: readonly unknown[];
+  readonly auditEvents: readonly PrivacyExportAuditEvent[];
+  readonly deliveries: readonly PrivacyExportDelivery[];
+  readonly privacyRequests: readonly PrivacyExportRequestRecord[];
+  readonly privacyRequestSteps: readonly PrivacyExportRequestStep[];
 }
 
 interface PrivacyDeletionTargets {
@@ -255,15 +314,112 @@ function decodeJsonObject(value: unknown, code: string): Record<string, unknown>
   return decoded as Record<string, unknown>;
 }
 
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && !Array.isArray(value) && typeof value === "object";
+}
+
+function isStringOrNull(value: unknown): value is string | null {
+  return typeof value === "string" || value === null;
+}
+
+function hasOnlyStrings(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function hasStringFields(row: Record<string, unknown>, fields: readonly string[]): boolean {
+  return fields.every((field) => typeof row[field] === "string");
+}
+
+function hasExactKeys(row: Record<string, unknown>, fields: readonly string[]): boolean {
+  const actual = Object.keys(row).sort();
+  const expected = [...fields].sort();
+  return actual.length === expected.length && actual.every((field, index) => field === expected[index]);
+}
+
+function isAcceptedInvite(value: unknown): value is PrivacyExportAcceptedInvite {
+  if (!isJsonObject(value)) return false;
+  const fields = [
+    "id", "email", "workspaceName", "workspaceSlug", "releaseTarget", "role",
+    "expiresAt", "acceptedAt", "acceptedErasedAt", "createdAt",
+  ] as const;
+  return hasExactKeys(value, fields)
+    && hasStringFields(value, fields.filter((field) => field !== "acceptedErasedAt"))
+    && isStringOrNull(value.acceptedErasedAt);
+}
+
+function isAuditEvent(value: unknown): value is PrivacyExportAuditEvent {
+  if (!isJsonObject(value)) return false;
+  const fields = ["id", "action", "entityType", "metadataKeys", "createdAt"] as const;
+  return hasExactKeys(value, fields)
+    && hasStringFields(value, ["id", "action", "entityType", "createdAt"])
+    && hasOnlyStrings(value.metadataKeys);
+}
+
+function isDelivery(value: unknown): value is PrivacyExportDelivery {
+  if (!isJsonObject(value)) return false;
+  return hasExactKeys(value, ["channel", "status", "attempts", "deliveredAt", "createdAt"])
+    && hasStringFields(value, ["channel", "status", "createdAt"])
+    && Number.isInteger(value.attempts) && isStringOrNull(value.deliveredAt);
+}
+
+function isPrivacyRequestRecord(value: unknown): value is PrivacyExportRequestRecord {
+  if (!isJsonObject(value)) return false;
+  const fields = [
+    "id", "externalId", "type", "status", "requestedAt", "completedAt", "createdAt",
+  ] as const;
+  return hasExactKeys(value, fields)
+    && hasStringFields(value, ["id", "externalId", "type", "status", "requestedAt", "createdAt"])
+    && isStringOrNull(value.completedAt);
+}
+
+function isPrivacyRequestStep(value: unknown): value is PrivacyExportRequestStep {
+  if (!isJsonObject(value)) return false;
+  const fields = [
+    "requestId", "stepKey", "status", "attempts", "metadataKeys", "completedAt", "createdAt",
+  ] as const;
+  return hasExactKeys(value, fields)
+    && hasStringFields(value, ["requestId", "stepKey", "status", "createdAt"])
+    && Number.isInteger(value.attempts)
+    && hasOnlyStrings(value.metadataKeys)
+    && isStringOrNull(value.completedAt);
+}
+
+function isExportSubject(value: unknown): value is PrivacyExportPayload["subject"] {
+  if (!isJsonObject(value)) return false;
+  const fields = [
+    "id", "email", "display_name", "role", "createdAt", "updatedAt", "emailVerifiedAt",
+    "disabledAt", "membershipCreatedAt",
+  ] as const;
+  return hasExactKeys(value, fields) && hasStringFields(value, [
+    "id", "email", "role", "createdAt", "updatedAt", "membershipCreatedAt",
+  ])
+    && isStringOrNull(value.display_name)
+    && isStringOrNull(value.emailVerifiedAt)
+    && isStringOrNull(value.disabledAt);
+}
+
 function decodeExport(value: unknown): PrivacyExportPayload {
   const payload = decodeJsonObject(value, "PRIVACY_EXPORT_INVALID");
   if (!payload.request || typeof payload.request !== "object" || Array.isArray(payload.request) ||
       !payload.workspace || typeof payload.workspace !== "object" || Array.isArray(payload.workspace) ||
-      !payload.subject || typeof payload.subject !== "object" || Array.isArray(payload.subject)) {
+      !isExportSubject(payload.subject)) {
     throw new Error("PRIVACY_EXPORT_INVALID");
   }
   for (const key of ["legalAcceptances", "sessions"] as const) {
     if (!Array.isArray(payload[key])) throw new Error("PRIVACY_EXPORT_INVALID");
+  }
+  const acceptedInvites = payload.acceptedInvites;
+  const auditEvents = payload.auditEvents;
+  const deliveries = payload.deliveries;
+  const privacyRequests = payload.privacyRequests;
+  const privacyRequestSteps = payload.privacyRequestSteps;
+  if (!Array.isArray(acceptedInvites) || acceptedInvites.some((row) => !isAcceptedInvite(row))
+      || !Array.isArray(auditEvents) || auditEvents.some((row) => !isAuditEvent(row))
+      || !Array.isArray(deliveries) || deliveries.some((row) => !isDelivery(row))
+      || !Array.isArray(privacyRequests) || privacyRequests.some((row) => !isPrivacyRequestRecord(row))
+      || !Array.isArray(privacyRequestSteps)
+      || privacyRequestSteps.some((row) => !isPrivacyRequestStep(row))) {
+    throw new Error("PRIVACY_EXPORT_INVALID");
   }
   return payload as unknown as PrivacyExportPayload;
 }
@@ -411,8 +567,13 @@ export function createPrivacyService(options: {
             now: input.now,
             metadata: {
               subjectUserId,
+              acceptedInvites: payload.acceptedInvites.length,
               legalAcceptances: payload.legalAcceptances.length,
               sessions: payload.sessions.length,
+              auditEvents: payload.auditEvents.length,
+              deliveries: payload.deliveries.length,
+              privacyRequests: payload.privacyRequests.length,
+              privacyRequestSteps: payload.privacyRequestSteps.length,
             },
           });
           await finishRequest(database, { ...input, requestUuid: request.id });

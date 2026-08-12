@@ -242,9 +242,178 @@ test("privacy request DB 제약은 subject 요청과 workspace closure를 혼동
   );
 });
 
+test("DSAR export는 SQL JSON의 허용 필드 타입이 변조되면 공개 서비스 경계에서 거부한다", async () => {
+  const malformedPayload = {
+    request: {
+      id: "00000000-0000-4000-8000-00000000a599",
+      external_id: "malformed-export",
+      type: "export",
+      subject_user_id: userA,
+    },
+    workspace: { id: workspaceA },
+    subject: {
+      id: userA,
+      email: "owner-a@example.test",
+      display_name: "Owner A",
+      role: "owner",
+      createdAt: "2026-01-02T03:04:05+00:00",
+      updatedAt: "2026-02-03T04:05:06+00:00",
+      emailVerifiedAt: "2026-01-02T03:05:05+00:00",
+      disabledAt: null,
+      membershipCreatedAt: "2026-01-02T03:04:06+00:00",
+    },
+    acceptedInvites: [],
+    legalAcceptances: [],
+    sessions: [],
+    auditEvents: [{
+      id: "00000000-0000-4000-8000-00000000a510",
+      action: "subject.action",
+      entityType: "record",
+      metadataKeys: ["safe", 42],
+      createdAt: "2026-03-04T05:06:07+00:00",
+    }],
+    deliveries: [],
+    privacyRequests: [],
+    privacyRequestSteps: [],
+  };
+  const db = {
+    async query<T = unknown>(text: string): Promise<{ rows: T[] }> {
+      if (/privacy_claim_request/u.test(text)) {
+        return { rows: [{ id: malformedPayload.request.id, status: "running" }] as T[] };
+      }
+      if (/privacy_export_workspace/u.test(text)) {
+        return { rows: [{ payload: malformedPayload }] as T[] };
+      }
+      return { rows: [] };
+    },
+  };
+
+  await assert.rejects(
+    createPrivacyService({ db }).exportWorkspaceSubject({
+      workspaceId: workspaceA,
+      operatorId: "operator-1",
+      requestId: "malformed-export",
+      subjectUserId: userA,
+      now: new Date("2026-08-12T02:00:00.000Z"),
+    }),
+    /PRIVACY_EXPORT_INVALID/u,
+  );
+});
+
 test("운영자 DSAR export는 tenant 경계를 지키고 token/billing key 원문을 내보내지 않는다", async () => {
   const pg = await migratedDb();
   await seedPrivacySubject(pg);
+  await pg.query(
+    `update users
+        set created_at = '2026-01-02T03:04:05.000Z',
+            updated_at = '2026-02-03T04:05:06.000Z',
+            email_verified_at = '2026-01-02T03:05:05.000Z',
+            disabled_at = null
+      where id = $1`,
+    [userA],
+  );
+  await pg.query(
+    `insert into users (id, email, password_hash, display_name, email_verified_at)
+     values ($1, 'member-a2@example.test', 'scrypt:a2', 'Member A2', now())`,
+    [userASecondMember],
+  );
+  await pg.query(
+    "insert into memberships (workspace_id, user_id, role) values ($1, $2, 'owner')",
+    [workspaceA, userASecondMember],
+  );
+  await pg.query(
+    `insert into invites
+       (id, email, token_hash, workspace_name, workspace_slug, release_target, role,
+        created_at, expires_at, accepted_at, accepted_workspace_id, accepted_by_user_id)
+     values ('00000000-0000-4000-8000-00000000a509', 'owner-a@example.test', $1,
+       'Agency A', 'agency-a', 'paid-production', 'owner',
+       '2026-01-01T00:00:00.000Z', '2026-01-08T00:00:00.000Z',
+       '2026-01-02T00:00:00.000Z', $2, $3)`,
+    [digest("subject-invite-token"), workspaceA, userA],
+  );
+  await pg.query(
+    `insert into invites
+       (email, token_hash, workspace_name, workspace_slug, release_target, role,
+        created_at, expires_at, accepted_at, accepted_workspace_id, accepted_by_user_id)
+     values ('member-a2@example.test', $1, 'Agency A', 'agency-a', 'paid-production', 'owner',
+       '2026-01-01T00:00:00.000Z', '2026-01-08T00:00:00.000Z',
+       '2026-01-02T00:00:00.000Z', $2, $3)`,
+    [digest("other-member-invite-token"), workspaceA, userASecondMember],
+  );
+  await pg.query(
+    `insert into audit_events
+       (id, workspace_id, actor_user_id, action, entity_type, entity_id, request_id, metadata, created_at)
+     values ('00000000-0000-4000-8000-00000000a510', $1, $2, 'subject.action',
+       'sensitive-record', 'other-member@example.test', 'other-request',
+       '{"email":"other-member@example.test","token":"audit-token-secret"}'::jsonb,
+       '2026-03-04T05:06:07.000Z')`,
+    [workspaceA, userA],
+  );
+  await pg.query(
+    `insert into audit_events
+       (workspace_id, actor_user_id, action, entity_type, metadata, created_at)
+     values ($1, $2, 'other-member.action', 'other-member-record',
+       '{"email":"member-a2@example.test"}'::jsonb, '2026-03-04T05:06:08.000Z')`,
+    [workspaceA, userASecondMember],
+  );
+  await pg.query(
+    `insert into audit_events
+       (id, workspace_id, actor_user_id, action, entity_type, metadata, created_at)
+     values ('00000000-0000-4000-8000-00000000a513', $1, $2,
+       'subject.scalar-metadata', 'scalar-record', '["not-an-object"]'::jsonb,
+       '2026-03-04T05:06:09.000Z')`,
+    [workspaceA, userA],
+  );
+  await pg.query(
+    `update deliveries
+        set last_error = 'delivery-provider-secret for other-member@example.test',
+            created_at = '2026-04-05T06:07:08.000Z',
+            delivered_at = '2026-04-05T06:08:08.000Z'
+      where workspace_id = $1 and recipient = 'owner-a@example.test'`,
+    [workspaceA],
+  );
+  await pg.query(
+    `insert into deliveries
+       (workspace_id, report_id, channel, recipient, status, idempotency_key, created_at)
+     values ($1, $2, 'email', 'member-a2@example.test', 'delivered',
+       'other-member-delivery', '2026-04-05T06:07:09.000Z')`,
+    [workspaceA, reportA],
+  );
+  await pg.query(
+    `insert into deliveries
+       (workspace_id, report_id, channel, recipient, status, idempotency_key,
+        delivered_at, created_at)
+     values ($1, $2, 'email', $3, 'delivered', 'retained-subject-delivery',
+       '2026-04-05T06:09:08.000Z', '2026-04-05T06:09:07.000Z')`,
+    [workspaceA, reportA, `erased:${digest("owner-a@example.test")}`],
+  );
+  await pg.query(
+    `insert into privacy_requests
+       (id, workspace_id, request_id, type, status, operator_id, subject_user_id,
+        metadata, requested_at, completed_at, created_at)
+     values ('00000000-0000-4000-8000-00000000a511', $1, 'dsar-correction-before-export',
+       'correction', 'completed', 'operator-private@example.test', $2,
+       '{"token":"privacy-request-token-secret"}'::jsonb,
+       '2026-05-06T07:08:09.000Z', '2026-05-06T07:09:09.000Z', '2026-05-06T07:08:09.000Z')`,
+    [workspaceA, userA],
+  );
+  await pg.query(
+    `insert into privacy_requests
+       (workspace_id, request_id, type, status, operator_id, subject_user_id, requested_at)
+     values ($1, 'other-member-request', 'export', 'completed', 'operator-1', $2,
+       '2026-05-06T07:08:10.000Z')`,
+    [workspaceA, userASecondMember],
+  );
+  await pg.query(
+    `insert into privacy_request_steps
+       (id, workspace_id, request_id, step_key, status, attempts, last_error, metadata,
+        completed_at, created_at)
+     values ('00000000-0000-4000-8000-00000000a512', $1,
+       '00000000-0000-4000-8000-00000000a511', 'correction.applied', 'succeeded', 1,
+       'privacy-step-secret', '{"field":"display_name","token":"step-token-secret"}'::jsonb,
+       '2026-05-06T07:09:09.000Z', '2026-05-06T07:08:10.000Z')`,
+    [workspaceA],
+  );
   await openRequest(pg, { requestId: "dsar-export-1", type: "export", subjectUserId: userA });
   const service = createPrivacyService({ db: pg });
 
@@ -258,10 +427,101 @@ test("운영자 DSAR export는 tenant 경계를 지키고 token/billing key 원�
 
   assert.equal(exported.workspace.id, workspaceA);
   assert.equal(exported.subject.email, "owner-a@example.test");
+  assert.deepEqual(
+    {
+      createdAt: exported.subject.createdAt,
+      updatedAt: exported.subject.updatedAt,
+      emailVerifiedAt: exported.subject.emailVerifiedAt,
+      disabledAt: exported.subject.disabledAt,
+    },
+    {
+      createdAt: "2026-01-02T03:04:05+00:00",
+      updatedAt: "2026-02-03T04:05:06+00:00",
+      emailVerifiedAt: "2026-01-02T03:05:05+00:00",
+      disabledAt: null,
+    },
+  );
+  assert.deepEqual(exported.acceptedInvites, [{
+    id: "00000000-0000-4000-8000-00000000a509",
+    email: "owner-a@example.test",
+    workspaceName: "Agency A",
+    workspaceSlug: "agency-a",
+    releaseTarget: "paid-production",
+    role: "owner",
+    expiresAt: "2026-01-08T00:00:00+00:00",
+    acceptedAt: "2026-01-02T00:00:00+00:00",
+    acceptedErasedAt: null,
+    createdAt: "2026-01-01T00:00:00+00:00",
+  }]);
+  assert.deepEqual(exported.auditEvents, [
+    {
+      id: "00000000-0000-4000-8000-00000000a510",
+      action: "subject.action",
+      entityType: "sensitive-record",
+      metadataKeys: ["email", "token"],
+      createdAt: "2026-03-04T05:06:07+00:00",
+    },
+    {
+      id: "00000000-0000-4000-8000-00000000a513",
+      action: "subject.scalar-metadata",
+      entityType: "scalar-record",
+      metadataKeys: [],
+      createdAt: "2026-03-04T05:06:09+00:00",
+    },
+  ]);
+  assert.deepEqual(exported.deliveries, [
+    {
+      channel: "email",
+      status: "delivered",
+      attempts: 0,
+      deliveredAt: "2026-04-05T06:08:08+00:00",
+      createdAt: "2026-04-05T06:07:08+00:00",
+    },
+    {
+      channel: "email",
+      status: "delivered",
+      attempts: 0,
+      deliveredAt: "2026-04-05T06:09:08+00:00",
+      createdAt: "2026-04-05T06:09:07+00:00",
+    },
+  ]);
+  assert.equal(Object.hasOwn(exported.deliveries[0] as object, "recipient"), false);
+  assert.equal(exported.privacyRequests.length, 2);
+  assert.deepEqual(exported.privacyRequests[0], {
+    id: "00000000-0000-4000-8000-00000000a511",
+    externalId: "dsar-correction-before-export",
+    type: "correction",
+    status: "completed",
+    requestedAt: "2026-05-06T07:08:09+00:00",
+    completedAt: "2026-05-06T07:09:09+00:00",
+    createdAt: "2026-05-06T07:08:09+00:00",
+  });
+  assert.deepEqual(exported.privacyRequestSteps, [{
+    requestId: "00000000-0000-4000-8000-00000000a511",
+    stepKey: "correction.applied",
+    status: "succeeded",
+    attempts: 1,
+    metadataKeys: ["field", "token"],
+    completedAt: "2026-05-06T07:09:09+00:00",
+    createdAt: "2026-05-06T07:08:10+00:00",
+  }]);
   assert.equal(JSON.stringify(exported).includes("enc:v1:"), false);
   assert.equal(JSON.stringify(exported).includes("customer-b"), false);
   assert.equal(JSON.stringify(exported).includes("Site A"), false);
   assert.equal(JSON.stringify(exported).includes(reportA), false);
+  assert.equal(JSON.stringify(exported).includes(digest("subject-invite-token")), false);
+  assert.equal(JSON.stringify(exported).includes("audit-token-secret"), false);
+  assert.equal(JSON.stringify(exported).includes("other-member@example.test"), false);
+  assert.equal(JSON.stringify(exported).includes("member-a2@example.test"), false);
+  assert.equal(JSON.stringify(exported).includes("other-member.action"), false);
+  assert.equal(JSON.stringify(exported).includes("other-member-delivery"), false);
+  assert.equal(JSON.stringify(exported).includes("other-member-request"), false);
+  assert.equal(JSON.stringify(exported).includes("other-request"), false);
+  assert.equal(JSON.stringify(exported).includes("delivery-provider-secret"), false);
+  assert.equal(JSON.stringify(exported).includes("operator-private@example.test"), false);
+  assert.equal(JSON.stringify(exported).includes("privacy-request-token-secret"), false);
+  assert.equal(JSON.stringify(exported).includes("privacy-step-secret"), false);
+  assert.equal(JSON.stringify(exported).includes("step-token-secret"), false);
 
   const audits = await pg.query<{
     action: string;
@@ -279,8 +539,23 @@ test("운영자 DSAR export는 tenant 경계를 지키고 token/billing key 원�
   assert.equal(audits.rows[0]?.entity_type, "privacy_request");
   assert.equal(audits.rows[0]?.request_id, "dsar-export-1");
   assert.deepEqual(audits.rows[0]?.metadata, {
-    categories: ["workspace_membership", "subject_profile", "legal_acceptances", "sessions"],
+    categories: [
+      "workspace_membership",
+      "subject_profile",
+      "accepted_invites",
+      "legal_acceptances",
+      "sessions",
+      "actor_audit_events",
+      "recipient_deliveries",
+      "subject_privacy_requests",
+      "subject_privacy_request_steps",
+    ],
+    acceptedInviteCount: 1,
+    actorAuditEventCount: 2,
+    deliveryCount: 2,
     legalAcceptanceCount: 0,
+    privacyRequestCount: 2,
+    privacyRequestStepCount: 1,
     sessionCount: 0,
     subjectCount: 1,
   });
