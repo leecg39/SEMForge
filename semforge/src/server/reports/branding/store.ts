@@ -73,6 +73,7 @@ async function withWorkspaceTransaction<T>(
 export async function getReportBranding(
   source: BrandingSqlSource,
   workspaceId: string,
+  options: BrandingStoreOptions = {},
 ): Promise<ReportBranding> {
   return withWorkspaceTransaction(source, workspaceId, async (db) => {
     const row = (
@@ -83,7 +84,7 @@ export async function getReportBranding(
     ).rows[0];
     if (!row) throw new ReportBrandingStoreError("NOT_FOUND");
     return toBranding(row);
-  });
+  }, options);
 }
 
 export async function updateReportBranding(

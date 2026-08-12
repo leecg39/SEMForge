@@ -90,6 +90,47 @@ test("production branding route composition은 concrete privacy guard를 지연 
   assert.doesNotThrow(() => createRuntimeReportBrandingRouteHandlers());
 });
 
+test("브랜딩 조회는 privacy fence가 pin한 기존 connection을 다시 연결하지 않는다", async () => {
+  let reconnects = 0;
+  const pinnedDatabase = {
+    async query<T>() {
+      return {
+        rows: [{ name: "Pinned Agency", logo_url: null, accent_color: "#112233" }] as T[],
+      };
+    },
+    async connect() {
+      reconnects += 1;
+      throw new Error("pinned connection은 다시 connect할 수 없습니다");
+    },
+  };
+  const route = createReportBrandingRouteHandlers({
+    authorizeBilling: allowBillingAccess,
+    resolveSession: async () => ({
+      workspaceId,
+      userId,
+      role: "admin",
+      requestId: "branding-pinned-read",
+    }),
+    privacyOperation: {
+      async withShared(_workspaceId, operation) {
+        return operation(pinnedDatabase);
+      },
+    },
+  });
+
+  const response = await route.branding.GET(
+    new Request("https://app.semforge.test/api/v1/reports/branding"),
+    undefined,
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual((await body(response)).data, {
+    name: "Pinned Agency",
+    logoUrl: null,
+    accentColor: "#112233",
+  });
+  assert.equal(reconnects, 0);
+});
+
 function patchRequest(value: unknown, origin = "https://app.semforge.test") {
   return new Request("https://app.semforge.test/api/v1/reports/branding", {
     method: "PATCH",

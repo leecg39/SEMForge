@@ -82,7 +82,9 @@ export function createReportBrandingRouteHandlers(
             session.workspaceId,
             async (database) => {
               await requireBilling(session.workspaceId, "workspace:read");
-              return getReportBranding(database, session.workspaceId);
+              return getReportBranding(database, session.workspaceId, {
+                transaction: "existing",
+              });
             },
           ),
         );
