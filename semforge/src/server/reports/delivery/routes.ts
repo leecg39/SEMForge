@@ -5,7 +5,8 @@ import {
   resolveApiSession,
   type ApiSessionResolver,
 } from "@/server/auth/api-session";
-import { ReportDeliveryStoreError, type ReportDeliveryStore } from "@/server/reports/delivery/store";
+import type { BillingAccessAuthorizer } from "@/server/billing/access";
+import { ReportDeliveryStoreError, type ReportAccessStore } from "@/server/reports/delivery/store";
 import { snapshotSha256 } from "@/server/reports/rendering/html";
 import type { PrivateObjectStorage } from "@/server/storage/s3";
 
@@ -13,7 +14,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 
 export interface ReportPdfDownloadDependencies {
   readonly resolveSession?: ApiSessionResolver;
-  readonly store: Pick<ReportDeliveryStore, "loadReportSnapshot" | "findPdfAsset">;
+  readonly authorizeBilling: BillingAccessAuthorizer;
+  readonly store: ReportAccessStore;
   readonly storage: Pick<PrivateObjectStorage, "createSignedGetUrl">;
 }
 
@@ -28,11 +30,17 @@ export function createReportPdfDownloadRouteHandler(
     const { reportId } = await context.params;
     if (!UUID.test(reportId)) throw new ApiError("NOT_FOUND");
     try {
-      const snapshot = await dependencies.store.loadReportSnapshot({
+      const report = await dependencies.store.loadReportForAccess({
         workspaceId: session.workspaceId,
         reportId,
       });
-      const hash = snapshotSha256(snapshot);
+      const access = await dependencies.authorizeBilling({
+        workspaceId: session.workspaceId,
+        capability: "report:read",
+        reportPeriodEnd: new Date(`${report.periodEnd}T00:00:00.000Z`),
+      });
+      if (!access.allowed) throw new ApiError("FORBIDDEN");
+      const hash = snapshotSha256(report.snapshot);
       const storageKey = `reports/${session.workspaceId}/${reportId}/${hash}.pdf`;
       const asset = await dependencies.store.findPdfAsset({
         workspaceId: session.workspaceId,

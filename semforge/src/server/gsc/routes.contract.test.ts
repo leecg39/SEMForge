@@ -9,6 +9,7 @@ import {
   type GscRouteService,
   type RequireGscAuth,
 } from "@/server/gsc/routes";
+import type { BillingAccessAuthorizer } from "@/server/billing/access";
 
 const principal = {
   userId: "32000000-0000-4000-8000-000000000101",
@@ -16,6 +17,13 @@ const principal = {
   role: "owner" as const,
   requestId: "gsc-request-1",
 };
+
+const allowBillingAccess: BillingAccessAuthorizer = async () => ({
+  allowed: true,
+  mode: "full",
+  reason: "active",
+  reportPeriodEndBefore: null,
+});
 
 function service(overrides: Partial<GscRouteService> = {}): GscRouteService {
   return {
@@ -79,6 +87,7 @@ test("connect POST는 실제 auth guard에 CSRF와 owner/admin role을 요구하
   let authOptions: Parameters<RequireGscAuth>[1] | undefined;
   let serviceInput: unknown;
   const handlers = createGscRouteHandlers({
+    authorizeBilling: allowBillingAccess,
     requireAuth: async (_request, options) => {
       authOptions = options;
       return principal;
@@ -139,6 +148,7 @@ test("connect POST는 실제 auth guard에 CSRF와 owner/admin role을 요구하
 test("callback GET은 code/state와 현재 session principal을 service에 전달하고 raw token을 응답하지 않는다", async () => {
   let serviceInput: unknown;
   const handlers = createGscRouteHandlers({
+    authorizeBilling: allowBillingAccess,
     requireAuth: async () => principal,
     getService: () =>
       service({
@@ -169,6 +179,7 @@ test("callback GET은 code/state와 현재 session principal을 service에 전�
 test("properties, bindings, disconnect는 인증된 workspace만 사용하고 connection/site ID를 body/header tenant로 덮어쓰지 않는다", async () => {
   const calls: unknown[] = [];
   const handlers = createGscRouteHandlers({
+    authorizeBilling: allowBillingAccess,
     requireAuth: async () => principal,
     getService: () =>
       service({
@@ -231,4 +242,54 @@ test("properties, bindings, disconnect는 인증된 workspace만 사용하고 co
       connectionId: "32000000-0000-4000-8000-000000000301",
     }],
   ]);
+});
+
+test("account_created는 GSC read/write 직접 API 우회를 차단하고 service를 호출하지 않는다", async () => {
+  const capabilities: string[] = [];
+  let serviceCalled = false;
+  const handlers = createGscRouteHandlers({
+    requireAuth: async () => principal,
+    authorizeBilling: async ({ capability }) => {
+      capabilities.push(capability);
+      return {
+        allowed: false,
+        mode: "billing_only",
+        reason: "payment_required",
+        reportPeriodEndBefore: null,
+      };
+    },
+    getService: () => service({
+      async startConnection() {
+        serviceCalled = true;
+        return service().startConnection({
+          workspaceId: principal.workspaceId,
+          userId: principal.userId,
+          label: "blocked",
+        });
+      },
+      async listConnections() {
+        serviceCalled = true;
+        return [];
+      },
+    }),
+  });
+  const write = await handlers.connect.POST(
+    new Request("https://semforge.example/api/v1/integrations/gsc/connect", {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: "https://semforge.example" },
+      body: JSON.stringify({ label: "Blocked GSC" }),
+    }),
+    undefined,
+  );
+  const read = await handlers.connections.GET(
+    new Request("https://semforge.example/api/v1/integrations/gsc/connections"),
+    undefined,
+  );
+
+  assert.equal(write.status, 403);
+  assert.equal((await envelope(write)).error?.code, "FORBIDDEN");
+  assert.equal(read.status, 403);
+  assert.equal((await envelope(read)).error?.code, "FORBIDDEN");
+  assert.deepEqual(capabilities, ["workspace:write", "workspace:read"]);
+  assert.equal(serviceCalled, false);
 });

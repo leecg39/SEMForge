@@ -10,6 +10,10 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 
+import {
+  createBillingAccessAuthorizer,
+  type BillingAccessAuthorizer,
+} from "@/server/billing/access";
 import { createReportsRouteHandlers } from "@/server/reports/routes";
 import {
   generateWeeklyReport,
@@ -19,6 +23,13 @@ import {
 const pg = new PGlite();
 const migrationsFolder = path.join(process.cwd(), "src", "db", "migrations");
 const userId = "31000000-0000-4000-8000-000000000099";
+
+const allowBillingAccess: BillingAccessAuthorizer = async () => ({
+  allowed: true,
+  mode: "full",
+  reason: "active",
+  reportPeriodEndBefore: null,
+});
 
 before(async () => {
   await pg.waitReady;
@@ -144,6 +155,7 @@ test("GET reports API는 session workspace envelope만 반환하고 다른 tenan
   });
   const ownerHandlers = createReportsRouteHandlers({
     db: pg,
+    authorizeBilling: allowBillingAccess,
     resolveSession: async () => ({
       workspaceId: owner.workspaceId,
       userId,
@@ -185,6 +197,7 @@ test("GET reports API는 session workspace envelope만 반환하고 다른 tenan
 
   const attackerHandlers = createReportsRouteHandlers({
     db: pg,
+    authorizeBilling: allowBillingAccess,
     resolveSession: async () => ({
       workspaceId: attacker.workspaceId,
       userId,
@@ -198,4 +211,129 @@ test("GET reports API는 session workspace envelope만 반환하고 다른 tenan
   );
   assert.equal(forbidden.status, 404);
   assert.equal((await getReport(pg, attacker.workspaceId, report.id)), null);
+});
+
+test("past_due grace report 목록은 SQL/pagination에서 현재 기간을 제외하고 실제 과거 detail만 허용한다", async () => {
+  const tenant = await seedTenant(6);
+  const oldReport = await generateWeeklyReport(pg, {
+    ...tenant,
+    cycleMonday: "2026-07-27",
+  });
+  const currentReport = await generateWeeklyReport(pg, {
+    ...tenant,
+    cycleMonday: "2026-08-10",
+  });
+  const authorizeBilling = createBillingAccessAuthorizer({
+    database: {
+      async query<T>() {
+        return { rows: [{
+          status: "past_due",
+          current_period_start: "2026-08-01T00:00:00.000Z",
+          current_period_end: "2026-09-01T00:00:00.000Z",
+          grace_ends_at: "2026-08-15T00:00:00.000Z",
+        }] as T[] };
+      },
+    },
+    clock: () => new Date("2026-08-12T00:00:00.000Z"),
+  });
+  const handlers = createReportsRouteHandlers({
+    db: pg,
+    authorizeBilling,
+    resolveSession: async () => ({
+      workspaceId: tenant.workspaceId,
+      userId,
+      role: "member",
+      requestId: "past-due-report",
+    }),
+  });
+
+  const list = await handlers.reports.GET(
+    new Request("https://app.semforge.test/api/v1/reports?limit=1"),
+    undefined,
+  );
+  assert.equal(list.status, 200);
+  const listBody = await list.json() as {
+    data: { items: Array<{ id: string }>; nextCursor: string | null };
+  };
+  assert.deepEqual(listBody.data.items.map((item) => item.id), [oldReport.id]);
+  assert.equal(listBody.data.nextCursor, null);
+
+  const oldDetail = await handlers.reportById.GET(
+    new Request(`https://app.semforge.test/api/v1/reports/${oldReport.id}`),
+    { params: Promise.resolve({ reportId: oldReport.id }) },
+  );
+  const currentDetail = await handlers.reportById.GET(
+    new Request(`https://app.semforge.test/api/v1/reports/${currentReport.id}`),
+    { params: Promise.resolve({ reportId: currentReport.id }) },
+  );
+  assert.equal(oldDetail.status, 200);
+  assert.equal(currentDetail.status, 403);
+});
+
+test("billing-only report detail은 tenant 실제 report를 먼저 load해 외부 ID는 404로 숨긴다", async () => {
+  const owner = await seedTenant(7);
+  const attacker = await seedTenant(8);
+  const report = await generateWeeklyReport(pg, { ...owner, cycleMonday: "2026-08-10" });
+  let authorizations = 0;
+  const handlers = createReportsRouteHandlers({
+    db: pg,
+    authorizeBilling: async () => {
+      authorizations += 1;
+      return {
+        allowed: false,
+        mode: "billing_only",
+        reason: "payment_required",
+        reportPeriodEndBefore: null,
+      };
+    },
+    resolveSession: async () => ({
+      workspaceId: attacker.workspaceId,
+      userId,
+      role: "member",
+      requestId: "billing-only-idor",
+    }),
+  });
+
+  const foreign = await handlers.reportById.GET(
+    new Request(`https://app.semforge.test/api/v1/reports/${report.id}`),
+    { params: Promise.resolve({ reportId: report.id }) },
+  );
+  assert.equal(foreign.status, 404);
+  assert.equal(authorizations, 0);
+
+  const list = await handlers.reports.GET(
+    new Request("https://app.semforge.test/api/v1/reports"),
+    undefined,
+  );
+  assert.equal(list.status, 403);
+  assert.equal(authorizations, 1);
+});
+
+test("past_due scope에 실제 currentPeriodStart cutoff가 없으면 report 목록을 fail-closed 차단한다", async () => {
+  const tenant = await seedTenant(9);
+  await generateWeeklyReport(pg, { ...tenant, cycleMonday: "2026-07-27" });
+  const handlers = createReportsRouteHandlers({
+    db: pg,
+    authorizeBilling: async () => ({
+      allowed: false,
+      mode: "past_reports_only",
+      reason: "past_due_grace",
+      reportPeriodEndBefore: null,
+    }),
+    resolveSession: async () => ({
+      workspaceId: tenant.workspaceId,
+      userId,
+      role: "member",
+      requestId: "past-due-missing-cutoff",
+    }),
+  });
+
+  const response = await handlers.reports.GET(
+    new Request("https://app.semforge.test/api/v1/reports"),
+    undefined,
+  );
+  assert.equal(response.status, 403);
+  const envelope = await response.json() as { data: null; error: { code: string } };
+  assert.equal(envelope.data, null);
+  assert.equal(envelope.error.code, "FORBIDDEN");
 });

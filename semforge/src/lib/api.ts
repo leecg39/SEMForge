@@ -164,22 +164,6 @@ export function route<Args extends unknown[]>(
           })
         );
       }
-      const message =
-        error instanceof Error ? error.message : String(error);
-      if (/UNIQUE constraint failed/i.test(message)) {
-        return jsonError(
-          new ApiError("DUPLICATE", "이미 존재하는 값입니다.")
-        );
-      }
-      if (/FOREIGN KEY constraint failed/i.test(message)) {
-        return jsonError(
-          new ApiError(
-            "RELATION_RESTRICT",
-            "연결된 데이터가 있어 처리할 수 없습니다."
-          )
-        );
-      }
-      console.error("[api] unhandled error", error);
       return jsonError(
         new ApiError("INTERNAL", "일시적인 오류가 발생했습니다. 다시 시도해 주세요.")
       );

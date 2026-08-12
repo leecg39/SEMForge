@@ -9,6 +9,10 @@ import {
   resolveApiSession,
   type ApiSessionResolver,
 } from "@/server/auth/api-session";
+import {
+  createRuntimeBillingAccessAuthorizer,
+  type BillingAccessAuthorizer,
+} from "@/server/billing/access";
 import { ReportBrandingValidationError } from "@/server/reports/branding/domain";
 import {
   getReportBranding,
@@ -30,6 +34,7 @@ export interface ReportBrandingRouteDependencies {
   readonly db?: BrandingSqlSource;
   readonly resolveSession?: ApiSessionResolver;
   readonly resolveLogoAddresses?: DomainAddressResolver;
+  readonly authorizeBilling?: BillingAccessAuthorizer;
 }
 
 function routeDatabase(dependencies: ReportBrandingRouteDependencies): BrandingSqlSource {
@@ -50,9 +55,20 @@ export function createReportBrandingRouteHandlers(
   dependencies: ReportBrandingRouteDependencies = {},
 ) {
   const resolveSession = dependencies.resolveSession ?? resolveApiSession;
+  const authorizeBilling = dependencies.authorizeBilling ?? createRuntimeBillingAccessAuthorizer();
+
+  async function requireBilling(
+    workspaceId: string,
+    capability: "workspace:read" | "workspace:write",
+  ): Promise<void> {
+    const access = await authorizeBilling({ workspaceId, capability });
+    if (!access.allowed) throw new ApiError("FORBIDDEN");
+  }
+
   const branding = {
     GET: withApiV1(async (request) => {
       const session = await resolveSession(request);
+      await requireBilling(session.workspaceId, "workspace:read");
       try {
         return apiSuccess(
           await getReportBranding(routeDatabase(dependencies), session.workspaceId),
@@ -66,6 +82,7 @@ export function createReportBrandingRouteHandlers(
       if (session.role !== "owner" && session.role !== "admin") {
         throw new ApiError("FORBIDDEN");
       }
+      await requireBilling(session.workspaceId, "workspace:write");
       const body = await parseJsonBody(request, patchBrandingBody);
       try {
         return apiSuccess(

@@ -9,6 +9,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 
+import type { BillingAccessAuthorizer } from "@/server/billing/access";
 import { createSitesRouteHandlers } from "@/server/sites/routes";
 
 const pg = new PGlite();
@@ -29,9 +30,20 @@ before(async () => {
 
 after(async () => pg.close());
 
-function handlersFor(workspace = workspaceId) {
+const allowBillingAccess: BillingAccessAuthorizer = async () => ({
+  allowed: true,
+  mode: "full",
+  reason: "active",
+  reportPeriodEndBefore: null,
+});
+
+function handlersFor(
+  workspace = workspaceId,
+  authorizeBilling: BillingAccessAuthorizer = allowBillingAccess,
+) {
   return createSitesRouteHandlers({
     db: pg,
+    authorizeBilling,
     resolveSession: async () => ({
       workspaceId: workspace,
       userId,
@@ -41,6 +53,57 @@ function handlersFor(workspace = workspaceId) {
     resolveDomainAddresses: async () => ["8.8.8.8"],
   });
 }
+
+test("account_created는 sites/tracking read와 write 직접 API 우회를 403 envelope로 차단한다", async () => {
+  const deniedCalls: string[] = [];
+  const handlers = handlersFor(workspaceId, async ({ capability }) => {
+    deniedCalls.push(capability);
+    return {
+      allowed: false,
+      mode: "billing_only",
+      reason: "payment_required",
+      reportPeriodEndBefore: null,
+    };
+  });
+  const create = await handlers.sites.POST(
+    new Request("https://app.semforge.test/api/v1/sites", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://app.semforge.test",
+        "idempotency-key": "unpaid-site-create",
+      },
+      body: JSON.stringify({ name: "Unpaid", domain: "unpaid.example.com" }),
+    }),
+    undefined,
+  );
+  const list = await handlers.sites.GET(
+    new Request("https://app.semforge.test/api/v1/sites"),
+    undefined,
+  );
+  const tracking = await handlers.tracking.POST(
+    new Request("https://app.semforge.test/api/v1/tracking", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://app.semforge.test",
+        "idempotency-key": "unpaid-tracking-create",
+      },
+      body: JSON.stringify({
+        siteId: "20000000-0000-4000-8000-000000000099",
+        type: "rank",
+        query: "Unpaid",
+      }),
+    }),
+    undefined,
+  );
+
+  for (const response of [create, list, tracking]) {
+    assert.equal(response.status, 403);
+    assert.equal((await readEnvelope(response)).error?.code, "FORBIDDEN");
+  }
+  assert.deepEqual(deniedCalls, ["workspace:write", "workspace:read", "workspace:write"]);
+});
 
 async function readEnvelope(response: Response): Promise<{
   data: unknown;

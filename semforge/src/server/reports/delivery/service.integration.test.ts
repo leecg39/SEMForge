@@ -205,6 +205,15 @@ test("Resend 수락 직후 crash가 나도 retry/duplicate는 같은 snapshot과
   }]);
 });
 
+test("PDF access store는 snapshot client period와 별도로 실제 weekly_reports.period_end를 반환한다", async () => {
+  const database = await databaseWithReport();
+  const store = new PostgresReportDeliveryStore(database);
+  const report = await store.loadReportForAccess({ workspaceId, reportId });
+
+  assert.equal(report.periodEnd, "2026-08-06");
+  assert.equal(report.snapshot.period.current.end, "2026-08-06");
+});
+
 test("provider가 idempotency payload를 거부하면 terminal 상태를 보존한다", async () => {
   const database = await databaseWithReport();
   const service = createReportDeliveryService({
