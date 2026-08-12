@@ -93,6 +93,11 @@ test("GitHub Actions workflow는 Node 24, PostgreSQL 16, Chromium을 release gat
   assert.match(workflow, /SEMFORGE_RELEASE_DIFF_BASE:\s*origin\/codex\/paid-beta-core/);
   assert.match(workflow, /path:\s*semforge\/\.omo\/evidence\/phase5-ci\/latest/);
   assert.match(workflow, /npm run ci:release-gate/);
+  assert.doesNotMatch(
+    workflow,
+    /OPERATOR_DATABASE_URL/,
+    "release workflow는 build/web 범위에 operator 전용 DSN을 주입하면 안 된다",
+  );
   assert.doesNotMatch(workflow, /postgres:\/\/semforge/u);
   assert.match(workflow, /postgresql:\/\/semforge/u);
 });
