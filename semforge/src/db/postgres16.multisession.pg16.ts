@@ -17,6 +17,7 @@ import {
 } from "@/server/jobs/contracts";
 import { createPostgresBillingStore } from "@/server/billing/postgres-store";
 import { createBillingAccessGuardedJobHandler } from "@/worker/billing-gate";
+import { createInsightRouteHandlers } from "@/server/insights/routes";
 import {
   PostgresWeeklyCollectionScheduler,
   PostgresWeeklyReportScheduler,
@@ -31,6 +32,110 @@ const pool = new Pool({
   connectionString: databaseUrl,
   max: 8,
   ssl: false,
+});
+
+function roleDatabaseUrl(role: string): string {
+  const url = new URL(databaseUrl!);
+  url.searchParams.set("options", `-c role=${role}`);
+  return url.toString();
+}
+
+test("PostgreSQL 16 NAVER/AIO read route는 web-role PoolClient transaction-local RLS로 정상 tenant data만 반환한다", async () => {
+  const workspaceA = "f6000000-0000-4000-8000-000000000001";
+  const workspaceB = "f6000000-0000-4000-8000-000000000002";
+  const siteA = "f6100000-0000-4000-8000-000000000001";
+  const siteB = "f6100000-0000-4000-8000-000000000002";
+  const rankQuery = "f6200000-0000-4000-8000-000000000001";
+  const aioQuery = "f6200000-0000-4000-8000-000000000002";
+  const providerCall = "f6300000-0000-4000-8000-000000000001";
+  const naverObservation = "f6400000-0000-4000-8000-000000000001";
+  const aioObservation = "f6500000-0000-4000-8000-000000000001";
+  await pool.query(
+    "insert into workspaces (id, name, slug) values ($1, 'PG16 Read A', 'pg16-read-a'), ($2, 'PG16 Read B', 'pg16-read-b')",
+    [workspaceA, workspaceB],
+  );
+  await pool.query(
+    `insert into sites (id, workspace_id, name, domain)
+     values ($1, $2, 'Read A', 'read-a.example'), ($3, $4, 'Read B', 'read-b.example')`,
+    [siteA, workspaceA, siteB, workspaceB],
+  );
+  await pool.query(
+    `insert into tracked_queries (id, workspace_id, site_id, type, query, normalized_query)
+     values ($1, $2, $3, 'rank', '네이버 검색량', '네이버 검색량'),
+            ($4, $2, $3, 'aio', 'AI Overview', 'ai overview')`,
+    [rankQuery, workspaceA, siteA, aioQuery],
+  );
+  await pool.query(
+    `insert into provider_calls
+       (id, workspace_id, provider, operation, idempotency_key, request_hash, status, response_metadata, completed_at)
+     values ($1, $2, 'talordata', 'google_serp_aio', 'pg16-read-aio', 'hash-pg16-read-aio', 'succeeded', '{}'::jsonb, '2026-08-12T01:00:00.000Z')`,
+    [providerCall, workspaceA],
+  );
+  await pool.query(
+    `insert into naver_observations
+       (id, workspace_id, site_id, tracked_query_id, observed_at, collected_at,
+        monthly_pc_search_volume, monthly_mobile_search_volume, blog_result_count, trend, demographics)
+     values ($1, $2, $3, $4, '2026-08-12T01:00:00.000Z', '2026-08-12T01:01:00.000Z',
+       11, 22, 33, '[]'::jsonb, '{}'::jsonb)`,
+    [naverObservation, workspaceA, siteA, rankQuery],
+  );
+  await pool.query(
+    `insert into naver_observation_sources
+       (workspace_id, observation_id, source, status, collected_at, metadata)
+     values ($1, $2, 'search_ads_monthly_volume', 'succeeded', '2026-08-12T01:01:00.000Z', '{"providerSource":"naver-search-ads-relkwdstat"}'::jsonb)`,
+    [workspaceA, naverObservation],
+  );
+  await pool.query(
+    `insert into aio_observations
+       (id, workspace_id, site_id, tracked_query_id, provider_call_id, observed_at, presence, answer_text)
+     values ($1, $2, $3, $4, $5, '2026-08-12T01:00:00.000Z', 'present', 'PG16 answer')`,
+    [aioObservation, workspaceA, siteA, aioQuery, providerCall],
+  );
+  await pool.query(
+    `insert into aio_citations (workspace_id, observation_id, url, title, position)
+     values ($1, $2, 'https://read-a.example/aio', 'Owned', 1)`,
+    [workspaceA, aioObservation],
+  );
+
+  const webPool = new Pool({ connectionString: roleDatabaseUrl("semforge_web"), max: 1, ssl: false });
+  try {
+    const handlers = createInsightRouteHandlers({
+      pool: webPool,
+      resolveSession: async () => ({
+        workspaceId: workspaceA,
+        userId: "f6600000-0000-4000-8000-000000000001",
+        role: "owner",
+        requestId: "pg16-read-route",
+      }),
+      authorizeBilling: async () => ({
+        allowed: true,
+        mode: "full",
+        reason: "active",
+        reportPeriodEndBefore: null,
+      }),
+    });
+
+    const naver = await handlers.naver.GET(
+      new Request(`https://app.semforge.test/api/v1/insights/naver?siteId=${siteA}`),
+      undefined,
+    );
+    const aio = await handlers.aio.GET(
+      new Request(`https://app.semforge.test/api/v1/visibility/aio?siteId=${siteA}`),
+      undefined,
+    );
+    assert.equal(naver.status, 200);
+    assert.equal(aio.status, 200);
+    assert.match(JSON.stringify((await naver.json()).data), /"total":33/u);
+    assert.match(JSON.stringify((await aio.json()).data), /PG16 answer/u);
+
+    const hidden = await handlers.naver.GET(
+      new Request(`https://app.semforge.test/api/v1/insights/naver?siteId=${siteB}`),
+      undefined,
+    );
+    assert.equal(hidden.status, 404);
+  } finally {
+    await webPool.end();
+  }
 });
 
 after(async () => {
