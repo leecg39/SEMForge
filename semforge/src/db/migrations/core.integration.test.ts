@@ -1069,6 +1069,7 @@ test("auth role은 pre-tenant 인증 트랜잭션에 필요한 최소 권한과 
     "users:INSERT",
     "users:SELECT",
     "users:UPDATE",
+    "workspace_privacy_controls:SELECT",
     "workspaces:INSERT",
     "workspaces:SELECT",
   ]);
@@ -1125,10 +1126,20 @@ test("auth role은 pre-tenant 인증 트랜잭션에 필요한 최소 권한과 
       "users_auth_insert:INSERT",
       "users_auth_select:SELECT",
       "users_auth_update:UPDATE",
+      "workspace_privacy_controls_tenant_select:SELECT",
       "workspaces_auth_insert:INSERT",
       "workspaces_auth_select:SELECT",
     ],
   );
+
+  const fenceFunction = await pg.query<{ can_execute: boolean }>(
+    `select has_function_privilege(
+       (select oid from pg_roles where rolname = 'semforge_auth'),
+       'public.privacy_workspace_lock_key(uuid)'::regprocedure,
+       'EXECUTE'
+     ) as can_execute`,
+  );
+  assert.deepEqual(fenceFunction.rows, [{ can_execute: true }]);
 });
 
 test("auth role은 password reset outbox를 INSERT만 할 수 있고 tenant outbox payload를 SELECT할 수 없다", async () => {
