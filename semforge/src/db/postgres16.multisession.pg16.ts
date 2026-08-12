@@ -373,11 +373,12 @@ test("PostgreSQL 16 실제 role은 구독 후보·report 동시 멱등·billing 
   });
 
   const candidates = [
-    { suffix: "101", status: "active", periodEnd: null, allowed: true },
-    { suffix: "102", status: "cancel_at_period_end", periodEnd: "2026-08-18T00:00:00.000Z", allowed: true },
-    { suffix: "103", status: "cancel_at_period_end", periodEnd: "2026-08-16T22:59:59.000Z", allowed: false },
-    { suffix: "104", status: "past_due", periodEnd: "2026-09-01T00:00:00.000Z", allowed: false },
-    { suffix: "105", status: "account_created", periodEnd: null, allowed: false },
+    { suffix: "101", status: "active", periodEnd: null, graceEnd: null, allowed: true },
+    { suffix: "102", status: "cancel_at_period_end", periodEnd: "2026-08-18T00:00:00.000Z", graceEnd: null, allowed: true },
+    { suffix: "103", status: "cancel_at_period_end", periodEnd: "2026-08-16T22:59:59.000Z", graceEnd: null, allowed: false },
+    { suffix: "104", status: "past_due", periodEnd: "2026-09-01T00:00:00.000Z", graceEnd: "2026-08-30T00:00:00.000Z", allowed: false },
+    { suffix: "105", status: "account_created", periodEnd: null, graceEnd: null, allowed: false },
+    { suffix: "106", status: "cancel_at_period_end", periodEnd: "2026-08-30T00:00:00.000Z", graceEnd: "2026-08-30T00:00:00.000Z", allowed: false },
   ] as const;
 
   try {
@@ -398,8 +399,8 @@ test("PostgreSQL 16 실제 role은 구독 후보·report 동시 멱등·billing 
       await pool.query(
         `insert into subscriptions
            (id, workspace_id, billing_customer_id, status, current_period_start, current_period_end, grace_ends_at)
-         values ($1, $2, $3, $4, '2026-08-01T00:00:00.000Z', $5, '2026-08-30T00:00:00.000Z')`,
-        [subscriptionId, workspaceId, customerId, candidate.status, candidate.periodEnd],
+         values ($1, $2, $3, $4, '2026-08-01T00:00:00.000Z', $5, $6)`,
+        [subscriptionId, workspaceId, customerId, candidate.status, candidate.periodEnd, candidate.graceEnd],
       );
       await pool.query(
         "insert into sites (id, workspace_id, name, domain) values ($1, $2, $3, $4)",

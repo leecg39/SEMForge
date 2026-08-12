@@ -140,6 +140,18 @@ test("서버 authorizer는 paid-beta 상태 전체를 단일 domain policy로 �
       current_period_end: "2026-08-13T00:00:00.000Z",
       allowed: true,
     },
+    {
+      status: "cancel_at_period_end",
+      current_period_end: "2026-08-13T00:00:00.000Z",
+      grace_ends_at: "2026-08-15T00:00:00.000Z",
+      allowed: false,
+    },
+    {
+      status: "cancel_at_period_end",
+      current_period_end: "2026-08-20T00:00:00.000Z",
+      grace_ends_at: "2026-08-11T00:00:00.000Z",
+      allowed: false,
+    },
   ] as const;
 
   for (const value of cases) {

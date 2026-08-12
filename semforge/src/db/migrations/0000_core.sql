@@ -2237,7 +2237,7 @@ GRANT UPDATE (payload, updated_at) ON jobs TO semforge_secret_scrubber;--> state
 GRANT SELECT (workspace_id, topic, payload, idempotency_key) ON outbox TO semforge_secret_scrubber;--> statement-breakpoint
 GRANT UPDATE (payload) ON outbox TO semforge_secret_scrubber;--> statement-breakpoint
 GRANT SELECT ON sites, tracked_queries, gsc_property_bindings TO semforge_scheduler;--> statement-breakpoint
-GRANT SELECT (workspace_id, status, current_period_end) ON subscriptions TO semforge_scheduler;--> statement-breakpoint
+GRANT SELECT (workspace_id, status, current_period_end, grace_ends_at) ON subscriptions TO semforge_scheduler;--> statement-breakpoint
 GRANT INSERT (workspace_id, topic, payload, idempotency_key, available_at, created_at)
   ON outbox TO semforge_scheduler;--> statement-breakpoint
 GRANT SELECT (workspace_id, topic, idempotency_key) ON outbox TO semforge_scheduler;--> statement-breakpoint

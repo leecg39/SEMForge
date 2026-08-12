@@ -123,6 +123,7 @@ export class PostgresWeeklyCollectionScheduler {
             or (
               subscription.status = 'cancel_at_period_end'
               and subscription.current_period_end > $1::timestamptz
+              and subscription.grace_ends_at is null
             )
           )
         order by query.workspace_id, query.site_id, query.type asc, query.normalized_query, query.id`,
@@ -141,6 +142,7 @@ export class PostgresWeeklyCollectionScheduler {
             or (
               subscription.status = 'cancel_at_period_end'
               and subscription.current_period_end > $1::timestamptz
+              and subscription.grace_ends_at is null
             )
           )
         order by binding.workspace_id, binding.site_id, binding.id`,
@@ -252,6 +254,7 @@ export class PostgresWeeklyReportScheduler {
             or (
               subscription.status = 'cancel_at_period_end'
               and subscription.current_period_end > $1::timestamptz
+              and subscription.grace_ends_at is null
             )
           )
         order by site.workspace_id, site.id`,

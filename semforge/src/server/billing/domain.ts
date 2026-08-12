@@ -197,28 +197,34 @@ export function decideBillingAccess(
   if (subscription.status === "active") {
     return { allowed: true, mode: "full", reason: "active" };
   }
+  const isPaymentDelinquent =
+    subscription.status === "past_due" ||
+    (subscription.status === "cancel_at_period_end" && subscription.graceEndsAt !== null);
+  if (isPaymentDelinquent) {
+    if (subscription.graceEndsAt !== null && request.now < subscription.graceEndsAt) {
+      const isPastReport =
+        request.capability === "report:read" &&
+        request.reportPeriodEnd !== undefined &&
+        subscription.currentPeriodStart !== null &&
+        request.reportPeriodEnd < subscription.currentPeriodStart;
+      return {
+        allowed: isPastReport,
+        mode: "past_reports_only",
+        reason: "past_due_grace",
+      };
+    }
+    return {
+      allowed: false,
+      mode: "billing_only",
+      reason: "payment_required",
+    };
+  }
   if (
     subscription.status === "cancel_at_period_end" &&
     subscription.currentPeriodEnd !== null &&
     request.now < subscription.currentPeriodEnd
   ) {
     return { allowed: true, mode: "full", reason: "cancel_pending" };
-  }
-  if (
-    subscription.status === "past_due" &&
-    subscription.graceEndsAt !== null &&
-    request.now < subscription.graceEndsAt
-  ) {
-    const isPastReport =
-      request.capability === "report:read" &&
-      request.reportPeriodEnd !== undefined &&
-      subscription.currentPeriodStart !== null &&
-      request.reportPeriodEnd < subscription.currentPeriodStart;
-    return {
-      allowed: isPastReport,
-      mode: "past_reports_only",
-      reason: "past_due_grace",
-    };
   }
   const ended =
     subscription.status === "canceled" ||

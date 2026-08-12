@@ -500,6 +500,7 @@ test("scheduler role은 최소 subscription/outbox 컬럼과 제한된 topic 정
   );
   assert.deepEqual(subscriptionColumns.rows.map((row) => row.column_name), [
     "current_period_end",
+    "grace_ends_at",
     "status",
     "workspace_id",
   ]);

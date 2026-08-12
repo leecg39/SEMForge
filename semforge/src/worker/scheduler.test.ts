@@ -216,6 +216,13 @@ test("scheduler는 active 또는 아직 만료되지 않은 cancel_at_period_end
     { suffix: "23", status: "cancel_at_period_end" as const, currentPeriodEnd: new Date("2026-08-16T22:59:59.000Z"), expected: false },
     { suffix: "24", status: "past_due" as const, graceEndsAt: new Date("2026-08-30T00:00:00.000Z"), expected: false },
     { suffix: "25", status: "account_created" as const, expected: false },
+    {
+      suffix: "26",
+      status: "cancel_at_period_end" as const,
+      currentPeriodEnd: new Date("2026-08-30T00:00:00.000Z"),
+      graceEndsAt: new Date("2026-08-20T00:00:00.000Z"),
+      expected: false,
+    },
   ];
 
   for (const candidate of cases) {
