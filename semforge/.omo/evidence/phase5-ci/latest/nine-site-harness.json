@@ -1,5 +1,8 @@
 {
   "status": "passed",
+  "evidenceKind": "synthetic-limit-fixture",
+  "proves": "workspace/site/query/report cardinality fixture only",
+  "doesNotProve": "real partner onboarding, live provider collection, payment, PDF rendering, or email delivery",
   "externalNetworkCalls": 0,
   "workspaceCount": 3,
   "siteCount": 9,
