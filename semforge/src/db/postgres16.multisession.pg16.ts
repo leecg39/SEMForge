@@ -762,18 +762,28 @@ test("PostgreSQL 16 privacy erasure procedure는 workspace의 실행 중 deletio
   const exportId = "f6100000-0000-4000-8000-000000000003";
   const completedDeletionId = "f6100000-0000-4000-8000-000000000004";
   const arbitraryId = "f6100000-0000-4000-8000-000000000005";
+  const exportSubjectId = "f6100000-0000-4000-8000-000000000006";
   await pool.query(
     "insert into workspaces (id, name, slug) values ($1, 'Privacy request validation', 'privacy-request-validation')",
     [workspaceId],
   );
   await pool.query(
+    `insert into users (id, email, password_hash, display_name)
+     values ($1, 'privacy-request-subject@example.test', 'scrypt:subject', 'Privacy Request Subject')`,
+    [exportSubjectId],
+  );
+  await pool.query(
+    "insert into memberships (workspace_id, user_id, role) values ($1, $2, 'owner')",
+    [workspaceId, exportSubjectId],
+  );
+  await pool.query(
     `insert into privacy_requests
-       (id, workspace_id, request_id, type, status, operator_id, requested_at, completed_at)
+       (id, workspace_id, request_id, type, status, operator_id, subject_user_id, requested_at, completed_at)
      values
-       ($1, $4, 'running-deletion', 'workspace_deletion', 'running', 'privacy-operator', now(), null),
-       ($2, $4, 'running-export', 'export', 'running', 'privacy-operator', now(), null),
-       ($3, $4, 'completed-deletion', 'workspace_deletion', 'completed', 'privacy-operator', now(), now())`,
-    [runningDeletionId, exportId, completedDeletionId, workspaceId],
+       ($1, $4, 'running-deletion', 'workspace_deletion', 'running', 'privacy-operator', null, now(), null),
+       ($2, $4, 'running-export', 'export', 'running', 'privacy-operator', $5, now(), null),
+       ($3, $4, 'completed-deletion', 'workspace_deletion', 'completed', 'privacy-operator', null, now(), now())`,
+    [runningDeletionId, exportId, completedDeletionId, workspaceId, exportSubjectId],
   );
 
   for (const [requestId, operatorId] of [
