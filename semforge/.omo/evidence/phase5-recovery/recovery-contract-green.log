@@ -1,0 +1,14 @@
+✔ doctor는 Docker/MinIO 가능 여부만 점검하고 운영 리소스 변경은 하지 않는다 (2544.62675ms)
+✔ PG PITR 계획은 원본 DB를 덮어쓰지 않고 새 인스턴스 검증과 증거 필드를 요구한다 (1980.413042ms)
+✔ object-version-restore는 로컬 fixture에서 이전 버전을 복구 prefix로 복사하고 checksum을 검증한다 (2087.818917ms)
+✔ previous-image rollback 계획은 scheduler suspend, worker drain, 이전 digest 적용, health 검증 순서를 고정한다 (3814.933833ms)
+✔ forward-compatible migration 감사는 additive 변경을 통과시키고 destructive SQL을 실패시킨다 (5070.536959ms)
+✔ Toss reconciliation은 조회 조정과 수동 법정환불 ledger 절차만 만들고 결제/환불 API를 호출하지 않는다 (3548.1735ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 21848.225583

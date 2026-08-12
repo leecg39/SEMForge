@@ -65,3 +65,27 @@
 - object versioning의 key/version/checksum 표본
 - `/health/live/`, `/health/ready/`, worker drain·재시작 결과
 - 민감정보가 제거된 JSON 로그와 최종 go/no-go 결정
+
+## 6. 실행 가능한 리허설 harness
+
+`scripts/recovery/cli.ts`는 운영 복구 절차를 dry-run 또는 로컬 fixture로 검증하는 harness다. 기본 원칙은 다음과 같다.
+
+- `doctor`, `pg-pitr-plan`, `image-rollback-plan`, `forward-migration-audit`, `toss-reconcile-plan`은 외부 write를 수행하지 않는다.
+- `object-version-restore`는 `--fixture-dir` 아래의 로컬 파일만 복사한다. 실제 bucket 현재 version을 승격하지 않는다.
+- Toss 조정은 Query API 기반 local ledger adjustment 계획과 수동 법정환불 ledger 절차만 생성한다. charge/refund/cancelBillingKey API는 이 harness에서 금지된다.
+- 실패한 forward migration audit은 non-zero로 종료해 release gate에서 차단할 수 있다.
+
+예시:
+
+```bash
+node --import tsx scripts/recovery/cli.ts doctor --json
+node --import tsx scripts/recovery/cli.ts pg-pitr-plan \
+  --incident INC-20260812-001 \
+  --git-sha "$GIT_SHA" \
+  --target-time "2026-08-12T08:55:00+09:00" \
+  --source-instance semforge-prod \
+  --restore-instance semforge-pitr-inc-20260812-001
+node --import tsx scripts/recovery/cli.ts forward-migration-audit --migrations-dir src/db/migrations
+```
+
+실제 운영 적용은 이 harness의 JSON 출력, 승인 티켓, provider 콘솔 작업 로그, read-only 검증 결과를 모두 증거로 남긴 뒤 별도 변경 승인으로만 수행한다.
