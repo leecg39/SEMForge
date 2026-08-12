@@ -2,6 +2,7 @@
 // @SPEC docs/planning/06-tasks.md#p3-w1-t1--lease-기반-작업-큐와-transactional-outbox
 // @TEST npm run test:pg16:docker
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { after, test } from "node:test";
 
 import { Pool, type PoolClient } from "pg";
@@ -157,6 +158,10 @@ function barrier(participants: number): () => Promise<void> {
 
 async function rollback(client: PoolClient): Promise<void> {
   await client.query("rollback").catch(() => undefined);
+}
+
+function sha256Hex(input: string): string {
+  return createHash("sha256").update(input).digest("hex");
 }
 
 test("PostgreSQL 16 실제 세션은 SKIP LOCKED, provider canonical visibility, outbox crash recovery와 RLS 경계를 보장한다", async () => {
@@ -1046,7 +1051,7 @@ test("PostgreSQL 16 email suppression은 privacy request에 귀속되고 worker�
         "select privacy_add_email_suppression($1::uuid, $2::uuid, $3::text)",
         [workspaceA, requestB, "c".repeat(64)],
       ),
-      /matching running deletion request/i,
+      /matching running deletion or erasure request/i,
     );
     await privacy.query("rollback to savepoint cross_workspace_request");
     await privacy.query("commit");
@@ -1124,6 +1129,265 @@ test("PostgreSQL 16 email suppression은 privacy request에 귀속되고 worker�
     pool.query("delete from privacy_requests where workspace_id = $1 and id = $2", [workspaceB, requestB]),
     /email_suppressions_request_fk/i,
   );
+});
+
+test("PostgreSQL 16 subject erasure email suppression은 exact running erasure request에만 귀속된다", async () => {
+  const workspaceA = "f6310000-0000-4000-8000-000000000001";
+  const workspaceB = "f6310000-0000-4000-8000-000000000002";
+  const subjectA = "f6310000-0000-4000-8000-000000000011";
+  const subjectB = "f6310000-0000-4000-8000-000000000012";
+  const erasureRequestA = "f6310000-0000-4000-8000-000000000021";
+  const erasureRequestB = "f6310000-0000-4000-8000-000000000022";
+  const exportRequestA = "f6310000-0000-4000-8000-000000000023";
+  const hashA = sha256Hex("subject-a@example.test");
+  await pool.query(
+    "insert into workspaces (id, name, slug) values ($1, 'Subject Suppression A', 'subject-suppression-a'), ($2, 'Subject Suppression B', 'subject-suppression-b')",
+    [workspaceA, workspaceB],
+  );
+  await pool.query(
+    `insert into users (id, email, password_hash, email_verified_at)
+     values ($1, 'subject-a@example.test', 'scrypt:a', now()),
+            ($2, 'subject-b@example.test', 'scrypt:b', now())`,
+    [subjectA, subjectB],
+  );
+  await pool.query(
+    `insert into memberships (workspace_id, user_id, role)
+     values ($1, $2, 'member'), ($3, $4, 'member')`,
+    [workspaceA, subjectA, workspaceB, subjectB],
+  );
+  await pool.query(
+    `insert into privacy_requests
+       (id, workspace_id, request_id, type, status, operator_id, subject_user_id, requested_at)
+     values ($1, $4, 'subject-suppression-a', 'erasure', 'running', 'privacy-operator', $5, now()),
+            ($2, $6, 'subject-suppression-b', 'erasure', 'running', 'privacy-operator', $7, now()),
+            ($3, $4, 'subject-export-a', 'export', 'running', 'privacy-operator', $5, now())`,
+    [erasureRequestA, erasureRequestB, exportRequestA, workspaceA, subjectA, workspaceB, subjectB],
+  );
+
+  const privacy = await pool.connect();
+  try {
+    await privacy.query("begin");
+    await privacy.query("set local role semforge_privacy");
+    await privacy.query("select set_config('app.workspace_id', $1, true)", [workspaceA]);
+    await privacy.query(
+      "select privacy_add_email_suppression($1::uuid, $2::uuid, $3::text)",
+      [workspaceA, erasureRequestA, hashA],
+    );
+    await privacy.query("savepoint wrong_subject_hash");
+    await assert.rejects(
+      privacy.query(
+        "select privacy_add_email_suppression($1::uuid, $2::uuid, $3::text)",
+        [workspaceA, erasureRequestA, "e".repeat(64)],
+      ),
+      /matching running deletion or erasure request/i,
+    );
+    await privacy.query("rollback to savepoint wrong_subject_hash");
+    await privacy.query("savepoint cross_workspace_subject");
+    await assert.rejects(
+      privacy.query(
+        "select privacy_add_email_suppression($1::uuid, $2::uuid, $3::text)",
+        [workspaceA, erasureRequestB, "f".repeat(64)],
+      ),
+      /matching running deletion or erasure request/i,
+    );
+    await privacy.query("rollback to savepoint cross_workspace_subject");
+    await privacy.query("savepoint non_erasure_request");
+    await assert.rejects(
+      privacy.query(
+        "select privacy_add_email_suppression($1::uuid, $2::uuid, $3::text)",
+        [workspaceA, exportRequestA, "0".repeat(64)],
+      ),
+      /matching running deletion or erasure request/i,
+    );
+    await privacy.query("rollback to savepoint non_erasure_request");
+    await privacy.query("commit");
+  } catch (error) {
+    await rollback(privacy);
+    throw error;
+  } finally {
+    privacy.release();
+  }
+
+  assert.deepEqual(
+    (await pool.query<{ workspace_id: string; recipient_hash: string; request_id: string }>(
+      `select workspace_id::text, recipient_hash, request_id::text
+         from email_suppressions
+        where workspace_id = $1`,
+      [workspaceA],
+    )).rows,
+    [{ workspace_id: workspaceA, recipient_hash: hashA, request_id: erasureRequestA }],
+  );
+});
+
+test("PostgreSQL 16 subject erasure는 accepted invite를 tombstone하고 membership FK에 막히지 않는다", async () => {
+  const workspaceId = "f6320000-0000-4000-8000-000000000001";
+  const subjectUser = "f6320000-0000-4000-8000-000000000011";
+  const remainingOwner = "f6320000-0000-4000-8000-000000000012";
+  const requestId = "f6320000-0000-4000-8000-000000000021";
+  await pool.query(
+    "insert into workspaces (id, name, slug) values ($1, 'Invite Tombstone', 'invite-tombstone')",
+    [workspaceId],
+  );
+  await pool.query(
+    `insert into users (id, email, password_hash, display_name, email_verified_at)
+     values ($1, 'accepted-owner@example.test', 'scrypt:a', 'Accepted Owner', now()),
+            ($2, 'remaining-owner@example.test', 'scrypt:b', 'Remaining Owner', now())`,
+    [subjectUser, remainingOwner],
+  );
+  await pool.query(
+    `insert into memberships (workspace_id, user_id, role)
+     values ($1, $2, 'owner'), ($1, $3, 'owner')`,
+    [workspaceId, subjectUser, remainingOwner],
+  );
+  await pool.query(
+    `insert into invites
+       (email, token_hash, workspace_name, workspace_slug, role, expires_at, accepted_at,
+        accepted_workspace_id, accepted_by_user_id)
+     values
+       ('accepted-owner@example.test', $1, 'Invite Tombstone', 'invite-tombstone',
+        'owner', now() + interval '1 day', now(), $2, $3)`,
+    ["1".repeat(64), workspaceId, subjectUser],
+  );
+  await pool.query(
+    `insert into privacy_requests
+       (id, workspace_id, request_id, type, status, operator_id, subject_user_id, requested_at)
+     values ($1, $2, 'subject-invite-tombstone', 'erasure', 'running', 'privacy-operator', $3, now())`,
+    [requestId, workspaceId, subjectUser],
+  );
+
+  const privacy = await pool.connect();
+  try {
+    await privacy.query("begin");
+    await privacy.query("set local role semforge_privacy");
+    await privacy.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
+    await privacy.query(
+      "select privacy_erase_subject($1::uuid, $2::uuid, 'privacy-operator', $3::uuid, now())",
+      [workspaceId, requestId, subjectUser],
+    );
+    await privacy.query("commit");
+  } catch (error) {
+    await rollback(privacy);
+    throw error;
+  } finally {
+    privacy.release();
+  }
+
+  const tombstoned = (await pool.query<{
+      email: string;
+      accepted_workspace_id: string;
+      accepted_by_user_id: string | null;
+      accepted_erased: boolean;
+      subject_membership: number;
+      owner_count: number;
+    }>(
+      `select invite.email,
+              invite.accepted_workspace_id::text,
+              invite.accepted_by_user_id::text,
+              invite.accepted_erased_at is not null as accepted_erased,
+              (select count(*)::int from memberships where workspace_id = $1 and user_id = $2) subject_membership,
+              (select count(*)::int from memberships where workspace_id = $1 and role = 'owner') owner_count
+         from invites invite
+        where invite.accepted_workspace_id = $1`,
+      [workspaceId, subjectUser],
+    )).rows;
+  assert.equal(tombstoned.length, 1);
+  assert.match(tombstoned[0]!.email, /^erased:[0-9a-f]{64}$/u);
+  assert.notEqual(tombstoned[0]!.email, "accepted-owner@example.test");
+  assert.deepEqual(tombstoned[0], {
+    email: tombstoned[0]!.email,
+    accepted_workspace_id: workspaceId,
+    accepted_by_user_id: null,
+    accepted_erased: true,
+    subject_membership: 0,
+    owner_count: 1,
+  });
+});
+
+test("PostgreSQL 16 subject erasure는 동시 owner 삭제를 workspace 단위로 직렬화해 last owner를 보존한다", async () => {
+  const workspaceId = "f6330000-0000-4000-8000-000000000001";
+  const ownerA = "f6330000-0000-4000-8000-000000000011";
+  const ownerB = "f6330000-0000-4000-8000-000000000012";
+  const requestA = "f6330000-0000-4000-8000-000000000021";
+  const requestB = "f6330000-0000-4000-8000-000000000022";
+  await pool.query(
+    "insert into workspaces (id, name, slug) values ($1, 'Owner Race', 'owner-race')",
+    [workspaceId],
+  );
+  await pool.query(
+    `insert into users (id, email, password_hash, email_verified_at)
+     values ($1, 'race-a@example.test', 'scrypt:a', now()),
+            ($2, 'race-b@example.test', 'scrypt:b', now())`,
+    [ownerA, ownerB],
+  );
+  await pool.query(
+    "insert into memberships (workspace_id, user_id, role) values ($1, $2, 'owner'), ($1, $3, 'owner')",
+    [workspaceId, ownerA, ownerB],
+  );
+  await pool.query(
+    `insert into privacy_requests
+       (id, workspace_id, request_id, type, status, operator_id, subject_user_id, requested_at)
+     values ($1, $3, 'owner-race-a', 'erasure', 'running', 'privacy-operator', $4, now()),
+            ($2, $3, 'owner-race-b', 'erasure', 'running', 'privacy-operator', $5, now())`,
+    [requestA, requestB, workspaceId, ownerA, ownerB],
+  );
+  await pool.query(`
+    create function test_sleep_owner_race_membership_delete() returns trigger
+    language plpgsql as $$
+    begin
+      if old.workspace_id = '${workspaceId}'::uuid then
+        perform pg_sleep(0.25);
+      end if;
+      return old;
+    end;
+    $$`);
+  await pool.query(`
+    create trigger test_sleep_owner_race_membership_delete
+    before delete on memberships
+    for each row execute function test_sleep_owner_race_membership_delete()`);
+
+  const erase = async (requestIdForSubject: string, subjectUserId: string): Promise<unknown> => {
+    const privacy = await pool.connect();
+    try {
+      await privacy.query("begin");
+      await privacy.query("set local role semforge_privacy");
+      await privacy.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
+      await privacy.query(
+        "select privacy_erase_subject($1::uuid, $2::uuid, 'privacy-operator', $3::uuid, now())",
+        [workspaceId, requestIdForSubject, subjectUserId],
+      );
+      await privacy.query("commit");
+      return "committed";
+    } catch (error) {
+      await rollback(privacy);
+      return error;
+    } finally {
+      privacy.release();
+    }
+  };
+
+  try {
+    const results = await Promise.all([
+      erase(requestA, ownerA),
+      erase(requestB, ownerB),
+    ]);
+    const committed = results.filter((result) => result === "committed");
+    const rejected = results.filter((result) => result instanceof Error);
+    assert.equal(committed.length, 1);
+    assert.equal(rejected.length, 1);
+    assert.match(String((rejected[0] as Error).message), /ownership transfer or workspace_deletion/u);
+    assert.deepEqual(
+      (await pool.query<{ owner_count: number; membership_count: number }>(
+        `select
+           (select count(*)::int from memberships where workspace_id = $1 and role = 'owner') owner_count,
+           (select count(*)::int from memberships where workspace_id = $1) membership_count`,
+        [workspaceId],
+      )).rows,
+      [{ owner_count: 1, membership_count: 1 }],
+    );
+  } finally {
+    await pool.query("drop trigger if exists test_sleep_owner_race_membership_delete on memberships");
+    await pool.query("drop function if exists test_sleep_owner_race_membership_delete()");
+  }
 });
 
 test("PostgreSQL 16 privacy 운영 역할은 raw table 대신 승인 request 함수만 실행한다", async () => {

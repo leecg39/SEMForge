@@ -1434,6 +1434,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "accepted_erased_at": {
+          "name": "accepted_erased_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -1551,7 +1557,7 @@
         },
         "invites_provisioning_state_ck": {
           "name": "invites_provisioning_state_ck",
-          "value": "(\n        (\"invites\".\"accepted_at\" is null and \"invites\".\"superseded_at\" is null and \"invites\".\"accepted_workspace_id\" is null and \"invites\".\"accepted_by_user_id\" is null)\n        or\n        (\"invites\".\"accepted_at\" is not null and \"invites\".\"superseded_at\" is null and \"invites\".\"accepted_workspace_id\" is not null and \"invites\".\"accepted_by_user_id\" is not null)\n        or\n        (\"invites\".\"accepted_at\" is null and \"invites\".\"superseded_at\" is not null and \"invites\".\"accepted_workspace_id\" is null and \"invites\".\"accepted_by_user_id\" is null)\n      )"
+          "value": "(\n        (\"invites\".\"accepted_at\" is null and \"invites\".\"superseded_at\" is null and \"invites\".\"accepted_workspace_id\" is null and \"invites\".\"accepted_by_user_id\" is null and \"invites\".\"accepted_erased_at\" is null)\n        or\n        (\"invites\".\"accepted_at\" is not null and \"invites\".\"superseded_at\" is null and \"invites\".\"accepted_workspace_id\" is not null and \"invites\".\"accepted_by_user_id\" is not null and \"invites\".\"accepted_erased_at\" is null)\n        or\n        (\"invites\".\"accepted_at\" is not null and \"invites\".\"superseded_at\" is null and \"invites\".\"accepted_workspace_id\" is not null and \"invites\".\"accepted_by_user_id\" is null and \"invites\".\"accepted_erased_at\" is not null and \"invites\".\"accepted_erased_at\" >= \"invites\".\"accepted_at\")\n        or\n        (\"invites\".\"accepted_at\" is null and \"invites\".\"superseded_at\" is not null and \"invites\".\"accepted_workspace_id\" is null and \"invites\".\"accepted_by_user_id\" is null and \"invites\".\"accepted_erased_at\" is null)\n      )"
         },
         "invites_acceptance_time_ck": {
           "name": "invites_acceptance_time_ck",

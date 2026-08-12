@@ -246,6 +246,7 @@ CREATE TABLE "invites" (
 	"superseded_at" timestamp with time zone,
 	"accepted_workspace_id" uuid,
 	"accepted_by_user_id" uuid,
+	"accepted_erased_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "invites_token_hash_uq" UNIQUE("token_hash"),
 	CONSTRAINT "invites_expiry_window_ck" CHECK ("invites"."expires_at" > "invites"."created_at" and "invites"."expires_at" <= "invites"."created_at" + interval '7 days'),
@@ -253,7 +254,7 @@ CREATE TABLE "invites" (
 	CONSTRAINT "invites_owner_role_ck" CHECK ("invites"."role" = 'owner'),
 	CONSTRAINT "invites_release_target_ck" CHECK ("invites"."release_target" in ('sandbox', 'staging', 'paid-production')),
 	CONSTRAINT "invites_intent_text_ck" CHECK (btrim("invites"."email") <> '' and btrim("invites"."workspace_name") <> '' and btrim("invites"."workspace_slug") <> ''),
-	CONSTRAINT "invites_provisioning_state_ck" CHECK ((("invites"."accepted_at" is null and "invites"."superseded_at" is null and "invites"."accepted_workspace_id" is null and "invites"."accepted_by_user_id" is null) or ("invites"."accepted_at" is not null and "invites"."superseded_at" is null and "invites"."accepted_workspace_id" is not null and "invites"."accepted_by_user_id" is not null) or ("invites"."accepted_at" is null and "invites"."superseded_at" is not null and "invites"."accepted_workspace_id" is null and "invites"."accepted_by_user_id" is null))),
+	CONSTRAINT "invites_provisioning_state_ck" CHECK ((("invites"."accepted_at" is null and "invites"."superseded_at" is null and "invites"."accepted_workspace_id" is null and "invites"."accepted_by_user_id" is null and "invites"."accepted_erased_at" is null) or ("invites"."accepted_at" is not null and "invites"."superseded_at" is null and "invites"."accepted_workspace_id" is not null and "invites"."accepted_by_user_id" is not null and "invites"."accepted_erased_at" is null) or ("invites"."accepted_at" is not null and "invites"."superseded_at" is null and "invites"."accepted_workspace_id" is not null and "invites"."accepted_by_user_id" is null and "invites"."accepted_erased_at" is not null and "invites"."accepted_erased_at" >= "invites"."accepted_at") or ("invites"."accepted_at" is null and "invites"."superseded_at" is not null and "invites"."accepted_workspace_id" is null and "invites"."accepted_by_user_id" is null and "invites"."accepted_erased_at" is null))),
 	CONSTRAINT "invites_acceptance_time_ck" CHECK ("invites"."accepted_at" is null or ("invites"."accepted_at" >= "invites"."created_at" and "invites"."accepted_at" <= "invites"."expires_at")),
 	CONSTRAINT "invites_superseded_time_ck" CHECK ("invites"."superseded_at" is null or "invites"."superseded_at" >= "invites"."expires_at")
 );
@@ -1349,6 +1350,13 @@ BEGIN
   THEN
     RAISE EXCEPTION 'privacy erasure requires exact running request and subject' USING ERRCODE = '42501';
   END IF;
+  PERFORM pg_advisory_xact_lock(privacy_workspace_lock_key(p_workspace_id));
+  PERFORM 1 FROM workspaces WHERE id = p_workspace_id FOR UPDATE;
+  PERFORM 1
+    FROM memberships
+   WHERE workspace_id = p_workspace_id
+   ORDER BY user_id
+   FOR UPDATE;
   SELECT memberships.role, users.email INTO subject_role, email
     FROM memberships JOIN users ON users.id = memberships.user_id
    WHERE memberships.workspace_id = p_workspace_id AND memberships.user_id = p_subject_user_id
@@ -1398,6 +1406,14 @@ BEGIN
      SET actor_user_id = NULL,
          metadata = metadata || jsonb_build_object('subjectPrivacyErased', true, 'requestId', p_request_id::text)
    WHERE workspace_id = p_workspace_id AND actor_user_id = p_subject_user_id;
+  UPDATE invites
+     SET email = 'erased:' || encode(sha256((id::text || p_request_id::text || ':invite')::bytea), 'hex'),
+         accepted_by_user_id = NULL,
+         accepted_erased_at = p_erased_at
+   WHERE accepted_workspace_id = p_workspace_id
+     AND accepted_by_user_id = p_subject_user_id
+     AND accepted_at IS NOT NULL
+     AND accepted_erased_at IS NULL;
   DELETE FROM memberships WHERE workspace_id = p_workspace_id AND user_id = p_subject_user_id;
   SELECT count(*)::int INTO remaining_memberships FROM memberships WHERE user_id = p_subject_user_id;
   IF remaining_memberships = 0 THEN
@@ -1641,11 +1657,26 @@ BEGIN
     RAISE EXCEPTION 'privacy email suppression input is invalid' USING ERRCODE = '42501';
   END IF;
   PERFORM 1 FROM privacy_requests
-   WHERE workspace_id = p_workspace_id AND id = p_request_id
-     AND type = 'workspace_deletion' AND status = 'running'
+   WHERE privacy_requests.workspace_id = p_workspace_id AND privacy_requests.id = p_request_id
+     AND privacy_requests.status = 'running'
+     AND (
+       (privacy_requests.type = 'workspace_deletion' AND privacy_requests.subject_user_id IS NULL)
+       OR (
+         privacy_requests.type = 'erasure'
+         AND EXISTS (
+           SELECT 1
+             FROM memberships
+             JOIN users ON users.id = memberships.user_id
+            WHERE memberships.workspace_id = privacy_requests.workspace_id
+              AND memberships.user_id = privacy_requests.subject_user_id
+              AND users.disabled_at IS NULL
+              AND encode(sha256(lower(btrim(users.email))::bytea), 'hex') = p_recipient_hash
+         )
+       )
+     )
    FOR UPDATE;
   IF NOT FOUND THEN
-    RAISE EXCEPTION 'privacy email suppression requires matching running deletion request'
+    RAISE EXCEPTION 'privacy email suppression requires matching running deletion or erasure request'
       USING ERRCODE = '42501';
   END IF;
   INSERT INTO email_suppressions (workspace_id, recipient_hash, request_id)

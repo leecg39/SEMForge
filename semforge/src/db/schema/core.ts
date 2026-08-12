@@ -167,6 +167,7 @@ export const invites = pgTable(
     supersededAt: timestamp("superseded_at", { withTimezone: true }),
     acceptedWorkspaceId: uuid("accepted_workspace_id"),
     acceptedByUserId: uuid("accepted_by_user_id"),
+    acceptedErasedAt: timestamp("accepted_erased_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -188,11 +189,13 @@ export const invites = pgTable(
     check(
       "invites_provisioning_state_ck",
       sql`(
-        (${table.acceptedAt} is null and ${table.supersededAt} is null and ${table.acceptedWorkspaceId} is null and ${table.acceptedByUserId} is null)
+        (${table.acceptedAt} is null and ${table.supersededAt} is null and ${table.acceptedWorkspaceId} is null and ${table.acceptedByUserId} is null and ${table.acceptedErasedAt} is null)
         or
-        (${table.acceptedAt} is not null and ${table.supersededAt} is null and ${table.acceptedWorkspaceId} is not null and ${table.acceptedByUserId} is not null)
+        (${table.acceptedAt} is not null and ${table.supersededAt} is null and ${table.acceptedWorkspaceId} is not null and ${table.acceptedByUserId} is not null and ${table.acceptedErasedAt} is null)
         or
-        (${table.acceptedAt} is null and ${table.supersededAt} is not null and ${table.acceptedWorkspaceId} is null and ${table.acceptedByUserId} is null)
+        (${table.acceptedAt} is not null and ${table.supersededAt} is null and ${table.acceptedWorkspaceId} is not null and ${table.acceptedByUserId} is null and ${table.acceptedErasedAt} is not null and ${table.acceptedErasedAt} >= ${table.acceptedAt})
+        or
+        (${table.acceptedAt} is null and ${table.supersededAt} is not null and ${table.acceptedWorkspaceId} is null and ${table.acceptedByUserId} is null and ${table.acceptedErasedAt} is null)
       )`,
     ),
     check(

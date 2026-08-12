@@ -394,6 +394,7 @@ test("invites는 신규 workspace intent와 수락한 owner membership을 명시
       "superseded_at",
       "accepted_workspace_id",
       "accepted_by_user_id",
+      "accepted_erased_at",
       "created_at",
     ],
   );
