@@ -2,7 +2,9 @@
 
 Status: PASSED
 
-Final source SHA: `e50c5e6ea05e218268612d73fa05d8eac5517f7b`
+Final pushed HEAD: `22cb81dccd6ba36d411ed17feeac1559b739cd95`
+
+Last source-changing SHA: `e50c5e6ea05e218268612d73fa05d8eac5517f7b`
 
 ## Direct validation
 
