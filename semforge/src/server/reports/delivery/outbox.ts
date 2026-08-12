@@ -11,7 +11,7 @@ export interface ReportDeliveryOutboxDatabase {
   query<T = unknown>(text: string, values?: readonly unknown[]): Promise<{ rows: T[] }>;
 }
 
-/** 사용자 PII 조회는 auth role 경계에서 끝내고 worker에는 필요한 수신자만 전달한다. */
+/** 사용자 PII 조회는 auth role 경계에서 끝내고 worker에는 owner/admin 수신자만 전달한다. */
 export async function loadReportOwnerRecipients(
   database: ReportDeliveryOutboxDatabase,
   workspaceId: string,
@@ -21,7 +21,7 @@ export async function loadReportOwnerRecipients(
       `select distinct lower(user_account.email) as email
          from memberships membership
          join users user_account on user_account.id = membership.user_id
-        where membership.workspace_id = $1 and membership.role = 'owner'
+        where membership.workspace_id = $1 and membership.role in ('owner', 'admin')
           and user_account.disabled_at is null and user_account.email_verified_at is not null
         order by lower(user_account.email)`,
       [workspaceId],

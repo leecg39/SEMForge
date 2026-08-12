@@ -1084,6 +1084,43 @@ test("동시 password reset은 한 요청만 password를 변경하고 다른 요
   );
 });
 
+test("semforge_auth는 memberships UPDATE 권한 없이 admin session을 원자 생성한다", async () => {
+  const { auth: store, client } = await createStores();
+  const now = testNow();
+  const userId = "8a000000-0000-4000-8000-000000000001";
+  const workspaceId = "8a000000-0000-4000-8000-000000000002";
+  const passwordHash = "scrypt:admin-password";
+
+  await client.query(
+    `insert into users (id, email, password_hash, email_verified_at)
+     values ($1, 'admin-session@example.test', $2, $3)`,
+    [userId, passwordHash, now],
+  );
+  await client.query(
+    "insert into workspaces (id, name, slug) values ($1, 'Admin Session', 'admin-session')",
+    [workspaceId],
+  );
+  await client.query(
+    "insert into memberships (workspace_id, user_id, role) values ($1, $2, 'admin')",
+    [workspaceId, userId],
+  );
+
+  await client.query("set role semforge_auth");
+  try {
+    const principal = await store.rotateSession({
+      userId,
+      workspaceId,
+      expectedPasswordHash: passwordHash,
+      newTokenHash: digest("admin-session-token"),
+      expiresAt: addMs(now, DAY_MS),
+      now,
+    });
+    assert.equal(principal?.role, "admin");
+  } finally {
+    await client.query("reset role");
+  }
+});
+
 test("auth throttle은 hash 식별자만 원자 집계하고 5회 이후 15분 동안 차단한다", async () => {
   const { auth: store } = await createStores();
   const now = testNow();

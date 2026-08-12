@@ -514,7 +514,7 @@ export class PostgresAuthStore implements AuthStore {
           ),
         )
         .limit(1)
-        .for("update");
+        .for("update", { of: users });
       if (!identity) return null;
 
       if (input.currentTokenHash) {

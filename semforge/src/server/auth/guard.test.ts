@@ -7,6 +7,10 @@ import { test } from "node:test";
 import { ApiError } from "@/lib/api-v1";
 import { SESSION_COOKIE_NAME } from "@/lib/session";
 import {
+  isTenantWorkspaceManager,
+  TENANT_WORKSPACE_MANAGER_ROLES,
+} from "@/server/auth/contracts";
+import {
   createRequireAuth,
   type AuthGuardService,
 } from "@/server/auth/guard";
@@ -41,6 +45,13 @@ function service(
 ): AuthGuardService {
   return { getSession };
 }
+
+test("tenant 관리자 역할은 owner와 admin만 포함한다", () => {
+  assert.deepEqual(TENANT_WORKSPACE_MANAGER_ROLES, ["owner", "admin"]);
+  assert.equal(isTenantWorkspaceManager("owner"), true);
+  assert.equal(isTenantWorkspaceManager("admin"), true);
+  assert.equal(isTenantWorkspaceManager("member"), false);
+});
 
 test("owner와 admin은 허용된 역할 guard를 통과한다", async (t) => {
   for (const role of ["owner", "admin"] as const) {
@@ -162,4 +173,3 @@ test("guard 결과는 raw token과 session/PII를 제거하고 안전한 request
     new RegExp(`${RAW_SESSION_TOKEN}|member@example.com|고객 담당자`),
   );
 });
-

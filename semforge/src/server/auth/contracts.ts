@@ -1,6 +1,8 @@
 // @TASK P2-A1-T1 - Authentication service boundary contracts
 // @SPEC docs/planning/06-tasks.md#p2-a1-t1--초대-전용-인증과-세션
 
+import type { AuthMembershipRole } from "@/server/auth/store";
+
 export type {
   AuthMembership,
   AuthMembershipRole,
@@ -10,8 +12,11 @@ export type {
   OperatorInviteStore,
 } from "@/server/auth/store";
 
+export const TENANT_WORKSPACE_MANAGER_ROLES = ["owner", "admin"] as const satisfies
+  readonly AuthMembershipRole[];
+
 export function isTenantWorkspaceManager(role: AuthMembershipRole): boolean {
-  return role === "owner" || role === "admin";
+  return TENANT_WORKSPACE_MANAGER_ROLES.some((allowedRole) => allowedRole === role);
 }
 
 export interface PasswordResetNotification {

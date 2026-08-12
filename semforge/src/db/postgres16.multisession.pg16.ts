@@ -6,7 +6,10 @@ import { createHash } from "node:crypto";
 import { after, test } from "node:test";
 
 import { Pool, type PoolClient } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
 
+import * as schema from "@/db/schema";
+import { PostgresAuthStore } from "@/server/auth/postgres-store";
 import { PostgresProviderCallCoordinator } from "@/server/jobs/provider-calls";
 import { PostgresJobQueue } from "@/server/jobs/queue";
 import { PostgresOutboxRelay } from "@/server/outbox/relay";
@@ -167,6 +170,52 @@ async function rollback(client: PoolClient): Promise<void> {
 function sha256Hex(input: string): string {
   return createHash("sha256").update(input).digest("hex");
 }
+
+test("PostgreSQL 16 semforge_auth는 memberships UPDATE 없이 admin session을 회전한다", async () => {
+  const workspaceId = "f2a00000-0000-4000-8000-000000000001";
+  const userId = "f2a00000-0000-4000-8000-000000000002";
+  const passwordHash = "scrypt:pg16-admin-password";
+  const now = new Date("2026-08-13T00:00:00.000Z");
+  const authPool = new Pool({
+    connectionString: roleDatabaseUrl("semforge_auth"),
+    max: 1,
+    ssl: false,
+  });
+
+  await pool.query(
+    "insert into workspaces (id, name, slug) values ($1, 'PG16 Admin', 'pg16-admin')",
+    [workspaceId],
+  );
+  await pool.query(
+    `insert into users (id, email, password_hash, email_verified_at)
+     values ($1, 'pg16-admin@example.test', $2, $3)`,
+    [userId, passwordHash, now],
+  );
+  await pool.query(
+    "insert into memberships (workspace_id, user_id, role) values ($1, $2, 'admin')",
+    [workspaceId, userId],
+  );
+
+  try {
+    const privilege = await pool.query<{ can_update: boolean }>(
+      "select has_table_privilege('semforge_auth', 'memberships', 'UPDATE') as can_update",
+    );
+    assert.deepEqual(privilege.rows, [{ can_update: false }]);
+
+    const store = new PostgresAuthStore(drizzle(authPool, { schema }));
+    const principal = await store.rotateSession({
+      userId,
+      workspaceId,
+      expectedPasswordHash: passwordHash,
+      newTokenHash: sha256Hex("pg16-admin-session-token"),
+      expiresAt: new Date("2026-08-14T00:00:00.000Z"),
+      now,
+    });
+    assert.equal(principal?.role, "admin");
+  } finally {
+    await authPool.end();
+  }
+});
 
 test("PostgreSQL 16 실제 세션은 SKIP LOCKED, provider canonical visibility, outbox crash recovery와 RLS 경계를 보장한다", async () => {
   const version = await pool.query<{ server_version: string }>("show server_version");

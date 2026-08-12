@@ -9,6 +9,7 @@ import {
   parseJsonBody,
   withApiV1,
 } from "@/lib/api-v1";
+import { TENANT_WORKSPACE_MANAGER_ROLES } from "@/server/auth/contracts";
 import type { RequireAuth } from "@/server/auth/guard";
 import type { BillingAccessAuthorizer } from "@/server/billing/access";
 import type { GscConnectionRecord, GscPropertyBindingRecord } from "@/server/gsc/store";
@@ -141,7 +142,7 @@ export function createGscRouteHandlers(options: GscRouteHandlerOptions) {
       POST: withApiV1(async (request, _context, apiContext) => {
         const principal = await options.requireAuth(request, {
           csrf: true,
-          roles: ["owner", "admin"],
+          roles: TENANT_WORKSPACE_MANAGER_ROLES,
           requestId: apiContext.requestId,
         });
         const body = await parseJsonBody(request, connectBodySchema);
@@ -170,7 +171,7 @@ export function createGscRouteHandlers(options: GscRouteHandlerOptions) {
         if (!code || !state) throw new ApiError("BAD_REQUEST", "Google 인증 code와 state가 필요합니다.");
         const principal = await options.requireAuth(request, {
           csrf: false,
-          roles: ["owner", "admin"],
+          roles: TENANT_WORKSPACE_MANAGER_ROLES,
           requestId: apiContext.requestId,
         });
         try {
@@ -227,7 +228,7 @@ export function createGscRouteHandlers(options: GscRouteHandlerOptions) {
       DELETE: withApiV1(async (request, context: ConnectionContext, apiContext) => {
         const principal = await options.requireAuth(request, {
           csrf: true,
-          roles: ["owner", "admin"],
+          roles: TENANT_WORKSPACE_MANAGER_ROLES,
           requestId: apiContext.requestId,
         });
         const { connectionId } = await context.params;
@@ -273,7 +274,7 @@ export function createGscRouteHandlers(options: GscRouteHandlerOptions) {
       POST: withApiV1(async (request, _context, apiContext) => {
         const principal = await options.requireAuth(request, {
           csrf: true,
-          roles: ["owner", "admin"],
+          roles: TENANT_WORKSPACE_MANAGER_ROLES,
           requestId: apiContext.requestId,
         });
         const body = await parseJsonBody(request, bindingBodySchema);

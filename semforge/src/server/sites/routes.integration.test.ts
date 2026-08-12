@@ -182,6 +182,80 @@ test("POST /api/v1/sites는 Idempotency-Key를 요구하고 생성 결과를 env
   assert.equal((envelope.data as { domain: string }).domain, "route.example.com");
 });
 
+test("admin은 사이트와 추적 항목을 생성하고 활성 상태를 수정할 수 있다", async () => {
+  const handlers = createSitesRouteHandlers({
+    db: pg,
+    authorizeBilling: allowBillingAccess,
+    privacyOperation: allowPrivacyOperation,
+    resolveSession: async () => ({
+      workspaceId,
+      userId,
+      role: "admin",
+      requestId: "admin-route-session",
+    }),
+    resolveDomainAddresses: async () => ["8.8.8.8"],
+  });
+  const createdSite = await handlers.sites.POST(
+    new Request("https://app.semforge.test/api/v1/sites", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://app.semforge.test",
+        "idempotency-key": "admin-site-create",
+      },
+      body: JSON.stringify({ name: "Admin Site", domain: "admin.example.com" }),
+    }),
+    undefined,
+  );
+  assert.equal(createdSite.status, 201);
+  const site = (await readEnvelope(createdSite)).data as { id: string; active: boolean };
+
+  const createdTracking = await handlers.tracking.POST(
+    new Request("https://app.semforge.test/api/v1/tracking", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://app.semforge.test",
+        "idempotency-key": "admin-tracking-create",
+      },
+      body: JSON.stringify({ siteId: site.id, type: "rank", query: "admin capability" }),
+    }),
+    undefined,
+  );
+  assert.equal(createdTracking.status, 201);
+  const tracking = (await readEnvelope(createdTracking)).data as { id: string; active: boolean };
+
+  const disabledSite = await handlers.siteById.PATCH(
+    new Request(`https://app.semforge.test/api/v1/sites/${site.id}`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://app.semforge.test",
+        "idempotency-key": "admin-site-disable",
+      },
+      body: JSON.stringify({ active: false }),
+    }),
+    { params: Promise.resolve({ siteId: site.id }) },
+  );
+  const disabledTracking = await handlers.trackingById.PATCH(
+    new Request(`https://app.semforge.test/api/v1/tracking/${tracking.id}`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://app.semforge.test",
+        "idempotency-key": "admin-tracking-disable",
+      },
+      body: JSON.stringify({ active: false }),
+    }),
+    { params: Promise.resolve({ trackingId: tracking.id }) },
+  );
+
+  assert.equal(disabledSite.status, 200);
+  assert.equal(disabledTracking.status, 200);
+  assert.equal(((await readEnvelope(disabledSite)).data as { active: boolean }).active, false);
+  assert.equal(((await readEnvelope(disabledTracking)).data as { active: boolean }).active, false);
+});
+
 test("GET /api/v1/sites는 cursor 페이지를 workspace 내부로만 반환한다", async () => {
   const handlers = handlersFor();
   const page = await handlers.sites.GET(

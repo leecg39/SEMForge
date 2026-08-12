@@ -6,6 +6,7 @@ import { ApiError } from "@/lib/api-v1";
 import { zodErrorFields } from "@/lib/api-v1/body";
 import { resolveRequestId } from "@/lib/api-v1/request-id";
 import { errorResponse, successResponse } from "@/lib/api-v1/response";
+import { TENANT_WORKSPACE_MANAGER_ROLES } from "@/server/auth/contracts";
 import type { SubscriptionStatus } from "@/server/billing/domain";
 import type {
   BillingChargeOutcome,
@@ -354,7 +355,7 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
       if (!checkout) throw new ApiError("INTERNAL");
       const principal = await options.requireAuth(request, {
         csrf: false,
-        roles: ["owner", "admin"],
+        roles: TENANT_WORKSPACE_MANAGER_ROLES,
       });
       const requestId = requestIdFor(principal, apiContextRequestId);
       return runWorkspaceOperation(principal.workspaceId, async () => {
@@ -392,7 +393,7 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
       const idempotencyKey = requiredIdempotencyKey(request);
       const principal = await options.requireAuth(request, {
         csrf: true,
-        roles: ["owner", "admin"],
+        roles: TENANT_WORKSPACE_MANAGER_ROLES,
       });
       const body = await parseBillingBody(request, authorizeBodySchema);
       const requestId = requestIdFor(principal, apiContextRequestId);
@@ -423,7 +424,7 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
       const idempotencyKey = requiredIdempotencyKey(request);
       const principal = await options.requireAuth(request, {
         csrf: true,
-        roles: ["owner", "admin"],
+        roles: TENANT_WORKSPACE_MANAGER_ROLES,
       });
       await parseBillingBody(request, emptyBodySchema);
       const requestId = requestIdFor(principal, apiContextRequestId);
@@ -453,7 +454,7 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
       requiredIdempotencyKey(request);
       const principal = await options.requireAuth(request, {
         csrf: true,
-        roles: ["owner", "admin"],
+        roles: TENANT_WORKSPACE_MANAGER_ROLES,
       });
       await parseBillingBody(request, emptyBodySchema);
       const requestId = requestIdFor(principal, apiContextRequestId);
