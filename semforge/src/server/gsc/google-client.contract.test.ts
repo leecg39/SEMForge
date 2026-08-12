@@ -55,3 +55,34 @@ test("토큰 revoke는 공식 OAuth revoke endpoint에 form body로 전송하고
   assert.equal((calls[0]!.init?.headers as Record<string, string>)["content-type"], "application/x-www-form-urlencoded");
   assert.equal(String(calls[0]!.init?.body), "token=refresh-token-secret");
 });
+
+test("400 invalid_token만 이미 만료·revoke된 token의 멱등 성공으로 정규화한다", async () => {
+  const responses = [
+    Response.json({ error: "invalid_token", error_description: "Token expired or revoked" }, { status: 400 }),
+    Response.json({ error: "invalid_request", error_description: "Malformed request" }, { status: 400 }),
+    Response.json({ error: "invalid_token" }, { status: 401 }),
+    new Response(JSON.stringify({ error: "invalid_token", padding: "x".repeat(4_096) }), {
+      status: 400,
+      headers: { "content-type": "application/json" },
+    }),
+  ];
+  const client = createGoogleSearchConsoleClient({
+    fetchImpl: async () => responses.shift()!,
+  });
+
+  await client.revokeToken("already-revoked-refresh-token");
+  await assert.rejects(
+    client.revokeToken("malformed-token"),
+    (error: unknown) => error instanceof Error &&
+      error.message === "Google Search Console request failed with HTTP 400.",
+  );
+  await assert.rejects(
+    client.revokeToken("unauthorized-token"),
+    (error: unknown) => error instanceof Error && error.message === "UNAUTHORIZED",
+  );
+  await assert.rejects(
+    client.revokeToken("oversized-provider-response"),
+    (error: unknown) => error instanceof Error &&
+      error.message === "Google Search Console request failed with HTTP 400.",
+  );
+});

@@ -6,7 +6,6 @@ import { test } from "node:test";
 
 import {
   S3PrivateObjectStorage,
-  type VersionedObjectEraser,
 } from "@/server/storage/s3";
 
 const now = new Date("2026-08-12T00:00:00.000Z");
@@ -144,11 +143,9 @@ test("versioned object eraser는 exact key의 version과 delete marker를 모든
         </ListVersionsResult>`, { status: 200 });
     },
   });
-  const eraser: VersionedObjectEraser = storage;
+  await storage.eraseAllVersions(key);
 
-  await eraser.eraseAllVersions(key);
-
-  assert.deepEqual(requests.map((request) => request.method), ["GET", "GET", "DELETE", "DELETE", "DELETE", "GET"]);
+  assert.deepEqual(requests.map((request) => request.method), ["GET", "GET", "DELETE", "DELETE", "DELETE", "GET", "GET"]);
   const first = new URL(requests[0]!.url);
   assert.equal(first.pathname, "/semforge-private");
   assert.equal(first.searchParams.get("versions"), "");
@@ -164,6 +161,142 @@ test("versioned object eraser는 exact key의 version과 delete marker를 모든
   );
   assert.ok(deletes.every((request) => new URL(request.url).pathname === "/semforge-private/reports/%EA%B3%A0%EA%B0%9D%20%26%20a%2Bb/report.pdf"));
   assert.ok(requests.every((request) => request.headers.get("authorization")?.startsWith("AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/")));
+});
+
+test("workspace eraser는 여러 page의 DB orphan·version·delete marker를 canonical prefix로 영구 삭제한다", async () => {
+  const workspaceId = "51000000-0000-4000-8000-000000000001";
+  const prefix = `reports/${workspaceId}/`;
+  const remaining = new Map<string, Set<string>>([
+    [`${prefix}known/report.pdf`, new Set(["known-v1"])],
+    [`${prefix}orphan/untracked.pdf`, new Set(["orphan-v1", "orphan-marker"])],
+  ]);
+  const deleted: Array<{ key: string; versionId: string }> = [];
+  const requests: Request[] = [];
+  const storage = new S3PrivateObjectStorage({
+    ...credentials,
+    clock: () => now,
+    fetch: async (input, init) => {
+      const request = new Request(input, init);
+      requests.push(request);
+      const url = new URL(request.url);
+      if (request.method === "DELETE") {
+        const key = decodeURIComponent(url.pathname.slice("/semforge-private/".length));
+        const versionId = url.searchParams.get("versionId") ?? "";
+        deleted.push({ key, versionId });
+        remaining.get(key)?.delete(versionId);
+        return new Response(null, { status: 204 });
+      }
+      const marker = url.searchParams.get("key-marker");
+      if (remaining.get(`${prefix}known/report.pdf`)?.size && !marker) {
+        return new Response(`<ListVersionsResult><IsTruncated>true</IsTruncated>
+          <NextKeyMarker>${prefix}known/report.pdf</NextKeyMarker><NextVersionIdMarker>known-v1</NextVersionIdMarker>
+          <Version><Key>${prefix}known/report.pdf</Key><VersionId>known-v1</VersionId></Version>
+        </ListVersionsResult>`, { status: 200 });
+      }
+      const entries = [...remaining.get(`${prefix}orphan/untracked.pdf`) ?? []].map((versionId) =>
+        versionId.endsWith("marker")
+          ? `<DeleteMarker><Key>${prefix}orphan/untracked.pdf</Key><VersionId>${versionId}</VersionId></DeleteMarker>`
+          : `<Version><Key>${prefix}orphan/untracked.pdf</Key><VersionId>${versionId}</VersionId></Version>`);
+      return new Response(
+        `<ListVersionsResult><IsTruncated>false</IsTruncated>${entries.join("")}</ListVersionsResult>`,
+        { status: 200 },
+      );
+    },
+  });
+
+  await storage.eraseWorkspaceReportVersions(workspaceId);
+
+  assert.deepEqual(deleted, [
+    { key: `${prefix}known/report.pdf`, versionId: "known-v1" },
+    { key: `${prefix}orphan/untracked.pdf`, versionId: "orphan-v1" },
+    { key: `${prefix}orphan/untracked.pdf`, versionId: "orphan-marker" },
+  ]);
+  assert.equal([...remaining.values()].every((versions) => versions.size === 0), true);
+  const listRequests = requests.filter((request) => request.method === "GET");
+  assert.equal(listRequests.length, 4);
+  assert.ok(listRequests.every((request) => new URL(request.url).searchParams.get("prefix") === prefix));
+  assert.equal(new URL(listRequests[1]!.url).searchParams.get("key-marker"), `${prefix}known/report.pdf`);
+});
+
+test("workspace eraser는 malicious workspace/prefix 입력을 요청 전에 거부한다", async () => {
+  let requests = 0;
+  const storage = new S3PrivateObjectStorage({
+    ...credentials,
+    fetch: async () => {
+      requests += 1;
+      return new Response(null, { status: 500 });
+    },
+  });
+
+  for (const malicious of [
+    "51000000-0000-4000-8000-000000000001/../other",
+    "51000000-0000-4000-8000-000000000001/",
+    "51000000-0000-4000-8000-000000000001 ",
+    "51000000-0000-4000-8000-00000000000A",
+  ]) {
+    await assert.rejects(
+      storage.eraseWorkspaceReportVersions(malicious),
+      (error: unknown) => error instanceof Error && error.message === "INVALID_OBJECT",
+    );
+  }
+  assert.equal(requests, 0);
+});
+
+test("workspace 목록이 다른 workspace key를 섞으면 아무것도 삭제하지 않고 fail closed 한다", async () => {
+  const workspaceId = "51000000-0000-4000-8000-000000000001";
+  let deletes = 0;
+  const storage = new S3PrivateObjectStorage({
+    ...credentials,
+    fetch: async (input, init) => {
+      const request = new Request(input, init);
+      if (request.method === "DELETE") {
+        deletes += 1;
+        return new Response(null, { status: 204 });
+      }
+      return new Response(`<ListVersionsResult><IsTruncated>false</IsTruncated>
+        <Version><Key>reports/${workspaceId}/known.pdf</Key><VersionId>known-v1</VersionId></Version>
+        <Version><Key>reports/51000000-0000-4000-8000-000000000002/foreign.pdf</Key><VersionId>foreign-v1</VersionId></Version>
+      </ListVersionsResult>`, { status: 200 });
+    },
+  });
+
+  await assert.rejects(
+    storage.eraseWorkspaceReportVersions(workspaceId),
+    (error: unknown) => error instanceof Error && error.message === "PROVIDER_ERROR",
+  );
+  assert.equal(deletes, 0);
+});
+
+test("workspace final-empty 검증은 지연 노출된 orphan을 다시 찾아 삭제한다", async () => {
+  const workspaceId = "51000000-0000-4000-8000-000000000001";
+  const orphanKey = `reports/${workspaceId}/put-succeeded-db-failed.pdf`;
+  let listCalls = 0;
+  let orphanPresent = true;
+  const deleted: string[] = [];
+  const storage = new S3PrivateObjectStorage({
+    ...credentials,
+    fetch: async (input, init) => {
+      const request = new Request(input, init);
+      if (request.method === "DELETE") {
+        deleted.push(new URL(request.url).searchParams.get("versionId") ?? "");
+        orphanPresent = false;
+        return new Response(null, { status: 204 });
+      }
+      listCalls += 1;
+      const delayedEntry = listCalls >= 2 && orphanPresent
+        ? `<Version><Key>${orphanKey}</Key><VersionId>orphan-v1</VersionId></Version>`
+        : "";
+      return new Response(
+        `<ListVersionsResult><IsTruncated>false</IsTruncated>${delayedEntry}</ListVersionsResult>`,
+        { status: 200 },
+      );
+    },
+  });
+
+  await storage.eraseWorkspaceReportVersions(workspaceId);
+
+  assert.deepEqual(deleted, ["orphan-v1"]);
+  assert.equal(listCalls, 4);
 });
 
 test("첫 삭제 중 restore로 새 version이 생기면 final empty 확인에서 찾아 같은 호출로 제거한다", async () => {

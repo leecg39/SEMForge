@@ -38,6 +38,7 @@ export interface PrivateObjectStorage {
 
 export interface VersionedObjectEraser {
   eraseAllVersions(key: string): Promise<void>;
+  eraseWorkspaceReportVersions(workspaceId: string): Promise<void>;
 }
 
 export class ObjectStorageError extends Error {
@@ -119,12 +120,29 @@ function requireKey(key: string): string {
   const normalized = key.trim();
   const segments = normalized.split("/");
   if (
-    normalized.length < 1 || normalized.length > 1024 || normalized.startsWith("/") ||
+    normalized !== key || normalized.length < 1 || normalized.length > 1024 || normalized.startsWith("/") ||
+    /[\u0000-\u001f\u007f]/u.test(normalized) ||
     normalized.includes("\\") || segments.some((segment) => !segment || segment === "." || segment === "..")
   ) {
     throw new ObjectStorageError("INVALID_OBJECT");
   }
   return normalized;
+}
+
+function requirePrefix(prefix: string): string {
+  const normalized = prefix.trim();
+  if (!normalized.endsWith("/") || normalized !== prefix) {
+    throw new ObjectStorageError("INVALID_OBJECT");
+  }
+  requireKey(normalized.slice(0, -1));
+  return normalized;
+}
+
+function requireWorkspaceId(workspaceId: string): string {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(workspaceId)) {
+    throw new ObjectStorageError("INVALID_OBJECT");
+  }
+  return workspaceId;
 }
 
 function requireChecksum(value: string): string {
@@ -329,26 +347,39 @@ function exactlyOneChild(element: XmlElement, name: string): XmlElement {
 }
 
 interface VersionListPage {
-  readonly versionIds: readonly string[];
+  readonly versions: readonly {
+    readonly key: string;
+    readonly versionId: string;
+  }[];
   readonly next?: { readonly keyMarker: string; readonly versionIdMarker: string };
 }
 
-function parseVersionListPage(raw: string, exactKey: string): VersionListPage {
+type VersionKeyDisposition = "include" | "ignore" | "reject";
+
+function parseVersionListPage(
+  raw: string,
+  keyDisposition: (key: string) => VersionKeyDisposition,
+): VersionListPage {
   const root = parseXmlDocument(raw);
   if (root.localName !== "ListVersionsResult") throw new Error("unexpected root");
   validateXmlText(root);
   const isTruncated = elementText(exactlyOneChild(root, "IsTruncated"));
   if (isTruncated !== "true" && isTruncated !== "false") throw new Error("invalid truncation flag");
-  const versionIds: string[] = [];
+  const versions: Array<{ key: string; versionId: string }> = [];
   for (const entry of root.children.filter((child) => child.localName === "Version" || child.localName === "DeleteMarker")) {
     const key = elementText(exactlyOneChild(entry, "Key"));
     const versionId = elementText(exactlyOneChild(entry, "VersionId"));
     if (!versionId || versionId.length > 2_048 || /[\u0000-\u001f\u007f]/u.test(versionId)) {
       throw new Error("invalid version id");
     }
-    if (key === exactKey) versionIds.push(versionId);
+    const disposition = keyDisposition(key);
+    if (disposition === "reject") throw new Error("version outside requested namespace");
+    if (disposition === "include") {
+      requireKey(key);
+      versions.push({ key, versionId });
+    }
   }
-  if (isTruncated === "false") return { versionIds };
+  if (isTruncated === "false") return { versions };
   const keyMarker = elementText(exactlyOneChild(root, "NextKeyMarker"));
   const versionIdMarker = elementText(exactlyOneChild(root, "NextVersionIdMarker"));
   if (
@@ -357,7 +388,10 @@ function parseVersionListPage(raw: string, exactKey: string): VersionListPage {
   ) {
     throw new Error("invalid pagination marker");
   }
-  return { versionIds, next: { keyMarker, versionIdMarker } };
+  if (keyDisposition(keyMarker) === "reject") {
+    throw new Error("pagination outside requested namespace");
+  }
+  return { versions, next: { keyMarker, versionIdMarker } };
 }
 
 export class S3PrivateObjectStorage implements PrivateObjectStorage, VersionedObjectEraser {
@@ -499,29 +533,58 @@ export class S3PrivateObjectStorage implements PrivateObjectStorage, VersionedOb
 
   async eraseAllVersions(rawKey: string): Promise<void> {
     const key = requireKey(rawKey);
-    for (let round = 0; round < MAX_PURGE_ROUNDS; round += 1) {
-      const versionIds = await this.listAllVersionIds(key);
-      if (versionIds.length === 0) return;
-      for (const versionId of versionIds) await this.deleteVersion(key, versionId);
-    }
-    if ((await this.listAllVersionIds(key)).length !== 0) {
-      throw new ObjectStorageError("PROVIDER_ERROR");
-    }
+    await this.eraseMatchingVersions(
+      key,
+      (candidate) => candidate === key ? "include" : "ignore",
+    );
   }
 
-  private async listAllVersionIds(key: string): Promise<string[]> {
-    const versionIds: string[] = [];
+  async eraseWorkspaceReportVersions(rawWorkspaceId: string): Promise<void> {
+    const prefix = requirePrefix(`reports/${requireWorkspaceId(rawWorkspaceId)}/`);
+    await this.eraseMatchingVersions(
+      prefix,
+      (candidate) => candidate.startsWith(prefix) ? "include" : "reject",
+    );
+  }
+
+  private async eraseMatchingVersions(
+    prefix: string,
+    keyDisposition: (key: string) => VersionKeyDisposition,
+  ): Promise<void> {
+    for (let round = 0; round < MAX_PURGE_ROUNDS; round += 1) {
+      let versions = await this.listAllVersions(prefix, keyDisposition);
+      if (versions.length === 0) {
+        versions = await this.listAllVersions(prefix, keyDisposition);
+        if (versions.length === 0) return;
+      }
+      for (const version of versions) await this.deleteVersion(version.key, version.versionId);
+    }
+    if ((await this.listAllVersions(prefix, keyDisposition)).length === 0) {
+      if ((await this.listAllVersions(prefix, keyDisposition)).length === 0) return;
+    }
+    throw new ObjectStorageError("PROVIDER_ERROR");
+  }
+
+  private async listAllVersions(
+    prefix: string,
+    keyDisposition: (key: string) => VersionKeyDisposition,
+  ): Promise<Array<{ key: string; versionId: string }>> {
+    const versions: Array<{ key: string; versionId: string }> = [];
     const seenPages = new Set<string>();
     let markers: { keyMarker: string; versionIdMarker: string } | undefined;
     for (let pageIndex = 0; pageIndex < MAX_VERSION_LIST_PAGES; pageIndex += 1) {
       const pageKey = markers ? `${markers.keyMarker}\u0000${markers.versionIdMarker}` : "<first>";
       if (seenPages.has(pageKey)) throw new ObjectStorageError("PROVIDER_ERROR");
       seenPages.add(pageKey);
-      const page = await this.listVersions(key, markers);
-      versionIds.push(...page.versionIds);
-      if (versionIds.length > MAX_VERSION_ENTRIES) throw new ObjectStorageError("PROVIDER_ERROR");
+      const page = await this.listVersions(prefix, keyDisposition, markers);
+      versions.push(...page.versions);
+      if (versions.length > MAX_VERSION_ENTRIES) throw new ObjectStorageError("PROVIDER_ERROR");
       if (!page.next) {
-        return [...new Set(versionIds)];
+        const unique = new Map<string, { key: string; versionId: string }>();
+        for (const version of versions) {
+          unique.set(`${version.key}\u0000${version.versionId}`, version);
+        }
+        return [...unique.values()];
       }
       markers = page.next;
     }
@@ -558,10 +621,11 @@ export class S3PrivateObjectStorage implements PrivateObjectStorage, VersionedOb
   }
 
   private async listVersions(
-    key: string,
+    prefix: string,
+    keyDisposition: (key: string) => VersionKeyDisposition,
     markers?: { readonly keyMarker: string; readonly versionIdMarker: string },
   ): Promise<VersionListPage> {
-    const query: Array<readonly [string, string]> = [["prefix", key], ["versions", ""]];
+    const query: Array<readonly [string, string]> = [["prefix", prefix], ["versions", ""]];
     if (markers) {
       query.push(["key-marker", markers.keyMarker], ["version-id-marker", markers.versionIdMarker]);
     }
@@ -576,13 +640,13 @@ export class S3PrivateObjectStorage implements PrivateObjectStorage, VersionedOb
     }
     if (response.status === 404) {
       if (markers) throw new ObjectStorageError("PROVIDER_ERROR");
-      return { versionIds: [] };
+      return { versions: [] };
     }
     if (!response.ok) throw new ObjectStorageError("PROVIDER_ERROR");
     try {
       const bytes = await boundedBody(response, MAX_VERSION_LIST_BYTES);
       const raw = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-      return parseVersionListPage(raw, key);
+      return parseVersionListPage(raw, keyDisposition);
     } catch {
       throw new ObjectStorageError("PROVIDER_ERROR");
     }

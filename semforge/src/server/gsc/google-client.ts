@@ -23,6 +23,48 @@ interface GoogleSitesResponse {
   }>;
 }
 
+async function boundedErrorBody(response: Response): Promise<string | undefined> {
+  const maximumBytes = 4_096;
+  const declaredBytes = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredBytes) && declaredBytes > maximumBytes) return undefined;
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maximumBytes) {
+        await reader.cancel();
+        return undefined;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks, size));
+}
+
+async function isAlreadyRevokedResponse(response: Response): Promise<boolean> {
+  if (response.status !== 400) return false;
+  if (!response.headers.get("content-type")?.toLowerCase().includes("application/json")) {
+    return false;
+  }
+  try {
+    const raw = await boundedErrorBody(response);
+    if (raw === undefined) return false;
+    const payload: unknown = JSON.parse(raw);
+    return typeof payload === "object" && payload !== null &&
+      !Array.isArray(payload) &&
+      (payload as Record<string, unknown>).error === "invalid_token";
+  } catch {
+    return false;
+  }
+}
+
 export class GoogleSearchConsoleError extends Error {
   constructor(
     readonly code: "UNAUTHORIZED" | "RATE_LIMITED" | "UPSTREAM",
@@ -104,6 +146,9 @@ export function createGoogleSearchConsoleClient(
           signal,
           cache: "no-store",
         });
+        // Google's documented invalid_token means the token is expired or
+        // already revoked, so the privacy-erasure postcondition is satisfied.
+        if (await isAlreadyRevokedResponse(response)) return;
         if (!response.ok) mapStatus(response);
       });
     },

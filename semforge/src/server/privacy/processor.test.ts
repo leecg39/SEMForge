@@ -8,6 +8,7 @@ import { createSecretCrypto } from "@/lib/crypto";
 import {
   createPrivacyProcessor,
   createProductionPrivacyProcessor,
+  createProductionPrivacyRetentionProcessor,
   PrivacyProcessorConfigurationError,
 } from "@/server/privacy/processor";
 
@@ -26,7 +27,7 @@ test("GSC refresh token을 workspace/connection AAD로만 복호화해 Google re
     google: {
       async revokeToken(token) { revoked.push(token); },
     },
-    storage: { async eraseAllVersions() {} },
+    storage: { async eraseAllVersions() {}, async eraseWorkspaceReportVersions() {} },
   });
   const encrypted = crypto.encrypt(
     "google-refresh-token",
@@ -65,17 +66,24 @@ test("object 영구 삭제와 email_suppressions 저장을 실제 adapter seam�
     google: {
       async revokeToken() {},
     },
-    storage: { async eraseAllVersions(key) { erased.push(key); } },
+    storage: {
+      async eraseAllVersions(key) { erased.push(key); },
+      async eraseWorkspaceReportVersions(id) { erased.push(`workspace:${id}`); },
+    },
   });
 
   await processor.deleteObject({ workspaceId, storageKey: "reports/workspace/report.pdf" });
+  await processor.deleteWorkspaceObjects({ workspaceId });
   await processor.markEmailSuppressed({ workspaceId, emailHash, requestUuid });
 
-  assert.deepEqual(erased, ["reports/workspace/report.pdf"]);
+  assert.deepEqual(erased, [
+    "reports/workspace/report.pdf",
+    `workspace:${workspaceId}`,
+  ]);
   assert.equal(statements.length, 1);
-  assert.match(statements[0]!.text, /insert into email_suppressions/u);
-  assert.match(statements[0]!.text, /on conflict \(workspace_id, recipient_hash\) do nothing/u);
-  assert.deepEqual(statements[0]!.values, [workspaceId, emailHash, requestUuid]);
+  assert.match(statements[0]!.text, /privacy_add_email_suppression/u);
+  assert.doesNotMatch(statements[0]!.text, /insert into email_suppressions/iu);
+  assert.deepEqual(statements[0]!.values, [workspaceId, requestUuid, emailHash]);
 });
 
 test("provider와 DB 오류는 token, object key, recipient hash를 노출하지 않고 fail closed 한다", async () => {
@@ -89,6 +97,7 @@ test("provider와 DB 오류는 token, object key, recipient hash를 노출하지
     },
     storage: {
       async eraseAllVersions() { throw new Error(`s3 leaked ${secretObject}`); },
+      async eraseWorkspaceReportVersions() { throw new Error(`s3 leaked ${secretObject}`); },
     },
   });
 
@@ -124,6 +133,52 @@ test("production processor는 필수 암호화/S3 설정이 하나라도 없으�
         "S3_SECRET_ACCESS_KEY",
       ]);
       assert.doesNotMatch(error.message, /secret-value|access-key-value/u);
+      return true;
+    },
+  );
+});
+
+test("retention processor는 APP_SECRET 없이 S3 version erasure만 구성한다", async () => {
+  const requests: Request[] = [];
+  const processor = createProductionPrivacyRetentionProcessor({
+    env: {
+      S3_ENDPOINT: "https://objects.example.test",
+      S3_REGION: "ap-northeast-2",
+      S3_BUCKET: "semforge-private",
+      S3_ACCESS_KEY_ID: "privacy-access-key",
+      S3_SECRET_ACCESS_KEY: "privacy-secret-access-key",
+    },
+    fetch: async (input, init) => {
+      requests.push(new Request(input, init));
+      return new Response(
+        "<ListVersionsResult><IsTruncated>false</IsTruncated></ListVersionsResult>",
+        { status: 200 },
+      );
+    },
+  });
+
+  await processor.deleteObject({
+    workspaceId,
+    storageKey: "reports/workspace/restored.pdf",
+  });
+
+  assert.equal(requests.length, 2);
+  assert.ok(requests.every((request) => /versions=/u.test(request.url)));
+});
+
+test("retention processor 설정 오류에는 APP_SECRET가 포함되지 않는다", () => {
+  assert.throws(
+    () => createProductionPrivacyRetentionProcessor({ env: {} }),
+    (error: unknown) => {
+      assert.ok(error instanceof PrivacyProcessorConfigurationError);
+      assert.deepEqual(error.issues, [
+        "S3_ACCESS_KEY_ID",
+        "S3_BUCKET",
+        "S3_ENDPOINT",
+        "S3_REGION",
+        "S3_SECRET_ACCESS_KEY",
+      ]);
+      assert.equal(error.issues.includes("APP_SECRET"), false);
       return true;
     },
   );
