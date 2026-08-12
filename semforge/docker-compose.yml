@@ -5,6 +5,15 @@ name: semforge
 x-runtime: &runtime
   init: true
   networks: [backend]
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,size=64m
+    - /home/semforge/.cache:rw,noexec,nosuid,nodev,size=64m
+    - /home/semforge/.config:rw,noexec,nosuid,nodev,size=16m
 
 services:
   release:

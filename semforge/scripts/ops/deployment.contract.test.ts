@@ -8,6 +8,11 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
+type TextSpawnResult = ReturnType<typeof spawnSync> & {
+  stdout: string;
+  stderr: string;
+};
+
 async function source(relativePath: string): Promise<string> {
   return readFile(path.join(process.cwd(), relativePath), "utf8");
 }
@@ -25,6 +30,63 @@ function runDeploymentPreflight(
       env: { ...process.env, ...environment },
     },
   );
+}
+
+async function runComposeConfig(): Promise<TextSpawnResult> {
+  const directory = await mkdtemp(path.join(process.cwd(), ".semforge-compose-config-"));
+  const envFile = path.join(directory, "runtime.env");
+  const composeEnvPath = path.join(directory, "compose.env");
+  await Promise.all([
+    writeFile(envFile, "APP_SECRET=compose-contract-placeholder\n", "utf8"),
+    writeFile(
+      composeEnvPath,
+      [
+        `SEMFORGE_MIGRATION_ENV_FILE=${envFile}`,
+        `SEMFORGE_WEB_ENV_FILE=${envFile}`,
+        `SEMFORGE_WORKER_ENV_FILE=${envFile}`,
+        `SEMFORGE_RELAY_ENV_FILE=${envFile}`,
+        `SEMFORGE_SCHEDULER_ENV_FILE=${envFile}`,
+        `SEMFORGE_PRIVACY_ENV_FILE=${envFile}`,
+        `SEMFORGE_OPERATOR_ENV_FILE=${envFile}`,
+        `SEMFORGE_RETENTION_ENV_FILE=${envFile}`,
+        "",
+      ].join("\n"),
+      "utf8",
+    ),
+  ]);
+
+  try {
+    return spawnSync(
+      "docker",
+      [
+        "compose",
+        "--env-file",
+        composeEnvPath,
+        "--profile",
+        "scheduled",
+        "--profile",
+        "manual",
+        "-f",
+        "docker-compose.yml",
+        "config",
+      ],
+      {
+        cwd: process.cwd(),
+        encoding: "utf8",
+        env: process.env,
+      },
+    ) as TextSpawnResult;
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+function serviceBlock(composeConfig: string, serviceName: string): string {
+  const match = composeConfig.match(
+    new RegExp(`^  ${serviceName}:\\n[\\s\\S]*?(?=^  [a-z0-9-]+:|^networks:)`, "mu"),
+  );
+  assert.ok(match, `compose config service missing: ${serviceName}`);
+  return match[0]!;
 }
 
 test("Next production build는 standalone output을 생성한다", async () => {
@@ -359,6 +421,56 @@ test("nginx 예시는 TLS, browser 격리 header, spoof 불가능한 client IP �
   assert.match(proxyHeaders, /proxy_set_header X-Forwarded-Proto \$scheme/u);
   assert.match(proxyHeaders, /proxy_set_header X-Forwarded-For \$remote_addr/u);
   assert.doesNotMatch(`${nginx}\n${proxyHeaders}`, /\$proxy_add_x_forwarded_for/u);
+});
+
+test("nginx CSP는 Next, Toss 결제, Google OAuth, 공급자 API에 필요한 명시 directive만 허용한다", async () => {
+  const nginx = await source("deploy/nginx/nginx.conf");
+
+  const csp = nginx.match(/add_header Content-Security-Policy "([^"]+)"/u)?.[1] ?? "";
+  assert.match(csp, /default-src 'self'/u);
+  assert.match(csp, /script-src 'self' 'unsafe-inline' https:\/\/js\.tosspayments\.com/u);
+  assert.match(csp, /style-src 'self' 'unsafe-inline'/u);
+  assert.match(csp, /img-src 'self' data: blob: https:/u);
+  assert.match(csp, /font-src 'self' data:/u);
+  assert.match(csp, /connect-src 'self'/u);
+  assert.match(csp, /form-action 'self'/u);
+  assert.match(csp, /frame-src 'self' https:\/\/.*\.tosspayments\.com/u);
+  assert.match(csp, /navigate-to 'self' https:\/\/accounts\.google\.com https:\/\/.*\.tosspayments\.com/u);
+  assert.match(csp, /frame-ancestors 'none'/u);
+  assert.match(csp, /base-uri 'self'/u);
+  assert.match(csp, /object-src 'none'/u);
+  assert.match(csp, /upgrade-insecure-requests/u);
+  assert.doesNotMatch(csp, /unsafe-eval/u);
+  assert.doesNotMatch(csp, /searchconsole\.googleapis|www\.googleapis|openapi\.naver|searchad\.naver/u);
+  assert.match(nginx, /Low accepted:[\s\S]*'unsafe-inline'/u);
+});
+
+test("production docker compose config는 모든 앱 서비스를 read-only와 no-new-privileges로 실행한다", async () => {
+  const result = await runComposeConfig();
+  assert.equal(result.status, 0, result.stderr);
+
+  const services = [
+    "release",
+    "web",
+    "worker",
+    "relay",
+    "scheduler",
+    "report-scheduler",
+    "privacy",
+    "privacy-request",
+    "privacy-retention",
+  ];
+  for (const service of services) {
+    const block = serviceBlock(result.stdout, service);
+    assert.match(block, /read_only:\s*true/u, service);
+    assert.match(block, /security_opt:\n\s+- no-new-privileges:true/u, service);
+    assert.match(block, /cap_drop:\n\s+- ALL/u, service);
+    assert.match(block, /tmpfs:\n\s+- \/tmp:rw,noexec,nosuid,nodev,size=64m/u, service);
+    assert.match(block, /- \/home\/semforge\/\.cache:rw,noexec,nosuid,nodev,size=64m/u, service);
+    assert.match(block, /- \/home\/semforge\/\.config:rw,noexec,nosuid,nodev,size=16m/u, service);
+    assert.doesNotMatch(block, /cap_add:/u, service);
+    assert.doesNotMatch(block, /privileged:\s*true/u, service);
+  }
 });
 
 test("PostgreSQL 16 test compose는 host loopback에만 포트를 공개한다", async () => {
