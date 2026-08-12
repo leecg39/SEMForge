@@ -1,0 +1,38 @@
+^D✔ billing gate는 허용된 collection만 provider handler로 전달한다 (1.406833ms)
+✔ billing gate는 past_due collection과 report.snapshot을 provider/generator 호출 없이 terminal-success skip한다 (0.208708ms)
+✖ billing gate는 손상된 날짜와 알 수 없는 subscription status를 fail-closed skip한다 (1.459458ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 2
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 216.151917
+
+✖ failing tests:
+
+test at src/worker/billing-gate.test.ts:2:3833
+✖ billing gate는 손상된 날짜와 알 수 없는 subscription status를 fail-closed skip한다 (1.459458ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+    {
+      metadata: {
+  +     skipReason: 'payment_required',
+  -     skipReason: 'invalid_subscription',
+        skipped: true
+      },
+      status: 'succeeded'
+    }
+
+      at TestContext.<anonymous> (/Users/user01/Music/SEMForge-worktrees/parallel-p4-final-pg-qa/semforge/semforge/src/worker/billing-gate.test.ts:96:12)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { status: 'succeeded', metadata: { skipped: true, skipReason: 'payment_required' } },
+    expected: { status: 'succeeded', metadata: { skipped: true, skipReason: 'invalid_subscription' } },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

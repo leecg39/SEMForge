@@ -1,0 +1,14 @@
+✔ 동시 relay 중 하나만 outbox를 claim하고 publish replay에도 job 하나만 남는다 (1002.249125ms)
+✔ job insert 뒤 publish crash가 발생해도 transaction 전체가 rollback되고 같은 lease로 복구된다 (583.742292ms)
+✔ 만료된 마지막 outbox attempt는 명시적 DLQ가 되고 다시 claim되지 않는다 (529.308583ms)
+✔ 기존 job과 canonical 요청이 충돌하면 outbox는 unpublished 상태를 유지한다 (492.088959ms)
+✔ production relay는 collection topic만 claim하고 canonical job type으로 publish한다 (495.94175ms)
+✔ production relay는 report PDF·email outbox payload를 그대로 canonical jobs로 publish한다 (494.928125ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3942.274833

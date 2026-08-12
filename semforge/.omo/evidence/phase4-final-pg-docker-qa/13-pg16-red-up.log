@@ -1,0 +1,55 @@
+[?25l[0G[+] up 1/2
+ [32m✔[0m Network semforge-p4-final-pg-qa-pg16_default      [32mCreated[0m                [34m0.0s[0m
+ [33m⠋[0m Container semforge-p4-final-pg-qa-pg16-postgres-1 Creating               [34m0.0s[0m
+[?25h[?25l[3A[0G[+] up 2/2
+ [32m✔[0m Network semforge-p4-final-pg-qa-pg16_default      [32mCreated[0m                [34m0.0s[0m
+ [32m✔[0m Container semforge-p4-final-pg-qa-pg16-postgres-1 [32mCreated[0m                [34m0.1s[0m
+[?25h[?25l[3A[0G[+] up 1/2
+ [32m✔[0m Network semforge-p4-final-pg-qa-pg16_default      [32mCreated[0m                [34m0.0s[0m
+ [33m⠙[0m Container semforge-p4-final-pg-qa-pg16-postgres-1 Waiting                [34m0.2s[0m
+[?25h[?25l[3A[0G[+] up 1/2
+ [32m✔[0m Network semforge-p4-final-pg-qa-pg16_default      [32mCreated[0m                [34m0.0s[0m
+ [33m⠹[0m Container semforge-p4-final-pg-qa-pg16-postgres-1 Waiting                [34m0.3s[0m
+[?25h[?25l[3A[0G[+] up 1/2
+ [32m✔[0m Network semforge-p4-final-pg-qa-pg16_default      [32mCreated[0m                [34m0.0s[0m
+ [33m⠸[0m Container semforge-p4-final-pg-qa-pg16-postgres-1 Waiting                [34m0.4s[0m
+[?25h[?25l[3A[0G[+] up 1/2
+ [32m✔[0m Network semforge-p4-final-pg-qa-pg16_default      [32mCreated[0m                [34m0.0s[0m
+ [33m⠼[0m Container semforge-p4-final-pg-qa-pg16-postgres-1 Waiting                [34m0.5s[0m
+[?25h[?25l[3A[0G[+] up 1/2
+ [32m✔[0m Network semforge-p4-final-pg-qa-pg16_default      [32mCreated[0m                [34m0.0s[0m
+ [33m⠴[0m Container semforge-p4-final-pg-qa-pg16-postgres-1 Waiting                [34m0.6s[0m
+[?25h[?25l[3A[0G[+] up 1/2
+ [32m✔[0m Network semforge-p4-final-pg-qa-pg16_default      [32mCreated[0m                [34m0.0s[0m
+ [33m⠦[0m Container semforge-p4-final-pg-qa-pg16-postgres-1 Waiting                [34m0.7s[0m
+[?25h[?25l[3A[0G[+] up 1/2
+ [32m✔[0m Network semforge-p4-final-pg-qa-pg16_default      [32mCreated[0m                [34m0.0s[0m
+ [33m⠧[0m Container semforge-p4-final-pg-qa-pg16-postgres-1 Waiting                [34m0.8s[0m
+[?25h[?25l[3A[0G[+] up 1/2
+ [32m✔[0m Network semforge-p4-final-pg-qa-pg16_default      [32mCreated[0m                [34m0.0s[0m
+ [33m⠇[0m Container semforge-p4-final-pg-qa-pg16-postgres-1 Waiting                [34m0.9s[0m
+[?25h[?25l[3A[0G[+] up 1/2
+ [32m✔[0m Network semforge-p4-final-pg-qa-pg16_default      [32mCreated[0m                [34m0.0s[0m
+ [33m⠏[0m Container semforge-p4-final-pg-qa-pg16-postgres-1 Waiting                [34m1.0s[0m
+[?25h[?25l[3A[0G[+] up 1/2
+ [32m✔[0m Network semforge-p4-final-pg-qa-pg16_default      [32mCreated[0m                [34m0.0s[0m
+ [33m⠋[0m Container semforge-p4-final-pg-qa-pg16-postgres-1 Waiting                [34m1.1s[0m
+[?25h[?25l[3A[0G[+] up 1/2
+ [32m✔[0m Network semforge-p4-final-pg-qa-pg16_default      [32mCreated[0m                [34m0.0s[0m
+ [33m⠙[0m Container semforge-p4-final-pg-qa-pg16-postgres-1 Waiting                [34m1.2s[0m
+[?25h[?25l[3A[0G[+] up 1/2
+ [32m✔[0m Network semforge-p4-final-pg-qa-pg16_default      [32mCreated[0m                [34m0.0s[0m
+ [33m⠹[0m Container semforge-p4-final-pg-qa-pg16-postgres-1 Waiting                [34m1.3s[0m
+[?25h[?25l[3A[0G[+] up 1/2
+ [32m✔[0m Network semforge-p4-final-pg-qa-pg16_default      [32mCreated[0m                [34m0.0s[0m
+ [33m⠸[0m Container semforge-p4-final-pg-qa-pg16-postgres-1 Waiting                [34m1.4s[0m
+[?25h[?25l[3A[0G[+] up 1/2
+ [32m✔[0m Network semforge-p4-final-pg-qa-pg16_default      [32mCreated[0m                [34m0.0s[0m
+ [33m⠼[0m Container semforge-p4-final-pg-qa-pg16-postgres-1 Waiting                [34m1.5s[0m
+[?25h[?25l[3A[0G[+] up 1/2
+ [32m✔[0m Network semforge-p4-final-pg-qa-pg16_default      [32mCreated[0m                [34m0.0s[0m
+ [33m⠴[0m Container semforge-p4-final-pg-qa-pg16-postgres-1 Waiting                [34m1.6s[0m
+[?25h[?25l[3A[0G[+] up 2/2
+ [32m✔[0m Network semforge-p4-final-pg-qa-pg16_default      [32mCreated[0m                [34m0.0s[0m
+ [32m✔[0m Container semforge-p4-final-pg-qa-pg16-postgres-1 [32mHealthy[0m                [34m1.7s[0m
+[?25h

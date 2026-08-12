@@ -1,0 +1,2 @@
+NAME                                      IMAGE                COMMAND                  SERVICE    CREATED         STATUS                   PORTS
+semforge-p4-final-pg-qa-pg16-postgres-1   postgres:16-alpine   "docker-entrypoint.s…"   postgres   4 seconds ago   Up 4 seconds (healthy)   0.0.0.0:55432->5432/tcp, [::]:55432->5432/tcp

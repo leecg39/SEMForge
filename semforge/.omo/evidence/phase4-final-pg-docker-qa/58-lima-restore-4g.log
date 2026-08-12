@@ -1,0 +1,181 @@
+^D[36mINFO[0m[0000] Sending SIGINT to hostagent process 32054
+[36mINFO[0m[0000] Waiting for the host agent and the driver processes to shut down
+[36mINFO[0m[0000] [hostagent] Forwarding UDP from 0.0.0.0:45903 to 127.0.0.1:45903
+[36mINFO[0m[0000] [hostagent] Forwarding UDP from 0.0.0.0:37959 to 127.0.0.1:37959
+[36mINFO[0m[0000] [hostagent] Forwarding UDP from 0.0.0.0:38025 to 127.0.0.1:38025
+[36mINFO[0m[0000] [hostagent] Forwarding UDP from 0.0.0.0:34229 to 127.0.0.1:34229
+[36mINFO[0m[0000] [hostagent] Forwarding UDP from 0.0.0.0:50690 to 127.0.0.1:50690
+[36mINFO[0m[0000] [hostagent] Forwarding UDP from 0.0.0.0:59197 to 127.0.0.1:59197
+[36mINFO[0m[0000] [hostagent] Forwarding UDP from 0.0.0.0:38798 to 127.0.0.1:38798
+[36mINFO[0m[0000] [hostagent] Forwarding UDP from 0.0.0.0:47010 to 127.0.0.1:47010
+[36mINFO[0m[0000] [hostagent] Forwarding UDP from 0.0.0.0:59522 to 127.0.0.1:59522
+[36mINFO[0m[0000] [hostagent] Forwarding UDP from 0.0.0.0:47270 to 127.0.0.1:47270
+[36mINFO[0m[0000] [hostagent] Forwarding UDP from 0.0.0.0:35034 to 127.0.0.1:35034
+[36mINFO[0m[0000] [hostagent] Forwarding UDP from 0.0.0.0:47464 to 127.0.0.1:47464
+[36mINFO[0m[0000] [hostagent] Forwarding UDP from 0.0.0.0:51615 to 127.0.0.1:51615
+[36mINFO[0m[0000] [hostagent] Forwarding UDP from 0.0.0.0:39676 to 127.0.0.1:39676
+[36mINFO[0m[0000] [hostagent] Forwarding UDP from 0.0.0.0:56150 to 127.0.0.1:56150
+[36mINFO[0m[0000] [hostagent] Forwarding UDP from 0.0.0.0:48155 to 127.0.0.1:48155
+[36mINFO[0m[0000] [hostagent] Forwarding UDP from 0.0.0.0:44250 to 127.0.0.1:44250
+[36mINFO[0m[0000] [hostagent] Forwarding UDP from 0.0.0.0:52658 to 127.0.0.1:52658
+[36mINFO[0m[0000] [hostagent] Forwarding UDP from 0.0.0.0:57212 to 127.0.0.1:57212
+[36mINFO[0m[0000] [hostagent] Forwarding UDP from 0.0.0.0:57350 to 127.0.0.1:57350
+[36mINFO[0m[0000] [hostagent] Forwarding UDP from 0.0.0.0:49218 to 127.0.0.1:49218
+[36mINFO[0m[0000] [hostagent] Forwarding UDP from 0.0.0.0:49439 to 127.0.0.1:49439
+[36mINFO[0m[0000] [hostagent] Forwarding UDP from 0.0.0.0:53628 to 127.0.0.1:53628
+[36mINFO[0m[0000] [hostagent] Forwarding UDP from 0.0.0.0:58093 to 127.0.0.1:58093
+[36mINFO[0m[0000] [hostagent] Received SIGINT, shutting down the host agent
+[36mINFO[0m[0000] [hostagent] Shutting down the host agent
+[36mINFO[0m[0000] [hostagent] Stopping forwarding "/run/user/502/docker.sock" (guest) to "/Users/user01/.lima/docker/sock/docker.sock" (host)
+[36mINFO[0m[0000] [hostagent] Shutting down VZ
+[36mINFO[0m[0006] Waiting for the instance to shut down
+[36mINFO[0m[0006] The instance docker has shut down
+[33mWARN[0m[0000] --yes flag is deprecated (--tty=false is still supported and works in the same way. Also consider using --start)
+[36mINFO[0m[0000] Instance "docker" configuration edited
+[36mINFO[0m[0000] Using the existing instance "docker"
+[36mINFO[0m[0000] Starting the instance "docker" with internal VM driver "vz"
+[36mINFO[0m[0000] [hostagent] hostagent socket created at /Users/user01/.lima/docker/ha.sock
+[36mINFO[0m[0000] [hostagent] Starting VZ (hint: to watch the boot progress, see "/Users/user01/.lima/docker/serial*.log")
+[36mINFO[0m[0000] [hostagent] [VZ] - vm state change: running
+[36mINFO[0m[0008] [hostagent] SSH server does not seem to be running on vsock port, using usernet forwarder
+[36mINFO[0m[0009] SSH Local Port: 53245
+[36mINFO[0m[0008] [hostagent] Waiting for the essential requirement 1 of 3: "ssh"
+[36mINFO[0m[0009] [hostagent] The essential requirement 1 of 3 is satisfied
+[36mINFO[0m[0009] [hostagent] Waiting for the essential requirement 2 of 3: "user session is ready for ssh"
+[36mINFO[0m[0009] [hostagent] The essential requirement 2 of 3 is satisfied
+[36mINFO[0m[0009] [hostagent] Waiting for the essential requirement 3 of 3: "Explicitly start ssh ControlMaster"
+[36mINFO[0m[0009] [hostagent] The essential requirement 3 of 3 is satisfied
+[36mINFO[0m[0009] [hostagent] Waiting for the optional requirement 1 of 1: "user probe 1/1"
+[36mINFO[0m[0009] [hostagent] Forwarding "/run/user/502/docker.sock" (guest) to "/Users/user01/.lima/docker/sock/docker.sock" (host)
+[36mINFO[0m[0009] [hostagent] Guest agent is running
+[36mINFO[0m[0009] [hostagent] The optional requirement 1 of 1 is satisfied
+[36mINFO[0m[0009] [hostagent] Not forwarding TCP 0.0.0.0:22
+[36mINFO[0m[0009] [hostagent] Not forwarding TCP 127.0.0.53:53
+[36mINFO[0m[0009] [hostagent] Waiting for the guest agent to be running
+[36mINFO[0m[0009] [hostagent] Waiting for the final requirement 1 of 1: "boot scripts must have finished"
+[36mINFO[0m[0009] [hostagent] Not forwarding TCP 127.0.0.54:53
+[36mINFO[0m[0009] [hostagent] Forwarding TCP from 0.0.0.0:1025 to 127.0.0.1:1025
+[36mINFO[0m[0009] [hostagent] Forwarding TCP from 0.0.0.0:8080 to 127.0.0.1:8080
+[36mINFO[0m[0009] [hostagent] Forwarding TCP from 0.0.0.0:8025 to 127.0.0.1:8025
+[36mINFO[0m[0009] [hostagent] Not forwarding TCP [::]:22
+[36mINFO[0m[0009] [hostagent] Forwarding TCP from [::]:1025 to 127.0.0.1:1025
+[36mINFO[0m[0009] [hostagent] Forwarding TCP from [::]:8080 to 127.0.0.1:8080
+[33mWARN[0m[0009] [hostagent] failed to listen tcp: 127.0.0.1:1025  [33merror[0m="listen tcp 127.0.0.1:1025: bind: address already in use"
+[33mWARN[0m[0009] [hostagent] failed to listen tcp: 127.0.0.1:1025  [33merror[0m="listen tcp 127.0.0.1:1025: bind: address already in use"
+[36mINFO[0m[0009] [hostagent] Forwarding TCP from [::]:8025 to 127.0.0.1:8025
+[33mWARN[0m[0009] [hostagent] failed to listen tcp: 127.0.0.1:8080  [33merror[0m="listen tcp 127.0.0.1:8080: bind: address already in use"
+[33mWARN[0m[0009] [hostagent] failed to listen tcp: 127.0.0.1:8080  [33merror[0m="listen tcp 127.0.0.1:8080: bind: address already in use"
+[36mINFO[0m[0009] [hostagent] Forwarding UDP from 0.0.0.0:5353 to 127.0.0.1:5353
+[33mWARN[0m[0009] [hostagent] failed to listen tcp: 127.0.0.1:8025  [33merror[0m="listen tcp 127.0.0.1:8025: bind: address already in use"
+[36mINFO[0m[0009] [hostagent] Not forwarding UDP 127.0.0.54:53
+[36mINFO[0m[0009] [hostagent] Not forwarding UDP 127.0.0.53:53
+[33mWARN[0m[0009] [hostagent] failed to listen tcp: 127.0.0.1:8025  [33merror[0m="listen tcp 127.0.0.1:8025: bind: address already in use"
+[36mINFO[0m[0009] [hostagent] Not forwarding UDP 192.168.5.15:68
+[36mINFO[0m[0009] [hostagent] Forwarding UDP from [::]:5353 to 127.0.0.1:5353
+[36mINFO[0m[0009] [hostagent] Not forwarding UDP 127.0.0.1:5353
+[36mINFO[0m[0009] [hostagent] Not forwarding UDP 127.0.0.1:5353
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:53638 to 127.0.0.1:53638
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:47497 to 127.0.0.1:47497
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:55748 to 127.0.0.1:55748
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:51698 to 127.0.0.1:51698
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:55889 to 127.0.0.1:55889
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:47714 to 127.0.0.1:47714
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:53932 to 127.0.0.1:53932
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:43829 to 127.0.0.1:43829
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:60217 to 127.0.0.1:60217
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:43909 to 127.0.0.1:43909
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:46061 to 127.0.0.1:46061
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:58349 to 127.0.0.1:58349
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:58422 to 127.0.0.1:58422
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:39993 to 127.0.0.1:39993
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:36161 to 127.0.0.1:36161
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:58850 to 127.0.0.1:58850
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:40503 to 127.0.0.1:40503
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:44625 to 127.0.0.1:44625
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:42810 to 127.0.0.1:42810
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:36696 to 127.0.0.1:36696
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:34721 to 127.0.0.1:34721
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:47091 to 127.0.0.1:47091
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:45201 to 127.0.0.1:45201
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:57555 to 127.0.0.1:57555
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:37145 to 127.0.0.1:37145
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:37209 to 127.0.0.1:37209
+[36mINFO[0m[0012] [hostagent] Forwarding UDP from 0.0.0.0:35423 to 127.0.0.1:35423
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:60226 to 127.0.0.1:60226
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:56170 to 127.0.0.1:56170
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:60487 to 127.0.0.1:60487
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:40060 to 127.0.0.1:40060
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:54526 to 127.0.0.1:54526
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:58957 to 127.0.0.1:58957
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:48761 to 127.0.0.1:48761
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:46791 to 127.0.0.1:46791
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:57182 to 127.0.0.1:57182
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:47139 to 127.0.0.1:47139
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:43207 to 127.0.0.1:43207
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:41456 to 127.0.0.1:41456
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:35419 to 127.0.0.1:35419
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:39641 to 127.0.0.1:39641
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:41703 to 127.0.0.1:41703
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:43813 to 127.0.0.1:43813
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:37678 to 127.0.0.1:37678
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:41782 to 127.0.0.1:41782
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:35765 to 127.0.0.1:35765
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:54244 to 127.0.0.1:54244
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:46122 to 127.0.0.1:46122
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:58621 to 127.0.0.1:58621
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:58691 to 127.0.0.1:58691
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:54596 to 127.0.0.1:54596
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:36263 to 127.0.0.1:36263
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:56849 to 127.0.0.1:56849
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:36403 to 127.0.0.1:36403
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:50772 to 127.0.0.1:50772
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:54983 to 127.0.0.1:54983
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:50904 to 127.0.0.1:50904
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:50976 to 127.0.0.1:50976
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:47290 to 127.0.0.1:47290
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:37191 to 127.0.0.1:37191
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:51625 to 127.0.0.1:51625
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:33406 to 127.0.0.1:33406
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:60085 to 127.0.0.1:60085
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:33479 to 127.0.0.1:33479
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:58277 to 127.0.0.1:58277
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:45995 to 127.0.0.1:45995
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:39883 to 127.0.0.1:39883
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:54359 to 127.0.0.1:54359
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:46298 to 127.0.0.1:46298
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:60678 to 127.0.0.1:60678
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:52612 to 127.0.0.1:52612
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:46745 to 127.0.0.1:46745
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:48816 to 127.0.0.1:48816
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:55226 to 127.0.0.1:55226
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:36814 to 127.0.0.1:36814
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:59692 to 127.0.0.1:59692
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:55683 to 127.0.0.1:55683
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:41367 to 127.0.0.1:41367
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:52142 to 127.0.0.1:52142
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:58959 to 127.0.0.1:58959
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:50974 to 127.0.0.1:50974
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:48986 to 127.0.0.1:48986
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:55452 to 127.0.0.1:55452
+[36mINFO[0m[0013] [hostagent] Forwarding UDP from 0.0.0.0:37183 to 127.0.0.1:37183
+[36mINFO[0m[0015] [hostagent] Forwarding UDP from 0.0.0.0:45425 to 127.0.0.1:45425
+[36mINFO[0m[0015] [hostagent] Forwarding UDP from 0.0.0.0:60380 to 127.0.0.1:60380
+[36mINFO[0m[0015] [hostagent] Forwarding UDP from 0.0.0.0:46070 to 127.0.0.1:46070
+[36mINFO[0m[0015] [hostagent] Forwarding UDP from 0.0.0.0:58418 to 127.0.0.1:58418
+[36mINFO[0m[0015] [hostagent] Forwarding UDP from 0.0.0.0:36444 to 127.0.0.1:36444
+[36mINFO[0m[0015] [hostagent] Forwarding UDP from 0.0.0.0:42657 to 127.0.0.1:42657
+[36mINFO[0m[0015] [hostagent] Forwarding UDP from 0.0.0.0:38966 to 127.0.0.1:38966
+[36mINFO[0m[0015] [hostagent] Forwarding UDP from 0.0.0.0:32997 to 127.0.0.1:32997
+[36mINFO[0m[0015] [hostagent] The final requirement 1 of 1 is satisfied
+[36mINFO[0m[0016] READY. Run `limactl shell docker` to open the shell.
+[36mINFO[0m[0016] Message from the instance "docker":
+To run `docker` on the host (assumes docker-cli is installed), run the following commands:
+------
+docker context create lima-docker --docker "host=unix:///Users/user01/.lima/docker/sock/docker.sock"
+docker context use lima-docker
+docker run hello-world
+------
+NAME      STATUS     SSH                CPUS    MEMORY    DISK      DIR
+docker    Running    127.0.0.1:53245    4       4GiB      100GiB    ~/.lima/docker
+MemTotal:        3997992 kB
+DockerMemTotal=4093943808

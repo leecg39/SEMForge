@@ -1,0 +1,14 @@
+^D
+> semforge@0.1.0 test:pg16
+> tsx --test src/db/postgres16.multisession.pg16.ts
+
+✔ PostgreSQL 16 실제 세션은 SKIP LOCKED, provider canonical visibility, outbox crash recovery와 RLS 경계를 보장한다 (81.765708ms)
+✔ PostgreSQL 16 실제 role은 구독 후보·report 동시 멱등·billing gate와 최소 권한을 강제한다 (99.385583ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 366.051042
