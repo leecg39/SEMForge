@@ -8,6 +8,7 @@ import type {
   ReportDeliveryStore,
   ReportPdfAsset,
 } from "@/server/reports/delivery/store";
+import { ReportDeliveryStoreError } from "@/server/reports/delivery/store";
 import { snapshotSha256 } from "@/server/reports/rendering/html";
 import type { ReportPdfRenderer } from "@/server/reports/rendering/pdf";
 import { REPORT_SECTION_KEYS, type WeeklyReportSnapshot } from "@/server/reports/types";
@@ -195,13 +196,21 @@ export function createReportDeliveryService(
       const recipient = parsedEmail.data;
       const recipientHash = digest(recipient).slice(0, 32);
       const idempotencyKey = `report-email:${input.reportId}:${recipientHash}`;
-      const prepared = await options.store.prepareEmail({
-        workspaceId: input.workspaceId,
-        reportId: input.reportId,
-        recipient,
-        idempotencyKey,
-        now: clock(),
-      });
+      let prepared;
+      try {
+        prepared = await options.store.prepareEmail({
+          workspaceId: input.workspaceId,
+          reportId: input.reportId,
+          recipient,
+          idempotencyKey,
+          now: clock(),
+        });
+      } catch (error) {
+        if (error instanceof ReportDeliveryStoreError && error.code === "SUPPRESSED") {
+          throw new ReportDeliveryError("EMAIL_PROVIDER_REJECTED");
+        }
+        throw error;
+      }
       const hash = snapshotSha256(prepared.snapshot);
       if (prepared.alreadyDelivered) {
         return { status: "already_delivered", deliveryId: prepared.id, snapshotSha256: hash };

@@ -412,6 +412,31 @@ export const backupDeletionMarkers = pgTable(
   ],
 );
 
+export const emailSuppressions = pgTable(
+  "email_suppressions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    emailHash: text("email_hash").notNull(),
+    reason: text("reason").notNull().default("privacy_erasure"),
+    requestId: uuid("request_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("email_suppressions_workspace_id_uq").on(table.workspaceId, table.id),
+    unique("email_suppressions_workspace_hash_uq").on(table.workspaceId, table.emailHash),
+    foreignKey({
+      columns: [table.workspaceId, table.requestId],
+      foreignColumns: [privacyRequests.workspaceId, privacyRequests.id],
+      name: "email_suppressions_request_fk",
+    }).onDelete("set null"),
+    check("email_suppressions_hash_ck", sql`${table.emailHash} ~ '^[0-9a-f]{64}$'`),
+    check("email_suppressions_reason_ck", sql`${table.reason} in ('privacy_erasure', 'operator_block')`),
+  ],
+);
+
 export const sites = pgTable(
   "sites",
   {
@@ -1105,6 +1130,7 @@ export const tenantTables = [
   privacyRequestSteps,
   privacyBillingTombstones,
   backupDeletionMarkers,
+  emailSuppressions,
   sites,
   trackedQueries,
   gscConnections,

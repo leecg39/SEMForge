@@ -7,6 +7,7 @@ import {
   readPrivacyRetentionPolicy,
   runPrivacyRetention,
 } from "@/server/privacy/service";
+import { createRuntimePrivacyProcessor } from "@/server/privacy/processor";
 
 type Command = "export" | "correct" | "delete" | "retention";
 
@@ -18,7 +19,7 @@ function usage(): never {
       "  tsx scripts/privacy/privacy.ts correct --workspace <uuid> --request <id> --operator <id> [--display-name <name>] [--workspace-name <name>]",
       "  tsx scripts/privacy/privacy.ts delete --workspace <uuid> --request <id> --operator <id>",
       "  tsx scripts/privacy/privacy.ts retention --dry-run true|false",
-      "External delete/revoke processor calls must be wired by the deployment wrapper; this CLI fails closed without one.",
+      "Delete uses the production privacy processor: GSC revoke, private object delete, and hashed email suppression.",
     ].join("\n"),
   );
 }
@@ -65,8 +66,10 @@ async function main() {
     operatorId: required(input, "operator"),
     now,
   };
+  const db = getPool("privacy");
   const service = createPrivacyService({
-    db: getPool("privacy"),
+    db,
+    ...(command === "delete" ? { processor: createRuntimePrivacyProcessor({ db }) } : {}),
   });
   if (command === "export") {
     process.stdout.write(`${JSON.stringify(await service.exportWorkspaceSubject(base), null, 2)}\n`);

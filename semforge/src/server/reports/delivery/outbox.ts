@@ -21,8 +21,12 @@ export async function loadReportOwnerRecipients(
       `select distinct lower(user_account.email) as email
          from memberships membership
          join users user_account on user_account.id = membership.user_id
+         left join email_suppressions suppression
+           on suppression.workspace_id = membership.workspace_id
+          and suppression.email_hash = encode(sha256(lower(user_account.email)::bytea), 'hex')
         where membership.workspace_id = $1 and membership.role = 'owner'
           and user_account.disabled_at is null and user_account.email_verified_at is not null
+          and suppression.id is null
         order by lower(user_account.email)`,
       [workspaceId],
     )

@@ -22,6 +22,8 @@ const workspaceA = "00000000-0000-4000-8000-00000000a501";
 const workspaceB = "00000000-0000-4000-8000-00000000b501";
 const userA = "00000000-0000-4000-8000-00000000a502";
 const userB = "00000000-0000-4000-8000-00000000b502";
+const sharedUser = "00000000-0000-4000-8000-00000000c502";
+const soloUser = "00000000-0000-4000-8000-00000000d502";
 const reportA = "00000000-0000-4000-8000-00000000a503";
 const siteA = "00000000-0000-4000-8000-00000000a504";
 const gscA = "00000000-0000-4000-8000-00000000a505";
@@ -234,6 +236,84 @@ test("삭제 workflow 성공 시 GSC revoke·object delete 후 privacy erasure p
   );
   assert.equal(retained.rows[0]!.count, 1);
   assert.equal(JSON.stringify(retained.rows[0]!.metadata).includes("owner-a@example.test"), false);
+});
+
+test("workspace erasure는 shared user 계정을 보존하고 target workspace 식별자와 target-only user만 tombstone 처리한다", async () => {
+  const pg = await migratedDb();
+  await pg.query(
+    `insert into users (id, email, password_hash, display_name, email_verified_at)
+     values ($1, 'shared@example.test', 'scrypt:shared', 'Shared User', now()),
+            ($2, 'solo@example.test', 'scrypt:solo', 'Solo User', now())`,
+    [sharedUser, soloUser],
+  );
+  await pg.query(
+    `insert into workspaces (id, name, slug, logo_url)
+     values ($1, 'Erase Target Agency', 'erase-target-agency', 'https://cdn.example.test/target.png'),
+            ($2, 'Retained Agency', 'retained-agency', 'https://cdn.example.test/retained.png')`,
+    [workspaceA, workspaceB],
+  );
+  await pg.query(
+    `insert into memberships (workspace_id, user_id, role)
+     values ($1, $2, 'owner'), ($3, $2, 'owner'), ($1, $4, 'admin')`,
+    [workspaceA, sharedUser, workspaceB, soloUser],
+  );
+  await pg.query(
+    `insert into legal_acceptances
+       (workspace_id, user_id, terms_version, terms_sha256, privacy_version, privacy_sha256, presented_at, accepted_at)
+     values
+       ($1, $2, 'v1', $4, 'v1', $4, now(), now()),
+       ($1, $3, 'v1', $4, 'v1', $4, now(), now())`,
+    [workspaceA, sharedUser, soloUser, "a".repeat(64)],
+  );
+  const service = createPrivacyService({ db: pg });
+
+  const result = await service.deleteWorkspaceSubject({
+    workspaceId: workspaceA,
+    operatorId: "operator-1",
+    requestId: "dsar-delete-shared-user",
+    now: new Date("2026-08-12T04:30:00.000Z"),
+  });
+
+  assert.equal(result.status, "completed");
+  const users = await pg.query<{ id: string; email: string; display_name: string | null; disabled: boolean }>(
+    `select id::text, email, display_name, disabled_at is not null as disabled
+       from users where id in ($1, $2) order by id`,
+    [sharedUser, soloUser],
+  );
+  assert.deepEqual(users.rows, [
+    { id: sharedUser, email: "shared@example.test", display_name: "Shared User", disabled: false },
+    {
+      id: soloUser,
+      email: `erased+${digest(`${soloUser}${(await pg.query<{ id: string }>("select id::text from privacy_requests where request_id = 'dsar-delete-shared-user'")).rows[0]!.id}`)}@privacy.semforge.invalid`,
+      display_name: null,
+      disabled: true,
+    },
+  ]);
+  const post = await pg.query<{
+    target_memberships: number;
+    retained_memberships: number;
+    legal_acceptances: number;
+    name: string;
+    slug: string;
+    logo_url: string | null;
+  }>(
+    `select
+       (select count(*)::int from memberships where workspace_id = $1) as target_memberships,
+       (select count(*)::int from memberships where workspace_id = $2 and user_id = $3) as retained_memberships,
+       (select count(*)::int from legal_acceptances where workspace_id = $1) as legal_acceptances,
+       workspace.name,
+       workspace.slug,
+       workspace.logo_url
+     from workspaces workspace
+     where workspace.id = $1`,
+    [workspaceA, workspaceB, sharedUser],
+  );
+  assert.equal(post.rows[0]!.target_memberships, 0);
+  assert.equal(post.rows[0]!.retained_memberships, 1);
+  assert.equal(post.rows[0]!.legal_acceptances, 0);
+  assert.match(post.rows[0]!.name, /^erased:[0-9a-f]{64}$/u);
+  assert.match(post.rows[0]!.slug, /^erased-[0-9a-f]{32}$/u);
+  assert.equal(post.rows[0]!.logo_url, null);
 });
 
 test("retention dry-run은 만료 대상만 계산하고 apply에서 세션·초대·reset·oauth·queue·recipient·provider metadata를 정리한다", async () => {

@@ -104,3 +104,24 @@ test("signed GET URL은 최대 15분의 짧은 TTL과 고정 만료 시각을 �
     /expiresInSeconds/,
   );
 });
+
+test("privacy delete는 private object key를 DELETE로 서명하고 404를 멱등 성공으로 처리한다", async () => {
+  const requests: Request[] = [];
+  const storage = new S3PrivateObjectStorage({
+    ...credentials,
+    clock: () => now,
+    fetch: async (input, init) => {
+      requests.push(new Request(input, init));
+      return new Response(null, { status: 404 });
+    },
+  });
+
+  await storage.deletePrivate("reports/workspace/report/snapshot.pdf");
+
+  assert.equal(requests.length, 1);
+  const request = requests[0]!;
+  assert.equal(request.method, "DELETE");
+  assert.equal(request.url, "https://objects.example.test/semforge-private/reports/workspace/report/snapshot.pdf");
+  assert.match(request.headers.get("authorization") ?? "", /^AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE\//);
+  assert.doesNotMatch(request.headers.get("authorization") ?? "", /wJalrXUtnFEMI/);
+});

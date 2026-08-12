@@ -126,6 +126,19 @@ CREATE TABLE "backup_deletion_markers" (
 	CONSTRAINT "backup_deletion_markers_request_marker_uq" UNIQUE("workspace_id","request_id","marker_key")
 );
 --> statement-breakpoint
+CREATE TABLE "email_suppressions" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"workspace_id" uuid NOT NULL,
+	"email_hash" text NOT NULL,
+	"reason" text DEFAULT 'privacy_erasure' NOT NULL,
+	"request_id" uuid,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "email_suppressions_workspace_id_uq" UNIQUE("workspace_id","id"),
+	CONSTRAINT "email_suppressions_workspace_hash_uq" UNIQUE("workspace_id","email_hash"),
+	CONSTRAINT "email_suppressions_hash_ck" CHECK ("email_suppressions"."email_hash" ~ '^[0-9a-f]{64}$'),
+	CONSTRAINT "email_suppressions_reason_ck" CHECK ("email_suppressions"."reason" in ('privacy_erasure', 'operator_block'))
+);
+--> statement-breakpoint
 CREATE TABLE "billing_customers" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"workspace_id" uuid NOT NULL,
@@ -766,6 +779,8 @@ ALTER TABLE "privacy_requests" ADD CONSTRAINT "privacy_requests_workspace_fk" FO
 ALTER TABLE "privacy_request_steps" ADD CONSTRAINT "privacy_request_steps_request_fk" FOREIGN KEY ("workspace_id","request_id") REFERENCES "public"."privacy_requests"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "privacy_billing_tombstones" ADD CONSTRAINT "privacy_billing_tombstones_request_fk" FOREIGN KEY ("workspace_id","request_id") REFERENCES "public"."privacy_requests"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "backup_deletion_markers" ADD CONSTRAINT "backup_deletion_markers_request_fk" FOREIGN KEY ("workspace_id","request_id") REFERENCES "public"."privacy_requests"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "email_suppressions" ADD CONSTRAINT "email_suppressions_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "email_suppressions" ADD CONSTRAINT "email_suppressions_request_fk" FOREIGN KEY ("workspace_id","request_id") REFERENCES "public"."privacy_requests"("workspace_id","id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "billing_customers" ADD CONSTRAINT "billing_customers_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "deliveries" ADD CONSTRAINT "deliveries_report_fk" FOREIGN KEY ("workspace_id","report_id") REFERENCES "public"."weekly_reports"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "gsc_connections" ADD CONSTRAINT "gsc_connections_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -948,6 +963,19 @@ AS $$
 DECLARE
   customer_hash text;
 BEGIN
+  PERFORM 1
+    FROM privacy_requests
+   WHERE workspace_id = p_workspace_id
+     AND id = p_request_id
+     AND type = 'deletion'
+     AND status = 'running'
+     AND operator_id = p_operator_id
+   FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'privacy erasure requires a matching running deletion request'
+      USING ERRCODE = '42501';
+  END IF;
+
   PERFORM set_config('app.privacy_erasure_request_id', p_request_id::text, true);
   PERFORM set_config('app.privacy_erasure_procedure', 'privacy_erase_workspace', true);
 
@@ -966,6 +994,12 @@ BEGIN
   UPDATE billing_ledger_events
      SET entity_id = encode(sha256(entity_id::bytea), 'hex'),
          order_id = CASE WHEN order_id IS NULL THEN NULL ELSE encode(sha256(order_id::bytea), 'hex') END,
+         metadata = jsonb_build_object('privacyErased', true, 'requestId', p_request_id::text)
+   WHERE workspace_id = p_workspace_id;
+
+  UPDATE audit_events
+     SET actor_user_id = NULL,
+         entity_id = CASE WHEN entity_id IS NULL THEN NULL ELSE encode(sha256(entity_id::bytea), 'hex') END,
          metadata = jsonb_build_object('privacyErased', true, 'requestId', p_request_id::text)
    WHERE workspace_id = p_workspace_id;
 
@@ -1005,15 +1039,46 @@ BEGIN
   DELETE FROM sites WHERE workspace_id = p_workspace_id;
   DELETE FROM outbox WHERE workspace_id = p_workspace_id;
   DELETE FROM jobs WHERE workspace_id = p_workspace_id;
+
+  DELETE FROM invites WHERE accepted_workspace_id = p_workspace_id;
+  DELETE FROM legal_acceptances WHERE workspace_id = p_workspace_id;
+  DELETE FROM sessions WHERE workspace_id = p_workspace_id;
+  DELETE FROM password_resets
+   WHERE user_id IN (
+     SELECT target_membership.user_id
+       FROM memberships target_membership
+      WHERE target_membership.workspace_id = p_workspace_id
+        AND NOT EXISTS (
+          SELECT 1
+            FROM memberships other_membership
+           WHERE other_membership.user_id = target_membership.user_id
+             AND other_membership.workspace_id <> p_workspace_id
+        )
+   );
   UPDATE users
      SET email = 'erased+' || encode(sha256((users.id::text || p_request_id::text)::bytea), 'hex') || '@privacy.semforge.invalid',
          display_name = NULL,
          disabled_at = coalesce(disabled_at, now()),
          updated_at = now()
-   WHERE id IN (SELECT user_id FROM memberships WHERE workspace_id = p_workspace_id);
-  DELETE FROM sessions WHERE workspace_id = p_workspace_id;
-  DELETE FROM password_resets
-   WHERE user_id IN (SELECT user_id FROM memberships WHERE workspace_id = p_workspace_id);
+   WHERE id IN (
+     SELECT target_membership.user_id
+       FROM memberships target_membership
+      WHERE target_membership.workspace_id = p_workspace_id
+        AND NOT EXISTS (
+          SELECT 1
+            FROM memberships other_membership
+           WHERE other_membership.user_id = target_membership.user_id
+             AND other_membership.workspace_id <> p_workspace_id
+        )
+   );
+  DELETE FROM memberships WHERE workspace_id = p_workspace_id;
+  UPDATE workspaces
+     SET name = 'erased:' || encode(sha256((id::text || p_request_id::text || ':name')::bytea), 'hex'),
+         slug = 'erased-' || left(encode(sha256((id::text || p_request_id::text || ':slug')::bytea), 'hex'), 32),
+         logo_url = NULL,
+         accent_color = '#667085',
+         updated_at = now()
+   WHERE id = p_workspace_id;
   INSERT INTO backup_deletion_markers
     (workspace_id, request_id, marker_key, runbook_ref, metadata)
   VALUES
@@ -1060,6 +1125,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON sessions TO semforge_auth;--> statement-
 GRANT SELECT, INSERT, UPDATE ON password_resets TO semforge_auth;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON auth_action_throttles TO semforge_auth;--> statement-breakpoint
 GRANT SELECT, INSERT ON workspaces, memberships TO semforge_auth;--> statement-breakpoint
+GRANT SELECT ON email_suppressions TO semforge_auth;--> statement-breakpoint
 GRANT INSERT ON billing_customers, subscriptions TO semforge_auth;--> statement-breakpoint
 GRANT INSERT ON legal_acceptances TO semforge_auth;--> statement-breakpoint
 GRANT INSERT (workspace_id, topic, payload, idempotency_key, available_at, created_at) ON outbox TO semforge_auth;--> statement-breakpoint
@@ -1086,6 +1152,7 @@ GRANT INSERT (workspace_id, topic, payload, idempotency_key, available_at, creat
 GRANT SELECT (workspace_id, topic, idempotency_key) ON outbox TO semforge_scheduler;--> statement-breakpoint
 GRANT SELECT ON workspaces, memberships, sites, tracked_queries, gsc_connections,
   gsc_property_bindings, billing_customers, payment_methods, subscriptions TO semforge_worker;--> statement-breakpoint
+GRANT SELECT ON email_suppressions TO semforge_worker;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON provider_calls, usage_reservations,
   rank_observations, aio_observations, aio_citations, naver_observations, naver_observation_sources, gsc_observations,
   weekly_reports, report_sections, report_assets, deliveries, payments, provider_events
@@ -1109,11 +1176,12 @@ GRANT UPDATE (active, replaced_at, updated_at) ON payment_methods TO semforge_bi
 GRANT INSERT (id, workspace_id, subscription_id, order_id, idempotency_key, toss_payment_key, status, amount_krw, billing_period_start, billing_period_end, attempt, failure_code, failure_message, paid_at) ON payments TO semforge_billing_tenant;--> statement-breakpoint
 GRANT UPDATE (status, toss_payment_key, failure_code, failure_message, paid_at, updated_at) ON payments TO semforge_billing_tenant;--> statement-breakpoint
 GRANT INSERT (id, workspace_id, type, entity_id, actor_user_id, request_id, occurred_at, amount_krw, order_id, payment_status, provider_code) ON billing_ledger_events TO semforge_billing_tenant;--> statement-breakpoint
-GRANT SELECT, INSERT, UPDATE, DELETE ON privacy_requests, privacy_request_steps, privacy_billing_tombstones, backup_deletion_markers,
+GRANT SELECT, INSERT, UPDATE, DELETE ON privacy_requests, privacy_request_steps, privacy_billing_tombstones, backup_deletion_markers, email_suppressions,
   gsc_connections, gsc_property_bindings, oauth_states, report_sections, report_assets, weekly_reports, deliveries,
   rank_observations, aio_observations, aio_citations, naver_observations, naver_observation_sources, gsc_observations,
-  tracked_queries, sites, outbox, jobs, sessions, password_resets, billing_customers, payment_methods, billing_ledger_events, users
+  tracked_queries, sites, outbox, jobs, sessions, password_resets, billing_customers, payment_methods, billing_ledger_events, audit_events, users, memberships, workspaces, invites
 TO semforge_privacy;--> statement-breakpoint
+REVOKE ALL ON FUNCTION privacy_erase_workspace(uuid, uuid, text) FROM PUBLIC;--> statement-breakpoint
 GRANT EXECUTE ON FUNCTION privacy_erase_workspace(uuid, uuid, text) TO semforge_privacy;--> statement-breakpoint
 REVOKE DELETE ON weekly_reports, report_sections, report_assets, deliveries FROM semforge_worker, semforge_web, semforge_billing;--> statement-breakpoint
 
@@ -1137,7 +1205,7 @@ DECLARE tenant_table text;
 BEGIN
 	  FOREACH tenant_table IN ARRAY ARRAY[
 	    'memberships', 'audit_events', 'legal_acceptances',
-	    'privacy_requests', 'privacy_request_steps', 'privacy_billing_tombstones', 'backup_deletion_markers',
+	    'privacy_requests', 'privacy_request_steps', 'privacy_billing_tombstones', 'backup_deletion_markers', 'email_suppressions',
 	    'sites', 'tracked_queries',
 	    'gsc_connections', 'oauth_states', 'gsc_property_bindings',
     'provider_calls', 'usage_reservations', 'jobs', 'outbox',
@@ -1162,6 +1230,7 @@ CREATE POLICY memberships_auth_insert ON memberships FOR INSERT TO semforge_auth
 CREATE POLICY legal_acceptances_auth_insert ON legal_acceptances FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY billing_customers_auth_insert ON billing_customers FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY subscriptions_auth_insert ON subscriptions FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY email_suppressions_auth_select ON email_suppressions FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE users FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY users_auth_select ON users FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
@@ -1216,7 +1285,7 @@ DO $$
 DECLARE worker_table text;
 BEGIN
 	  FOREACH worker_table IN ARRAY ARRAY[
-	    'memberships', 'sites', 'tracked_queries', 'gsc_connections', 'gsc_property_bindings',
+	    'memberships', 'sites', 'tracked_queries', 'gsc_connections', 'gsc_property_bindings', 'email_suppressions',
 	    'provider_calls', 'usage_reservations',
     'rank_observations', 'aio_observations', 'aio_citations', 'naver_observations', 'naver_observation_sources', 'gsc_observations',
     'weekly_reports', 'report_sections', 'report_assets', 'deliveries',
@@ -1232,7 +1301,7 @@ DO $$
 DECLARE privacy_table text;
 BEGIN
   FOREACH privacy_table IN ARRAY ARRAY[
-    'legal_acceptances', 'privacy_requests', 'privacy_request_steps', 'privacy_billing_tombstones', 'backup_deletion_markers',
+    'legal_acceptances', 'privacy_requests', 'privacy_request_steps', 'privacy_billing_tombstones', 'backup_deletion_markers', 'email_suppressions',
     'gsc_connections', 'gsc_property_bindings', 'oauth_states',
     'weekly_reports', 'report_sections', 'report_assets', 'deliveries',
     'rank_observations', 'aio_observations', 'aio_citations', 'naver_observations', 'naver_observation_sources', 'gsc_observations',

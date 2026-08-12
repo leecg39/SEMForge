@@ -400,6 +400,24 @@ test("privacy erasure만 immutable report 삭제를 수행하고 billing ledger�
     await pg.query("rollback");
   }
 
+  for (const role of ["semforge_web", "semforge_worker", "semforge_operator", "semforge_dispatcher"] as const) {
+    await pg.query("begin");
+    try {
+      await pg.query(`set local role ${role}`);
+      await assert.rejects(
+        pg.query(
+          "select privacy_erase_workspace($1::uuid, $2::uuid, 'operator@example.com')",
+          [workspaceId, privacyRequestId],
+        ),
+        /permission denied/i,
+      );
+      await pg.query("rollback");
+    } catch (error) {
+      await pg.query("rollback");
+      throw error;
+    }
+  }
+
   await pg.query("begin");
   try {
     await pg.query("set local role semforge_privacy");
@@ -1043,6 +1061,7 @@ test("auth role은 pre-tenant 인증 트랜잭션에 필요한 최소 권한과 
     "auth_action_throttles:SELECT",
     "auth_action_throttles:UPDATE",
     "billing_customers:INSERT",
+    "email_suppressions:SELECT",
     "invites:SELECT",
     "legal_acceptances:INSERT",
     "memberships:INSERT",
@@ -1097,6 +1116,7 @@ test("auth role은 pre-tenant 인증 트랜잭션에 필요한 최소 권한과 
       "auth_action_throttles_auth_select:SELECT",
       "auth_action_throttles_auth_update:UPDATE",
       "billing_customers_auth_insert:INSERT",
+      "email_suppressions_auth_select:SELECT",
       "invites_auth_select:SELECT",
       "invites_auth_update:UPDATE",
       "legal_acceptances_auth_insert:INSERT",

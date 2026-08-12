@@ -1,6 +1,6 @@
 {
-  "id": "5509ff0c-0e7d-4345-9f3a-d0e047cbc49a",
-  "prevId": "29a9d713-87b5-4e63-83f4-87315b87b027",
+  "id": "e2bcc0ea-254d-49ae-9856-3cd63848fd2e",
+  "prevId": "3d10537a-07b5-4310-8eca-47445e32aa70",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -885,6 +885,113 @@
       },
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.email_suppressions": {
+      "name": "email_suppressions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email_hash": {
+          "name": "email_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'privacy_erasure'"
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "email_suppressions_workspace_id_workspaces_id_fk": {
+          "name": "email_suppressions_workspace_id_workspaces_id_fk",
+          "tableFrom": "email_suppressions",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "email_suppressions_request_fk": {
+          "name": "email_suppressions_request_fk",
+          "tableFrom": "email_suppressions",
+          "tableTo": "privacy_requests",
+          "columnsFrom": [
+            "workspace_id",
+            "request_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "email_suppressions_workspace_id_uq": {
+          "name": "email_suppressions_workspace_id_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "id"
+          ]
+        },
+        "email_suppressions_workspace_hash_uq": {
+          "name": "email_suppressions_workspace_hash_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "email_hash"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "email_suppressions_hash_ck": {
+          "name": "email_suppressions_hash_ck",
+          "value": "\"email_suppressions\".\"email_hash\" ~ '^[0-9a-f]{64}$'"
+        },
+        "email_suppressions_reason_ck": {
+          "name": "email_suppressions_reason_ck",
+          "value": "\"email_suppressions\".\"reason\" in ('privacy_erasure', 'operator_block')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.gsc_connections": {

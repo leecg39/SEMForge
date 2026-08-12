@@ -1,5 +1,7 @@
 // @TASK P4-R1-T1 - PostgreSQL report asset and email delivery state
 // @SPEC docs/planning/06-tasks.md#p4-r1-t1--한글-pdf이메일객체-저장소
+import { createHash } from "node:crypto";
+
 import type { WeeklyReportSnapshot } from "@/server/reports/types";
 
 export interface DeliverySqlClient {
@@ -62,7 +64,7 @@ export interface ReportDeliveryStore {
 }
 
 export class ReportDeliveryStoreError extends Error {
-  constructor(readonly code: "NOT_FOUND" | "CONFLICT" | "INVALID_STATE") {
+  constructor(readonly code: "NOT_FOUND" | "CONFLICT" | "INVALID_STATE" | "SUPPRESSED") {
     super(`REPORT_DELIVERY_${code}`);
     this.name = "ReportDeliveryStoreError";
   }
@@ -92,6 +94,10 @@ type AssetRow = {
 
 function jsonValue<T>(value: T | string): T {
   return typeof value === "string" ? JSON.parse(value) as T : value;
+}
+
+function emailHash(value: string): string {
+  return createHash("sha256").update(value.trim().toLowerCase(), "utf8").digest("hex");
 }
 
 function asset(row: AssetRow): ReportPdfAsset {
@@ -182,6 +188,11 @@ export class PostgresReportDeliveryStore implements ReportDeliveryStore, ReportA
     now: Date;
   }): Promise<PreparedEmailDelivery> {
     return withTransaction(this.source, input.workspaceId, async (database) => {
+      const suppressed = await database.query(
+        "select 1 from email_suppressions where workspace_id = $1 and email_hash = $2 limit 1",
+        [input.workspaceId, emailHash(input.recipient)],
+      );
+      if (suppressed.rows[0]) throw new ReportDeliveryStoreError("SUPPRESSED");
       const report = (
         await database.query<ReportRow>(
           `select id::text, snapshot from weekly_reports

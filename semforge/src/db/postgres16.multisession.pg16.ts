@@ -21,6 +21,7 @@ import {
   PostgresWeeklyCollectionScheduler,
   PostgresWeeklyReportScheduler,
 } from "@/worker/scheduler";
+import { createInsightRouteHandlers } from "@/server/insights/routes";
 
 const databaseUrl = process.env.PG16_TEST_DATABASE_URL;
 if (!databaseUrl) {
@@ -48,6 +49,12 @@ function barrier(participants: number): () => Promise<void> {
     if (arrived === participants) release();
     await ready;
   };
+}
+
+function roleDatabaseUrl(role: string): string {
+  const url = new URL(databaseUrl!);
+  url.searchParams.set("options", `-c role=${role}`);
+  return url.toString();
 }
 
 async function rollback(client: PoolClient): Promise<void> {
@@ -571,5 +578,200 @@ test("PostgreSQL 16 실제 tenant billing role은 설정된 workspace만 허용�
     );
   } finally {
     await Promise.all([tenantRuntimePool.end(), globalRuntimePool.end()]);
+  }
+});
+
+test("PostgreSQL 16 NAVER/AIO read route는 web-role PoolClient transaction-local RLS로 정상 tenant data만 반환한다", async () => {
+  const workspaceA = "f6000000-0000-4000-8000-000000000001";
+  const workspaceB = "f6000000-0000-4000-8000-000000000002";
+  const siteA = "f6100000-0000-4000-8000-000000000001";
+  const siteB = "f6100000-0000-4000-8000-000000000002";
+  const rankQuery = "f6200000-0000-4000-8000-000000000001";
+  const aioQuery = "f6200000-0000-4000-8000-000000000002";
+  const providerCall = "f6300000-0000-4000-8000-000000000001";
+  const naverObservation = "f6400000-0000-4000-8000-000000000001";
+  const aioObservation = "f6500000-0000-4000-8000-000000000001";
+  await pool.query(
+    "insert into workspaces (id, name, slug) values ($1, 'PG16 Read A', 'pg16-read-a'), ($2, 'PG16 Read B', 'pg16-read-b')",
+    [workspaceA, workspaceB],
+  );
+  await pool.query(
+    `insert into sites (id, workspace_id, name, domain)
+     values ($1, $2, 'Read A', 'read-a.example'), ($3, $4, 'Read B', 'read-b.example')`,
+    [siteA, workspaceA, siteB, workspaceB],
+  );
+  await pool.query(
+    `insert into tracked_queries (id, workspace_id, site_id, type, query, normalized_query)
+     values ($1, $2, $3, 'rank', '네이버 검색량', '네이버 검색량'),
+            ($4, $2, $3, 'aio', 'AI Overview', 'ai overview')`,
+    [rankQuery, workspaceA, siteA, aioQuery],
+  );
+  await pool.query(
+    `insert into provider_calls
+       (id, workspace_id, provider, operation, idempotency_key, request_hash, status, response_metadata, completed_at)
+     values ($1, $2, 'talordata', 'google_serp_aio', 'pg16-read-aio', 'hash-pg16-read-aio', 'succeeded', '{}'::jsonb, '2026-08-12T01:00:00.000Z')`,
+    [providerCall, workspaceA],
+  );
+  await pool.query(
+    `insert into naver_observations
+       (id, workspace_id, site_id, tracked_query_id, observed_at, collected_at,
+        monthly_pc_search_volume, monthly_mobile_search_volume, blog_result_count, trend, demographics)
+     values ($1, $2, $3, $4, '2026-08-12T01:00:00.000Z', '2026-08-12T01:01:00.000Z',
+       11, 22, 33, '[]'::jsonb, '{}'::jsonb)`,
+    [naverObservation, workspaceA, siteA, rankQuery],
+  );
+  await pool.query(
+    `insert into naver_observation_sources
+       (workspace_id, observation_id, source, status, collected_at, metadata)
+     values ($1, $2, 'search_ads_monthly_volume', 'succeeded', '2026-08-12T01:01:00.000Z', '{"providerSource":"naver-search-ads-relkwdstat"}'::jsonb)`,
+    [workspaceA, naverObservation],
+  );
+  await pool.query(
+    `insert into aio_observations
+       (id, workspace_id, site_id, tracked_query_id, provider_call_id, observed_at, presence, answer_text)
+     values ($1, $2, $3, $4, $5, '2026-08-12T01:00:00.000Z', 'present', 'PG16 answer')`,
+    [aioObservation, workspaceA, siteA, aioQuery, providerCall],
+  );
+  await pool.query(
+    `insert into aio_citations (workspace_id, observation_id, url, title, position)
+     values ($1, $2, 'https://read-a.example/aio', 'Owned', 1)`,
+    [workspaceA, aioObservation],
+  );
+
+  const webPool = new Pool({ connectionString: roleDatabaseUrl("semforge_web"), max: 1, ssl: false });
+  try {
+    const handlers = createInsightRouteHandlers({
+      pool: webPool,
+      resolveSession: async () => ({
+        workspaceId: workspaceA,
+        userId: "f6600000-0000-4000-8000-000000000001",
+        role: "owner",
+        requestId: "pg16-read-route",
+      }),
+      authorizeBilling: async () => ({
+        allowed: true,
+        mode: "full",
+        reason: "active",
+        reportPeriodEndBefore: null,
+      }),
+    });
+
+    const naver = await handlers.naver.GET(
+      new Request(`https://app.semforge.test/api/v1/insights/naver?siteId=${siteA}`),
+      undefined,
+    );
+    const aio = await handlers.aio.GET(
+      new Request(`https://app.semforge.test/api/v1/visibility/aio?siteId=${siteA}`),
+      undefined,
+    );
+    assert.equal(naver.status, 200);
+    assert.equal(aio.status, 200);
+    assert.match(JSON.stringify((await naver.json()).data), /"total":33/u);
+    assert.match(JSON.stringify((await aio.json()).data), /PG16 answer/u);
+
+    const hidden = await handlers.naver.GET(
+      new Request(`https://app.semforge.test/api/v1/insights/naver?siteId=${siteB}`),
+      undefined,
+    );
+    assert.equal(hidden.status, 404);
+  } finally {
+    await webPool.end();
+  }
+});
+
+test("PostgreSQL 16 privacy erasure procedure는 PUBLIC과 일반 runtime role을 거부하고 privacy role만 허용한다", async () => {
+  const functionAcl = await pool.query<{ public_execute: boolean }>(
+    `select exists (
+       select 1
+         from pg_proc procedure
+         join pg_namespace namespace on namespace.oid = procedure.pronamespace
+         cross join lateral aclexplode(coalesce(procedure.proacl, acldefault('f', procedure.proowner))) acl
+        where namespace.nspname = 'public'
+          and procedure.oid = 'public.privacy_erase_workspace(uuid,uuid,text)'::regprocedure
+          and acl.grantee = 0
+          and acl.privilege_type = 'EXECUTE'
+     ) as public_execute`,
+  );
+  assert.deepEqual(functionAcl.rows, [{ public_execute: false }]);
+
+  const runtimeRoles = [
+    "semforge_auth",
+    "semforge_billing",
+    "semforge_billing_tenant",
+    "semforge_dispatcher",
+    "semforge_operator",
+    "semforge_scheduler",
+    "semforge_web",
+    "semforge_worker",
+  ];
+  const rolePrivileges = await pool.query<{ rolname: string; can_execute: boolean }>(
+    `select rolname,
+            has_function_privilege(
+              oid,
+              'public.privacy_erase_workspace(uuid,uuid,text)'::regprocedure,
+              'EXECUTE'
+            ) as can_execute
+       from pg_roles
+      where rolname = any($1::text[])
+      order by rolname`,
+    [runtimeRoles],
+  );
+  assert.deepEqual(
+    rolePrivileges.rows,
+    [...runtimeRoles].sort().map((rolname) => ({ rolname, can_execute: false })),
+  );
+
+  const privacyPrivilege = await pool.query<{ can_execute: boolean }>(
+    `select has_function_privilege(
+       (select oid from pg_roles where rolname = 'semforge_privacy'),
+       'public.privacy_erase_workspace(uuid,uuid,text)'::regprocedure,
+       'EXECUTE'
+     ) as can_execute`,
+  );
+  assert.deepEqual(privacyPrivilege.rows, [{ can_execute: true }]);
+});
+
+test("PostgreSQL 16 privacy erasure procedure는 workspace의 실행 중 deletion 요청과 operator가 정확히 일치해야 한다", async () => {
+  const workspaceId = "f6100000-0000-4000-8000-000000000001";
+  const runningDeletionId = "f6100000-0000-4000-8000-000000000002";
+  const exportId = "f6100000-0000-4000-8000-000000000003";
+  const completedDeletionId = "f6100000-0000-4000-8000-000000000004";
+  const arbitraryId = "f6100000-0000-4000-8000-000000000005";
+  await pool.query(
+    "insert into workspaces (id, name, slug) values ($1, 'Privacy request validation', 'privacy-request-validation')",
+    [workspaceId],
+  );
+  await pool.query(
+    `insert into privacy_requests
+       (id, workspace_id, request_id, type, status, operator_id, requested_at, completed_at)
+     values
+       ($1, $4, 'running-deletion', 'deletion', 'running', 'privacy-operator', now(), null),
+       ($2, $4, 'running-export', 'export', 'running', 'privacy-operator', now(), null),
+       ($3, $4, 'completed-deletion', 'deletion', 'completed', 'privacy-operator', now(), now())`,
+    [runningDeletionId, exportId, completedDeletionId, workspaceId],
+  );
+
+  for (const [requestId, operatorId] of [
+    [arbitraryId, "privacy-operator"],
+    [exportId, "privacy-operator"],
+    [completedDeletionId, "privacy-operator"],
+    [runningDeletionId, "different-operator"],
+  ] as const) {
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      await client.query("set local role semforge_privacy");
+      await assert.rejects(
+        client.query("select privacy_erase_workspace($1::uuid, $2::uuid, $3::text)", [
+          workspaceId,
+          requestId,
+          operatorId,
+        ]),
+        /matching running deletion request/i,
+      );
+    } finally {
+      await rollback(client);
+      client.release();
+    }
   }
 });

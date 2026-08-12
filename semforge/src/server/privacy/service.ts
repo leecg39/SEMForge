@@ -13,7 +13,7 @@ export interface PrivacyProcessorClient {
     refreshTokenEncrypted: string;
   }): Promise<void>;
   deleteObject(input: { workspaceId: string; storageKey: string }): Promise<void>;
-  markEmailSuppressed(input: { workspaceId: string; emailHash: string }): Promise<void>;
+  markEmailSuppressed(input: { workspaceId: string; emailHash: string; requestUuid: string }): Promise<void>;
 }
 
 export interface PrivacyRequestInput {
@@ -421,6 +421,7 @@ export function createPrivacyService(options: {
           await processor.markEmailSuppressed({
             workspaceId: input.workspaceId,
             emailHash: digest(recipient.recipient),
+            requestUuid,
           });
         }
       });

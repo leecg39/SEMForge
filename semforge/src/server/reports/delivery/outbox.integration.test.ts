@@ -1,6 +1,7 @@
 // @TASK P4-R1-T1 - Automatic report delivery outbox contract
 // @SPEC docs/planning/06-tasks.md#p4-r1-t1--한글-pdf이메일객체-저장소
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { after, before, test } from "node:test";
 
@@ -105,4 +106,23 @@ test("auth가 해석한 owner 수신자로 worker role도 users 접근 없이 de
     [workspaceId],
   );
   assert.deepEqual(queued.rows, [{ payload: { reportId: queued.rows[0]!.payload.reportId, recipient: "owner@example.test" } }]);
+});
+
+test("privacy suppression hash가 있는 owner는 report email outbox 대상에서 제외된다", async () => {
+  await database.query(
+    "insert into email_suppressions (workspace_id, email_hash, reason) values ($1, $2, 'privacy_erasure') on conflict do nothing",
+    [workspaceId, createHash("sha256").update("owner@example.test", "utf8").digest("hex")],
+  );
+  await database.query("begin");
+  let recipients: readonly string[];
+  try {
+    await database.query("set local role semforge_auth");
+    recipients = await loadReportOwnerRecipients(database, workspaceId);
+    await database.query("commit");
+  } catch (error) {
+    await database.query("rollback");
+    throw error;
+  }
+
+  assert.deepEqual(recipients, []);
 });
