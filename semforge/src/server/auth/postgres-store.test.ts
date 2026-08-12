@@ -139,6 +139,47 @@ test("새 workspace 초대 수락은 사용자·membership·session·초대 소�
   assert.equal(await store.findSessionByTokenHash(digest("session-hash-2"), now), null);
 });
 
+test("비밀번호 정책 업그레이드는 검증한 이전 hash가 그대로일 때만 CAS로 저장한다", async () => {
+  const { auth: store, operator } = await createStores();
+  const now = testNow();
+  await operator.createInvite({
+    workspaceName: "Hash Upgrade Agency",
+    workspaceSlug: "hash-upgrade-agency",
+    email: "hash-upgrade@example.com",
+    tokenHash: digest("hash-upgrade-invite"),
+    role: "owner",
+    expiresAt: addMs(now, 7 * DAY_MS),
+    now,
+  });
+  const accepted = await store.acceptInviteAtomic({
+    tokenHash: digest("hash-upgrade-invite"),
+    email: "hash-upgrade@example.com",
+    user: { kind: "new", passwordHash: "scrypt:legacy" },
+    sessionTokenHash: digest("hash-upgrade-session"),
+    sessionExpiresAt: addMs(now, 30 * DAY_MS),
+    now,
+  });
+  assert.equal(accepted.status, "accepted");
+  if (accepted.status !== "accepted") return;
+
+  assert.equal(await store.upgradePasswordHash({
+    userId: accepted.principal.userId,
+    expectedPasswordHash: "scrypt:legacy",
+    passwordHash: "scrypt:current",
+    now: addMs(now, MINUTE_MS),
+  }), true);
+  assert.equal(await store.upgradePasswordHash({
+    userId: accepted.principal.userId,
+    expectedPasswordHash: "scrypt:legacy",
+    passwordHash: "scrypt:attacker",
+    now: addMs(now, 2 * MINUTE_MS),
+  }), false);
+  assert.equal(
+    (await store.findUserById(accepted.principal.userId))?.passwordHash,
+    "scrypt:current",
+  );
+});
+
 test("초대 수락은 final 약관·개인정보 version/SHA와 presented/accepted 시각을 같은 transaction에 기록한다", async () => {
   const { auth: store, operator, database } = await createStores();
   const now = testNow();

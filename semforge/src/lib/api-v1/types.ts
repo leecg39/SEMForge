@@ -2,6 +2,7 @@
 // @SPEC docs/planning/06-tasks.md#api-v1
 
 import type { ApiErrorCode } from "./error";
+import type { JsonLogger } from "@/server/observability/logger";
 
 export interface ApiErrorPayload {
   code: ApiErrorCode;
@@ -38,6 +39,8 @@ export type OriginPolicy = "same-origin" | "none" | "external-webhook";
 export interface ApiRouteOptions {
   originPolicy?: OriginPolicy;
   trustedOrigin?: string;
+  /** 테스트 seam 또는 별도 transport에서 사용할 구조화 logger. */
+  logger?: Pick<JsonLogger, "warn" | "error">;
 }
 
 export type ApiRouteHandler<T, TRouteContext> = (

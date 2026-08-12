@@ -34,6 +34,7 @@ function storeFixture(overrides: Partial<AuthStore> = {}): AuthStore {
     acceptInviteAtomic: async () => { throw new Error("acceptInviteAtomic not implemented"); },
     findUserByEmail: async () => null,
     findUserById: async () => null,
+    upgradePasswordHash: async () => false,
     listMembershipsForUser: async () => [],
     rotateSession: async () => null,
     findSessionByTokenHash: async () => null,
@@ -326,6 +327,66 @@ test("로그인은 throttle 통과 후 워크스페이스를 검증하고 기존
   );
   assert.equal((rotationInput?.expiresAt as Date).toISOString(), "2026-09-10T03:00:00.000Z");
   assert.equal(cleared, true);
+});
+
+test("레거시 비밀번호로 로그인하면 성공한 검증값만 CAS로 현재 scrypt 정책에 재해시한다", async () => {
+  const legacyPasswordHash =
+    "scrypt$v1$N=16384,r=8,p=1,keylen=64$WlpaWlpaWlpaWlpaWlpaWg$-ri1vm9V4Re1Xf1SNzvP_8ht3Zsz7NH3Yuc_nUOKabyPnE-oYhphNku8tDZz7Yp59wWU7BwbDw6P2kVbxAr3NQ";
+  let upgradeInput:
+    | Parameters<AuthStore["upgradePasswordHash"]>[0]
+    | undefined;
+  const principal = {
+    sessionId: "session-upgraded",
+    userId: "user-legacy",
+    workspaceId: "00000000-0000-4000-8000-000000000001",
+    email: "legacy@example.com",
+    displayName: null,
+    role: "owner" as const,
+    expiresAt: new Date("2026-09-10T03:00:00.000Z"),
+  };
+  const service = createAuthService({
+    store: storeFixture({
+      findUserByEmail: async () => ({
+        id: "user-legacy",
+        email: "legacy@example.com",
+        passwordHash: legacyPasswordHash,
+        displayName: null,
+        disabledAt: null,
+      }),
+      upgradePasswordHash: async (input) => {
+        upgradeInput = input;
+        return true;
+      },
+      listMembershipsForUser: async () => [{
+        workspaceId: principal.workspaceId,
+        workspaceName: "Agency",
+        workspaceSlug: "agency",
+        role: "owner",
+      }],
+      rotateSession: async () => principal,
+    }),
+    now: () => NOW,
+  });
+
+  await service.login({
+    email: "legacy@example.com",
+    password: "legacy-password-2026",
+  });
+
+  assert.equal(upgradeInput?.userId, "user-legacy");
+  assert.equal(upgradeInput?.expectedPasswordHash, legacyPasswordHash);
+  assert.equal(upgradeInput?.now, NOW);
+  assert.match(
+    upgradeInput?.passwordHash ?? "",
+    /^scrypt\$v2\$N=131072,r=8,p=1,keylen=64\$/,
+  );
+  assert.equal(
+    await verifyPassword(
+      "legacy-password-2026",
+      upgradeInput?.passwordHash ?? "",
+    ),
+    true,
+  );
 });
 
 test("존재하지 않는 계정과 잘못된 비밀번호는 같은 로그인 오류를 반환한다", async () => {

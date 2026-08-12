@@ -116,6 +116,14 @@ export interface RotateSessionInput {
   readonly now: Date;
 }
 
+export interface UpgradePasswordHashInput {
+  readonly userId: string;
+  /** 검증 직후 읽은 값이다. 동시 password reset을 덮어쓰지 않도록 CAS에 사용한다. */
+  readonly expectedPasswordHash: string;
+  readonly passwordHash: string;
+  readonly now: Date;
+}
+
 export interface CreatePasswordResetInput {
   readonly userId: string;
   readonly tokenHash: string;
@@ -183,6 +191,7 @@ export interface AuthStore {
 
   findUserByEmail(email: string): Promise<AuthUser | null>;
   findUserById(userId: string): Promise<AuthUser | null>;
+  upgradePasswordHash(input: UpgradePasswordHashInput): Promise<boolean>;
   listMembershipsForUser(userId: string): Promise<readonly AuthMembership[]>;
 
   rotateSession(input: RotateSessionInput): Promise<AuthSessionPrincipal | null>;

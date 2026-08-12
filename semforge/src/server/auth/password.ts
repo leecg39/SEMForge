@@ -7,34 +7,68 @@ import {
   type ScryptOptions,
 } from "node:crypto";
 
-const SCRYPT_VERSION = "v1";
-const SCRYPT_PARAMETERS = {
+interface PasswordHashPolicy {
+  readonly version: "v1" | "v2";
+  readonly parameterString: string;
+  readonly N: number;
+  readonly r: number;
+  readonly p: number;
+  readonly keylen: number;
+  readonly maxmem: number;
+  readonly needsRehash: boolean;
+}
+
+const CURRENT_POLICY: PasswordHashPolicy = {
+  version: "v2",
+  parameterString: "N=131072,r=8,p=1,keylen=64",
+  N: 131_072,
+  r: 8,
+  p: 1,
+  keylen: 64,
+  maxmem: 256 * 1024 * 1024,
+  needsRehash: false,
+};
+const LEGACY_POLICY: PasswordHashPolicy = {
+  version: "v1",
+  parameterString: "N=16384,r=8,p=1,keylen=64",
   N: 16_384,
   r: 8,
   p: 1,
   keylen: 64,
-} as const;
-const SCRYPT_PARAMETER_STRING = "N=16384,r=8,p=1,keylen=64";
-const SCRYPT_OPTIONS: ScryptOptions = {
-  N: SCRYPT_PARAMETERS.N,
-  r: SCRYPT_PARAMETERS.r,
-  p: SCRYPT_PARAMETERS.p,
   maxmem: 32 * 1024 * 1024,
+  needsRehash: true,
 };
 const SALT_BYTES = 16;
+const MAX_ENCODED_HASH_CHARS = 180;
 
 interface ParsedPasswordHash {
   readonly salt: Buffer;
   readonly derivedKey: Buffer;
+  readonly policy: PasswordHashPolicy;
 }
 
-function derivePassword(password: string, salt: Buffer): Promise<Buffer> {
+export interface PasswordVerificationResult {
+  readonly verified: boolean;
+  readonly needsRehash: boolean;
+}
+
+function derivePassword(
+  password: string,
+  salt: Buffer,
+  policy: PasswordHashPolicy,
+): Promise<Buffer> {
+  const options: ScryptOptions = {
+    N: policy.N,
+    r: policy.r,
+    p: policy.p,
+    maxmem: policy.maxmem,
+  };
   return new Promise((resolve, reject) => {
     scryptCallback(
       password,
       salt,
-      SCRYPT_PARAMETERS.keylen,
-      SCRYPT_OPTIONS,
+      policy.keylen,
+      options,
       (error, derivedKey) => {
         if (error) {
           reject(error);
@@ -56,23 +90,24 @@ function decodeCanonicalBase64Url(value: string, byteLength: number): Buffer | n
 }
 
 function parsePasswordHash(encodedHash: string): ParsedPasswordHash | null {
+  if (encodedHash.length > MAX_ENCODED_HASH_CHARS) return null;
   const parts = encodedHash.split("$");
   if (parts.length !== 5) return null;
 
   const [algorithm, version, parameters, saltText, derivedKeyText] = parts;
   if (algorithm !== "scrypt") return null;
-  if (version !== SCRYPT_VERSION) return null;
-  if (parameters !== SCRYPT_PARAMETER_STRING) return null;
+  const policy = [CURRENT_POLICY, LEGACY_POLICY].find(
+    (candidate) =>
+      candidate.version === version && candidate.parameterString === parameters,
+  );
+  if (!policy) return null;
   if (!saltText || !derivedKeyText) return null;
 
   const salt = decodeCanonicalBase64Url(saltText, SALT_BYTES);
-  const derivedKey = decodeCanonicalBase64Url(
-    derivedKeyText,
-    SCRYPT_PARAMETERS.keylen,
-  );
+  const derivedKey = decodeCanonicalBase64Url(derivedKeyText, policy.keylen);
   if (!salt || !derivedKey) return null;
 
-  return { salt, derivedKey };
+  return { salt, derivedKey, policy };
 }
 
 /**
@@ -81,12 +116,12 @@ function parsePasswordHash(encodedHash: string): ParsedPasswordHash | null {
  */
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(SALT_BYTES);
-  const derivedKey = await derivePassword(password, salt);
+  const derivedKey = await derivePassword(password, salt, CURRENT_POLICY);
 
   return [
     "scrypt",
-    SCRYPT_VERSION,
-    SCRYPT_PARAMETER_STRING,
+    CURRENT_POLICY.version,
+    CURRENT_POLICY.parameterString,
     salt.toString("base64url"),
     derivedKey.toString("base64url"),
   ].join("$");
@@ -97,10 +132,21 @@ export async function verifyPassword(
   password: string,
   encodedHash: string,
 ): Promise<boolean> {
-  const parsed = parsePasswordHash(encodedHash);
-  if (!parsed) return false;
-
-  const actual = await derivePassword(password, parsed.salt);
-  return timingSafeEqual(actual, parsed.derivedKey);
+  return (await verifyPasswordWithPolicy(password, encodedHash)).verified;
 }
 
+/** 검증 성공 후 현재 정책으로 교체해야 하는지 함께 반환한다. */
+export async function verifyPasswordWithPolicy(
+  password: string,
+  encodedHash: string,
+): Promise<PasswordVerificationResult> {
+  const parsed = parsePasswordHash(encodedHash);
+  if (!parsed) return { verified: false, needsRehash: false };
+
+  const actual = await derivePassword(password, parsed.salt, parsed.policy);
+  const verified = timingSafeEqual(actual, parsed.derivedKey);
+  return {
+    verified,
+    needsRehash: verified && parsed.policy.needsRehash,
+  };
+}

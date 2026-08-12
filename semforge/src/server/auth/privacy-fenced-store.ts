@@ -70,6 +70,17 @@ export function createPrivacyFencedAuthStore(dependencies: {
 
     findUserByEmail: (email) => store.findUserByEmail(email),
     findUserById: (userId) => store.findUserById(userId),
+
+    async upgradePasswordHash(input) {
+      const result = await runAcrossAllMemberships({
+        store,
+        fence,
+        userId: input.userId,
+        operation: () => store.upgradePasswordHash(input),
+      });
+      return result?.disposition === "executed" ? result.value : false;
+    },
+
     listMembershipsForUser: (userId) => store.listMembershipsForUser(userId),
 
     async rotateSession(input) {

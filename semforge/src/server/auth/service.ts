@@ -8,7 +8,11 @@ import type {
   OperatorInviteStore,
 } from "@/server/auth/contracts";
 import { AuthServiceError } from "@/server/auth/contracts";
-import { hashPassword, verifyPassword } from "@/server/auth/password";
+import {
+  hashPassword,
+  verifyPassword,
+  verifyPasswordWithPolicy,
+} from "@/server/auth/password";
 import {
   acceptInviteInputSchema,
   createInviteInputSchema,
@@ -242,10 +246,22 @@ export function createAuthService(dependencies: AuthServiceDependencies) {
       }
 
       const user = await store.findUserByEmail(parsed.email);
-      const passwordMatches = user
-        ? await verifyPassword(parsed.password, user.passwordHash)
-        : (await hashPassword(parsed.password), false);
-      if (!user || !passwordMatches || user.disabledAt) throw invalidCredentials();
+      const passwordVerification = user
+        ? await verifyPasswordWithPolicy(parsed.password, user.passwordHash)
+        : (await hashPassword(parsed.password), { verified: false, needsRehash: false });
+      if (!user || !passwordVerification.verified || user.disabledAt) {
+        throw invalidCredentials();
+      }
+      if (passwordVerification.needsRehash) {
+        const upgraded = await store.upgradePasswordHash({
+          userId: user.id,
+          expectedPasswordHash: user.passwordHash,
+          passwordHash: await hashPassword(parsed.password),
+          now: loggedInAt,
+        });
+        // 동시 password reset/disable이 이긴 경우 이전 비밀번호로 session을 만들지 않는다.
+        if (!upgraded) throw invalidCredentials();
+      }
 
       const memberships = await store.listMembershipsForUser(user.id);
       const membership = parsed.workspaceId

@@ -41,6 +41,7 @@ import type {
   ResetPasswordInput,
   ResetPasswordResult,
   RotateSessionInput,
+  UpgradePasswordHashInput,
 } from "@/server/auth/store";
 import {
   DEFAULT_AUTH_THROTTLE_LIMIT,
@@ -417,6 +418,22 @@ export class PostgresAuthStore implements AuthStore {
   async findUserById(userId: string): Promise<AuthUser | null> {
     const [user] = await this.database.select().from(users).where(eq(users.id, userId)).limit(1);
     return user ? toAuthUser(user) : null;
+  }
+
+  async upgradePasswordHash(input: UpgradePasswordHashInput): Promise<boolean> {
+    if (!input.expectedPasswordHash || !input.passwordHash) {
+      throw new TypeError("비밀번호 hash 업그레이드 값이 필요합니다.");
+    }
+    const changed = await this.database
+      .update(users)
+      .set({ passwordHash: input.passwordHash, updatedAt: input.now })
+      .where(and(
+        eq(users.id, input.userId),
+        eq(users.passwordHash, input.expectedPasswordHash),
+        isNull(users.disabledAt),
+      ))
+      .returning({ id: users.id });
+    return changed.length === 1;
   }
 
   async listMembershipsForUser(userId: string): Promise<readonly AuthMembership[]> {

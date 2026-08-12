@@ -34,6 +34,7 @@ function storeFixture(overrides: Partial<AuthStore> = {}): AuthStore {
     acceptInviteAtomic: async () => ({ status: "invalid" }),
     findUserByEmail: async () => user(),
     findUserById: async () => user(),
+    upgradePasswordHash: async () => false,
     listMembershipsForUser: async () => [
       { workspaceId: WORKSPACE_A, workspaceName: "A", workspaceSlug: "a", role: "owner" },
       { workspaceId: WORKSPACE_B, workspaceName: "B", workspaceSlug: "b", role: "admin" },
@@ -105,6 +106,29 @@ test("blocking workspace 로그인은 session 회전 delegate를 호출하지 �
   assert.equal(principal, null);
   assert.equal(rotations, 0);
   assert.deepEqual(calls, [WORKSPACE_A]);
+});
+
+test("비밀번호 hash 업그레이드는 사용자의 모든 workspace privacy fence 안에서 실행한다", async () => {
+  const manyCalls: string[][] = [];
+  let upgrades = 0;
+  const store = createPrivacyFencedAuthStore({
+    store: storeFixture({
+      upgradePasswordHash: async () => {
+        upgrades += 1;
+        return true;
+      },
+    }),
+    fence: fenceFixture({ manyCalls }),
+  });
+
+  assert.equal(await store.upgradePasswordHash({
+    userId: user().id,
+    expectedPasswordHash: "scrypt:legacy",
+    passwordHash: "scrypt:current",
+    now: NOW,
+  }), true);
+  assert.deepEqual(manyCalls, [[WORKSPACE_A, WORKSPACE_B]]);
+  assert.equal(upgrades, 1);
 });
 
 test("진행 중 session commit이 끝날 때까지 삭제 drain이 기다리고 이후 login delegate는 0건이다", async () => {

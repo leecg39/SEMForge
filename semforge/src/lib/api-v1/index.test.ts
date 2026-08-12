@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { z } from "zod";
+import type { JsonLogger } from "@/server/observability/logger";
 
 import {
   ApiError,
@@ -15,6 +16,76 @@ const mutableEnv = process.env as NodeJS.ProcessEnv & { NODE_ENV?: string };
 async function readJson(response: Response): Promise<unknown> {
   return response.json();
 }
+
+function securityLoggerFixture(records: Array<Record<string, unknown>>): Pick<JsonLogger, "warn" | "error"> {
+  return {
+    warn: (message, context = {}) => records.push({ level: "warn", message, ...context }),
+    error: (message, context = {}) => records.push({ level: "error", message, ...context }),
+  };
+}
+
+test("INTERNAL, 인증 실패, rate limit은 민감정보 없이 구조화된 보안 이벤트를 기록한다", async (t) => {
+  for (const input of [
+    { code: "INTERNAL", level: "error", message: "api.internal_error", status: 500 },
+    { code: "UNAUTHENTICATED", level: "warn", message: "api.authentication_rejected", status: 401 },
+    { code: "RATE_LIMITED", level: "warn", message: "api.rate_limit_rejected", status: 429 },
+  ] as const) {
+    await t.test(input.code, async () => {
+      const records: Array<Record<string, unknown>> = [];
+      const handler = withApiV1(async () => {
+        throw new ApiError(input.code, "owner@example.com password=must-not-leak", {
+          cause: new Error("access_token=must-not-leak"),
+        });
+      }, { logger: securityLoggerFixture(records) });
+      const response = await handler(new Request(
+        "https://app.semforge.test/api/v1/auth/login?email=owner%40example.com&token=must-not-leak",
+        {
+          method: "POST",
+          headers: {
+            origin: "https://app.semforge.test",
+            "content-type": "application/json",
+            "x-request-id": "request-security-123",
+            "x-forwarded-for": "203.0.113.44",
+          },
+          body: JSON.stringify({
+            email: "owner@example.com",
+            password: "must-not-leak",
+            token: "must-not-leak",
+          }),
+        },
+      ), undefined);
+
+      assert.equal(response.status, input.status);
+      assert.deepEqual(records, [{
+        level: input.level,
+        message: input.message,
+        requestId: "request-security-123",
+        method: "POST",
+        route: "/api/v1/auth/*",
+        code: input.code,
+      }]);
+      const serialized = JSON.stringify(records);
+      assert.doesNotMatch(serialized, /owner@example\.com|must-not-leak|203\.0\.113\.44|email=|token=/u);
+    });
+  }
+});
+
+test("보안 이벤트 route는 동적 UUID와 token path segment를 기록하지 않는다", async () => {
+  const records: Array<Record<string, unknown>> = [];
+  const handler = withApiV1(async () => {
+    throw new ApiError("UNAUTHENTICATED");
+  }, { logger: securityLoggerFixture(records) });
+
+  await handler(new Request(
+    "https://app.semforge.test/api/v1/reports/0198f06a-1b42-7000-8000-000000000002/private-token-value/pdf",
+  ), undefined);
+
+  assert.equal(records[0]?.route, "/api/v1/reports/*");
+  assert.doesNotMatch(
+    JSON.stringify(records),
+    /0198f06a-1b42-7000-8000-000000000002|private-token-value/u,
+  );
+});
 
 test("auth guard는 공개 resolveRequestId로 안전한 ID만 재사용한다", () => {
   assert.equal(
