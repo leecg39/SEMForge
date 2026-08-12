@@ -10,6 +10,10 @@ export type {
   OperatorInviteStore,
 } from "@/server/auth/store";
 
+export function isTenantWorkspaceManager(role: AuthMembershipRole): boolean {
+  return role === "owner" || role === "admin";
+}
+
 export interface PasswordResetNotification {
   readonly email: string;
   readonly token: string;

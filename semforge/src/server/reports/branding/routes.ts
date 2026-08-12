@@ -8,6 +8,7 @@ import {
   resolveApiSession,
   type ApiSessionResolver,
 } from "@/server/auth/api-session";
+import { isTenantWorkspaceManager } from "@/server/auth/contracts";
 import {
   createRuntimeBillingAccessAuthorizer,
   type BillingAccessAuthorizer,
@@ -91,7 +92,7 @@ export function createReportBrandingRouteHandlers(
     }),
     PATCH: withApiV1(async (request) => {
       const session = await resolveSession(request);
-      if (session.role !== "owner" && session.role !== "admin") {
+      if (!isTenantWorkspaceManager(session.role)) {
         throw new ApiError("FORBIDDEN");
       }
       const body = await parseJsonBody(request, patchBrandingBody);
