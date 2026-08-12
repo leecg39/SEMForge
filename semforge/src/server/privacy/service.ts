@@ -416,7 +416,22 @@ export function createPrivacyService(options: {
       ).rows;
       const recipients = (
         await db.query<{ recipient: string }>(
-          "select distinct recipient from deliveries where workspace_id = $1 and recipient !~ '^erased:'",
+          `select distinct recipient
+             from (
+               select deliveries.recipient
+                 from deliveries
+                where deliveries.workspace_id = $1
+                  and deliveries.recipient !~ '^erased:'
+               union
+               select users.email as recipient
+                 from memberships
+                 join users on users.id = memberships.user_id
+                where memberships.workspace_id = $1
+                  and users.disabled_at is null
+                  and users.email !~ '^erased\\+'
+             ) recipients
+            where btrim(recipient) <> ''
+            order by recipient`,
           [input.workspaceId],
         )
       ).rows;

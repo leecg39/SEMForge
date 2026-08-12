@@ -22,6 +22,7 @@ const workspaceA = "00000000-0000-4000-8000-00000000a501";
 const workspaceB = "00000000-0000-4000-8000-00000000b501";
 const userA = "00000000-0000-4000-8000-00000000a502";
 const userB = "00000000-0000-4000-8000-00000000b502";
+const userWithoutDelivery = "00000000-0000-4000-8000-00000000a507";
 const reportA = "00000000-0000-4000-8000-00000000a503";
 const siteA = "00000000-0000-4000-8000-00000000a504";
 const gscA = "00000000-0000-4000-8000-00000000a505";
@@ -191,6 +192,15 @@ test("삭제 workflow는 외부 processor 실패 시 local immutable report 삭�
 test("삭제 workflow 성공 시 GSC revoke·object delete 후 privacy erasure procedure로 immutable report와 workspace PII를 제거한다", async () => {
   const pg = await migratedDb();
   await seedPrivacySubject(pg);
+  await pg.query(
+    `insert into users (id, email, password_hash, display_name, email_verified_at)
+     values ($1, 'member-without-delivery@example.test', 'scrypt:c', 'Member C', now())`,
+    [userWithoutDelivery],
+  );
+  await pg.query(
+    "insert into memberships (workspace_id, user_id, role) values ($1, $2, 'member')",
+    [workspaceA, userWithoutDelivery],
+  );
   const calls: string[] = [];
   const processor: PrivacyProcessorClient = {
     revokeGscConnection: async (input) => {
@@ -220,10 +230,11 @@ test("삭제 workflow 성공 시 GSC revoke·object delete 후 privacy erasure p
     )
   ).rows[0]!.id;
   assert.deepEqual(calls.sort(), [
+    `email:${digest("member-without-delivery@example.test")}:${requestUuid}`,
     `email:${digest("owner-a@example.test")}:${requestUuid}`,
     `gsc:${gscA}`,
     "object:reports/a/report.pdf",
-  ]);
+  ].sort());
   const counts = await pg.query<{ reports: number; assets: number; gsc: number; deliveries: number }>(
     `select
        (select count(*)::int from weekly_reports where workspace_id = $1) reports,
