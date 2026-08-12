@@ -51,7 +51,7 @@ export function createRuntimeGscHandlers() {
   return createGscRouteHandlers({
     requireAuth: createRuntimeRequireAuth(),
     authorizeBilling: createRuntimeBillingAccessAuthorizer(),
-    workspaceOperations: createRuntimeWorkspacePrivacyFence(),
+    workspaceOperations: createRuntimeWorkspacePrivacyFence(getPool("webFence")),
     getService: () => service,
   });
 }

@@ -111,7 +111,7 @@ export function createBillingHandlers() {
   return createBillingHttpHandlers({
     requireAuth: createSessionRequireAuth(undefined, env.APP_PUBLIC_URL),
     getService: (scope) => scope === "tenant" ? tenantService : globalService,
-    workspaceOperations: createRuntimeWorkspacePrivacyFence(),
+    workspaceOperations: createRuntimeWorkspacePrivacyFence(getPool("billingFence")),
     checkout: {
       clientKey: env.TOSS_CLIENT_KEY,
       appPublicUrl: env.APP_PUBLIC_URL,

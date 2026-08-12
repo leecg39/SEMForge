@@ -17,6 +17,7 @@ export type DatabaseRole =
   | "scheduler"
   | "worker"
   | "billing"
+  | "billingFence"
   | "billingTenant"
   | "privacy"
   | "retention";
@@ -42,6 +43,7 @@ export function resolveDatabaseUrl(role: DatabaseRole, env: ServerEnv): string {
     scheduler: "SCHEDULER_DATABASE_URL",
     worker: "WORKER_DATABASE_URL",
     billing: "BILLING_DATABASE_URL",
+    billingFence: "BILLING_DATABASE_URL",
     billingTenant: "BILLING_TENANT_DATABASE_URL",
     privacy: "PRIVACY_DATABASE_URL",
     retention: "PRIVACY_RETENTION_DATABASE_URL",
@@ -63,8 +65,11 @@ export function getPool(role: DatabaseRole = "web"): Pool {
     connectionTimeoutMillis: env.PGPOOL_CONNECTION_TIMEOUT_MS,
     idleTimeoutMillis: env.PGPOOL_IDLE_TIMEOUT_MS,
     statement_timeout: env.PG_STATEMENT_TIMEOUT_MS,
-    application_name:
-      role === "webFence" ? "semforge-web-privacy-fence" : `semforge-${role}`,
+    application_name: role === "webFence"
+      ? "semforge-web-privacy-fence"
+      : role === "billingFence"
+        ? "semforge-billing-privacy-fence"
+        : `semforge-${role}`,
     ssl: sslConfig(env),
   });
   return pools[role]!;

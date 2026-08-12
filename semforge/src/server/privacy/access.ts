@@ -1,6 +1,11 @@
 // @TASK P5-PRIVACY-DIRECT-API - Race-safe workspace shared-operation access port
 // @SPEC docs/ops/privacy-erasure-runbook.md
 // @TEST src/server/privacy/access.test.ts
+import { getPool } from "@/db/client";
+import {
+  PostgresWorkspacePrivacyFence,
+  type WorkspacePrivacyFencePool,
+} from "@/server/privacy/fence";
 
 export type WorkspacePrivacyState = "active" | "blocking" | "erased";
 
@@ -38,12 +43,13 @@ export async function runWorkspaceSharedOperation<T>(
   return result.value;
 }
 
-/**
- * Production composition seam. The final privacy-fence integration replaces
- * this fail-closed body with PostgresWorkspacePrivacyFence(getPool(...)).
- * An identity fallback is intentionally forbidden because it would reopen the
- * erasure race when composition is missing.
- */
-export function createRuntimeWorkspacePrivacyFence(): WorkspaceSharedOperationPort {
-  throw new Error("WORKSPACE_PRIVACY_FENCE_NOT_COMPOSED");
+export function createRuntimeWorkspacePrivacyFence(
+  pool: WorkspacePrivacyFencePool = getPool("webFence"),
+): WorkspaceSharedOperationPort {
+  const fence = new PostgresWorkspacePrivacyFence(pool);
+  return {
+    withShared(workspaceId, operation) {
+      return fence.withShared(workspaceId, operation);
+    },
+  };
 }

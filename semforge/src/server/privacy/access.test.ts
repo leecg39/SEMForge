@@ -6,6 +6,7 @@ import { test } from "node:test";
 
 import {
   WorkspacePrivacyOperationBlockedError,
+  createRuntimeWorkspacePrivacyFence,
   runWorkspaceSharedOperation,
   type WorkspaceSharedOperationPort,
 } from "@/server/privacy/access";
@@ -45,3 +46,31 @@ for (const state of ["blocking", "erased"] as const) {
     assert.equal(called, 0);
   });
 }
+
+test("production adapter는 주입된 전용 pool의 PostgreSQL fence를 사용한다", async () => {
+  const statements: string[] = [];
+  const access = createRuntimeWorkspacePrivacyFence({
+    async connect() {
+      return {
+        async query<T>(text: string) {
+          statements.push(text);
+          if (text.includes("select state::text")) {
+            return { rows: [{ state: "active" }] as T[] };
+          }
+          if (text.includes("pg_advisory_unlock_shared")) {
+            return { rows: [{ unlocked: true }] as T[] };
+          }
+          return { rows: [] as T[] };
+        },
+        release() {},
+      };
+    },
+  });
+
+  assert.equal(
+    await runWorkspaceSharedOperation(access, workspaceId, async () => "runtime"),
+    "runtime",
+  );
+  assert.ok(statements.some((statement) => statement.includes("pg_advisory_lock_shared")));
+  assert.ok(statements.some((statement) => statement.includes("workspace_privacy_controls")));
+});
