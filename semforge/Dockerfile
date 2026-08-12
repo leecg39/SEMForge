@@ -18,9 +18,15 @@ COPY . .
 RUN npm run build
 
 FROM base AS production-dependencies
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl xz-utils \
+    && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 COPY scripts/license ./scripts/license
+COPY docs/release/sharp-wasm-relink.md ./docs/release/sharp-wasm-relink.md
 RUN npm ci --omit=dev \
+    && npm run license:sources -- --output /app/.legal/sources/sharp-wasm \
+    && npm run license:sources:check -- --output /app/.legal/sources/sharp-wasm \
     && npm run license:generate -- --include-installed-optional --distribution-notices \
     && npm cache clean --force
 
@@ -46,6 +52,7 @@ COPY --chmod=0555 scripts/ops/docker-entrypoint.sh /usr/local/bin/docker-entrypo
 COPY --chown=semforge:semforge scripts/ops/preflight.mjs scripts/ops/runtime.mjs ./scripts/ops/
 COPY --chown=semforge:semforge LICENSE NOTICE ./legal/
 COPY --from=production-dependencies --chown=semforge:semforge /app/THIRD_PARTY_NOTICES.md ./legal/THIRD_PARTY_NOTICES.md
+COPY --from=production-dependencies --chown=semforge:semforge /app/.legal/sources ./legal/sources
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 STOPSIGNAL SIGTERM
 

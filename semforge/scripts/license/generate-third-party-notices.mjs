@@ -28,6 +28,8 @@ const sharpLibvipsSourceReference = {
   tag: "v1.3.2",
   url: "https://github.com/lovell/sharp-libvips/tree/4da6d14c0d59866adfb9d8cf52bcaa53846dc4f6",
 };
+const sharpWasmApplicationCommit = "1018449164723ba0203c1beffaba0e21f7829c18";
+const sharpWasmLibraryCommit = "4da6d14c0d59866adfb9d8cf52bcaa53846dc4f6";
 
 function parseArgs(argv) {
   const args = {
@@ -37,6 +39,7 @@ function parseArgs(argv) {
     packageLockPath: "package-lock.json",
     nodeModulesPath: "node_modules",
     outputPath: "THIRD_PARTY_NOTICES.md",
+    sharpWasmSourceManifestPath: new URL("./sharp-wasm-source-manifest.json", import.meta.url),
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -53,6 +56,8 @@ function parseArgs(argv) {
       args.nodeModulesPath = requireValue(argv, ++index, arg);
     } else if (arg === "--output") {
       args.outputPath = requireValue(argv, ++index, arg);
+    } else if (arg === "--sharp-wasm-source-manifest") {
+      args.sharpWasmSourceManifestPath = requireValue(argv, ++index, arg);
     } else {
       throw new Error(`unknown argument: ${arg}`);
     }
@@ -172,6 +177,180 @@ function installedDistributionPackages(packages, nodeModulesPath) {
   return packages.filter((dependency) => existsSync(packageDirectory(nodeModulesPath, dependency.name)));
 }
 
+function readJsonFile(filePath, label) {
+  try {
+    return JSON.parse(readFileSync(filePath, "utf8"));
+  } catch (error) {
+    throw new Error(`${label} could not be read: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function sameJsonRecord(left, right) {
+  if (!left || !right || typeof left !== "object" || typeof right !== "object") {
+    return false;
+  }
+  const leftEntries = Object.entries(left).sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey, "en"));
+  const rightEntries = Object.entries(right).sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey, "en"));
+  return JSON.stringify(leftEntries) === JSON.stringify(rightEntries);
+}
+
+function resolveContainedFile(directory, relativePath, label) {
+  if (typeof relativePath !== "string" || !relativePath || path.isAbsolute(relativePath)) {
+    throw new Error(`${label} must be a non-empty relative path`);
+  }
+  const root = path.resolve(directory);
+  const resolved = path.resolve(root, relativePath);
+  if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) {
+    throw new Error(`${label} escapes its package directory`);
+  }
+  return resolved;
+}
+
+function validateSharpWasmCompliance({ lockfile, nodeModulesPath, sourceManifestPath }) {
+  const packageName = "@img/sharp-wasm32";
+  const directory = packageDirectory(nodeModulesPath, packageName);
+  if (!existsSync(directory)) {
+    return null;
+  }
+
+  try {
+    const manifest = readJsonFile(sourceManifestPath, "sharp WASM source manifest");
+    const distribution = manifest.distribution;
+    const lockEntry = lockfile.packages?.[`node_modules/${packageName}`];
+    const installedPackage = readJsonFile(path.join(directory, "package.json"), `${packageName} package metadata`);
+
+    if (manifest.schemaVersion !== 1) {
+      throw new Error("source manifest schemaVersion must be 1");
+    }
+    if (distribution?.package !== packageName || distribution?.version !== "0.35.3") {
+      throw new Error(`source manifest must bind ${packageName}@0.35.3`);
+    }
+    if (lockEntry?.version !== distribution.version || lockEntry?.integrity !== distribution.integrity) {
+      throw new Error("package-lock version/integrity does not match the source manifest");
+    }
+    if (installedPackage.name !== packageName || installedPackage.version !== distribution.version) {
+      throw new Error("installed package metadata does not match the source manifest");
+    }
+    if (installedPackage.license !== "Apache-2.0 AND LGPL-3.0-or-later AND MIT") {
+      throw new Error("installed package license expression is unexpected");
+    }
+    const installedVersions = readJsonFile(path.join(directory, "versions.json"), `${packageName} versions`);
+    if (!sameJsonRecord(installedVersions, distribution.versions)) {
+      throw new Error("installed bundled-library versions do not match the source manifest");
+    }
+    const wasmPath = resolveContainedFile(directory, distribution.wasmPath, "distribution.wasmPath");
+    if (!existsSync(wasmPath)) {
+      throw new Error(`installed WASM artifact is missing: ${distribution.wasmPath}`);
+    }
+    const wasmDigest = sha256(readFileSync(wasmPath));
+    if (wasmDigest !== distribution.wasmSha256) {
+      throw new Error(`installed WASM SHA-256 ${wasmDigest} does not match ${distribution.wasmSha256}`);
+    }
+    if (manifest.applicationSource?.commit !== sharpWasmApplicationCommit) {
+      throw new Error(`application source must bind sharp commit ${sharpWasmApplicationCommit}`);
+    }
+    if (manifest.librarySource?.commit !== sharpWasmLibraryCommit) {
+      throw new Error(`library source must bind sharp-libvips commit ${sharpWasmLibraryCommit}`);
+    }
+    if (
+      manifest.devPackage?.package !== "@img/sharp-libvips-dev-wasm32" ||
+      manifest.devPackage?.version !== "1.3.2" ||
+      typeof manifest.devPackage?.integrity !== "string"
+    ) {
+      throw new Error("source manifest must bind @img/sharp-libvips-dev-wasm32@1.3.2 and its integrity");
+    }
+    const staticLibraries = manifest.devPackage.staticLibraries;
+    if (!Array.isArray(staticLibraries) || staticLibraries.length !== 28 || new Set(staticLibraries).size !== 28) {
+      throw new Error("source manifest must enumerate exactly 28 unique static library artifacts");
+    }
+    const notices = manifest.staticLibraryNotices;
+    if (!Array.isArray(notices) || notices.length !== 28) {
+      throw new Error("source manifest must provide exactly 28 static library notices");
+    }
+    const noticeArtifacts = notices.map((notice) => notice?.artifact);
+    if (new Set(noticeArtifacts).size !== 28 || staticLibraries.some((artifact) => !noticeArtifacts.includes(artifact))) {
+      throw new Error("static library notices must map every dev-package archive exactly once");
+    }
+    if (
+      notices.some(
+        (notice) =>
+          !notice.component ||
+          !notice.version ||
+          !notice.license ||
+          !notice.sourceArtifact ||
+          !Array.isArray(notice.noticeArtifacts) ||
+          notice.noticeArtifacts.length === 0,
+      )
+    ) {
+      throw new Error(
+        "every static library notice must identify its component, version, license, source artifact, and copyright/license notice artifacts",
+      );
+    }
+    const sourceIds = new Set((manifest.sourceArtifacts ?? []).map((artifact) => artifact?.id));
+    const legalNoticeIds = new Set((manifest.noticeArtifacts ?? []).map((artifact) => artifact?.id));
+    if (
+      notices.some(
+        (notice) =>
+          !sourceIds.has(notice.sourceArtifact) ||
+          notice.noticeArtifacts.some((noticeArtifact) => !legalNoticeIds.has(noticeArtifact)),
+      )
+    ) {
+      throw new Error("static library notice provenance must resolve to pinned source and legal notice artifacts");
+    }
+    const componentNotices = manifest.bundledComponentNotices;
+    if (!Array.isArray(componentNotices) || componentNotices.length !== 29) {
+      throw new Error("source manifest must provide exactly 29 bundled component notices");
+    }
+    const componentNames = componentNotices.map((notice) => notice?.component);
+    if (new Set(componentNames).size !== 29) {
+      throw new Error("bundled component notices must identify 29 unique components");
+    }
+    if (
+      componentNotices.some(
+        (notice) =>
+          !notice.version ||
+          !notice.license ||
+          !sourceIds.has(notice.sourceArtifact) ||
+          !Array.isArray(notice.noticeArtifacts) ||
+          notice.noticeArtifacts.length === 0 ||
+          notice.noticeArtifacts.some((noticeArtifact) => !legalNoticeIds.has(noticeArtifact)),
+      )
+    ) {
+      throw new Error(
+        "every bundled component must identify its version, license, corresponding source, and copyright/license notice provenance",
+      );
+    }
+    if (typeof manifest.relinkDocument !== "string" || !manifest.relinkDocument.endsWith("sharp-wasm-relink.md")) {
+      throw new Error("source manifest must identify the sharp WASM relink document");
+    }
+
+    return { manifest, packageName, version: distribution.version, wasmDigest };
+  } catch (error) {
+    throw new Error(`sharp WASM compliance gate failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function renderSharpWasmDistributionNotice(compliance) {
+  if (!compliance) {
+    return [];
+  }
+  const { manifest, packageName, version, wasmDigest } = compliance;
+  return [
+    "## Statically linked sharp WebAssembly distribution",
+    "",
+    `The installed \`${packageName}@${version}\` artifact is a statically linked Combined Work. It is not covered by the dynamic native-libvips replacement procedure.`,
+    "",
+    `- Installed WASM SHA-256: \`${wasmDigest}\``,
+    `- Sharp application source: ${manifest.applicationSource.repository} tag ${manifest.applicationSource.tag}, commit \`${manifest.applicationSource.commit}\``,
+    `- Sharp-libvips build/source: ${manifest.librarySource.repository} tag ${manifest.librarySource.tag}, commit \`${manifest.librarySource.commit}\``,
+    `- Relink input: \`${manifest.devPackage.package}@${manifest.devPackage.version}\` (${manifest.devPackage.integrity})`,
+    `- ${manifest.devPackage.staticLibraries.length} static library artifacts have individual component/license/source mappings in the pinned source manifest.`,
+    `- Source application and relink/install instructions: \`${manifest.relinkDocument}\``,
+    "- Production images include the verified source bundle and relink materials under `/app/legal/sources/sharp-wasm`; absence or checksum drift blocks image construction.",
+    "",
+  ];
+}
+
 function usesLgpl(licenseExpression) {
   return licenseTokens(licenseExpression).some((token) => token.startsWith("LGPL-"));
 }
@@ -252,8 +431,14 @@ export function renderThirdPartyNotices({
   lockfileText,
   lockfile,
   nodeModulesPath = "node_modules",
+  sharpWasmSourceManifestPath = new URL("./sharp-wasm-source-manifest.json", import.meta.url),
 }) {
   const packages = collectProductionPackages(lockfile);
+  const sharpWasmCompliance = validateSharpWasmCompliance({
+    lockfile,
+    nodeModulesPath,
+    sourceManifestPath: sharpWasmSourceManifestPath,
+  });
   const policyFailures = packages
     .map((dependency) => validateLicenseExpression(`${dependency.name}@${dependency.version}`, dependency.license))
     .filter(Boolean);
@@ -312,6 +497,7 @@ export function renderThirdPartyNotices({
   if (distributionNotices) {
     lines.push(...renderLgplDistributionNotice({ packages, nodeModulesPath }));
   }
+  lines.push(...renderSharpWasmDistributionNotice(sharpWasmCompliance));
 
   return `${lines.join("\n").trimEnd()}\n`;
 }
@@ -328,6 +514,7 @@ async function main() {
     lockfileText,
     lockfile: JSON.parse(lockfileText),
     nodeModulesPath,
+    sharpWasmSourceManifestPath: args.sharpWasmSourceManifestPath,
   });
 
   if (args.check) {

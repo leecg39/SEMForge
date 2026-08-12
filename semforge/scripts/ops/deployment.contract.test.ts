@@ -157,7 +157,11 @@ test("배포 산출물은 proprietary 제품 고지와 production dependency 라
   };
 
   assert.equal(manifest.license, "UNLICENSED");
-  assert.equal(manifest.scripts?.["license:check"], "node scripts/license/generate-third-party-notices.mjs --check");
+  assert.match(manifest.scripts?.["license:check"] ?? "", /build-sharp-source-bundle\.mjs --manifest-only/u);
+  assert.match(
+    manifest.scripts?.["license:sources:verify-upstream"] ?? "",
+    /build-sharp-source-bundle\.mjs --verify-upstream/u,
+  );
   assert.match(license, /Proprietary and confidential/u);
   assert.match(notice, /SEMForge/u);
   assert.match(thirdParty, /@fontsource\/noto-sans-kr/u);
@@ -171,6 +175,13 @@ test("배포 산출물은 proprietary 제품 고지와 production dependency 라
   assert.match(
     dockerfile,
     /COPY --from=production-dependencies --chown=semforge:semforge \/app\/THIRD_PARTY_NOTICES\.md \.\/legal\/THIRD_PARTY_NOTICES\.md/u,
+  );
+  assert.match(dockerfile, /npm run license:sources -- --output \/app\/\.legal\/sources\/sharp-wasm/u);
+  assert.match(dockerfile, /npm run license:sources:check -- --output \/app\/\.legal\/sources\/sharp-wasm/u);
+  assert.match(dockerfile, /apt-get install -y --no-install-recommends ca-certificates curl xz-utils/u);
+  assert.match(
+    dockerfile,
+    /COPY --from=production-dependencies --chown=semforge:semforge \/app\/\.legal\/sources \.\/legal\/sources/u,
   );
 });
 

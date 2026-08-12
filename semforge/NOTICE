@@ -11,6 +11,10 @@ runtime notices are included with the distributed image.
 Operators must keep release evidence for the accessible sharp-libvips
 source bundle and the verified relink/install procedure before
 distributing a production container image.
+Runtime images include the verified Sharp WebAssembly corresponding-source,
+copyright/license provenance, and relink bundle under
+`/app/legal/sources/sharp-wasm`. Missing or stale bundle evidence blocks the
+production dependency stage.
 
 Container runtime images also include Debian operating-system packages
 installed by the Dockerfile, including Chromium and fonts-noto-cjk.
