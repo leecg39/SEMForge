@@ -54,3 +54,24 @@ test("DNS가 private 주소로 해석되는 로고 호스트는 네트워크 요
   assert.equal(resolved, null);
   assert.equal(fetched, false);
 });
+
+test("압축된 IPv4-mapped IPv6 private 주소는 로고 요청 전에 거부한다", async () => {
+  for (const address of [
+    "::ffff:7f00:1",
+    "::ffff:a00:1",
+    "::ffff:a9fe:a9fe",
+    "::ffff:c0a8:101",
+  ]) {
+    let fetched = false;
+    const resolved = await loadReportLogo("https://mapped.attacker.test/logo.png", {
+      fetch: async () => {
+        fetched = true;
+        return new Response("must not fetch");
+      },
+      resolveHostname: async () => [address],
+    });
+
+    assert.equal(resolved, null, address);
+    assert.equal(fetched, false, address);
+  }
+});

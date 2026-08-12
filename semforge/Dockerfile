@@ -2,7 +2,8 @@
 # @TASK P4-O1-T1 - Node 24 standalone web, pipeline, and migration images
 # @SPEC docs/planning/06-tasks.md#p4-o1-t1--node-24-docker와-운영-도구
 
-FROM node:24-bookworm-slim AS base
+ARG NODE_BASE_IMAGE=node:24-bookworm-slim
+FROM ${NODE_BASE_IMAGE} AS base
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 
@@ -20,7 +21,7 @@ FROM base AS production-dependencies
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-FROM node:24-bookworm-slim AS runtime-base
+FROM ${NODE_BASE_IMAGE} AS runtime-base
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PGSSLMODE=verify-full \
