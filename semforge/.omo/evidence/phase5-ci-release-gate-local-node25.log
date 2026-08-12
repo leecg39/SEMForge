@@ -1,0 +1,5 @@
+
+> semforge@0.1.0 ci:release-gate
+> node scripts/ci/run-release-gate.mjs
+
+release gate requires Node 24.x, got 25.4.0

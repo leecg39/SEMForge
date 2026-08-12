@@ -1,0 +1,33 @@
+{
+  "status": "failed",
+  "projectRoot": "/Users/user01/Music/SEMForge-worktrees/phase-5-ci/semforge",
+  "evidenceDir": "/Users/user01/Music/SEMForge-worktrees/phase-5-ci/semforge/.omo/evidence/phase5-ci/latest",
+  "node": "v24.19.0",
+  "nodeExecPath": "/Users/user01/.npm/_npx/09ae5d3560c7b1f2/node_modules/node/bin/node",
+  "platform": "darwin 25.5.0",
+  "startedAt": "2026-08-12T04:32:00.330Z",
+  "steps": [
+    {
+      "name": "node-version",
+      "command": "/Users/user01/.npm/_npx/09ae5d3560c7b1f2/node_modules/node/bin/node -v",
+      "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-ci/semforge/.omo/evidence/phase5-ci/latest/node-version.log",
+      "startedAt": "2026-08-12T04:32:00.345Z",
+      "endedAt": "2026-08-12T04:32:00.387Z",
+      "exitCode": 0,
+      "signal": null,
+      "ok": true
+    },
+    {
+      "name": "npm-verify",
+      "command": "npm run verify",
+      "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-ci/semforge/.omo/evidence/phase5-ci/latest/npm-verify.log",
+      "startedAt": "2026-08-12T04:32:00.392Z",
+      "endedAt": "2026-08-12T04:33:31.586Z",
+      "exitCode": 1,
+      "signal": null,
+      "ok": false
+    }
+  ],
+  "failedStep": "npm-verify",
+  "endedAt": "2026-08-12T04:33:31.587Z"
+}

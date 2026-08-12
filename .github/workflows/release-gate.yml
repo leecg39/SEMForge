@@ -1,0 +1,56 @@
+name: Release Gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "codex/**"
+
+jobs:
+  release-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: semforge
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: semforge
+          POSTGRES_PASSWORD: semforge
+          POSTGRES_DB: semforge_test
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U semforge -d semforge_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://semforge:semforge@localhost:5432/semforge_test
+      OPERATOR_DATABASE_URL: postgres://semforge:semforge@localhost:5432/semforge_test
+      CHROMIUM_EXECUTABLE_PATH: /usr/bin/chromium
+      SEMFORGE_EXTERNAL_NETWORK: disabled
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: semforge/package-lock.json
+      - name: Install Chromium and Korean fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium fonts-noto-cjk
+      - name: Install dependencies
+        run: npm ci
+      - name: Release gate
+        run: npm run ci:release-gate
+      - name: Upload release evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase5-ci-evidence
+          path: semforge/.omo/evidence/phase5-ci/latest

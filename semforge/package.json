@@ -36,7 +36,12 @@
     "invite": "SEMFORGE_SERVICE=operator tsx scripts/invite.ts",
     "worker:start": "tsx scripts/worker.ts",
     "outbox:relay": "tsx scripts/outbox-relay.ts",
-    "collections:schedule": "tsx scripts/weekly-collections.ts"
+    "collections:schedule": "tsx scripts/weekly-collections.ts",
+    "ci:release-gate": "node scripts/ci/run-release-gate.mjs",
+    "ci:route-manifest": "node scripts/ci/route-manifest.mjs",
+    "ci:forbidden-surface": "node scripts/ci/forbidden-surface.mjs",
+    "ci:nine-site": "node scripts/ci/nine-site-harness.mjs",
+    "ci:pg16": "bash scripts/test-pg16.sh"
   },
   "dependencies": {
     "@fontsource/noto-sans-kr": "^5.3.0",

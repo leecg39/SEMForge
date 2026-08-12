@@ -1,0 +1,181 @@
+{
+  "status": "passed",
+  "pages": [
+    {
+      "file": "src/app/page.tsx",
+      "route": "/"
+    },
+    {
+      "file": "src/app/app/page.tsx",
+      "route": "/app"
+    },
+    {
+      "file": "src/app/app/billing/page.tsx",
+      "route": "/app/billing"
+    },
+    {
+      "file": "src/app/app/reports/page.tsx",
+      "route": "/app/reports"
+    },
+    {
+      "file": "src/app/app/reports/[reportId]/page.tsx",
+      "route": "/app/reports/[reportId]"
+    },
+    {
+      "file": "src/app/app/settings/page.tsx",
+      "route": "/app/settings"
+    },
+    {
+      "file": "src/app/app/sites/page.tsx",
+      "route": "/app/sites"
+    },
+    {
+      "file": "src/app/app/sites/[siteId]/page.tsx",
+      "route": "/app/sites/[siteId]"
+    },
+    {
+      "file": "src/app/forgot-password/page.tsx",
+      "route": "/forgot-password"
+    },
+    {
+      "file": "src/app/invite/[token]/page.tsx",
+      "route": "/invite/[token]"
+    },
+    {
+      "file": "src/app/legal/privacy/page.tsx",
+      "route": "/legal/privacy"
+    },
+    {
+      "file": "src/app/legal/terms/page.tsx",
+      "route": "/legal/terms"
+    },
+    {
+      "file": "src/app/login/page.tsx",
+      "route": "/login"
+    },
+    {
+      "file": "src/app/reset-password/[token]/page.tsx",
+      "route": "/reset-password/[token]"
+    }
+  ],
+  "routes": [
+    {
+      "file": "src/app/api/v1/auth/invites/accept/route.ts",
+      "route": "/api/v1/auth/invites/accept"
+    },
+    {
+      "file": "src/app/api/v1/auth/login/route.ts",
+      "route": "/api/v1/auth/login"
+    },
+    {
+      "file": "src/app/api/v1/auth/logout/route.ts",
+      "route": "/api/v1/auth/logout"
+    },
+    {
+      "file": "src/app/api/v1/auth/password/forgot/route.ts",
+      "route": "/api/v1/auth/password/forgot"
+    },
+    {
+      "file": "src/app/api/v1/auth/password/reset/route.ts",
+      "route": "/api/v1/auth/password/reset"
+    },
+    {
+      "file": "src/app/api/v1/auth/session/route.ts",
+      "route": "/api/v1/auth/session"
+    },
+    {
+      "file": "src/app/api/v1/billing/authorize/route.ts",
+      "route": "/api/v1/billing/authorize"
+    },
+    {
+      "file": "src/app/api/v1/billing/cancel/route.ts",
+      "route": "/api/v1/billing/cancel"
+    },
+    {
+      "file": "src/app/api/v1/billing/checkout/route.ts",
+      "route": "/api/v1/billing/checkout"
+    },
+    {
+      "file": "src/app/api/v1/billing/payment-method/route.ts",
+      "route": "/api/v1/billing/payment-method"
+    },
+    {
+      "file": "src/app/api/v1/billing/retry/route.ts",
+      "route": "/api/v1/billing/retry"
+    },
+    {
+      "file": "src/app/api/v1/billing/subscription/route.ts",
+      "route": "/api/v1/billing/subscription"
+    },
+    {
+      "file": "src/app/api/v1/integrations/gsc/bindings/route.ts",
+      "route": "/api/v1/integrations/gsc/bindings"
+    },
+    {
+      "file": "src/app/api/v1/integrations/gsc/callback/route.ts",
+      "route": "/api/v1/integrations/gsc/callback"
+    },
+    {
+      "file": "src/app/api/v1/integrations/gsc/connect/route.ts",
+      "route": "/api/v1/integrations/gsc/connect"
+    },
+    {
+      "file": "src/app/api/v1/integrations/gsc/connections/route.ts",
+      "route": "/api/v1/integrations/gsc/connections"
+    },
+    {
+      "file": "src/app/api/v1/integrations/gsc/connections/[connectionId]/route.ts",
+      "route": "/api/v1/integrations/gsc/connections/[connectionId]"
+    },
+    {
+      "file": "src/app/api/v1/integrations/gsc/connections/[connectionId]/properties/route.ts",
+      "route": "/api/v1/integrations/gsc/connections/[connectionId]/properties"
+    },
+    {
+      "file": "src/app/api/v1/reports/route.ts",
+      "route": "/api/v1/reports"
+    },
+    {
+      "file": "src/app/api/v1/reports/[reportId]/route.ts",
+      "route": "/api/v1/reports/[reportId]"
+    },
+    {
+      "file": "src/app/api/v1/reports/[reportId]/pdf/route.ts",
+      "route": "/api/v1/reports/[reportId]/pdf"
+    },
+    {
+      "file": "src/app/api/v1/reports/branding/route.ts",
+      "route": "/api/v1/reports/branding"
+    },
+    {
+      "file": "src/app/api/v1/sites/route.ts",
+      "route": "/api/v1/sites"
+    },
+    {
+      "file": "src/app/api/v1/sites/[siteId]/route.ts",
+      "route": "/api/v1/sites/[siteId]"
+    },
+    {
+      "file": "src/app/api/v1/tracking/route.ts",
+      "route": "/api/v1/tracking"
+    },
+    {
+      "file": "src/app/api/v1/tracking/[trackingId]/route.ts",
+      "route": "/api/v1/tracking/[trackingId]"
+    },
+    {
+      "file": "src/app/api/v1/webhooks/toss/route.ts",
+      "route": "/api/v1/webhooks/toss"
+    },
+    {
+      "file": "src/app/health/live/route.ts",
+      "route": "/health/live"
+    },
+    {
+      "file": "src/app/health/ready/route.ts",
+      "route": "/health/ready"
+    }
+  ],
+  "pageCount": 14,
+  "routeCount": 29
+}

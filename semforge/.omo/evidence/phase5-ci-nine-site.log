@@ -1,0 +1,5 @@
+
+> semforge@0.1.0 ci:nine-site
+> node scripts/ci/nine-site-harness.mjs
+
+nine-site harness passed: workspaces=3 sites=9 observations=360 reports=9
