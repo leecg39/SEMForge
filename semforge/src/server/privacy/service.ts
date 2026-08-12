@@ -233,6 +233,21 @@ async function finishRequest(
   );
 }
 
+async function lockSubjectEmailErasure(
+  db: PrivacySql,
+  input: {
+    workspaceId: string;
+    emailHash: string;
+  },
+): Promise<void> {
+  await db.query(
+    `select pg_advisory_xact_lock(
+       hashtextextended('privacy_subject_email:' || $1::uuid::text || ':' || $2::text, 0)
+     )`,
+    [input.workspaceId, input.emailHash],
+  );
+}
+
 function decodeJsonObject(value: unknown, code: string): Record<string, unknown> {
   let decoded = value;
   if (typeof decoded === "string") {
@@ -452,11 +467,11 @@ export function createPrivacyService(options: {
         throw new Error("PRIVACY_PROCESSOR_NOT_CONFIGURED");
       }
       if (input.subjectUserId?.trim()) {
-        return withTenantTransaction(db, input.workspaceId, async (database) => {
-          const subjectUserId = requireSubjectUserId(input);
+        const subjectUserId = requireSubjectUserId(input);
+        const suppression = await withTenantTransaction(db, input.workspaceId, async (database) => {
           const request = await claimRequest(database, { ...input, type: "erasure" });
           if (request.status === "completed") {
-            return { requestId: input.requestId, status: "completed" };
+            return { emailHash: null, requestUuid: request.id, status: "completed" as const };
           }
           const targetRow = (
             await database.query<{ email: string }>(
@@ -491,7 +506,30 @@ export function createPrivacyService(options: {
             });
             completedSteps.add(suppressionStep);
           }
+          return { emailHash, requestUuid: request.id, status: "running" as const };
+        });
+        if (suppression.status === "completed") {
+          return { requestId: input.requestId, status: "completed" };
+        }
+
+        return withTenantTransaction(db, input.workspaceId, async (database) => {
+          const request = await claimRequest(database, { ...input, type: "erasure" });
+          if (request.id !== suppression.requestUuid) {
+            throw new Error("PRIVACY_REQUEST_CHANGED");
+          }
+          if (request.status === "completed") {
+            return { requestId: input.requestId, status: "completed" };
+          }
+          const completedSteps = await succeededSteps(database, {
+            workspaceId: input.workspaceId,
+            requestUuid: request.id,
+            operatorId: input.operatorId,
+          });
           if (!completedSteps.has("local.subject_erasure")) {
+            await lockSubjectEmailErasure(database, {
+              workspaceId: input.workspaceId,
+              emailHash: suppression.emailHash,
+            });
             await database.query(
               `select privacy_erase_subject($1::uuid, $2::uuid, $3::text, $4::uuid, $5::timestamptz)`,
               [input.workspaceId, request.id, input.operatorId, subjectUserId, input.now],

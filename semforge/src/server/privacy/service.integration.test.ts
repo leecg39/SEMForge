@@ -531,6 +531,109 @@ test("subject erasure는 last owner가 아니면 대상 workspace 멤버십만 �
   });
 });
 
+test("subject erasure는 local erase 전에 durable email suppression을 별도 commit으로 노출한다", async () => {
+  const pg = await migratedDb();
+  await seedPrivacySubject(pg);
+  await pg.query(
+    `insert into users (id, email, password_hash, display_name, email_verified_at)
+     values ($1, 'member-a2@example.test', 'scrypt:a2', 'Member A2', now())`,
+    [userASecondMember],
+  );
+  await pg.query(
+    "insert into memberships (workspace_id, user_id, role) values ($1, $2, 'owner'), ($3, $4, 'member')",
+    [workspaceA, userASecondMember, workspaceB, userA],
+  );
+  await openRequest(pg, {
+    requestId: "dsar-erasure-suppression-before-local",
+    type: "erasure",
+    subjectUserId: userA,
+  });
+
+  const statements: string[] = [];
+  let commitsBeforeLocalErase = 0;
+  let suppressionRowsBeforeLocalErase = -1;
+  let suppressionStepsBeforeLocalErase = -1;
+  const db = {
+    async query<T = unknown>(text: string, values?: readonly unknown[]): Promise<{ rows: T[] }> {
+      statements.push(text);
+      if (/privacy_erase_subject/u.test(text)) {
+        commitsBeforeLocalErase = statements.filter((statement) => /^commit$/iu.test(statement)).length;
+        const state = await pg.query<{
+          suppressions: number;
+          suppression_steps: number;
+        }>(
+          `select
+             (select count(*)::int
+                from email_suppressions
+               where workspace_id = $1 and recipient_hash = $2) suppressions,
+             (select count(*)::int
+                from privacy_request_steps step
+                join privacy_requests request
+                  on request.workspace_id = step.workspace_id and request.id = step.request_id
+               where request.workspace_id = $1
+                 and request.request_id = $3
+                 and step.step_key = $4
+                 and step.status = 'succeeded') suppression_steps`,
+          [
+            workspaceA,
+            digest("owner-a@example.test"),
+            "dsar-erasure-suppression-before-local",
+            `email.suppress:${digest("owner-a@example.test")}`,
+          ],
+        );
+        suppressionRowsBeforeLocalErase = state.rows[0]!.suppressions;
+        suppressionStepsBeforeLocalErase = state.rows[0]!.suppression_steps;
+      }
+      return pg.query<T>(text, values as unknown[] | undefined);
+    },
+  };
+  const service = createPrivacyService({
+    db,
+    processorFactory: (database) => ({
+      revokeGscConnection: async () => {
+        throw new Error("subject erasure must not revoke workspace GSC");
+      },
+      deleteObject: async () => {
+        throw new Error("subject erasure must not delete report object keys");
+      },
+      deleteWorkspaceObjects: async () => {
+        throw new Error("subject erasure must not purge workspace report prefix");
+      },
+      markEmailSuppressed: async ({ workspaceId, emailHash, requestUuid }) => {
+        await database.query(
+          `insert into email_suppressions (workspace_id, recipient_hash, request_id)
+           values ($1, $2, $3)
+           on conflict (workspace_id, recipient_hash) do nothing`,
+          [workspaceId, emailHash, requestUuid],
+        );
+      },
+    }),
+  });
+
+  assert.deepEqual(await service.deleteWorkspaceSubject({
+    workspaceId: workspaceA,
+    operatorId: "operator-1",
+    requestId: "dsar-erasure-suppression-before-local",
+    subjectUserId: userA,
+    now: new Date("2026-08-12T02:52:00.000Z"),
+  }), {
+    requestId: "dsar-erasure-suppression-before-local",
+    status: "completed",
+  });
+
+  assert.equal(commitsBeforeLocalErase, 1);
+  assert.equal(suppressionRowsBeforeLocalErase, 1);
+  assert.equal(suppressionStepsBeforeLocalErase, 1);
+  const lockIndex = statements.findIndex((statement) =>
+    /privacy_subject_email/u.test(statement) && /pg_advisory_xact_lock/u.test(statement)
+  );
+  const eraseIndex = statements.findIndex((statement) => /privacy_erase_subject/u.test(statement));
+  assert.notEqual(lockIndex, -1);
+  assert.notEqual(eraseIndex, -1);
+  assert.ok(lockIndex < eraseIndex);
+  assert.equal(statements.filter((statement) => /privacy_erase_subject/u.test(statement)).length, 1);
+});
+
 test("subject erasure는 last owner 삭제를 거부하고 ownership transfer나 workspace_deletion을 요구한다", async () => {
   const pg = await migratedDb();
   await seedPrivacySubject(pg);
