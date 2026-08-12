@@ -6,18 +6,18 @@
   "node": "v24.14.0",
   "nodeExecPath": "/Users/user01/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node",
   "platform": "darwin 25.5.0",
-  "startedAt": "2026-08-12T09:49:07.623Z",
+  "startedAt": "2026-08-12T09:59:29.986Z",
   "provenance": {
     "source": {
-      "gitSha": "6944a7d4e05dbd7a811f77c4bd792456cfb0e5d0",
-      "treeSha": "d8f2959747bf4bb9ec15b94aaa34163f7cf58178",
-      "capturedAt": "2026-08-12T09:49:07.623Z",
+      "gitSha": "f7efc7c93a2f88d694e68b6e7ef8c8fa2e60c649",
+      "treeSha": "439f4fcd2337aff110ab9976ff35540441410bb0",
+      "capturedAt": "2026-08-12T09:59:29.986Z",
       "captureMethod": "git-rev-parse-at-runtime"
     },
     "completion": {
-      "gitSha": "6944a7d4e05dbd7a811f77c4bd792456cfb0e5d0",
-      "treeSha": "d8f2959747bf4bb9ec15b94aaa34163f7cf58178",
-      "capturedAt": "2026-08-12T09:50:01.727Z",
+      "gitSha": "f7efc7c93a2f88d694e68b6e7ef8c8fa2e60c649",
+      "treeSha": "439f4fcd2337aff110ab9976ff35540441410bb0",
+      "capturedAt": "2026-08-12T10:01:48.057Z",
       "captureMethod": "git-rev-parse-at-runtime",
       "relationshipToSource": "same-head"
     }
@@ -27,79 +27,79 @@
       {
         "name": "node-version",
         "path": ".omo/evidence/phase5-ci/latest/node-version.log",
-        "sha256": "cdae3a959c6986d774883684de36a69c0b0a5c02a697642a5652d26a1ae0eb59"
+        "sha256": "ab4adae7480d0568fbeb46309961f359eb01b4a4dbfe42fe10986a7464b52d64"
       },
       {
         "name": "npm-verify",
         "path": ".omo/evidence/phase5-ci/latest/npm-verify.log",
-        "sha256": "e664257624d2dba734562f4e3f8ff6ed2b2580cb522db1255e1de0a069b4ba33"
+        "sha256": "7e39a7b473e0b13275d6e64886f6d6a49d9502c8f91e745af2976e75a244930e"
       },
       {
         "name": "npm-build",
         "path": ".omo/evidence/phase5-ci/latest/npm-build.log",
-        "sha256": "f52a61b8514cfe706b4c79ad4e46c8daae94b4dcebfb00267f0c044cbec950a2"
+        "sha256": "d37c1442f2023ccd4ecff771f4ee13549f277c542bf806c0f52561f8967bf728"
       },
       {
         "name": "npm-audit-full",
         "path": ".omo/evidence/phase5-ci/latest/npm-audit-full.log",
-        "sha256": "040076a703392ac50ef98d5c6019bbf7d4231dd9e285da39267da0a621049fb2"
+        "sha256": "be92f10c01f0c4431f9e966cf389af671ae930c4eb66bb21168a3cf0dfc62292"
       },
       {
         "name": "npm-audit-production",
         "path": ".omo/evidence/phase5-ci/latest/npm-audit-production.log",
-        "sha256": "d273524d4092e58d6b7fd92109151cda2add7cac59c516e04a834c995d244019"
+        "sha256": "90cde2c44c35a82c482010183bd70412e4be420602f34d18b1d3574201dc0427"
       },
       {
         "name": "license-check",
         "path": ".omo/evidence/phase5-ci/latest/license-check.log",
-        "sha256": "170817ad7427ddc0538876a8c464cd816bfed9d424ecc1459e741d39eca35a1f"
+        "sha256": "651609c2225a1d6670dc23e383166e2712112aa90a70632e89525691d0c7b36a"
       },
       {
         "name": "db-generate",
         "path": ".omo/evidence/phase5-ci/latest/db-generate.log",
-        "sha256": "2dfa2996ea65b5545550923a6af1661777f29c8834a00fa1fd3914bb52f319ea"
+        "sha256": "d895966756edabbb64e1d369a90c63c0befe1ae174953a28e82c86bd1cc0eedc"
       },
       {
         "name": "generated-diff",
         "path": ".omo/evidence/phase5-ci/latest/generated-diff.log",
-        "sha256": "42fefd4d4ea5db17bbe7dcd7def95fad241f60b9c48ff6b143b92e88e4a41bf9"
+        "sha256": "0e3f434a5cf6f32ebf29a90af75fbf96a068f39411107f9256a91b391dd19b1b"
       },
       {
         "name": "source-diff-check",
         "path": ".omo/evidence/phase5-ci/latest/source-diff-check.log",
-        "sha256": "4804b5bd104f085983b210205cd1be60df9119d0f9e44bb98b278f9c21fd230c"
+        "sha256": "59ee3f749c5dd48ec27f318b1aff58d296a1b575ec5b31cdfeb7e32b8b9826fa"
       },
       {
         "name": "range-source-diff-check",
         "path": ".omo/evidence/phase5-ci/latest/range-source-diff-check.log",
-        "sha256": "5c2ab520a686be45be1994ddbe00ef5047723744a2f97cc103325aae5528aa28"
+        "sha256": "53d7f988eb291a16c143bec9c2890d56b3c382a60e428b8d29d1567c4c9c0497"
       },
       {
         "name": "route-manifest",
         "path": ".omo/evidence/phase5-ci/latest/route-manifest.log",
-        "sha256": "ccd063bbe3040ba95810685491ec0844fb33a39179f77f25354cc5c9a26c7f62"
+        "sha256": "a0077307e9d927f9083597e5398de4e38d0e8f0b0e21129e305a13261ccd05f3"
       },
       {
         "name": "forbidden-surface",
         "path": ".omo/evidence/phase5-ci/latest/forbidden-surface.log",
-        "sha256": "33a7d26a22e5cfcf97a3f4758ad41633d97f8cc90d35e6e2e6421901bc42076e"
+        "sha256": "57155092f18e72cab1f8511075ba5ac090ce2c9ed604d5674f5a9784accbeb2b"
       },
       {
         "name": "pg16",
         "path": ".omo/evidence/phase5-ci/latest/pg16.log",
-        "sha256": "f550270f27eacc92d261b3c4ec55fcf1ef5d2f3bf95303bf1aa0885727e573c9"
+        "sha256": "ef16acc130ce7735321243949411af07f4280c5fe56e4a307d6c64f90dd83a92"
       },
       {
         "name": "nine-site",
         "path": ".omo/evidence/phase5-ci/latest/nine-site.log",
-        "sha256": "19af2297a3baad5abab9bf570ad0908a982b23efc302b1254f11bf3b7ea02450"
+        "sha256": "97fdcd8c2dfd45b797c54f58be0086b78a255a1475cbc51916856a3e968a7ebd"
       }
     ],
     "supplemental": [
       {
         "name": "minio-versioning",
         "path": ".omo/evidence/final-20260812/minio-versioning.log",
-        "sha256": "b6c2c0a72035ccebb2ccfe753cd4edb4daf833c45c11775d7ff5795ef7606bfc"
+        "sha256": "da44e3b773e80cd52f5c2ee2b6d37e8bc98a26a511fbcb91b767a11bf5976e15"
       }
     ]
   },
@@ -108,8 +108,8 @@
       "name": "node-version",
       "command": "/Users/user01/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node -v",
       "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-finalize/semforge/.omo/evidence/phase5-ci/latest/node-version.log",
-      "startedAt": "2026-08-12T09:49:07.695Z",
-      "endedAt": "2026-08-12T09:49:07.713Z",
+      "startedAt": "2026-08-12T09:59:30.106Z",
+      "endedAt": "2026-08-12T09:59:30.145Z",
       "exitCode": 0,
       "signal": null,
       "ok": true
@@ -118,8 +118,8 @@
       "name": "npm-verify",
       "command": "npm run verify",
       "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-finalize/semforge/.omo/evidence/phase5-ci/latest/npm-verify.log",
-      "startedAt": "2026-08-12T09:49:07.714Z",
-      "endedAt": "2026-08-12T09:49:49.831Z",
+      "startedAt": "2026-08-12T09:59:30.149Z",
+      "endedAt": "2026-08-12T10:01:17.350Z",
       "exitCode": 0,
       "signal": null,
       "ok": true
@@ -128,8 +128,8 @@
       "name": "npm-build",
       "command": "npm run build",
       "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-finalize/semforge/.omo/evidence/phase5-ci/latest/npm-build.log",
-      "startedAt": "2026-08-12T09:49:49.832Z",
-      "endedAt": "2026-08-12T09:49:55.119Z",
+      "startedAt": "2026-08-12T10:01:17.352Z",
+      "endedAt": "2026-08-12T10:01:34.060Z",
       "exitCode": 0,
       "signal": null,
       "ok": true
@@ -138,8 +138,8 @@
       "name": "npm-audit-full",
       "command": "npm audit --audit-level=high",
       "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-finalize/semforge/.omo/evidence/phase5-ci/latest/npm-audit-full.log",
-      "startedAt": "2026-08-12T09:49:55.120Z",
-      "endedAt": "2026-08-12T09:49:55.658Z",
+      "startedAt": "2026-08-12T10:01:34.062Z",
+      "endedAt": "2026-08-12T10:01:35.211Z",
       "exitCode": 0,
       "signal": null,
       "ok": true
@@ -148,8 +148,8 @@
       "name": "npm-audit-production",
       "command": "npm audit --omit=dev --audit-level=high",
       "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-finalize/semforge/.omo/evidence/phase5-ci/latest/npm-audit-production.log",
-      "startedAt": "2026-08-12T09:49:55.660Z",
-      "endedAt": "2026-08-12T09:49:56.138Z",
+      "startedAt": "2026-08-12T10:01:35.213Z",
+      "endedAt": "2026-08-12T10:01:36.050Z",
       "exitCode": 0,
       "signal": null,
       "ok": true
@@ -158,8 +158,8 @@
       "name": "license-check",
       "command": "npm run license:check",
       "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-finalize/semforge/.omo/evidence/phase5-ci/latest/license-check.log",
-      "startedAt": "2026-08-12T09:49:56.139Z",
-      "endedAt": "2026-08-12T09:49:56.323Z",
+      "startedAt": "2026-08-12T10:01:36.052Z",
+      "endedAt": "2026-08-12T10:01:36.459Z",
       "exitCode": 0,
       "signal": null,
       "ok": true
@@ -168,8 +168,8 @@
       "name": "db-generate",
       "command": "npm run db:generate",
       "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-finalize/semforge/.omo/evidence/phase5-ci/latest/db-generate.log",
-      "startedAt": "2026-08-12T09:49:56.325Z",
-      "endedAt": "2026-08-12T09:49:56.845Z",
+      "startedAt": "2026-08-12T10:01:36.461Z",
+      "endedAt": "2026-08-12T10:01:37.646Z",
       "exitCode": 0,
       "signal": null,
       "ok": true
@@ -178,8 +178,8 @@
       "name": "generated-diff",
       "command": "git diff --exit-code -- src/db/migrations src/db/schema THIRD_PARTY_NOTICES.md package.json package-lock.json",
       "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-finalize/semforge/.omo/evidence/phase5-ci/latest/generated-diff.log",
-      "startedAt": "2026-08-12T09:49:56.846Z",
-      "endedAt": "2026-08-12T09:49:56.858Z",
+      "startedAt": "2026-08-12T10:01:37.647Z",
+      "endedAt": "2026-08-12T10:01:37.677Z",
       "exitCode": 0,
       "signal": null,
       "ok": true
@@ -188,8 +188,8 @@
       "name": "source-diff-check",
       "command": "git diff --check -- . :(exclude).omo/evidence/**",
       "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-finalize/semforge/.omo/evidence/phase5-ci/latest/source-diff-check.log",
-      "startedAt": "2026-08-12T09:49:56.859Z",
-      "endedAt": "2026-08-12T09:49:56.871Z",
+      "startedAt": "2026-08-12T10:01:37.679Z",
+      "endedAt": "2026-08-12T10:01:37.701Z",
       "exitCode": 0,
       "signal": null,
       "ok": true
@@ -198,8 +198,8 @@
       "name": "range-source-diff-check",
       "command": "git diff --check origin/codex/paid-beta-core...HEAD -- . :(exclude).omo/evidence/**",
       "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-finalize/semforge/.omo/evidence/phase5-ci/latest/range-source-diff-check.log",
-      "startedAt": "2026-08-12T09:49:56.872Z",
-      "endedAt": "2026-08-12T09:49:56.890Z",
+      "startedAt": "2026-08-12T10:01:37.703Z",
+      "endedAt": "2026-08-12T10:01:37.758Z",
       "exitCode": 0,
       "signal": null,
       "ok": true
@@ -208,8 +208,8 @@
       "name": "route-manifest",
       "command": "npm run ci:route-manifest",
       "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-finalize/semforge/.omo/evidence/phase5-ci/latest/route-manifest.log",
-      "startedAt": "2026-08-12T09:49:56.891Z",
-      "endedAt": "2026-08-12T09:49:57.035Z",
+      "startedAt": "2026-08-12T10:01:37.767Z",
+      "endedAt": "2026-08-12T10:01:38.045Z",
       "exitCode": 0,
       "signal": null,
       "ok": true
@@ -218,8 +218,8 @@
       "name": "forbidden-surface",
       "command": "npm run ci:forbidden-surface",
       "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-finalize/semforge/.omo/evidence/phase5-ci/latest/forbidden-surface.log",
-      "startedAt": "2026-08-12T09:49:57.035Z",
-      "endedAt": "2026-08-12T09:49:57.182Z",
+      "startedAt": "2026-08-12T10:01:38.053Z",
+      "endedAt": "2026-08-12T10:01:38.457Z",
       "exitCode": 0,
       "signal": null,
       "ok": true
@@ -228,8 +228,8 @@
       "name": "pg16",
       "command": "npm run ci:pg16",
       "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-finalize/semforge/.omo/evidence/phase5-ci/latest/pg16.log",
-      "startedAt": "2026-08-12T09:49:57.183Z",
-      "endedAt": "2026-08-12T09:50:01.597Z",
+      "startedAt": "2026-08-12T10:01:38.459Z",
+      "endedAt": "2026-08-12T10:01:47.847Z",
       "exitCode": 0,
       "signal": null,
       "ok": true
@@ -238,12 +238,12 @@
       "name": "nine-site",
       "command": "npm run ci:nine-site",
       "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-finalize/semforge/.omo/evidence/phase5-ci/latest/nine-site.log",
-      "startedAt": "2026-08-12T09:50:01.598Z",
-      "endedAt": "2026-08-12T09:50:01.726Z",
+      "startedAt": "2026-08-12T10:01:47.848Z",
+      "endedAt": "2026-08-12T10:01:48.056Z",
       "exitCode": 0,
       "signal": null,
       "ok": true
     }
   ],
-  "endedAt": "2026-08-12T09:50:01.727Z"
+  "endedAt": "2026-08-12T10:01:48.057Z"
 }

@@ -1,21 +1,21 @@
 {"acceptance":"privacy-s3-versioned-erasure","seededTargetEntries":1007,"targetListPages":2,"crashAfterPermanentDeletes":36,"retryFinalTargetEntries":0,"foreignEntriesPreserved":3,"restoredEntriesRepurged":2}
-✔ versioned MinIO에서 workspace 전체 version/delete-marker를 crash-safe하게 영구 삭제한다 (1968.939084ms)
-✔ private PUT은 checksum·서버 암호화·If-None-Match를 서명하고 public ACL을 만들지 않는다 (20.825ms)
-✔ 동일 key가 이미 있으면 metadata checksum을 검증하고 덮어쓰지 않는다 (0.934291ms)
-✔ signed GET URL은 최대 15분의 짧은 TTL과 고정 만료 시각을 갖고 secret을 노출하지 않는다 (0.521834ms)
-✔ versioned object eraser는 exact key의 version과 delete marker를 모든 page에서 영구 삭제한다 (6.255917ms)
-✔ workspace eraser는 여러 page의 DB orphan·version·delete marker를 canonical prefix로 영구 삭제한다 (2.242875ms)
-✔ workspace eraser는 malicious workspace/prefix 입력을 요청 전에 거부한다 (0.243333ms)
-✔ workspace 목록이 다른 workspace key를 섞으면 아무것도 삭제하지 않고 fail closed 한다 (0.368667ms)
-✔ workspace final-empty 검증은 지연 노출된 orphan을 다시 찾아 삭제한다 (0.644875ms)
-✔ 첫 삭제 중 restore로 새 version이 생기면 final empty 확인에서 찾아 같은 호출로 제거한다 (0.689334ms)
-✔ 매 삭제 후 새 version이 계속 생기면 bounded purge 한도 뒤 fail closed 한다 (1.606625ms)
-✔ version 목록 404와 빈 목록 및 version DELETE 404는 멱등 성공이다 (0.7145ms)
-✔ 신뢰할 수 없는 version 목록은 어떤 version도 삭제하지 않고 fail closed 한다 (2.127959ms)
-✔ opaque version id의 공백은 보존하고 trailing-space 이웃 key는 삭제하지 않는다 (0.587375ms)
-✔ pagination continuation 404는 불완전 열거로 fail closed 하고 앞 page도 삭제하지 않는다 (0.328042ms)
-✔ version 목록·삭제 provider 오류는 비밀값과 object key를 예외에 노출하지 않는다 (0.448833ms)
-✔ version list와 version DELETE의 percent encoding 및 SigV4는 고정 fixture와 일치한다 (0.48225ms)
+✔ versioned MinIO에서 workspace 전체 version/delete-marker를 crash-safe하게 영구 삭제한다 (3901.310625ms)
+✔ private PUT은 checksum·서버 암호화·If-None-Match를 서명하고 public ACL을 만들지 않는다 (52.35075ms)
+✔ 동일 key가 이미 있으면 metadata checksum을 검증하고 덮어쓰지 않는다 (1.368208ms)
+✔ signed GET URL은 최대 15분의 짧은 TTL과 고정 만료 시각을 갖고 secret을 노출하지 않는다 (0.775375ms)
+✔ versioned object eraser는 exact key의 version과 delete marker를 모든 page에서 영구 삭제한다 (11.770667ms)
+✔ workspace eraser는 여러 page의 DB orphan·version·delete marker를 canonical prefix로 영구 삭제한다 (4.347333ms)
+✔ workspace eraser는 malicious workspace/prefix 입력을 요청 전에 거부한다 (0.350125ms)
+✔ workspace 목록이 다른 workspace key를 섞으면 아무것도 삭제하지 않고 fail closed 한다 (0.582166ms)
+✔ workspace final-empty 검증은 지연 노출된 orphan을 다시 찾아 삭제한다 (1.006167ms)
+✔ 첫 삭제 중 restore로 새 version이 생기면 final empty 확인에서 찾아 같은 호출로 제거한다 (1.245458ms)
+✔ 매 삭제 후 새 version이 계속 생기면 bounded purge 한도 뒤 fail closed 한다 (2.599709ms)
+✔ version 목록 404와 빈 목록 및 version DELETE 404는 멱등 성공이다 (1.408042ms)
+✔ 신뢰할 수 없는 version 목록은 어떤 version도 삭제하지 않고 fail closed 한다 (3.404042ms)
+✔ opaque version id의 공백은 보존하고 trailing-space 이웃 key는 삭제하지 않는다 (2.682833ms)
+✔ pagination continuation 404는 불완전 열거로 fail closed 하고 앞 page도 삭제하지 않는다 (0.538375ms)
+✔ version 목록·삭제 provider 오류는 비밀값과 object key를 예외에 노출하지 않는다 (0.669334ms)
+✔ version list와 version DELETE의 percent encoding 및 SigV4는 고정 fixture와 일치한다 (0.688625ms)
 ℹ tests 17
 ℹ suites 0
 ℹ pass 17
@@ -23,4 +23,4 @@
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 2107.1575
+ℹ duration_ms 4228.669375

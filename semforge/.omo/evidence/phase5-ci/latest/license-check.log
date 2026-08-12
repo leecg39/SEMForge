@@ -1,10 +1,10 @@
 $ npm run license:check
-startedAt=2026-08-12T09:49:56.139Z
+startedAt=2026-08-12T10:01:36.052Z
 
 > semforge@0.1.0 license:check
 > node scripts/license/generate-third-party-notices.mjs --check
 
 
-endedAt=2026-08-12T09:49:56.323Z
+endedAt=2026-08-12T10:01:36.459Z
 exitCode=0
 signal=null
