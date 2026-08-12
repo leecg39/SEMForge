@@ -412,6 +412,33 @@ export const backupDeletionMarkers = pgTable(
   ],
 );
 
+// @TASK P5-PRIVACY - Durable tenant-scoped email suppression after erasure
+// @SPEC docs/ops/privacy-erasure-runbook.md
+export const emailSuppressions = pgTable(
+  "email_suppressions",
+  {
+    workspaceId: uuid("workspace_id").notNull(),
+    recipientHash: text("recipient_hash").notNull(),
+    requestId: uuid("request_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.workspaceId, table.recipientHash],
+      name: "email_suppressions_pk",
+    }),
+    foreignKey({
+      columns: [table.workspaceId, table.requestId],
+      foreignColumns: [privacyRequests.workspaceId, privacyRequests.id],
+      name: "email_suppressions_request_fk",
+    }).onDelete("restrict"),
+    check(
+      "email_suppressions_hash_ck",
+      sql`${table.recipientHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+  ],
+);
+
 export const sites = pgTable(
   "sites",
   {

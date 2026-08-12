@@ -126,6 +126,17 @@ CREATE TABLE "backup_deletion_markers" (
 	CONSTRAINT "backup_deletion_markers_request_marker_uq" UNIQUE("workspace_id","request_id","marker_key")
 );
 --> statement-breakpoint
+-- @TASK P5-PRIVACY - Durable tenant-scoped email suppression after erasure
+-- @SPEC docs/ops/privacy-erasure-runbook.md
+CREATE TABLE "email_suppressions" (
+	"workspace_id" uuid NOT NULL,
+	"recipient_hash" text NOT NULL,
+	"request_id" uuid NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "email_suppressions_pk" PRIMARY KEY("workspace_id","recipient_hash"),
+	CONSTRAINT "email_suppressions_hash_ck" CHECK ("email_suppressions"."recipient_hash" ~ '^[0-9a-f]{64}$')
+);
+--> statement-breakpoint
 CREATE TABLE "billing_customers" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"workspace_id" uuid NOT NULL,
@@ -766,6 +777,7 @@ ALTER TABLE "privacy_requests" ADD CONSTRAINT "privacy_requests_workspace_fk" FO
 ALTER TABLE "privacy_request_steps" ADD CONSTRAINT "privacy_request_steps_request_fk" FOREIGN KEY ("workspace_id","request_id") REFERENCES "public"."privacy_requests"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "privacy_billing_tombstones" ADD CONSTRAINT "privacy_billing_tombstones_request_fk" FOREIGN KEY ("workspace_id","request_id") REFERENCES "public"."privacy_requests"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "backup_deletion_markers" ADD CONSTRAINT "backup_deletion_markers_request_fk" FOREIGN KEY ("workspace_id","request_id") REFERENCES "public"."privacy_requests"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "email_suppressions" ADD CONSTRAINT "email_suppressions_request_fk" FOREIGN KEY ("workspace_id","request_id") REFERENCES "public"."privacy_requests"("workspace_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "billing_customers" ADD CONSTRAINT "billing_customers_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "deliveries" ADD CONSTRAINT "deliveries_report_fk" FOREIGN KEY ("workspace_id","report_id") REFERENCES "public"."weekly_reports"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "gsc_connections" ADD CONSTRAINT "gsc_connections_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -947,7 +959,26 @@ SET search_path = public, pg_temp
 AS $$
 DECLARE
   customer_hash text;
+  storage_keys jsonb;
 BEGIN
+  SELECT coalesce(metadata -> 'storageKeys', '[]'::jsonb)
+    INTO storage_keys
+    FROM privacy_requests
+   WHERE workspace_id = p_workspace_id
+     AND id = p_request_id
+     AND type = 'deletion'
+     AND status = 'running'
+     AND operator_id = p_operator_id
+   FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'privacy erasure requires a matching running deletion request'
+      USING ERRCODE = '42501';
+  END IF;
+  IF jsonb_typeof(storage_keys) <> 'array' THEN
+    RAISE EXCEPTION 'privacy erasure storageKeys must be an array'
+      USING ERRCODE = '22023';
+  END IF;
+
   PERFORM set_config('app.privacy_erasure_request_id', p_request_id::text, true);
   PERFORM set_config('app.privacy_erasure_procedure', 'privacy_erase_workspace', true);
 
@@ -966,6 +997,15 @@ BEGIN
   UPDATE billing_ledger_events
      SET entity_id = encode(sha256(entity_id::bytea), 'hex'),
          order_id = CASE WHEN order_id IS NULL THEN NULL ELSE encode(sha256(order_id::bytea), 'hex') END,
+         metadata = jsonb_build_object('privacyErased', true, 'requestId', p_request_id::text)
+   WHERE workspace_id = p_workspace_id;
+
+  UPDATE audit_events
+     SET actor_user_id = NULL,
+         entity_id = CASE
+           WHEN entity_id IS NULL THEN NULL
+           ELSE encode(sha256(entity_id::bytea), 'hex')
+         END,
          metadata = jsonb_build_object('privacyErased', true, 'requestId', p_request_id::text)
    WHERE workspace_id = p_workspace_id;
 
@@ -1005,21 +1045,51 @@ BEGIN
   DELETE FROM sites WHERE workspace_id = p_workspace_id;
   DELETE FROM outbox WHERE workspace_id = p_workspace_id;
   DELETE FROM jobs WHERE workspace_id = p_workspace_id;
+  DELETE FROM invites WHERE accepted_workspace_id = p_workspace_id;
+  DELETE FROM legal_acceptances WHERE workspace_id = p_workspace_id;
+  DELETE FROM sessions WHERE workspace_id = p_workspace_id;
+  DELETE FROM password_resets
+   WHERE user_id IN (
+     SELECT target_membership.user_id
+       FROM memberships target_membership
+      WHERE target_membership.workspace_id = p_workspace_id
+        AND NOT EXISTS (
+          SELECT 1
+            FROM memberships other_membership
+           WHERE other_membership.user_id = target_membership.user_id
+             AND other_membership.workspace_id <> p_workspace_id
+        )
+   );
   UPDATE users
      SET email = 'erased+' || encode(sha256((users.id::text || p_request_id::text)::bytea), 'hex') || '@privacy.semforge.invalid',
          display_name = NULL,
          disabled_at = coalesce(disabled_at, now()),
          updated_at = now()
-   WHERE id IN (SELECT user_id FROM memberships WHERE workspace_id = p_workspace_id);
-  DELETE FROM sessions WHERE workspace_id = p_workspace_id;
-  DELETE FROM password_resets
-   WHERE user_id IN (SELECT user_id FROM memberships WHERE workspace_id = p_workspace_id);
+   WHERE id IN (
+     SELECT target_membership.user_id
+       FROM memberships target_membership
+      WHERE target_membership.workspace_id = p_workspace_id
+        AND NOT EXISTS (
+          SELECT 1
+            FROM memberships other_membership
+           WHERE other_membership.user_id = target_membership.user_id
+             AND other_membership.workspace_id <> p_workspace_id
+        )
+   );
+  DELETE FROM memberships WHERE workspace_id = p_workspace_id;
+  UPDATE workspaces
+     SET name = 'erased:' || encode(sha256((id::text || p_request_id::text || ':name')::bytea), 'hex'),
+         slug = 'erased-' || left(encode(sha256((id::text || p_request_id::text || ':slug')::bytea), 'hex'), 32),
+         logo_url = NULL,
+         accent_color = '#667085',
+         updated_at = now()
+   WHERE id = p_workspace_id;
   INSERT INTO backup_deletion_markers
     (workspace_id, request_id, marker_key, runbook_ref, metadata)
   VALUES
     (p_workspace_id, p_request_id, 'backup-erasure-required',
      'docs/ops/privacy-erasure-runbook.md',
-     jsonb_build_object('operatorId', p_operator_id, 'createdAt', now()))
+     jsonb_build_object('operatorId', p_operator_id, 'createdAt', now(), 'storageKeys', storage_keys))
   ON CONFLICT (workspace_id, request_id, marker_key) DO NOTHING;
 END;
 $$;--> statement-breakpoint
@@ -1086,6 +1156,7 @@ GRANT INSERT (workspace_id, topic, payload, idempotency_key, available_at, creat
 GRANT SELECT (workspace_id, topic, idempotency_key) ON outbox TO semforge_scheduler;--> statement-breakpoint
 GRANT SELECT ON workspaces, memberships, sites, tracked_queries, gsc_connections,
   gsc_property_bindings, billing_customers, payment_methods, subscriptions TO semforge_worker;--> statement-breakpoint
+GRANT SELECT ON email_suppressions TO semforge_worker;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON provider_calls, usage_reservations,
   rank_observations, aio_observations, aio_citations, naver_observations, naver_observation_sources, gsc_observations,
   weekly_reports, report_sections, report_assets, deliveries, payments, provider_events
@@ -1114,6 +1185,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON privacy_requests, privacy_request_steps,
   rank_observations, aio_observations, aio_citations, naver_observations, naver_observation_sources, gsc_observations,
   tracked_queries, sites, outbox, jobs, sessions, password_resets, billing_customers, payment_methods, billing_ledger_events, users
 TO semforge_privacy;--> statement-breakpoint
+GRANT SELECT, INSERT, DELETE ON email_suppressions TO semforge_privacy;--> statement-breakpoint
+REVOKE ALL ON FUNCTION privacy_erase_workspace(uuid, uuid, text) FROM PUBLIC;--> statement-breakpoint
 GRANT EXECUTE ON FUNCTION privacy_erase_workspace(uuid, uuid, text) TO semforge_privacy;--> statement-breakpoint
 REVOKE DELETE ON weekly_reports, report_sections, report_assets, deliveries FROM semforge_worker, semforge_web, semforge_billing;--> statement-breakpoint
 
@@ -1246,6 +1319,12 @@ $$;--> statement-breakpoint
 CREATE POLICY users_privacy_access ON users TO semforge_privacy USING (true) WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY sessions_privacy_access ON sessions TO semforge_privacy USING (true) WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY password_resets_privacy_access ON password_resets TO semforge_privacy USING (true) WITH CHECK (true);--> statement-breakpoint
+ALTER TABLE email_suppressions ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE email_suppressions FORCE ROW LEVEL SECURITY;--> statement-breakpoint
+CREATE POLICY email_suppressions_worker_select ON email_suppressions FOR SELECT TO semforge_worker
+  USING (workspace_id = nullif(current_setting('app.workspace_id', true), '')::uuid);--> statement-breakpoint
+CREATE POLICY email_suppressions_privacy_access ON email_suppressions TO semforge_privacy
+  USING (true) WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY jobs_dispatcher_access ON jobs TO semforge_dispatcher
   USING (true) WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY outbox_dispatcher_access ON outbox TO semforge_dispatcher
