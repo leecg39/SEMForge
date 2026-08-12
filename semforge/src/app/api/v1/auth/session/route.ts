@@ -2,9 +2,7 @@
 // @SPEC docs/planning/06-tasks.md#p2-a1-t1--초대-전용-인증과-세션
 import { createRuntimeAuthHttpHandlers } from "@/server/auth/runtime";
 
-const session = createRuntimeAuthHttpHandlers().session;
-
 export function GET(request: Request): Promise<Response> {
+  const session = createRuntimeAuthHttpHandlers().session;
   return session(request, undefined);
 }
-
