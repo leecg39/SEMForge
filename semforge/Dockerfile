@@ -2,7 +2,7 @@
 # @TASK P4-O1-T1 - Node 24 standalone web, pipeline, privacy, and migration images
 # @SPEC docs/planning/06-tasks.md#p4-o1-t1--node-24-docker와-운영-도구
 
-ARG NODE_BASE_IMAGE=node:24-bookworm-slim
+ARG NODE_BASE_IMAGE
 FROM ${NODE_BASE_IMAGE} AS base
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1

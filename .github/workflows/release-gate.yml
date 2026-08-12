@@ -16,7 +16,7 @@ jobs:
         working-directory: semforge
     services:
       postgres:
-        image: postgres:16
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
         env:
           POSTGRES_USER: semforge
           POSTGRES_PASSWORD: semforge
@@ -33,11 +33,13 @@ jobs:
       CHROMIUM_EXECUTABLE_PATH: /usr/bin/google-chrome
       SEMFORGE_EXTERNAL_NETWORK: disabled
       SEMFORGE_RELEASE_DIFF_BASE: origin/codex/paid-beta-core
+      SEMFORGE_NODE_BASE_IMAGE: node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03
+      SEMFORGE_POSTGRES_IMAGE: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 24
           cache: npm
@@ -53,7 +55,7 @@ jobs:
         run: npm run ci:release-gate
       - name: Upload release evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: phase5-ci-evidence
           path: semforge/.omo/evidence/phase5-ci/latest

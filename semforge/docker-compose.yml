@@ -15,12 +15,17 @@ x-runtime: &runtime
     - /home/semforge/.cache:rw,noexec,nosuid,nodev,size=64m
     - /home/semforge/.config:rw,noexec,nosuid,nodev,size=16m
 
+x-node-build: &node-build
+  context: .
+  args:
+    NODE_BASE_IMAGE: ${SEMFORGE_NODE_BASE_IMAGE}
+
 services:
   release:
     <<: *runtime
     image: ${SEMFORGE_MIGRATOR_IMAGE:-semforge-migrator:local}
     build:
-      context: .
+      <<: *node-build
       target: migrator
     env_file:
       - path: ${SEMFORGE_MIGRATION_ENV_FILE:-deploy/env/migration.env}
@@ -33,7 +38,7 @@ services:
     <<: *runtime
     image: ${SEMFORGE_WEB_IMAGE:-semforge-web:local}
     build:
-      context: .
+      <<: *node-build
       target: web
     env_file:
       - path: ${SEMFORGE_WEB_ENV_FILE:-deploy/env/web.env}
@@ -61,7 +66,7 @@ services:
     <<: *runtime
     image: ${SEMFORGE_WORKER_IMAGE:-semforge-worker:local}
     build:
-      context: .
+      <<: *node-build
       target: worker
     env_file:
       - path: ${SEMFORGE_WORKER_ENV_FILE:-deploy/env/worker.env}
@@ -78,7 +83,7 @@ services:
     <<: *runtime
     image: ${SEMFORGE_RELAY_IMAGE:-semforge-relay:local}
     build:
-      context: .
+      <<: *node-build
       target: relay
     env_file:
       - path: ${SEMFORGE_RELAY_ENV_FILE:-deploy/env/relay.env}
@@ -96,7 +101,7 @@ services:
     profiles: [scheduled]
     image: ${SEMFORGE_SCHEDULER_IMAGE:-semforge-scheduler:local}
     build:
-      context: .
+      <<: *node-build
       target: scheduler
     env_file:
       - path: ${SEMFORGE_SCHEDULER_ENV_FILE:-deploy/env/scheduler.env}
@@ -113,7 +118,7 @@ services:
     profiles: [scheduled]
     image: ${SEMFORGE_SCHEDULER_IMAGE:-semforge-scheduler:local}
     build:
-      context: .
+      <<: *node-build
       target: scheduler
     env_file:
       - path: ${SEMFORGE_SCHEDULER_ENV_FILE:-deploy/env/scheduler.env}
@@ -131,7 +136,7 @@ services:
     profiles: [manual]
     image: ${SEMFORGE_PRIVACY_IMAGE:-semforge-privacy:local}
     build:
-      context: .
+      <<: *node-build
       target: privacy
     env_file:
       - path: ${SEMFORGE_PRIVACY_ENV_FILE:-deploy/env/privacy.env}
@@ -148,7 +153,7 @@ services:
     profiles: [manual]
     image: ${SEMFORGE_OPERATOR_IMAGE:-semforge-operator:local}
     build:
-      context: .
+      <<: *node-build
       target: operator
     env_file:
       - path: ${SEMFORGE_OPERATOR_ENV_FILE:-deploy/env/operator.env}
@@ -165,7 +170,7 @@ services:
     profiles: [scheduled]
     image: ${SEMFORGE_RETENTION_IMAGE:-semforge-retention:local}
     build:
-      context: .
+      <<: *node-build
       target: retention
     env_file:
       - path: ${SEMFORGE_RETENTION_ENV_FILE:-deploy/env/retention.env}

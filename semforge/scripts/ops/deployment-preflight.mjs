@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 const SHA256_IMAGE_REFERENCE = /^[^@\s]+@sha256:[0-9a-f]{64}$/u;
+const BUILD_INPUTS_MODE = "build-inputs";
 
 function validateBaseImage(issues, label, reference, expectedRepository) {
   if (
@@ -22,8 +23,26 @@ function manifestImages(source) {
     .filter(Boolean);
 }
 
-export async function validateProductionDeployment({ environment, manifestPaths }) {
-  const issues = [];
+async function validateBuildInputs({ issues, environment, projectRoot = process.cwd() }) {
+  const [dockerfile, compose] = await Promise.all([
+    readFile(`${projectRoot}/Dockerfile`, "utf8"),
+    readFile(`${projectRoot}/docker-compose.yml`, "utf8"),
+  ]);
+  if (!/^ARG NODE_BASE_IMAGE$/mu.test(dockerfile)) {
+    issues.push("Dockerfile must require NODE_BASE_IMAGE build arg without a mutable default");
+  }
+  if (/^ARG NODE_BASE_IMAGE=/mu.test(dockerfile)) {
+    issues.push("Dockerfile must not default NODE_BASE_IMAGE to a mutable tag");
+  }
+  if ((dockerfile.match(/^FROM \$\{NODE_BASE_IMAGE\}/gmu) ?? []).length !== 2) {
+    issues.push("Dockerfile base stages must derive from NODE_BASE_IMAGE");
+  }
+  if (!/NODE_BASE_IMAGE:\s*\$\{SEMFORGE_NODE_BASE_IMAGE\}/u.test(compose)) {
+    issues.push("docker-compose.yml must pass SEMFORGE_NODE_BASE_IMAGE as NODE_BASE_IMAGE build arg");
+  }
+  if (compose.includes("NODE_BASE_IMAGE: node:24-bookworm-slim")) {
+    issues.push("docker-compose.yml must not provide a mutable NODE_BASE_IMAGE fallback");
+  }
   validateBaseImage(
     issues,
     "SEMFORGE_NODE_BASE_IMAGE",
@@ -36,6 +55,21 @@ export async function validateProductionDeployment({ environment, manifestPaths 
     environment.SEMFORGE_POSTGRES_IMAGE,
     "postgres:16-alpine",
   );
+}
+
+export async function validateProductionDeployment({ environment, manifestPaths, mode = "production" }) {
+  const issues = [];
+  await validateBuildInputs({ issues, environment });
+
+  if (mode === BUILD_INPUTS_MODE) {
+    if (issues.length > 0) {
+      const error = new Error(`production deployment preflight failed: ${issues.join(", ")}`);
+      error.name = "DeploymentPreflightError";
+      error.issues = Object.freeze([...issues]);
+      throw error;
+    }
+    return Object.freeze({ manifestCount: 0, imageCount: 0 });
+  }
 
   if (manifestPaths.length === 0) {
     issues.push("at least one rendered Kubernetes manifest path is required");
@@ -81,6 +115,7 @@ async function main() {
     const result = await validateProductionDeployment({
       environment: process.env,
       manifestPaths,
+      mode: process.env.SEMFORGE_DEPLOYMENT_PREFLIGHT_MODE,
     });
     process.stdout.write(`${JSON.stringify({
       level: "info",

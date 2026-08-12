@@ -204,6 +204,18 @@ const releaseDiffBase = process.env.SEMFORGE_RELEASE_DIFF_BASE ?? "origin/codex/
 
 export const defaultSteps = [
   ["node-version", process.execPath, ["-v"]],
+  [
+    "deployment-build-inputs",
+    process.execPath,
+    ["scripts/ops/deployment-preflight.mjs"],
+    {
+      env: {
+        SEMFORGE_DEPLOYMENT_PREFLIGHT_MODE: "build-inputs",
+        SEMFORGE_NODE_BASE_IMAGE: process.env.SEMFORGE_NODE_BASE_IMAGE,
+        SEMFORGE_POSTGRES_IMAGE: process.env.SEMFORGE_POSTGRES_IMAGE,
+      },
+    },
+  ],
   ["npm-verify", "npm", ["run", "verify"]], // npm run verify
   ["npm-build", "npm", ["run", "build"]], // npm run build
   ["npm-audit-full", "npm", ["audit", "--audit-level=high"]], // npm audit --audit-level=high

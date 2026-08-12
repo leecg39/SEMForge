@@ -106,7 +106,8 @@ test("package build script는 secret 없는 build service profile을 강제한�
 test("Dockerfile은 Node 24 web/pipeline/privacy/retention/migrator target과 non-root Chromium/Noto runtime을 제공한다", async () => {
   const dockerfile = await source("Dockerfile");
 
-  assert.match(dockerfile, /^ARG NODE_BASE_IMAGE=node:24-bookworm-slim$/mu);
+  assert.match(dockerfile, /^ARG NODE_BASE_IMAGE$/mu);
+  assert.doesNotMatch(dockerfile, /^ARG NODE_BASE_IMAGE=/mu);
   assert.equal((dockerfile.match(/^FROM \$\{NODE_BASE_IMAGE\}/gmu) ?? []).length, 2);
   for (const target of ["web", "worker", "relay", "scheduler", "privacy", "retention", "operator", "migrator"]) {
     assert.match(dockerfile, new RegExp(`FROM \\S+ AS ${target}`));
@@ -238,6 +239,8 @@ test("entrypoint와 compose는 migration 성공 뒤 web/worker/relay와 collecti
   for (const envFile of ["WEB", "WORKER", "RELAY", "SCHEDULER", "OPERATOR", "PRIVACY", "RETENTION", "MIGRATION"]) {
     assert.match(compose, new RegExp(`SEMFORGE_${envFile}_ENV_FILE`));
   }
+  assert.match(compose, /NODE_BASE_IMAGE:\s*\$\{SEMFORGE_NODE_BASE_IMAGE\}/u);
+  assert.doesNotMatch(compose, /NODE_BASE_IMAGE:\s*node:24-bookworm-slim/u);
 });
 
 test("privacy lifecycle은 일일 retention과 별도 수동 delete invocation으로 분리된다", async () => {
@@ -508,6 +511,40 @@ test("production deployment preflight는 digest placeholder와 mutable base imag
   assert.match(placeholder.stderr, /NODE_BASE_IMAGE.*sha256/u);
   assert.match(placeholder.stderr, /POSTGRES_IMAGE.*sha256/u);
   assert.match(placeholder.stderr, /REPLACE_WITH_DIGEST/u);
+});
+
+test("release gate build-input preflight는 Docker build arg가 immutable env digest에 연결된 경우만 허용한다", () => {
+  const releaseGateEnv = { ...process.env };
+  delete releaseGateEnv.SEMFORGE_NODE_BASE_IMAGE;
+  delete releaseGateEnv.SEMFORGE_POSTGRES_IMAGE;
+  const releaseGate = spawnSync(
+    process.execPath,
+    [
+      "-e",
+      "import('./scripts/ci/run-release-gate.mjs').then(({defaultSteps})=>console.log(defaultSteps.find(([name])=>name==='deployment-build-inputs')[3].env.SEMFORGE_NODE_BASE_IMAGE ?? 'missing'))",
+    ],
+    {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: releaseGateEnv,
+    },
+  );
+  assert.equal(releaseGate.status, 0, releaseGate.stderr);
+  assert.match(releaseGate.stdout, /^missing$/mu);
+
+  const missing = runDeploymentPreflight([], {
+    SEMFORGE_DEPLOYMENT_PREFLIGHT_MODE: "build-inputs",
+  });
+  assert.equal(missing.status, 78);
+  assert.match(missing.stderr, /SEMFORGE_NODE_BASE_IMAGE/u);
+
+  const result = runDeploymentPreflight([], {
+    SEMFORGE_DEPLOYMENT_PREFLIGHT_MODE: "build-inputs",
+    SEMFORGE_NODE_BASE_IMAGE: `node:24-bookworm-slim@sha256:${"b".repeat(64)}`,
+    SEMFORGE_POSTGRES_IMAGE: `postgres:16-alpine@sha256:${"c".repeat(64)}`,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /deployment preflight passed/u);
 });
 
 test("production deployment preflight는 실제 sha256 digest로 렌더링된 manifest만 허용한다", async () => {
