@@ -237,6 +237,25 @@ test("운영자 DSAR export는 tenant 경계를 지키고 token/billing key 원�
   assert.equal(JSON.stringify(exported).includes("customer-b"), false);
   assert.equal(JSON.stringify(exported).includes("Site A"), false);
   assert.equal(JSON.stringify(exported).includes(reportA), false);
+
+  const audits = await pg.query<{
+    action: string;
+    entity_type: string;
+    entity_id: string;
+    request_id: string;
+    metadata: unknown;
+  }>(
+    `select action, entity_type, entity_id, request_id, metadata
+       from audit_events
+      where workspace_id = $1 and action = 'privacy.export.read'`,
+    [workspaceA],
+  );
+  assert.equal(audits.rows.length, 1);
+  assert.equal(audits.rows[0]?.entity_type, "privacy_request");
+  assert.equal(audits.rows[0]?.request_id, "dsar-export-1");
+  const auditJson = JSON.stringify(audits.rows[0]);
+  assert.equal(auditJson.includes("owner-a@example.test"), false);
+  assert.equal(auditJson.includes("enc:v1:"), false);
 });
 
 test("subject-bound DSAR export는 같은 workspace의 다른 멤버를 노출하지 않는다", async () => {
@@ -552,6 +571,17 @@ test("삭제 workflow는 외부 processor 실패 시 local immutable report 삭�
   assert.ok(failed.rows.some((row) =>
     row.step_key === `gsc.revoke:${gscA}` && row.status === "failed"
   ));
+  const targetReads = await pg.query<{ request_id: string; metadata: unknown }>(
+    `select request_id, metadata
+       from audit_events
+      where workspace_id = $1 and action = 'privacy.deletion_targets.read'`,
+    [workspaceA],
+  );
+  assert.equal(targetReads.rows.length, 1);
+  assert.equal(targetReads.rows[0]?.request_id, "dsar-delete-failed");
+  const auditJson = JSON.stringify(targetReads.rows[0]);
+  assert.equal(auditJson.includes("owner-a@example.test"), false);
+  assert.equal(auditJson.includes("enc:v1:"), false);
 });
 
 test("삭제 workflow 성공 시 GSC revoke·object delete 후 privacy erasure procedure로 immutable report와 workspace PII를 제거한다", async () => {

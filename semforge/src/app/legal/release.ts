@@ -52,8 +52,49 @@ const overseasTransferSchema = z.object({
   retention: publishedText(),
 }).strict();
 
+const processingActivitySchema = z.object({
+  category: publishedText(),
+  requiredForService: z.boolean(),
+  noticeMode: z.enum(["required_notice_acknowledgement", "separate_optional_consent"]),
+  basisType: z.enum([
+    "contract",
+    "legal_obligation",
+    "legitimate_interests",
+    "consent",
+    "other",
+  ]),
+  purpose: publishedText(10),
+  items: publishedText(2),
+  lawfulBasis: publishedText(10),
+  retentionCategory: publishedText(),
+  refusalOrServiceImpact: publishedText(10),
+  withdrawalOrObjectionMethod: publishedText(10),
+}).strict().superRefine((activity, context) => {
+  if (activity.requiredForService && activity.noticeMode !== "required_notice_acknowledgement") {
+    context.addIssue({
+      code: "custom",
+      path: ["noticeMode"],
+      message: "service-required processing must be acknowledged as a notice, not bundled optional consent",
+    });
+  }
+  if (!activity.requiredForService && activity.noticeMode === "separate_optional_consent" && activity.basisType !== "consent") {
+    context.addIssue({
+      code: "custom",
+      path: ["basisType"],
+      message: "separate optional consent must identify consent as its reviewed basis",
+    });
+  }
+  if (activity.noticeMode === "separate_optional_consent" && activity.requiredForService) {
+    context.addIssue({
+      code: "custom",
+      path: ["requiredForService"],
+      message: "optional consent cannot be required for service",
+    });
+  }
+});
+
 const legalReleaseManifestSchema = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   release: z.object({
     status: z.literal("approved"),
     documentVersion: z.string().regex(/^\d{4}-\d{2}-\d{2}\.\d+$/u),
@@ -81,10 +122,24 @@ const legalReleaseManifestSchema = z.object({
     deletionProcedure: publishedText(10),
     securityMeasures: publishedText(10),
     retentionRules: z.array(retentionRuleSchema).min(1).max(50),
+    processingActivities: z.array(processingActivitySchema).min(1).max(50),
     processors: z.array(processorSchema).max(50),
     thirdPartyDisclosures: z.array(thirdPartyDisclosureSchema).max(50),
     overseasTransfers: z.array(overseasTransferSchema).max(50),
-  }).strict(),
+  }).strict().superRefine((privacy, context) => {
+    const approvedRetentionCategories = new Set(
+      privacy.retentionRules.map((rule) => rule.category),
+    );
+    privacy.processingActivities.forEach((activity, index) => {
+      if (!approvedRetentionCategories.has(activity.retentionCategory)) {
+        context.addIssue({
+          code: "custom",
+          path: ["processingActivities", index, "retentionCategory"],
+          message: "must reference an approved privacy.retentionRules category",
+        });
+      }
+    });
+  }),
   terms: z.object({
     effectiveDate: isoDate,
     priceKrw: z.literal(49_000),

@@ -173,7 +173,7 @@ export function AuthForm({
 
       {variant === "invite" && legalDocuments && (
         <fieldset className="sf-field">
-          <legend>약관 및 개인정보 처리방침 동의</legend>
+          <legend>이용약관 동의 및 개인정보 처리방침 확인</legend>
           <input type="hidden" name="legalTermsVersion" value={legalDocuments.terms.version} />
           <input type="hidden" name="legalTermsSha256" value={legalDocuments.terms.sha256} />
           <input type="hidden" name="legalPrivacyVersion" value={legalDocuments.privacy.version} />
@@ -182,8 +182,8 @@ export function AuthForm({
           <label className="sf-checkbox">
             <input name="legalAccepted" type="checkbox" required />
             <span>
-              <Link href="/legal/terms" target="_blank">이용약관</Link> 및{" "}
-              <Link href="/legal/privacy" target="_blank">개인정보 처리방침</Link>에 동의합니다.
+              <Link href="/legal/terms" target="_blank">이용약관</Link>에 동의하고{" "}
+              <Link href="/legal/privacy" target="_blank">개인정보 처리방침</Link>을 확인했습니다.
             </span>
           </label>
         </fieldset>

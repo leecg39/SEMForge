@@ -1,5 +1,5 @@
 export const approvedLegalReleaseManifest = JSON.stringify({
-  schemaVersion: 1,
+  schemaVersion: 2,
   release: {
     status: "approved",
     documentVersion: "2026-08-12.1",
@@ -31,6 +31,20 @@ export const approvedLegalReleaseManifest = JSON.stringify({
         category: "계정 정보",
         period: "계약 종료 후 30일",
         basis: "계약 이행 및 분쟁 대응",
+      },
+    ],
+    processingActivities: [
+      {
+        category: "계정 및 접근 제어",
+        requiredForService: true,
+        noticeMode: "required_notice_acknowledgement",
+        basisType: "contract",
+        purpose: "초대된 이용자의 계정 생성과 워크스페이스 접근 제어",
+        items: "이메일, 담당자 이름, 인증 및 세션 식별자",
+        lawfulBasis: "법률 검토로 승인된 서비스 계약 이행 근거",
+        retentionCategory: "계정 정보",
+        refusalOrServiceImpact: "필수 항목을 제공하지 않으면 계정 기반 서비스를 제공할 수 없습니다.",
+        withdrawalOrObjectionMethod: "개인정보 문의 이메일로 적용 가능한 처리정지 또는 이의 요청을 접수합니다.",
       },
     ],
     processors: [

@@ -57,6 +57,17 @@ type JsonValue =
   | readonly JsonValue[]
   | { readonly [key: string]: JsonValue };
 
+const processingBasisLabels = {
+  contract: "계약",
+  legal_obligation: "법적 의무",
+  legitimate_interests: "정당한 이익",
+  consent: "동의",
+  other: "기타 승인 근거",
+} as const satisfies Record<
+  LegalReleaseManifest["privacy"]["processingActivities"][number]["basisType"],
+  string
+>;
+
 function canonicalize(value: JsonValue): JsonValue {
   if (Array.isArray(value)) return value.map((item) => canonicalize(item));
   if (!value || typeof value !== "object") return value;
@@ -166,6 +177,18 @@ export function legalDocumentArtifactsFromManifest(manifest: LegalReleaseManifes
             "초대·계정 운영을 위한 이메일, 담당자 이름, 암호화된 인증 정보, 세션 및 보안 감사 기록을 처리합니다. 본인 확인, 워크스페이스 접근 제어, 결제, 고객지원과 보안 대응에 사용합니다.",
             "주간 리포트를 제공하기 위해 등록 도메인, 추적 질의, Search Console 읽기 전용 연결 토큰, 공급자 응답과 수집 시각을 처리합니다. 검색 가시성 수집, 리포트 생성·전달에만 사용합니다.",
           ],
+        },
+        {
+          heading: "처리 근거, 필수 여부와 권리 행사",
+          items: manifest.privacy.processingActivities.map((activity) => {
+            const requirement = activity.requiredForService
+              ? "서비스 필수 처리·필수 고지 확인"
+              : "선택 처리";
+            const mechanism = activity.noticeMode === "separate_optional_consent"
+              ? "별도 선택 동의"
+              : "처리방침 확인";
+            return `${activity.category} — ${requirement}; 고지·선택 방식: ${mechanism}; 목적: ${activity.purpose}; 항목: ${activity.items}; 검토된 처리 근거 유형: ${processingBasisLabels[activity.basisType]}; 세부 근거: ${activity.lawfulBasis}; 보유 규칙: ${activity.retentionCategory}; 거부 또는 서비스 영향: ${activity.refusalOrServiceImpact}; 철회·이의·처리정지 방법: ${activity.withdrawalOrObjectionMethod}`;
+          }),
         },
         {
           heading: "처리 및 보유 기간",

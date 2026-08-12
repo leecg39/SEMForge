@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "release": {
     "status": "draft",
     "documentVersion": "<YYYY-MM-DD.REVISION>",
@@ -31,6 +31,20 @@
         "category": "<PERSONAL DATA CATEGORY>",
         "period": "<RETENTION PERIOD>",
         "basis": "<PURPOSE OR LEGAL BASIS>"
+      }
+    ],
+    "processingActivities": [
+      {
+        "category": "<PROCESSING ACTIVITY CATEGORY>",
+        "requiredForService": true,
+        "noticeMode": "<required_notice_acknowledgement OR separate_optional_consent>",
+        "basisType": "<contract OR legal_obligation OR legitimate_interests OR consent OR other>",
+        "purpose": "<SPECIFIC PROCESSING PURPOSE>",
+        "items": "<PERSONAL DATA ITEMS>",
+        "lawfulBasis": "<APPROVED LAWFUL BASIS AND RATIONALE>",
+        "retentionCategory": "<EXACT CATEGORY FROM privacy.retentionRules>",
+        "refusalOrServiceImpact": "<CONSEQUENCE OF REFUSAL OR NO SERVICE IMPACT>",
+        "withdrawalOrObjectionMethod": "<APPLICABLE WITHDRAWAL, OBJECTION, OR RESTRICTION PROCEDURE>"
       }
     ],
     "processors": [

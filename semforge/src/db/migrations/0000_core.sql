@@ -1202,6 +1202,18 @@ BEGIN
   ) subject ON true
   WHERE request.workspace_id = p_workspace_id AND request.id = p_request_id;
   IF result IS NULL THEN RAISE EXCEPTION 'privacy workspace not found' USING ERRCODE = 'P0002'; END IF;
+  INSERT INTO audit_events
+    (workspace_id, action, entity_type, entity_id, request_id, metadata)
+  SELECT p_workspace_id, 'privacy.export.read', 'privacy_request', p_request_id::text,
+         request.request_id,
+         jsonb_build_object(
+           'categories', jsonb_build_array('workspace', 'users', 'legal_acceptances', 'sites', 'reports'),
+           'userCount', jsonb_array_length(result->'users'),
+           'siteCount', jsonb_array_length(result->'sites'),
+           'reportCount', jsonb_array_length(result->'reports')
+         )
+    FROM privacy_requests request
+   WHERE request.workspace_id = p_workspace_id AND request.id = p_request_id;
   RETURN result;
 END;
 $$;--> statement-breakpoint
@@ -1276,6 +1288,7 @@ CREATE FUNCTION privacy_deletion_targets(
   p_workspace_id uuid, p_request_id uuid, p_operator_id text
 ) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE result jsonb;
 BEGIN
   IF p_workspace_id IS DISTINCT FROM nullif(current_setting('app.workspace_id', true), '')::uuid
      OR NOT EXISTS (
@@ -1287,7 +1300,7 @@ BEGIN
   THEN
     RAISE EXCEPTION 'privacy deletion targets require exact running request' USING ERRCODE = '42501';
   END IF;
-  RETURN jsonb_build_object(
+  SELECT jsonb_build_object(
     'gscConnections', coalesce((SELECT jsonb_agg(jsonb_build_object(
       'id', id::text, 'refreshTokenEncrypted', refresh_token_encrypted) ORDER BY id)
       FROM gsc_connections WHERE workspace_id = p_workspace_id AND disconnected_at IS NULL), '[]'::jsonb),
@@ -1301,7 +1314,20 @@ BEGIN
        WHERE memberships.workspace_id = p_workspace_id AND users.disabled_at IS NULL
          AND users.email !~ '^erased\\+'
     ) targets WHERE btrim(recipient) <> ''), '[]'::jsonb)
-  );
+  ) INTO result;
+  INSERT INTO audit_events
+    (workspace_id, action, entity_type, entity_id, request_id, metadata)
+  SELECT p_workspace_id, 'privacy.deletion_targets.read', 'privacy_request', p_request_id::text,
+         request.request_id,
+         jsonb_build_object(
+           'categories', jsonb_build_array('gsc_refresh_tokens', 'report_storage_keys', 'delivery_recipients'),
+           'gscConnectionCount', jsonb_array_length(result->'gscConnections'),
+           'storageKeyCount', jsonb_array_length(result->'storageKeys'),
+           'recipientCount', jsonb_array_length(result->'recipients')
+         )
+    FROM privacy_requests request
+   WHERE request.workspace_id = p_workspace_id AND request.id = p_request_id;
+  RETURN result;
 END;
 $$;--> statement-breakpoint
 

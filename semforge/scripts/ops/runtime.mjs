@@ -195,6 +195,49 @@ function everyExactPublishedItem(items, keys) {
   );
 }
 
+function validProcessingActivities(activities, retentionRules) {
+  if (!Array.isArray(activities) || activities.length < 1 || activities.length > 50) {
+    return false;
+  }
+  const categories = new Set(retentionRules.map((rule) => rule.category));
+  const exactKeys = [
+    "category",
+    "requiredForService",
+    "noticeMode",
+    "basisType",
+    "purpose",
+    "items",
+    "lawfulBasis",
+    "retentionCategory",
+    "refusalOrServiceImpact",
+    "withdrawalOrObjectionMethod",
+  ];
+  const basisTypes = new Set([
+    "contract",
+    "legal_obligation",
+    "legitimate_interests",
+    "consent",
+    "other",
+  ]);
+  return activities.every((activity) => {
+    if (!hasExactKeys(activity, exactKeys) ||
+        typeof activity.requiredForService !== "boolean" ||
+        !exactKeys.filter((key) => !["requiredForService", "noticeMode", "basisType"].includes(key))
+          .every((key) => isPublishedText(activity[key])) ||
+        !basisTypes.has(activity.basisType) ||
+        !categories.has(activity.retentionCategory)) {
+      return false;
+    }
+    if (activity.requiredForService) {
+      return activity.noticeMode === "required_notice_acknowledgement";
+    }
+    if (activity.noticeMode === "separate_optional_consent") {
+      return activity.basisType === "consent";
+    }
+    return activity.noticeMode === "required_notice_acknowledgement";
+  });
+}
+
 function hasApprovedLegalReleaseManifest(raw) {
   if (!isPresent(raw) || raw.length > 64 * 1024) return false;
   let manifest;
@@ -227,6 +270,7 @@ function hasApprovedLegalReleaseManifest(raw) {
       "deletionProcedure",
       "securityMeasures",
       "retentionRules",
+      "processingActivities",
       "processors",
       "thirdPartyDisclosures",
       "overseasTransfers",
@@ -241,7 +285,7 @@ function hasApprovedLegalReleaseManifest(raw) {
       "withdrawalPolicy",
       "disputeProcedure",
     ]) ||
-    manifest?.schemaVersion !== 1 ||
+    manifest?.schemaVersion !== 2 ||
     release?.status !== "approved" ||
     release?.attestation !== "paid-beta-legal-review-approved" ||
     !/^\d{4}-\d{2}-\d{2}\.\d+$/u.test(release?.documentVersion ?? "") ||
@@ -266,6 +310,7 @@ function hasApprovedLegalReleaseManifest(raw) {
     !isPublishedText(privacy?.securityMeasures, 10) ||
     !everyExactPublishedItem(privacy?.retentionRules, ["category", "period", "basis"]) ||
     privacy?.retentionRules.length < 1 || privacy.retentionRules.length > 50 ||
+    !validProcessingActivities(privacy?.processingActivities, privacy?.retentionRules) ||
     !everyExactPublishedItem(privacy?.processors, ["provider", "purpose", "retention"]) ||
     privacy?.processors.length > 50 ||
     !everyExactPublishedItem(privacy?.thirdPartyDisclosures, [

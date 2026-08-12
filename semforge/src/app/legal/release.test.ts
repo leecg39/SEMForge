@@ -10,7 +10,7 @@ import {
 } from "@/app/legal/release";
 
 export const approvedLegalReleaseManifest = JSON.stringify({
-  schemaVersion: 1,
+  schemaVersion: 2,
   release: {
     status: "approved",
     documentVersion: "2026-08-12.1",
@@ -42,6 +42,20 @@ export const approvedLegalReleaseManifest = JSON.stringify({
         category: "계정 정보",
         period: "계약 종료 후 30일",
         basis: "계약 이행 및 분쟁 대응",
+      },
+    ],
+    processingActivities: [
+      {
+        category: "계정 및 접근 제어",
+        requiredForService: true,
+        noticeMode: "required_notice_acknowledgement",
+        basisType: "contract",
+        purpose: "초대된 이용자의 계정 생성과 워크스페이스 접근 제어",
+        items: "이메일, 담당자 이름, 인증 및 세션 식별자",
+        lawfulBasis: "법률 검토로 승인된 서비스 계약 이행 근거",
+        retentionCategory: "계정 정보",
+        refusalOrServiceImpact: "필수 항목을 제공하지 않으면 계정 기반 서비스를 제공할 수 없습니다.",
+        withdrawalOrObjectionMethod: "개인정보 문의 이메일로 적용 가능한 처리정지 또는 이의 요청을 접수합니다.",
       },
     ],
     processors: [
@@ -102,6 +116,11 @@ test("manifest 누락·손상·미승인 상태는 법률 출시 게이트를 �
   draft.release.status = "draft";
   assert.throws(() => parseLegalReleaseManifest(JSON.stringify(draft)),
     LegalReleaseConfigurationError);
+
+  const legacy = JSON.parse(approvedLegalReleaseManifest) as Record<string, unknown>;
+  legacy.schemaVersion = 1;
+  assert.throws(() => parseLegalReleaseManifest(JSON.stringify(legacy)),
+    LegalReleaseConfigurationError);
 });
 
 test("placeholder와 실제 서비스 계약에 어긋나는 가격은 승인으로 위장할 수 없다", () => {
@@ -125,4 +144,50 @@ test("placeholder와 실제 서비스 계약에 어긋나는 가격은 승인으
   wrongPrice.terms.priceKrw = 39_000;
   assert.throws(() => parseLegalReleaseManifest(JSON.stringify(wrongPrice)),
     LegalReleaseConfigurationError);
+});
+
+test("처리 활동은 서비스 필수 여부와 권리 행사 방법을 명시하고 승인된 보유 항목에 연결한다", () => {
+  const candidate = JSON.parse(approvedLegalReleaseManifest) as {
+    privacy: {
+      processingActivities?: Array<{
+        category: string;
+        requiredForService: boolean;
+        noticeMode: "required_notice_acknowledgement" | "separate_optional_consent";
+        basisType: "contract" | "legal_obligation" | "legitimate_interests" | "consent" | "other";
+        purpose: string;
+        items: string;
+        lawfulBasis: string;
+        retentionCategory: string;
+        refusalOrServiceImpact: string;
+        withdrawalOrObjectionMethod: string;
+      }>;
+    };
+  };
+  candidate.privacy.processingActivities = [
+    {
+      category: "계정 및 접근 제어",
+      requiredForService: true,
+      noticeMode: "required_notice_acknowledgement",
+      basisType: "contract",
+      purpose: "초대된 이용자의 계정 생성과 워크스페이스 접근 제어",
+      items: "이메일, 담당자 이름, 인증 및 세션 식별자",
+      lawfulBasis: "법률 검토로 승인된 서비스 계약 이행 근거",
+      retentionCategory: "계정 정보",
+      refusalOrServiceImpact: "필수 항목을 제공하지 않으면 계정 기반 서비스를 제공할 수 없습니다.",
+      withdrawalOrObjectionMethod: "개인정보 문의 이메일로 적용 가능한 처리정지 또는 이의 요청을 접수합니다.",
+    },
+  ];
+
+  const parsed = parseLegalReleaseManifest(JSON.stringify(candidate));
+  assert.equal(parsed.privacy.processingActivities[0]?.requiredForService, true);
+
+  candidate.privacy.processingActivities[0]!.retentionCategory = "승인되지 않은 보유 항목";
+  assert.throws(
+    () => parseLegalReleaseManifest(JSON.stringify(candidate)),
+    (error: unknown) => {
+      assert.ok(error instanceof LegalReleaseConfigurationError);
+      assert.ok(error.issues.some((issue) => issue.includes("retentionCategory")));
+      return true;
+    },
+  );
 });

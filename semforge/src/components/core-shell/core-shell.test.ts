@@ -93,6 +93,22 @@ test("AuthForm은 인증 종류별 실제 API 경계를 form에 노출한다", (
   assert.doesNotMatch(`${login}${invite}`, /owner@example|password1234|시드 계정/);
 });
 
+test("초대 확인은 필수 문서 확인을 개인정보 처리의 포괄 동의로 표시하지 않는다", () => {
+  const invite = render(createElement(AuthForm, {
+    variant: "invite",
+    token: "invite-token",
+    legalDocuments: {
+      terms: { version: "2026-08-12.1", sha256: "a".repeat(64) },
+      privacy: { version: "2026-08-12.1", sha256: "b".repeat(64) },
+      presentedAt: "2026-08-12T09:00:00.000Z",
+    },
+  }));
+  const text = invite.replace(/<[^>]*>/gu, "");
+
+  assert.match(text, /이용약관에 동의하고 개인정보 처리방침을 확인했습니다/u);
+  assert.doesNotMatch(text, /개인정보 처리방침(?:에)? 동의/u);
+});
+
 test("인증 payload는 식별자 공백만 정리하고 비밀번호 원문은 보존한다", () => {
   const formData = new FormData();
   formData.set("email", "  agency@example.test  ");

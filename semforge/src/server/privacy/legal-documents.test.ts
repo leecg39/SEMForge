@@ -56,6 +56,8 @@ test("초대 수락 문서 identity는 승인 manifest의 documentVersion과 can
   assert.deepEqual(subsets, artifacts);
   assert.match(JSON.stringify(subsets.terms), /월 49,000원\(VAT 포함\)/u);
   assert.match(JSON.stringify(subsets.privacy), /Search Console 읽기 전용 연결 토큰/u);
+  assert.match(JSON.stringify(subsets.privacy), /서비스 필수 처리·필수 고지 확인/u);
+  assert.match(JSON.stringify(subsets.privacy), /검토된 처리 근거 유형: 계약/u);
 });
 
 test("manifest 없는 production invite legal identity는 fail closed 한다", () => {
