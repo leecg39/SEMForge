@@ -212,17 +212,52 @@ test("blocking workspace session은 인증·logout 모두 fail closed하고 revo
   assert.equal(revocations, 0);
 });
 
-test("forgot password는 blocking membership을 건너뛰고 active workspace outbox만 만든다", async () => {
+test("forgot password는 membership 하나라도 blocking이면 reset token과 outbox를 만들지 않는다", async () => {
   let created: CreatePasswordResetInput | undefined;
-  const calls: string[] = [];
+  const manyCalls: string[][] = [];
   const store = createPrivacyFencedAuthStore({
     store: storeFixture({
+      createPasswordReset: async (input) => {
+        created = input;
+        throw new Error("must not create");
+      },
+    }),
+    fence: fenceFixture({ blocked: new Set([WORKSPACE_A]), manyCalls }),
+  });
+
+  const reset = await store.createPasswordReset({
+    userId: user().id,
+    tokenHash: "c".repeat(64),
+    expiresAt: new Date("2026-08-12T07:30:00.000Z"),
+    now: NOW,
+    delivery: {
+      email: user().email,
+      resetUrl: "https://app.semforge.test/reset-password/raw",
+      expiresAt: new Date("2026-08-12T07:30:00.000Z"),
+    },
+  });
+
+  assert.equal(reset, null);
+  assert.deepEqual(manyCalls, [[WORKSPACE_A, WORKSPACE_B]]);
+  assert.equal(created, undefined);
+});
+
+test("forgot password는 모든 canonical membership lock을 한 번 잡고 정렬 첫 workspace로 delivery를 만든다", async () => {
+  let created: CreatePasswordResetInput | undefined;
+  const manyCalls: string[][] = [];
+  const store = createPrivacyFencedAuthStore({
+    store: storeFixture({
+      listMembershipsForUser: async () => [
+        { workspaceId: WORKSPACE_B, workspaceName: "B", workspaceSlug: "b", role: "admin" },
+        { workspaceId: WORKSPACE_A, workspaceName: "A", workspaceSlug: "a", role: "owner" },
+        { workspaceId: WORKSPACE_B, workspaceName: "B", workspaceSlug: "b", role: "admin" },
+      ],
       createPasswordReset: async (input) => {
         created = input;
         return { id: "40000000-0000-4000-8000-000000000001", userId: input.userId, expiresAt: input.expiresAt };
       },
     }),
-    fence: fenceFixture({ blocked: new Set([WORKSPACE_A]), calls }),
+    fence: fenceFixture({ manyCalls }),
   });
 
   const reset = await store.createPasswordReset({
@@ -238,20 +273,22 @@ test("forgot password는 blocking membership을 건너뛰고 active workspace ou
   });
 
   assert.ok(reset);
-  assert.deepEqual(calls, [WORKSPACE_A, WORKSPACE_B]);
-  assert.equal(created?.delivery?.workspaceId, WORKSPACE_B);
+  assert.deepEqual(manyCalls, [[WORKSPACE_A, WORKSPACE_B]]);
+  assert.equal(created?.delivery?.workspaceId, WORKSPACE_A);
 });
 
-test("모든 membership이 blocking이면 reset token과 outbox를 만들지 않는다", async () => {
+test("membership이 없으면 reset token과 outbox를 만들지 않는다", async () => {
   let creates = 0;
+  const manyCalls: string[][] = [];
   const store = createPrivacyFencedAuthStore({
     store: storeFixture({
+      listMembershipsForUser: async () => [],
       createPasswordReset: async () => {
         creates += 1;
         throw new Error("must not create");
       },
     }),
-    fence: fenceFixture({ blocked: new Set([WORKSPACE_A, WORKSPACE_B]) }),
+    fence: fenceFixture({ manyCalls }),
   });
 
   assert.equal(await store.createPasswordReset({
@@ -261,6 +298,7 @@ test("모든 membership이 blocking이면 reset token과 outbox를 만들지 않
     now: NOW,
   }), null);
   assert.equal(creates, 0);
+  assert.deepEqual(manyCalls, []);
 });
 
 test("password reset은 모든 canonical membership shared lock 안에서만 원자 실행한다", async () => {

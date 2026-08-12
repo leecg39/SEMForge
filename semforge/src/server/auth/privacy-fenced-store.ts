@@ -114,17 +114,15 @@ export function createPrivacyFencedAuthStore(dependencies: {
       const workspaceIds = canonicalWorkspaceIds(
         await store.listMembershipsForUser(input.userId),
       );
-      for (const workspaceId of workspaceIds) {
-        const fencedInput: CreatePasswordResetInput = input.delivery
-          ? { ...input, delivery: { ...input.delivery, workspaceId } }
-          : input;
-        const result = await fence.withShared(
-          workspaceId,
-          () => store.createPasswordReset(fencedInput),
-        );
-        if (result.disposition === "executed") return result.value;
-      }
-      return null;
+      if (workspaceIds.length === 0) return null;
+      const fencedInput: CreatePasswordResetInput = input.delivery
+        ? { ...input, delivery: { ...input.delivery, workspaceId: workspaceIds[0] } }
+        : input;
+      const result = await fence.withSharedMany(
+        workspaceIds,
+        () => store.createPasswordReset(fencedInput),
+      );
+      return result.disposition === "executed" ? result.value : null;
     },
 
     preparePasswordReset: (tokenHash, now) => store.preparePasswordReset(tokenHash, now),
