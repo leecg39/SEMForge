@@ -127,10 +127,7 @@ export function SiteDetailView({
 export function SiteDetailWorkspace({ siteId }: { siteId: string }) {
   const endpoint = `/api/v1/sites/${encodeURIComponent(siteId)}` as `/api/v1/${string}`;
   const { access } = useBillingAccess();
-  const { state, reload } = useApiResource(endpoint, parseSiteDetail, {
-    unavailableStatuses: [404, 405],
-    unavailableMessage: "사이트·추적·GSC binding 조회 계약이 서버에 반영되기 전입니다. 임의 데이터는 표시하지 않습니다.",
-  });
+  const { state, reload } = useApiResource(endpoint, parseSiteDetail);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ kind: "status" | "error"; text: string } | null>(null);
   const detail = state.status === "ready" ? state.data : null;

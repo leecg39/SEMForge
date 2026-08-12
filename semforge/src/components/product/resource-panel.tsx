@@ -30,15 +30,5 @@ export function ResourcePanel<T>({
       />
     );
   }
-  if (state.status === "unavailable") {
-    return (
-      <StatusPanel
-        status="partial"
-        title={`${label} 읽기 계약을 기다리고 있습니다`}
-        description={state.message}
-        detail={state.requestId ? `요청 ID: ${state.requestId}` : undefined}
-      />
-    );
-  }
   return children(state.data);
 }

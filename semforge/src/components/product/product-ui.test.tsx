@@ -12,6 +12,7 @@ import {
   parseSiteDetail,
   productAccessFor,
 } from "./contracts";
+import { loadApiResource } from "./api-client";
 import { BillingSummaryView } from "./billing-workspace";
 import { OverviewReadyView } from "./overview-dashboard";
 import {
@@ -28,6 +29,28 @@ import { SitesReadyView } from "./sites-workspace";
 function render(node: React.ReactNode) {
   return renderToStaticMarkup(createElement("div", null, node));
 }
+
+test("구현된 읽기 API의 404는 미구현 대기 상태가 아니라 실제 오류로 표시한다", async () => {
+  const state = await loadApiResource(
+    "/api/v1/sites/0198a219-4d49-7dce-9d9a-536822c04da8",
+    parseSiteDetail,
+    undefined,
+    async () => Response.json(
+      {
+        data: null,
+        error: { code: "NOT_FOUND", message: "사이트를 찾을 수 없습니다." },
+        requestId: "site-not-found",
+      },
+      { status: 404 },
+    ),
+  );
+
+  assert.deepEqual(state, {
+    status: "error",
+    message: "사이트를 찾을 수 없습니다.",
+    requestId: "site-not-found",
+  });
+});
 
 const site = {
   id: "0198a219-4d49-7dce-9d9a-536822c04da8",

@@ -118,10 +118,7 @@ function GscBindingPanel({
 
 export function SettingsWorkspace() {
   const { access } = useBillingAccess();
-  const branding = useApiResource("/api/v1/reports/branding", parseBrandingContract, {
-    unavailableStatuses: [404, 405],
-    unavailableMessage: "리포트 브랜딩 GET/PATCH 계약이 서버에 반영되기 전입니다. 저장 성공 상태를 가장하지 않습니다.",
-  });
+  const branding = useApiResource("/api/v1/reports/branding", parseBrandingContract);
   const connections = useApiResource("/api/v1/integrations/gsc/connections", parseGscConnections);
   const sites = useApiResource("/api/v1/sites", parseSitesPage);
   const [selected, setSelected] = useState<GscConnectionView | null>(null);
@@ -188,7 +185,6 @@ export function SettingsWorkspace() {
           {(value) => <GscBindingPanel connection={selected} sites={value.items} canWrite={access.canWrite} onComplete={(text, error = false) => setMessage({ text, error })} />}
         </ResourcePanel>
       ) : null}
-      <StatusPanel status="partial" title="기존 GSC binding 목록 API는 제공되지 않습니다" description="새 속성 연결은 실제 API로 저장되지만, 서버 조회 계약이 반영되기 전에는 사이트 상세에서 임의 연결 상태를 만들지 않습니다." />
     </div>
   );
 }
