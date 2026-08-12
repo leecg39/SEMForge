@@ -71,6 +71,8 @@ const productionEnv = {
   BILLING_TENANT_DATABASE_URL:
     "postgresql://semforge_billing_tenant_login:test@db.example.com:5432/semforge",
   PRIVACY_DATABASE_URL: "postgresql://semforge_privacy_login:test@db.example.com:5432/semforge",
+  PRIVACY_RETENTION_DATABASE_URL:
+    "postgresql://semforge_retention_login:test@db.example.com:5432/semforge",
   PRIVACY_RETENTION_POLICY: privacyRetentionPolicy,
   MIGRATION_DATABASE_URL: "postgresql://semforge_owner_login:test@db.example.com:5432/semforge",
   LEGAL_RELEASE_MANIFEST: approvedLegalReleaseManifest,
@@ -109,6 +111,7 @@ test("production은 database, encryption, billing, Google, NAVER 자격증명을
     "BILLING_DATABASE_URL",
     "BILLING_TENANT_DATABASE_URL",
     "PRIVACY_DATABASE_URL",
+    "PRIVACY_RETENTION_DATABASE_URL",
     "PRIVACY_RETENTION_POLICY",
     "MIGRATION_DATABASE_URL",
     "LEGAL_RELEASE_MANIFEST",
@@ -460,6 +463,61 @@ test("relay와 scheduler profile은 각자의 최소권한 PostgreSQL 역할만 
   assert.equal(scheduler.SEMFORGE_SERVICE, "scheduler");
   assert.equal(scheduler.WORKER_DATABASE_URL, undefined);
   assert.equal(scheduler.DISPATCHER_DATABASE_URL, undefined);
+});
+
+// @TASK P1-FINAL-PRIVACY - Split DSAR executor from global TTL retention
+// @SPEC final_privacy_roles#retention-runtime-boundary
+test("privacy와 retention profile은 별도 DSN과 secret 경계를 요구한다", () => {
+  const privacy = parseServerEnv({
+    NODE_ENV: "production",
+    SEMFORGE_SERVICE: "privacy",
+    PRIVACY_DATABASE_URL: "postgresql://privacy:test@db.example.com:5432/semforge",
+    APP_SECRET: "production-secret-material-that-is-at-least-32-bytes",
+    APP_SECRET_CURRENT_KEY_ID: "key-2026-08",
+    S3_ENDPOINT: "https://objects.semforge.example",
+    S3_REGION: "ap-northeast-2",
+    S3_BUCKET: "semforge-private",
+    S3_ACCESS_KEY_ID: "privacy-storage-key",
+    S3_SECRET_ACCESS_KEY: "privacy-storage-secret",
+    PGSSLMODE: "verify-full",
+  });
+  assert.equal(privacy.PRIVACY_RETENTION_DATABASE_URL, undefined);
+  assert.equal(privacy.PRIVACY_RETENTION_POLICY, undefined);
+
+  const retention = parseServerEnv({
+    NODE_ENV: "production",
+    SEMFORGE_SERVICE: "retention",
+    PRIVACY_RETENTION_DATABASE_URL:
+      "postgresql://retention:test@db.example.com:5432/semforge",
+    PRIVACY_RETENTION_POLICY: privacyRetentionPolicy,
+    S3_ENDPOINT: "https://objects.semforge.example",
+    S3_REGION: "ap-northeast-2",
+    S3_BUCKET: "semforge-private",
+    S3_ACCESS_KEY_ID: "retention-storage-key",
+    S3_SECRET_ACCESS_KEY: "retention-storage-secret",
+    PGSSLMODE: "verify-full",
+  });
+  assert.equal(retention.PRIVACY_DATABASE_URL, undefined);
+  assert.equal(retention.APP_SECRET, undefined);
+  assert.equal(retention.GOOGLE_CLIENT_SECRET, undefined);
+
+  const retentionWithOwner = {
+    NODE_ENV: "production",
+    SEMFORGE_SERVICE: "retention",
+    PRIVACY_RETENTION_DATABASE_URL:
+      "postgresql://retention:test@db.example.com:5432/semforge",
+    PRIVACY_RETENTION_POLICY: privacyRetentionPolicy,
+    S3_ENDPOINT: "https://objects.semforge.example",
+    S3_REGION: "ap-northeast-2",
+    S3_BUCKET: "semforge-private",
+    S3_ACCESS_KEY_ID: "retention-storage-key",
+    S3_SECRET_ACCESS_KEY: "retention-storage-secret",
+    PGSSLMODE: "verify-full",
+  } as const;
+  assert.throws(
+    () => parseServerEnv({ ...retentionWithOwner, MIGRATION_DATABASE_URL: productionEnv.MIGRATION_DATABASE_URL }),
+    /MIGRATION_DATABASE_URL is not allowed for the retention service/u,
+  );
 });
 
 test("build profile은 image build 중 운영 secret을 읽지 않는다", () => {

@@ -23,6 +23,7 @@ import {
   tenantTables,
   trackedQueries,
   usageReservations,
+  workspacePrivacyControls,
 } from "@/db/schema/core";
 
 const requiredTenantTables = [
@@ -33,6 +34,7 @@ const requiredTenantTables = [
   "privacy_request_steps",
   "privacy_billing_tombstones",
   "backup_deletion_markers",
+  "workspace_privacy_controls",
   "sites",
   "tracked_queries",
   "gsc_connections",
@@ -87,6 +89,83 @@ test("공개 상태 enum은 제품 계약과 정확히 일치한다", () => {
     "cancel_at_period_end",
     "canceled",
   ]);
+});
+
+// @TASK P1-FINAL-PRIVACY - Workspace privacy fence state contract
+// @SPEC final_privacy_fence#workspace-privacy-controls
+test("workspace privacy control은 tenant별 active→blocking→erased 계약을 표현한다", () => {
+  const config = getTableConfig(workspacePrivacyControls);
+  assert.deepEqual(
+    config.columns.map((column) => column.name),
+    [
+      "workspace_id",
+      "state",
+      "generation",
+      "deletion_request_id",
+      "blocked_at",
+      "erased_at",
+      "created_at",
+      "updated_at",
+    ],
+  );
+  assert.equal(config.primaryKeys[0]?.name, "workspace_privacy_controls_pk");
+  assert.ok(config.checks.some((constraint) => constraint.name === "workspace_privacy_controls_state_ck"));
+  assert.ok(config.checks.some((constraint) => constraint.name === "workspace_privacy_controls_transition_ck"));
+
+  const snapshot = JSON.parse(
+    readFileSync(
+      path.join(process.cwd(), "src", "db", "migrations", "meta", "0000_snapshot.json"),
+      "utf8",
+    ),
+  ) as { tables: Record<string, { columns: Record<string, unknown> }> };
+  assert.deepEqual(
+    Object.keys(snapshot.tables["public.workspace_privacy_controls"]!.columns),
+    ["workspace_id", "state", "generation", "deletion_request_id", "blocked_at", "erased_at", "created_at", "updated_at"],
+  );
+});
+
+test("erased/missing workspace write fence는 전체 durable mutation 표면을 canonical migration에서 차단한다", () => {
+  const migration = readFileSync(
+    path.join(process.cwd(), "src", "db", "migrations", "0000_core.sql"),
+    "utf8",
+  );
+  assert.match(migration, /workspace is unavailable by privacy control[^]+ERRCODE = '55000'/u);
+  assert.match(migration, /BEFORE INSERT OR UPDATE ON %I/u);
+  for (const table of [
+    "workspaces",
+    "invites",
+    "memberships",
+    "legal_acceptances",
+    "sessions",
+    "audit_events",
+    "jobs",
+    "outbox",
+    "sites",
+    "tracked_queries",
+    "gsc_connections",
+    "gsc_property_bindings",
+    "oauth_states",
+    "provider_calls",
+    "usage_reservations",
+    "rank_observations",
+    "aio_observations",
+    "aio_citations",
+    "naver_observations",
+    "naver_observation_sources",
+    "gsc_observations",
+    "weekly_reports",
+    "report_sections",
+    "report_assets",
+    "deliveries",
+    "billing_customers",
+    "payment_methods",
+    "subscriptions",
+    "payments",
+    "provider_events",
+    "billing_ledger_events",
+  ]) {
+    assert.match(migration, new RegExp(`'${table}'`, "u"), `${table} privacy fence missing`);
+  }
 });
 
 test("모든 tenant domain table은 non-null workspace_id를 가진다", () => {

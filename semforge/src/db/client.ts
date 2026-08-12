@@ -18,7 +18,8 @@ export type DatabaseRole =
   | "worker"
   | "billing"
   | "billingTenant"
-  | "privacy";
+  | "privacy"
+  | "retention";
 export type SemforgeDatabase = NodePgDatabase<typeof schema>;
 
 const globalPools = globalThis as unknown as {
@@ -43,6 +44,7 @@ export function resolveDatabaseUrl(role: DatabaseRole, env: ServerEnv): string {
     billing: "BILLING_DATABASE_URL",
     billingTenant: "BILLING_TENANT_DATABASE_URL",
     privacy: "PRIVACY_DATABASE_URL",
+    retention: "PRIVACY_RETENTION_DATABASE_URL",
   } as const satisfies Record<DatabaseRole, keyof ServerEnv>;
   const envKey = key[role];
   const value = env[envKey];

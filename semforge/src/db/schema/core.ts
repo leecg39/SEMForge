@@ -340,6 +340,51 @@ export const privacyRequests = pgTable(
   ],
 );
 
+// @TASK P1-FINAL-PRIVACY - Durable workspace privacy fence state
+// @SPEC final_privacy_fence#workspace-privacy-controls
+export const workspacePrivacyControls = pgTable(
+  "workspace_privacy_controls",
+  {
+    workspaceId: uuid("workspace_id").notNull(),
+    state: text("state").notNull().default("active"),
+    generation: bigint("generation", { mode: "number" }).notNull().default(0),
+    deletionRequestId: uuid("deletion_request_id"),
+    blockedAt: timestamp("blocked_at", { withTimezone: true }),
+    erasedAt: timestamp("erased_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.workspaceId],
+      name: "workspace_privacy_controls_pk",
+    }),
+    foreignKey({
+      columns: [table.workspaceId],
+      foreignColumns: [workspaces.id],
+      name: "workspace_privacy_controls_workspace_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.workspaceId, table.deletionRequestId],
+      foreignColumns: [privacyRequests.workspaceId, privacyRequests.id],
+      name: "workspace_privacy_controls_deletion_request_fk",
+    }).onDelete("restrict"),
+    check(
+      "workspace_privacy_controls_state_ck",
+      sql`${table.state} in ('active', 'blocking', 'erased')`,
+    ),
+    check("workspace_privacy_controls_generation_ck", sql`${table.generation} >= 0`),
+    check(
+      "workspace_privacy_controls_transition_ck",
+      sql`(
+        (${table.state} = 'active' and ${table.deletionRequestId} is null and ${table.blockedAt} is null and ${table.erasedAt} is null)
+        or (${table.state} = 'blocking' and ${table.deletionRequestId} is not null and ${table.blockedAt} is not null and ${table.erasedAt} is null)
+        or (${table.state} = 'erased' and ${table.deletionRequestId} is not null and ${table.blockedAt} is not null and ${table.erasedAt} is not null and ${table.erasedAt} >= ${table.blockedAt})
+      )`,
+    ),
+  ],
+);
+
 export const privacyRequestSteps = pgTable(
   "privacy_request_steps",
   {
@@ -1129,6 +1174,7 @@ export const tenantTables = [
   auditEvents,
   legalAcceptances,
   privacyRequests,
+  workspacePrivacyControls,
   privacyRequestSteps,
   privacyBillingTombstones,
   backupDeletionMarkers,

@@ -103,13 +103,16 @@ test("web role은 transaction-local workspace 밖의 row를 볼 수 없다", asy
 
 test("모든 runtime, privacy, tenant billing과 secret scrubber role은 BYPASSRLS가 아니다", async () => {
   const roles = await pg.query<{ rolname: string; rolbypassrls: boolean }>(
-    "select rolname, rolbypassrls from pg_roles where rolname in ('semforge_billing', 'semforge_billing_tenant', 'semforge_dispatcher', 'semforge_privacy', 'semforge_scheduler', 'semforge_secret_scrubber', 'semforge_web', 'semforge_worker') order by rolname",
+    "select rolname, rolbypassrls from pg_roles where rolname in ('semforge_billing', 'semforge_billing_tenant', 'semforge_dispatcher', 'semforge_privacy', 'semforge_privacy_owner', 'semforge_retention', 'semforge_retention_owner', 'semforge_scheduler', 'semforge_secret_scrubber', 'semforge_web', 'semforge_worker') order by rolname",
   );
   assert.deepEqual(roles.rows, [
     { rolname: "semforge_billing", rolbypassrls: false },
     { rolname: "semforge_billing_tenant", rolbypassrls: false },
     { rolname: "semforge_dispatcher", rolbypassrls: false },
     { rolname: "semforge_privacy", rolbypassrls: false },
+    { rolname: "semforge_privacy_owner", rolbypassrls: false },
+    { rolname: "semforge_retention", rolbypassrls: false },
+    { rolname: "semforge_retention_owner", rolbypassrls: false },
     { rolname: "semforge_scheduler", rolbypassrls: false },
     { rolname: "semforge_secret_scrubber", rolbypassrls: false },
     { rolname: "semforge_web", rolbypassrls: false },
@@ -144,6 +147,7 @@ test("tenant billing role은 app.workspace_id 밖 결제 row를 보거나 변경
     "payments:SELECT",
     "provider_events:SELECT",
     "subscriptions:SELECT",
+    "workspace_privacy_controls:SELECT",
   ];
   assert.deepEqual(
     grants.rows
@@ -269,6 +273,7 @@ test("tenant billing role은 app.workspace_id 밖 결제 row를 보거나 변경
       "payments",
       "provider_events",
       "subscriptions",
+      "workspace_privacy_controls",
     ],
   );
   assert.deepEqual(
@@ -280,6 +285,7 @@ test("tenant billing role은 app.workspace_id 밖 결제 row를 보거나 변경
       "payment_methods",
       "payments",
       "subscriptions",
+      "workspace_privacy_controls",
     ],
   );
 
@@ -403,6 +409,11 @@ test("privacy erasure만 immutable report 삭제를 수행하고 billing ledger�
   await pg.query("begin");
   try {
     await pg.query("set local role semforge_privacy");
+    await pg.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
+    await pg.query("select privacy_block_workspace($1::uuid, $2::uuid, 'operator@example.com', now())", [
+      workspaceId,
+      privacyRequestId,
+    ]);
     await pg.query("select privacy_erase_workspace($1::uuid, $2::uuid, 'operator@example.com')", [
       workspaceId,
       privacyRequestId,

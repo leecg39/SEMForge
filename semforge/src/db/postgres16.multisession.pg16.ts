@@ -786,6 +786,7 @@ test("PostgreSQL 16 privacy erasure procedure는 workspace의 실행 중 deletio
     try {
       await client.query("begin");
       await client.query("set local role semforge_privacy");
+      await client.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
       await assert.rejects(
         client.query("select privacy_erase_workspace($1::uuid, $2::uuid, $3::text)", [
           workspaceId,
@@ -880,7 +881,10 @@ test("PostgreSQL 16 workspace 파기는 공유 계정을 보존하고 전용 계
     `insert into privacy_requests
        (id, workspace_id, request_id, type, status, operator_id, metadata, requested_at)
      values ($1, $2, 'workspace-delete', 'deletion', 'running', 'privacy-operator',
-       '{"storageKeys":["reports/a.pdf","reports/b.pdf"]}'::jsonb, now())`,
+       jsonb_build_object(
+         'storagePrefix', 'reports/' || $2::uuid::text || '/',
+         'storageKeyHashes', jsonb_build_array(repeat('a', 64), repeat('b', 64))
+       ), now())`,
     [requestId, workspaceA],
   );
 
@@ -888,6 +892,11 @@ test("PostgreSQL 16 workspace 파기는 공유 계정을 보존하고 전용 계
   try {
     await privacy.query("begin");
     await privacy.query("set local role semforge_privacy");
+    await privacy.query("select set_config('app.workspace_id', $1, true)", [workspaceA]);
+    await privacy.query(
+      "select privacy_block_workspace($1::uuid, $2::uuid, 'privacy-operator', now())",
+      [workspaceA, requestId],
+    );
     await privacy.query("select privacy_erase_workspace($1::uuid, $2::uuid, 'privacy-operator')", [
       workspaceA,
       requestId,
@@ -953,10 +962,12 @@ test("PostgreSQL 16 workspace 파기는 공유 계정을 보존하고 전용 계
     slug: string;
     logo_url: string | null;
     accent_color: string;
-    storage_keys: unknown;
+    storage_prefix: string;
+    storage_key_hashes: unknown;
   }>(
     `select workspace.name, workspace.slug, workspace.logo_url, workspace.accent_color,
-            marker.metadata->'storageKeys' as storage_keys
+            marker.metadata->>'storagePrefix' as storage_prefix,
+            marker.metadata->'storageKeyHashes' as storage_key_hashes
        from workspaces workspace
        join backup_deletion_markers marker on marker.workspace_id = workspace.id
       where workspace.id = $1 and marker.request_id = $2`,
@@ -966,7 +977,8 @@ test("PostgreSQL 16 workspace 파기는 공유 계정을 보존하고 전용 계
   assert.match(tombstoned.rows[0]!.slug, /^erased-[0-9a-f]{32}$/u);
   assert.equal(tombstoned.rows[0]!.logo_url, null);
   assert.equal(tombstoned.rows[0]!.accent_color, "#667085");
-  assert.deepEqual(tombstoned.rows[0]!.storage_keys, ["reports/a.pdf", "reports/b.pdf"]);
+  assert.equal(tombstoned.rows[0]!.storage_prefix, `reports/${workspaceA}/`);
+  assert.deepEqual(tombstoned.rows[0]!.storage_key_hashes, ["a".repeat(64), "b".repeat(64)]);
 
   const audit = await pool.query<{ actor_user_id: string | null; entity_id: string; metadata: unknown }>(
     "select actor_user_id::text, entity_id, metadata from audit_events where workspace_id = $1",
@@ -995,32 +1007,36 @@ test("PostgreSQL 16 email suppression은 privacy request에 귀속되고 worker�
             ($2, $4, 'suppression-b', 'deletion', 'running', 'privacy-operator', now())`,
     [requestA, requestB, workspaceA, workspaceB],
   );
+  await pool.query(
+    "insert into email_suppressions (workspace_id, recipient_hash, request_id) values ($1, $2, $3)",
+    [workspaceB, hashB, requestB],
+  );
 
   const privacy = await pool.connect();
   try {
     await privacy.query("begin");
     await privacy.query("set local role semforge_privacy");
+    await privacy.query("select set_config('app.workspace_id', $1, true)", [workspaceA]);
     await privacy.query(
-      `insert into email_suppressions (workspace_id, recipient_hash, request_id)
-       values ($1, $2, $3), ($4, $5, $6)`,
-      [workspaceA, hashA, requestA, workspaceB, hashB, requestB],
+      "select privacy_add_email_suppression($1::uuid, $2::uuid, $3::text)",
+      [workspaceA, requestA, hashA],
     );
     await privacy.query("savepoint invalid_hash");
     await assert.rejects(
       privacy.query(
-        "insert into email_suppressions (workspace_id, recipient_hash, request_id) values ($1, 'ABC', $2)",
+        "select privacy_add_email_suppression($1::uuid, $2::uuid, 'ABC')",
         [workspaceA, requestA],
       ),
-      /email_suppressions_hash_ck/i,
+      /suppression input is invalid/i,
     );
     await privacy.query("rollback to savepoint invalid_hash");
     await privacy.query("savepoint cross_workspace_request");
     await assert.rejects(
       privacy.query(
-        "insert into email_suppressions (workspace_id, recipient_hash, request_id) values ($1, $2, $3)",
-        [workspaceA, "c".repeat(64), requestB],
+        "select privacy_add_email_suppression($1::uuid, $2::uuid, $3::text)",
+        [workspaceA, requestB, "c".repeat(64)],
       ),
-      /email_suppressions_request_fk/i,
+      /matching running deletion request/i,
     );
     await privacy.query("rollback to savepoint cross_workspace_request");
     await privacy.query("commit");
@@ -1040,9 +1056,6 @@ test("PostgreSQL 16 email suppression은 privacy request에 귀속되고 worker�
       order by grantee, privilege_type`,
   );
   assert.deepEqual(grants.rows, [
-    { grantee: "semforge_privacy", privilege_type: "DELETE" },
-    { grantee: "semforge_privacy", privilege_type: "INSERT" },
-    { grantee: "semforge_privacy", privilege_type: "SELECT" },
     { grantee: "semforge_worker", privilege_type: "SELECT" },
   ]);
 
@@ -1076,6 +1089,11 @@ test("PostgreSQL 16 email suppression은 privacy request에 귀속되고 worker�
   try {
     await privacyErase.query("begin");
     await privacyErase.query("set local role semforge_privacy");
+    await privacyErase.query("select set_config('app.workspace_id', $1, true)", [workspaceA]);
+    await privacyErase.query(
+      "select privacy_block_workspace($1::uuid, $2::uuid, 'privacy-operator', now())",
+      [workspaceA, requestA],
+    );
     await privacyErase.query(
       "select privacy_erase_workspace($1::uuid, $2::uuid, 'privacy-operator')",
       [workspaceA, requestA],
@@ -1098,23 +1116,239 @@ test("PostgreSQL 16 email suppression은 privacy request에 귀속되고 worker�
   );
 });
 
-test("PostgreSQL 16 privacy 운영 역할은 DSAR·retention 최소 테이블만 실제 접근한다", async () => {
+test("PostgreSQL 16 privacy 운영 역할은 raw table 대신 승인 request 함수만 실행한다", async () => {
   const client = await pool.connect();
   try {
     await client.query("begin");
     await client.query("set local role semforge_privacy");
-    await client.query("select id from workspaces limit 1");
-    await client.query("select workspace_id from memberships limit 1");
-    await client.query("select workspace_id from legal_acceptances limit 1");
-    await client.query("select id from invites limit 1");
-    await client.query("delete from invites where false");
-    await client.query("update workspaces set name = name, updated_at = updated_at where false");
-    await assert.rejects(
-      client.query("update workspaces set slug = slug where false"),
-      /permission denied/i,
+    await client.query("select set_config('app.workspace_id', $1, true)", [
+      "f6300000-0000-4000-8000-000000000002",
+    ]);
+    await client.query(
+      "select privacy_workspace_lock_key('f6300000-0000-4000-8000-000000000002'::uuid)",
     );
+    for (const sql of [
+      "select id from privacy_requests limit 1",
+      "select id from privacy_request_steps limit 1",
+      "select state from workspace_privacy_controls limit 1",
+      "select id from workspaces limit 1",
+      "select workspace_id from memberships limit 1",
+      "select workspace_id from legal_acceptances limit 1",
+      "select id from invites limit 1",
+      "delete from invites where false",
+      "update workspaces set name = name where false",
+    ]) {
+      await client.query("savepoint privacy_direct_denied");
+      await assert.rejects(client.query(sql), /permission denied/i);
+      await client.query("rollback to savepoint privacy_direct_denied");
+    }
   } finally {
     await rollback(client);
     client.release();
+  }
+});
+
+// @TASK P1-FINAL-PRIVACY - Issuer, executor, retention, and fence privilege contract
+// @SPEC final_privacy_roles#postgresql-16-negative-contract
+test("PostgreSQL 16 privacy issuer/executor와 retention은 요청 위조 및 직접 domain DML을 거부한다", async () => {
+  const workspaceA = "f6900000-0000-4000-8000-000000000001";
+  const workspaceB = "f6900000-0000-4000-8000-000000000002";
+  await pool.query(
+    "insert into workspaces (id, name, slug) values ($1, 'Privacy roles A', 'privacy-roles-a'), ($2, 'Privacy roles B', 'privacy-roles-b')",
+    [workspaceA, workspaceB],
+  );
+  const ownerRoles = await pool.query<{
+    rolname: string;
+    rolcanlogin: boolean;
+    runtime_member: boolean;
+  }>(
+    `select owner.rolname, owner.rolcanlogin,
+            has_role(runtime.oid, owner.oid, 'MEMBER') as runtime_member
+       from pg_roles owner
+       join pg_roles runtime on runtime.rolname = case owner.rolname
+         when 'semforge_privacy_owner' then 'semforge_privacy'
+         else 'semforge_retention'
+       end
+      where owner.rolname in ('semforge_privacy_owner', 'semforge_retention_owner')
+      order by owner.rolname`,
+  );
+  assert.deepEqual(ownerRoles.rows, [
+    { rolname: "semforge_privacy_owner", rolcanlogin: false, runtime_member: false },
+    { rolname: "semforge_retention_owner", rolcanlogin: false, runtime_member: false },
+  ]);
+
+  const operator = await pool.connect();
+  let requestId = "";
+  try {
+    await operator.query("begin");
+    await operator.query("set local role semforge_operator");
+    const opened = await operator.query<{ id: string; status: string }>(
+      "select id::text, status from privacy_open_request($1::uuid, 'approved-delete', 'deletion', 'operator-a', now())",
+      [workspaceA],
+    );
+    requestId = opened.rows[0]!.id;
+    assert.equal(opened.rows[0]!.status, "queued");
+    await operator.query("savepoint direct_request");
+    await assert.rejects(
+      operator.query(
+        "insert into privacy_requests (workspace_id, request_id, type, status, operator_id, requested_at) values ($1, 'forged', 'deletion', 'running', 'operator-a', now())",
+        [workspaceA],
+      ),
+      /permission denied/i,
+    );
+    await operator.query("rollback to savepoint direct_request");
+    await operator.query("savepoint duplicate_mismatch");
+    await assert.rejects(
+      operator.query(
+        "select * from privacy_open_request($1::uuid, 'approved-delete', 'export', 'operator-a', now())",
+        [workspaceA],
+      ),
+      /duplicate identity mismatch/i,
+    );
+    await operator.query("rollback to savepoint duplicate_mismatch");
+    await operator.query("commit");
+  } catch (error) {
+    await rollback(operator);
+    throw error;
+  } finally {
+    operator.release();
+  }
+
+  const privacy = await pool.connect();
+  try {
+    await privacy.query("begin");
+    await privacy.query("set local role semforge_privacy");
+    await privacy.query("select set_config('app.workspace_id', $1, true)", [workspaceA]);
+    assert.deepEqual(
+      (await privacy.query<{ id: string; status: string }>(
+        "select id::text, status from privacy_claim_request($1::uuid, 'approved-delete', 'deletion', 'operator-a', now())",
+        [workspaceA],
+      )).rows,
+      [{ id: requestId, status: "running" }],
+    );
+    for (const sql of [
+      `insert into privacy_requests (workspace_id, request_id, type, status, operator_id, requested_at)
+       values ('${workspaceA}', 'forged', 'deletion', 'running', 'operator-a', now())`,
+      "update privacy_requests set operator_id = 'attacker' where id = '" + requestId + "'::uuid",
+      "delete from privacy_requests where id = '" + requestId + "'::uuid",
+      "delete from jobs where false",
+      "update billing_ledger_events set entity_id = entity_id where false",
+      "delete from rank_observations where false",
+    ]) {
+      await privacy.query("savepoint denied_direct_dml");
+      await assert.rejects(privacy.query(sql), /permission denied/i);
+      await privacy.query("rollback to savepoint denied_direct_dml");
+    }
+    await privacy.query("savepoint cross_tenant_block");
+    await assert.rejects(
+      privacy.query("select privacy_block_workspace($1::uuid, $2::uuid, 'operator-a', now())", [
+        workspaceB,
+        requestId,
+      ]),
+      /does not match tenant context|matching running deletion/i,
+    );
+    await privacy.query("rollback to savepoint cross_tenant_block");
+  } finally {
+    await rollback(privacy);
+    privacy.release();
+  }
+
+  const retention = await pool.connect();
+  try {
+    await retention.query("begin");
+    await retention.query("set local role semforge_retention");
+    for (const sql of [
+      "select id from jobs limit 1",
+      "delete from jobs where false",
+      "update deliveries set recipient = recipient where false",
+      "select id from privacy_requests limit 1",
+      "select id from billing_ledger_events limit 1",
+    ]) {
+      await retention.query("savepoint denied_retention_dml");
+      await assert.rejects(retention.query(sql), /permission denied/i);
+      await retention.query("rollback to savepoint denied_retention_dml");
+    }
+    await assert.rejects(
+      retention.query("select privacy_retention_apply('billing_ledger_events', now())"),
+      /target is not allowed/i,
+    );
+  } finally {
+    await rollback(retention);
+    retention.release();
+  }
+});
+
+test("PostgreSQL 16 workspace privacy control은 active 자동 생성 후 단방향 fence와 신규 write 차단을 강제한다", async () => {
+  const workspaceId = "f6910000-0000-4000-8000-000000000001";
+  await pool.query("insert into workspaces (id, name, slug) values ($1, 'Fence controls', 'fence-controls')", [
+    workspaceId,
+  ]);
+  assert.deepEqual(
+    (await pool.query("select state, generation::int from workspace_privacy_controls where workspace_id = $1", [workspaceId])).rows,
+    [{ state: "active", generation: 0 }],
+  );
+  const opened = await pool.query<{ id: string }>(
+    "select id::text from privacy_open_request($1::uuid, 'fence-delete', 'deletion', 'operator-fence', now())",
+    [workspaceId],
+  );
+  const requestId = opened.rows[0]!.id;
+  const privacy = await pool.connect();
+  try {
+    await privacy.query("begin");
+    await privacy.query("set local role semforge_privacy");
+    await privacy.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
+    await privacy.query(
+      "select * from privacy_claim_request($1::uuid, 'fence-delete', 'deletion', 'operator-fence', now())",
+      [workspaceId],
+    );
+    assert.deepEqual(
+      (await privacy.query("select privacy_block_workspace($1::uuid, $2::uuid, 'operator-fence', now()) as state", [workspaceId, requestId])).rows,
+      [{ state: "blocking" }],
+    );
+    await privacy.query("commit");
+  } catch (error) {
+    await rollback(privacy);
+    throw error;
+  } finally {
+    privacy.release();
+  }
+  await pool.query(
+    "insert into jobs (workspace_id, type, payload, idempotency_key) values ($1, 'collect.google', '{}'::jsonb, 'blocking-finalization')",
+    [workspaceId],
+  );
+  const erase = await pool.connect();
+  try {
+    await erase.query("begin");
+    await erase.query("set local role semforge_privacy");
+    await erase.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
+    await erase.query("select privacy_erase_workspace($1::uuid, $2::uuid, 'operator-fence')", [workspaceId, requestId]);
+    await erase.query(
+      "select privacy_record_request_step($1::uuid,$2::uuid,'operator-fence','local.erasure','succeeded',null,'{}'::jsonb,now())",
+      [workspaceId, requestId],
+    );
+    await erase.query("select privacy_mark_workspace_erased($1::uuid,$2::uuid,'operator-fence',now())", [workspaceId, requestId]);
+    await erase.query("commit");
+  } catch (error) {
+    await rollback(erase);
+    throw error;
+  } finally {
+    erase.release();
+  }
+  await assert.rejects(
+    pool.query("insert into jobs (workspace_id, type, payload, idempotency_key) values ($1, 'collect.google', '{}'::jsonb, 'blocked-write')", [workspaceId]),
+    /unavailable by privacy control/i,
+  );
+  const web = await pool.connect();
+  try {
+    await web.query("begin");
+    await web.query("set local role semforge_web");
+    await web.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
+    await assert.rejects(
+      web.query("delete from workspace_privacy_controls where workspace_id = $1", [workspaceId]),
+      /permission denied/i,
+    );
+  } finally {
+    await rollback(web);
+    web.release();
   }
 });

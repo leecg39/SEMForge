@@ -31,6 +31,7 @@ const rawServerEnvSchema = z.object({
       "relay",
       "scheduler",
       "privacy",
+      "retention",
       "migrate",
       "operator",
       "build",
@@ -47,6 +48,7 @@ const rawServerEnvSchema = z.object({
   BILLING_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   BILLING_TENANT_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   PRIVACY_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
+  PRIVACY_RETENTION_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   PRIVACY_RETENTION_POLICY: z.string().trim().min(1).max(16 * 1024).optional(),
   MIGRATION_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   LEGAL_RELEASE_MANIFEST: z.string().trim().min(1).max(64 * 1024).optional(),
@@ -140,6 +142,7 @@ const productionRequiredByService = {
     "BILLING_DATABASE_URL",
     "BILLING_TENANT_DATABASE_URL",
     "PRIVACY_DATABASE_URL",
+    "PRIVACY_RETENTION_DATABASE_URL",
     "PRIVACY_RETENTION_POLICY",
     "MIGRATION_DATABASE_URL",
     "LEGAL_RELEASE_MANIFEST",
@@ -214,9 +217,17 @@ const productionRequiredByService = {
   scheduler: ["SCHEDULER_DATABASE_URL"],
   privacy: [
     "PRIVACY_DATABASE_URL",
-    "PRIVACY_RETENTION_POLICY",
     "APP_SECRET",
     "APP_SECRET_CURRENT_KEY_ID",
+    "S3_ENDPOINT",
+    "S3_REGION",
+    "S3_BUCKET",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+  ],
+  retention: [
+    "PRIVACY_RETENTION_DATABASE_URL",
+    "PRIVACY_RETENTION_POLICY",
     "S3_ENDPOINT",
     "S3_REGION",
     "S3_BUCKET",
@@ -241,6 +252,7 @@ const databaseUrlKeys = [
   "BILLING_DATABASE_URL",
   "BILLING_TENANT_DATABASE_URL",
   "PRIVACY_DATABASE_URL",
+  "PRIVACY_RETENTION_DATABASE_URL",
   "MIGRATION_DATABASE_URL",
 ] as const satisfies readonly (keyof z.infer<typeof rawServerEnvSchema>)[];
 
@@ -284,6 +296,12 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
       parsed.data.SEMFORGE_SERVICE !== "operator"
     ) {
       issues.push("OPERATOR_DATABASE_URL is only allowed for the operator service");
+    }
+    if (
+      parsed.data.MIGRATION_DATABASE_URL &&
+      parsed.data.SEMFORGE_SERVICE === "retention"
+    ) {
+      issues.push("MIGRATION_DATABASE_URL is not allowed for the retention service");
     }
   }
   if (

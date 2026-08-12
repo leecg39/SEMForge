@@ -1,5 +1,5 @@
 {
-  "id": "824bd331-926f-4ff1-a197-d0e777d83875",
+  "id": "ce86dd2f-91aa-453a-8333-c43799aadca3",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -4910,6 +4910,120 @@
         "weekly_reports_snapshot_state_ck": {
           "name": "weekly_reports_snapshot_state_ck",
           "value": "\"weekly_reports\".\"status\" in ('collecting', 'failed') or (\"weekly_reports\".\"snapshot\" is not null and \"weekly_reports\".\"snapshot_ready_at\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.workspace_privacy_controls": {
+      "name": "workspace_privacy_controls",
+      "schema": "",
+      "columns": {
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "generation": {
+          "name": "generation",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "deletion_request_id": {
+          "name": "deletion_request_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "blocked_at": {
+          "name": "blocked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "erased_at": {
+          "name": "erased_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "workspace_privacy_controls_workspace_fk": {
+          "name": "workspace_privacy_controls_workspace_fk",
+          "tableFrom": "workspace_privacy_controls",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "workspace_privacy_controls_deletion_request_fk": {
+          "name": "workspace_privacy_controls_deletion_request_fk",
+          "tableFrom": "workspace_privacy_controls",
+          "tableTo": "privacy_requests",
+          "columnsFrom": [
+            "workspace_id",
+            "deletion_request_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "workspace_privacy_controls_pk": {
+          "name": "workspace_privacy_controls_pk",
+          "columns": [
+            "workspace_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "workspace_privacy_controls_state_ck": {
+          "name": "workspace_privacy_controls_state_ck",
+          "value": "\"workspace_privacy_controls\".\"state\" in ('active', 'blocking', 'erased')"
+        },
+        "workspace_privacy_controls_generation_ck": {
+          "name": "workspace_privacy_controls_generation_ck",
+          "value": "\"workspace_privacy_controls\".\"generation\" >= 0"
+        },
+        "workspace_privacy_controls_transition_ck": {
+          "name": "workspace_privacy_controls_transition_ck",
+          "value": "(\n        (\"workspace_privacy_controls\".\"state\" = 'active' and \"workspace_privacy_controls\".\"deletion_request_id\" is null and \"workspace_privacy_controls\".\"blocked_at\" is null and \"workspace_privacy_controls\".\"erased_at\" is null)\n        or (\"workspace_privacy_controls\".\"state\" = 'blocking' and \"workspace_privacy_controls\".\"deletion_request_id\" is not null and \"workspace_privacy_controls\".\"blocked_at\" is not null and \"workspace_privacy_controls\".\"erased_at\" is null)\n        or (\"workspace_privacy_controls\".\"state\" = 'erased' and \"workspace_privacy_controls\".\"deletion_request_id\" is not null and \"workspace_privacy_controls\".\"blocked_at\" is not null and \"workspace_privacy_controls\".\"erased_at\" is not null and \"workspace_privacy_controls\".\"erased_at\" >= \"workspace_privacy_controls\".\"blocked_at\")\n      )"
         }
       },
       "isRLSEnabled": false

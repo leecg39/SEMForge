@@ -84,6 +84,27 @@ CREATE TABLE "privacy_requests" (
 	CONSTRAINT "privacy_requests_status_ck" CHECK ("privacy_requests"."status" in ('queued', 'running', 'completed', 'failed'))
 );
 --> statement-breakpoint
+-- @TASK P1-FINAL-PRIVACY - Durable tenant privacy fence state
+-- @SPEC final_privacy_fence#workspace-privacy-controls
+CREATE TABLE "workspace_privacy_controls" (
+	"workspace_id" uuid NOT NULL,
+	"state" text DEFAULT 'active' NOT NULL,
+	"generation" bigint DEFAULT 0 NOT NULL,
+	"deletion_request_id" uuid,
+	"blocked_at" timestamp with time zone,
+	"erased_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "workspace_privacy_controls_pk" PRIMARY KEY("workspace_id"),
+	CONSTRAINT "workspace_privacy_controls_state_ck" CHECK ("workspace_privacy_controls"."state" in ('active', 'blocking', 'erased')),
+	CONSTRAINT "workspace_privacy_controls_generation_ck" CHECK ("workspace_privacy_controls"."generation" >= 0),
+	CONSTRAINT "workspace_privacy_controls_transition_ck" CHECK ((
+        ("workspace_privacy_controls"."state" = 'active' and "workspace_privacy_controls"."deletion_request_id" is null and "workspace_privacy_controls"."blocked_at" is null and "workspace_privacy_controls"."erased_at" is null)
+        or ("workspace_privacy_controls"."state" = 'blocking' and "workspace_privacy_controls"."deletion_request_id" is not null and "workspace_privacy_controls"."blocked_at" is not null and "workspace_privacy_controls"."erased_at" is null)
+        or ("workspace_privacy_controls"."state" = 'erased' and "workspace_privacy_controls"."deletion_request_id" is not null and "workspace_privacy_controls"."blocked_at" is not null and "workspace_privacy_controls"."erased_at" is not null and "workspace_privacy_controls"."erased_at" >= "workspace_privacy_controls"."blocked_at")
+      ))
+);
+--> statement-breakpoint
 CREATE TABLE "privacy_request_steps" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"workspace_id" uuid NOT NULL,
@@ -768,12 +789,30 @@ CREATE TABLE "workspaces" (
 	CONSTRAINT "workspaces_accent_color_ck" CHECK ("workspaces"."accent_color" ~ '^#[0-9A-Fa-f]{6}$')
 );
 --> statement-breakpoint
+CREATE FUNCTION initialize_workspace_privacy_control() RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  INSERT INTO workspace_privacy_controls (workspace_id) VALUES (NEW.id);
+  RETURN NEW;
+END;
+$$;--> statement-breakpoint
+CREATE TRIGGER workspaces_initialize_privacy_control
+AFTER INSERT ON workspaces
+FOR EACH ROW EXECUTE FUNCTION initialize_workspace_privacy_control();--> statement-breakpoint
+INSERT INTO workspace_privacy_controls (workspace_id)
+SELECT id FROM workspaces
+ON CONFLICT (workspace_id) DO NOTHING;--> statement-breakpoint
 ALTER TABLE "aio_citations" ADD CONSTRAINT "aio_citations_observation_fk" FOREIGN KEY ("workspace_id","observation_id") REFERENCES "public"."aio_observations"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "aio_observations" ADD CONSTRAINT "aio_observations_query_fk" FOREIGN KEY ("workspace_id","site_id","tracked_query_id","query_type") REFERENCES "public"."tracked_queries"("workspace_id","site_id","id","type") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "aio_observations" ADD CONSTRAINT "aio_observations_provider_call_fk" FOREIGN KEY ("workspace_id","provider_call_id") REFERENCES "public"."provider_calls"("workspace_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "audit_events" ADD CONSTRAINT "audit_events_actor_membership_fk" FOREIGN KEY ("workspace_id","actor_user_id") REFERENCES "public"."memberships"("workspace_id","user_id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "legal_acceptances" ADD CONSTRAINT "legal_acceptances_membership_fk" FOREIGN KEY ("workspace_id","user_id") REFERENCES "public"."memberships"("workspace_id","user_id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "privacy_requests" ADD CONSTRAINT "privacy_requests_workspace_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workspace_privacy_controls" ADD CONSTRAINT "workspace_privacy_controls_workspace_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workspace_privacy_controls" ADD CONSTRAINT "workspace_privacy_controls_deletion_request_fk" FOREIGN KEY ("workspace_id","deletion_request_id") REFERENCES "public"."privacy_requests"("workspace_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "privacy_request_steps" ADD CONSTRAINT "privacy_request_steps_request_fk" FOREIGN KEY ("workspace_id","request_id") REFERENCES "public"."privacy_requests"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "privacy_billing_tombstones" ADD CONSTRAINT "privacy_billing_tombstones_request_fk" FOREIGN KEY ("workspace_id","request_id") REFERENCES "public"."privacy_requests"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "backup_deletion_markers" ADD CONSTRAINT "backup_deletion_markers_request_fk" FOREIGN KEY ("workspace_id","request_id") REFERENCES "public"."privacy_requests"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -950,6 +989,591 @@ CREATE TRIGGER report_sections_protect_snapshot
 BEFORE INSERT OR UPDATE OR DELETE ON report_sections
 FOR EACH ROW EXECUTE FUNCTION protect_report_sections();--> statement-breakpoint
 
+-- @TASK P1-FINAL-PRIVACY - Operator approval is the only request creation boundary
+-- @SPEC final_privacy_roles#open-request
+CREATE FUNCTION privacy_open_request(
+  p_workspace_id uuid,
+  p_request_id text,
+  p_type text,
+  p_operator_id text,
+  p_requested_at timestamptz
+) RETURNS TABLE(id uuid, status text)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  existing privacy_requests%ROWTYPE;
+BEGIN
+  IF p_workspace_id IS NULL OR p_requested_at IS NULL
+     OR p_request_id IS NULL OR btrim(p_request_id) = '' OR length(p_request_id) > 200
+     OR p_operator_id IS NULL OR btrim(p_operator_id) = '' OR length(p_operator_id) > 200
+  THEN
+    RAISE EXCEPTION 'privacy request identifiers are invalid' USING ERRCODE = '22023';
+  END IF;
+  IF p_type NOT IN ('export', 'correction', 'deletion') THEN
+    RAISE EXCEPTION 'privacy request type is invalid' USING ERRCODE = '22023';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM workspaces WHERE workspaces.id = p_workspace_id) THEN
+    RAISE EXCEPTION 'privacy request workspace does not exist' USING ERRCODE = '23503';
+  END IF;
+
+  SELECT request.* INTO existing
+    FROM privacy_requests request
+   WHERE request.workspace_id = p_workspace_id
+     AND request.request_id = p_request_id
+   FOR UPDATE;
+  IF FOUND THEN
+    IF existing.type <> p_type OR existing.operator_id <> p_operator_id
+    THEN
+      RAISE EXCEPTION 'privacy request duplicate identity mismatch' USING ERRCODE = '42501';
+    END IF;
+    RETURN QUERY SELECT existing.id, existing.status;
+    RETURN;
+  END IF;
+
+  RETURN QUERY
+    INSERT INTO privacy_requests
+      (workspace_id, request_id, type, status, operator_id, requested_at)
+    VALUES
+      (p_workspace_id, p_request_id, p_type, 'queued', p_operator_id, p_requested_at)
+    RETURNING privacy_requests.id, privacy_requests.status;
+END;
+$$;--> statement-breakpoint
+
+CREATE FUNCTION privacy_claim_request(
+  p_workspace_id uuid,
+  p_request_id text,
+  p_type text,
+  p_operator_id text,
+  p_claimed_at timestamptz
+) RETURNS TABLE(id uuid, status text)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE claimed privacy_requests%ROWTYPE;
+BEGIN
+  IF p_workspace_id IS DISTINCT FROM nullif(current_setting('app.workspace_id', true), '')::uuid
+     OR p_request_id IS NULL OR btrim(p_request_id) = ''
+     OR p_operator_id IS NULL OR btrim(p_operator_id) = ''
+     OR p_claimed_at IS NULL
+     OR p_type NOT IN ('export', 'correction', 'deletion')
+  THEN
+    RAISE EXCEPTION 'privacy claim input is invalid' USING ERRCODE = '42501';
+  END IF;
+  SELECT request.* INTO claimed FROM privacy_requests request
+   WHERE request.workspace_id = p_workspace_id AND request.request_id = p_request_id
+     AND request.type = p_type AND request.operator_id = p_operator_id
+   FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'privacy claim requires exact approved request' USING ERRCODE = '42501';
+  END IF;
+  IF claimed.status IN ('queued', 'failed') THEN
+    UPDATE privacy_requests SET status = 'running', completed_at = NULL WHERE privacy_requests.id = claimed.id;
+    claimed.status := 'running';
+  ELSIF claimed.status NOT IN ('running', 'completed') THEN
+    RAISE EXCEPTION 'privacy request cannot be claimed' USING ERRCODE = '55000';
+  END IF;
+  RETURN QUERY SELECT claimed.id, claimed.status;
+END;
+$$;--> statement-breakpoint
+
+CREATE FUNCTION privacy_succeeded_request_steps(
+  p_workspace_id uuid,
+  p_request_id uuid,
+  p_operator_id text
+) RETURNS TABLE(step_key text)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+  IF p_workspace_id IS DISTINCT FROM nullif(current_setting('app.workspace_id', true), '')::uuid
+     OR NOT EXISTS (
+       SELECT 1 FROM privacy_requests request
+        WHERE request.workspace_id = p_workspace_id AND request.id = p_request_id
+          AND request.operator_id = p_operator_id AND request.status IN ('running', 'completed')
+     )
+  THEN
+    RAISE EXCEPTION 'privacy step listing requires exact approved request' USING ERRCODE = '42501';
+  END IF;
+  RETURN QUERY SELECT step.step_key FROM privacy_request_steps step
+   WHERE step.workspace_id = p_workspace_id AND step.request_id = p_request_id
+     AND step.status = 'succeeded' ORDER BY step.step_key;
+END;
+$$;--> statement-breakpoint
+
+CREATE FUNCTION privacy_export_workspace(
+  p_workspace_id uuid, p_request_id uuid, p_operator_id text
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE result jsonb;
+BEGIN
+  IF p_workspace_id IS DISTINCT FROM nullif(current_setting('app.workspace_id', true), '')::uuid
+     OR NOT EXISTS (
+       SELECT 1 FROM privacy_requests request
+        WHERE request.workspace_id = p_workspace_id AND request.id = p_request_id
+          AND request.operator_id = p_operator_id AND request.type = 'export' AND request.status IN ('running', 'completed')
+     )
+  THEN
+    RAISE EXCEPTION 'privacy export requires exact running request' USING ERRCODE = '42501';
+  END IF;
+  SELECT jsonb_build_object(
+    'workspace', to_jsonb(workspace),
+    'users', coalesce((SELECT jsonb_agg(to_jsonb(subject) ORDER BY subject.email) FROM (
+      SELECT users.id::text, users.email, users.display_name
+        FROM memberships JOIN users ON users.id = memberships.user_id
+       WHERE memberships.workspace_id = p_workspace_id
+    ) subject), '[]'::jsonb),
+    'legalAcceptances', coalesce((SELECT jsonb_agg(to_jsonb(legal)) FROM (
+      SELECT terms_version, terms_sha256, privacy_version, privacy_sha256, presented_at, accepted_at
+        FROM legal_acceptances WHERE workspace_id = p_workspace_id
+    ) legal), '[]'::jsonb),
+    'sites', coalesce((SELECT jsonb_agg(to_jsonb(site) ORDER BY site.domain) FROM (
+      SELECT id::text, name, domain FROM sites WHERE workspace_id = p_workspace_id
+    ) site), '[]'::jsonb),
+    'reports', coalesce((SELECT jsonb_agg(to_jsonb(report) ORDER BY report.period_end) FROM (
+      SELECT id::text, period_start, period_end, status FROM weekly_reports WHERE workspace_id = p_workspace_id
+    ) report), '[]'::jsonb)
+  ) INTO result
+  FROM (SELECT id::text, name, slug, logo_url FROM workspaces WHERE id = p_workspace_id) workspace;
+  IF result IS NULL THEN RAISE EXCEPTION 'privacy workspace not found' USING ERRCODE = 'P0002'; END IF;
+  RETURN result;
+END;
+$$;--> statement-breakpoint
+
+CREATE FUNCTION privacy_correct_workspace(
+  p_workspace_id uuid, p_request_id uuid, p_operator_id text,
+  p_display_name text, p_workspace_name text, p_changed_at timestamptz
+) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+  IF p_workspace_id IS DISTINCT FROM nullif(current_setting('app.workspace_id', true), '')::uuid
+     OR p_changed_at IS NULL OR (p_display_name IS NULL AND p_workspace_name IS NULL)
+     OR NOT EXISTS (
+       SELECT 1 FROM privacy_requests request
+        WHERE request.workspace_id = p_workspace_id AND request.id = p_request_id
+          AND request.operator_id = p_operator_id AND request.type = 'correction' AND request.status = 'running'
+     )
+  THEN
+    RAISE EXCEPTION 'privacy correction requires exact running request' USING ERRCODE = '42501';
+  END IF;
+  IF p_display_name IS NOT NULL THEN
+    UPDATE users SET display_name = p_display_name, updated_at = p_changed_at
+     WHERE id IN (SELECT user_id FROM memberships WHERE workspace_id = p_workspace_id);
+  END IF;
+  IF p_workspace_name IS NOT NULL THEN
+    UPDATE workspaces SET name = p_workspace_name, updated_at = p_changed_at WHERE id = p_workspace_id;
+  END IF;
+END;
+$$;--> statement-breakpoint
+
+CREATE FUNCTION privacy_deletion_targets(
+  p_workspace_id uuid, p_request_id uuid, p_operator_id text
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+  IF p_workspace_id IS DISTINCT FROM nullif(current_setting('app.workspace_id', true), '')::uuid
+     OR NOT EXISTS (
+       SELECT 1 FROM privacy_requests request
+        WHERE request.workspace_id = p_workspace_id AND request.id = p_request_id
+          AND request.operator_id = p_operator_id AND request.type = 'deletion' AND request.status = 'running'
+     )
+  THEN
+    RAISE EXCEPTION 'privacy deletion targets require exact running request' USING ERRCODE = '42501';
+  END IF;
+  RETURN jsonb_build_object(
+    'gscConnections', coalesce((SELECT jsonb_agg(jsonb_build_object(
+      'id', id::text, 'refreshTokenEncrypted', refresh_token_encrypted) ORDER BY id)
+      FROM gsc_connections WHERE workspace_id = p_workspace_id AND disconnected_at IS NULL), '[]'::jsonb),
+    'storageKeys', coalesce((SELECT jsonb_agg(storage_key ORDER BY storage_key)
+      FROM report_assets WHERE workspace_id = p_workspace_id), '[]'::jsonb),
+    'recipients', coalesce((SELECT jsonb_agg(recipient ORDER BY recipient) FROM (
+      SELECT DISTINCT deliveries.recipient FROM deliveries
+       WHERE deliveries.workspace_id = p_workspace_id AND deliveries.recipient !~ '^erased:'
+      UNION
+      SELECT users.email FROM memberships JOIN users ON users.id = memberships.user_id
+       WHERE memberships.workspace_id = p_workspace_id AND users.disabled_at IS NULL
+         AND users.email !~ '^erased\\+'
+    ) targets WHERE btrim(recipient) <> ''), '[]'::jsonb)
+  );
+END;
+$$;--> statement-breakpoint
+
+-- @TASK P1-FINAL-PRIVACY - Stable advisory lock namespace for one workspace erasure
+-- @SPEC final_privacy_fence#workspace-privacy-lock
+CREATE FUNCTION privacy_workspace_lock_key(p_workspace_id uuid)
+RETURNS bigint
+LANGUAGE sql
+IMMUTABLE
+STRICT
+PARALLEL SAFE
+AS $$
+  SELECT ('x' || substr(md5(p_workspace_id::text), 1, 16))::bit(64)::bigint
+$$;--> statement-breakpoint
+
+-- @TASK P1-FINAL-PRIVACY - Fixed-predicate retention executor
+-- @SPEC final_privacy_roles#retention-executor
+CREATE FUNCTION privacy_retention_count(p_target text, p_cutoff timestamptz)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE matched integer;
+BEGIN
+  IF p_cutoff IS NULL THEN
+    RAISE EXCEPTION 'retention cutoff is required' USING ERRCODE = '22023';
+  END IF;
+  CASE p_target
+    WHEN 'sessions' THEN SELECT count(*)::int INTO matched FROM sessions WHERE expires_at < p_cutoff OR revoked_at < p_cutoff;
+    WHEN 'invites' THEN SELECT count(*)::int INTO matched FROM invites WHERE coalesce(accepted_at, superseded_at, expires_at) < p_cutoff;
+    WHEN 'password_resets' THEN SELECT count(*)::int INTO matched FROM password_resets WHERE coalesce(used_at, expires_at) < p_cutoff;
+    WHEN 'oauth_states' THEN SELECT count(*)::int INTO matched FROM oauth_states WHERE coalesce(consumed_at, expires_at) < p_cutoff;
+    WHEN 'outbox' THEN SELECT count(*)::int INTO matched FROM outbox WHERE published_at IS NOT NULL AND published_at < p_cutoff;
+    WHEN 'jobs' THEN SELECT count(*)::int INTO matched FROM jobs WHERE status IN ('succeeded', 'dead') AND updated_at < p_cutoff;
+    WHEN 'provider_calls.raw_metadata' THEN SELECT count(*)::int INTO matched FROM provider_calls WHERE completed_at < p_cutoff AND response_metadata ? 'rawResponse';
+    WHEN 'deliveries.recipient' THEN SELECT count(*)::int INTO matched FROM deliveries WHERE created_at < p_cutoff AND recipient !~ '^erased:';
+    ELSE RAISE EXCEPTION 'retention target is not allowed' USING ERRCODE = '42501';
+  END CASE;
+  RETURN matched;
+END;
+$$;--> statement-breakpoint
+
+CREATE FUNCTION privacy_retention_apply(p_target text, p_cutoff timestamptz)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE changed integer;
+BEGIN
+  IF p_cutoff IS NULL THEN
+    RAISE EXCEPTION 'retention cutoff is required' USING ERRCODE = '22023';
+  END IF;
+  CASE p_target
+    WHEN 'sessions' THEN DELETE FROM sessions WHERE expires_at < p_cutoff OR revoked_at < p_cutoff;
+    WHEN 'invites' THEN DELETE FROM invites WHERE coalesce(accepted_at, superseded_at, expires_at) < p_cutoff;
+    WHEN 'password_resets' THEN DELETE FROM password_resets WHERE coalesce(used_at, expires_at) < p_cutoff;
+    WHEN 'oauth_states' THEN DELETE FROM oauth_states WHERE coalesce(consumed_at, expires_at) < p_cutoff;
+    WHEN 'outbox' THEN DELETE FROM outbox WHERE published_at IS NOT NULL AND published_at < p_cutoff;
+    WHEN 'jobs' THEN DELETE FROM jobs WHERE status IN ('succeeded', 'dead') AND updated_at < p_cutoff;
+    WHEN 'provider_calls.raw_metadata' THEN UPDATE provider_calls SET response_metadata = response_metadata - 'rawResponse' WHERE completed_at < p_cutoff AND response_metadata ? 'rawResponse';
+    WHEN 'deliveries.recipient' THEN UPDATE deliveries SET recipient = 'erased:' || encode(sha256(recipient::bytea), 'hex') WHERE created_at < p_cutoff AND recipient !~ '^erased:';
+    ELSE RAISE EXCEPTION 'retention target is not allowed' USING ERRCODE = '42501';
+  END CASE;
+  GET DIAGNOSTICS changed = ROW_COUNT;
+  RETURN changed;
+END;
+$$;--> statement-breakpoint
+
+CREATE FUNCTION privacy_retention_storage_workspaces()
+RETURNS TABLE(workspace_id uuid, storage_prefix text)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+      FROM backup_deletion_markers marker
+     WHERE marker.marker_key = 'backup-erasure-required'
+       AND (
+         marker.metadata->>'storagePrefix' <> 'reports/' || marker.workspace_id::text || '/'
+         OR jsonb_typeof(marker.metadata->'storageKeyHashes') <> 'array'
+         OR EXISTS (SELECT 1 FROM jsonb_array_elements(marker.metadata->'storageKeyHashes') value
+           WHERE value #>> '{}' !~ '^[0-9a-f]{64}$')
+       )
+  ) THEN
+    RAISE EXCEPTION 'privacy retention storage marker is invalid' USING ERRCODE = '22023';
+  END IF;
+  RETURN QUERY
+    SELECT DISTINCT marker.workspace_id, marker.metadata->>'storagePrefix'
+      FROM backup_deletion_markers marker
+     WHERE marker.marker_key = 'backup-erasure-required'
+     ORDER BY marker.workspace_id;
+END;
+$$;--> statement-breakpoint
+
+-- @TASK P1-FINAL-PRIVACY - Approved request-scoped workflow bookkeeping
+-- @SPEC final_privacy_roles#privacy-request-functions
+CREATE FUNCTION privacy_record_request_step(
+  p_workspace_id uuid,
+  p_request_id uuid,
+  p_operator_id text,
+  p_step_key text,
+  p_status text,
+  p_last_error text,
+  p_metadata jsonb,
+  p_completed_at timestamptz
+) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+  IF p_workspace_id IS DISTINCT FROM nullif(current_setting('app.workspace_id', true), '')::uuid
+     OR p_step_key IS NULL OR btrim(p_step_key) = '' OR length(p_step_key) > 300
+     OR p_status NOT IN ('succeeded', 'failed', 'skipped') OR p_completed_at IS NULL
+     OR p_metadata IS NULL OR jsonb_typeof(p_metadata) <> 'object'
+  THEN
+    RAISE EXCEPTION 'privacy request step input is invalid' USING ERRCODE = '42501';
+  END IF;
+  PERFORM 1 FROM privacy_requests
+   WHERE workspace_id = p_workspace_id AND id = p_request_id
+     AND operator_id = p_operator_id AND status IN ('running', 'failed')
+   FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'privacy request step requires matching approved request' USING ERRCODE = '42501';
+  END IF;
+  INSERT INTO privacy_request_steps
+    (workspace_id, request_id, step_key, status, last_error, metadata, completed_at)
+  VALUES
+    (p_workspace_id, p_request_id, p_step_key, p_status, p_last_error, p_metadata, p_completed_at)
+  ON CONFLICT (workspace_id, request_id, step_key) DO UPDATE
+    SET status = excluded.status,
+        attempts = privacy_request_steps.attempts + 1,
+        last_error = excluded.last_error,
+        metadata = excluded.metadata,
+        completed_at = excluded.completed_at;
+END;
+$$;--> statement-breakpoint
+
+CREATE FUNCTION privacy_finish_request(
+  p_workspace_id uuid,
+  p_request_id uuid,
+  p_operator_id text,
+  p_status text,
+  p_completed_at timestamptz
+) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+  IF p_workspace_id IS DISTINCT FROM nullif(current_setting('app.workspace_id', true), '')::uuid
+     OR p_status <> 'completed' OR p_completed_at IS NULL
+  THEN
+    RAISE EXCEPTION 'privacy request completion input is invalid' USING ERRCODE = '42501';
+  END IF;
+  UPDATE privacy_requests
+     SET status = p_status, completed_at = p_completed_at
+   WHERE workspace_id = p_workspace_id AND id = p_request_id
+     AND operator_id = p_operator_id
+     AND (status = 'running' OR (status = 'completed' AND completed_at IS NOT NULL));
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'privacy completion requires matching approved request' USING ERRCODE = '42501';
+  END IF;
+END;
+$$;--> statement-breakpoint
+
+CREATE FUNCTION privacy_fail_request(
+  p_workspace_id uuid,
+  p_request_id uuid,
+  p_operator_id text,
+  p_failed_at timestamptz
+) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+  IF p_workspace_id IS DISTINCT FROM nullif(current_setting('app.workspace_id', true), '')::uuid
+     OR p_failed_at IS NULL
+  THEN
+    RAISE EXCEPTION 'privacy request failure input is invalid' USING ERRCODE = '42501';
+  END IF;
+  UPDATE privacy_requests SET status = 'failed', completed_at = p_failed_at
+   WHERE workspace_id = p_workspace_id AND id = p_request_id
+     AND operator_id = p_operator_id AND status = 'running';
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'privacy failure requires exact running request' USING ERRCODE = '42501';
+  END IF;
+END;
+$$;--> statement-breakpoint
+
+CREATE FUNCTION privacy_set_request_storage_manifest(
+  p_workspace_id uuid,
+  p_request_id uuid,
+  p_operator_id text,
+  p_manifest jsonb
+) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+  IF p_workspace_id IS DISTINCT FROM nullif(current_setting('app.workspace_id', true), '')::uuid
+     OR p_manifest IS NULL OR jsonb_typeof(p_manifest) <> 'object'
+     OR NOT (p_manifest ?& ARRAY['storageKeyHashes', 'storagePrefix'])
+     OR p_manifest - 'storageKeyHashes' - 'storagePrefix' <> '{}'::jsonb
+     OR jsonb_typeof(p_manifest->'storageKeyHashes') <> 'array'
+     OR p_manifest->>'storagePrefix' <> 'reports/' || p_workspace_id::text || '/'
+     OR EXISTS (
+       SELECT 1 FROM jsonb_array_elements(p_manifest->'storageKeyHashes') value
+        WHERE jsonb_typeof(value) <> 'string' OR value #>> '{}' !~ '^[0-9a-f]{64}$'
+     )
+  THEN
+    RAISE EXCEPTION 'privacy storage manifest is invalid' USING ERRCODE = '42501';
+  END IF;
+  UPDATE privacy_requests
+     SET metadata = metadata || p_manifest
+   WHERE workspace_id = p_workspace_id AND id = p_request_id
+     AND operator_id = p_operator_id AND type = 'deletion' AND status = 'running';
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'privacy storage manifest requires matching running deletion request'
+      USING ERRCODE = '42501';
+  END IF;
+END;
+$$;--> statement-breakpoint
+
+CREATE FUNCTION privacy_add_email_suppression(
+  p_workspace_id uuid,
+  p_request_id uuid,
+  p_recipient_hash text
+) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+  IF p_workspace_id IS DISTINCT FROM nullif(current_setting('app.workspace_id', true), '')::uuid
+     OR p_recipient_hash !~ '^[0-9a-f]{64}$'
+  THEN
+    RAISE EXCEPTION 'privacy email suppression input is invalid' USING ERRCODE = '42501';
+  END IF;
+  PERFORM 1 FROM privacy_requests
+   WHERE workspace_id = p_workspace_id AND id = p_request_id
+     AND type = 'deletion' AND status = 'running'
+   FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'privacy email suppression requires matching running deletion request'
+      USING ERRCODE = '42501';
+  END IF;
+  INSERT INTO email_suppressions (workspace_id, recipient_hash, request_id)
+  VALUES (p_workspace_id, p_recipient_hash, p_request_id)
+  ON CONFLICT (workspace_id, recipient_hash) DO NOTHING;
+END;
+$$;--> statement-breakpoint
+
+-- @TASK P1-FINAL-PRIVACY - Validate one running deletion before blocking writes
+-- @SPEC final_privacy_fence#block-workspace
+CREATE FUNCTION privacy_block_workspace(
+  p_workspace_id uuid,
+  p_request_id uuid,
+  p_operator_id text,
+  p_blocked_at timestamptz
+) RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  changed_controls integer := 0;
+BEGIN
+  IF p_workspace_id IS NULL OR p_request_id IS NULL OR p_blocked_at IS NULL
+     OR p_operator_id IS NULL OR btrim(p_operator_id) = ''
+  THEN
+    RAISE EXCEPTION 'privacy block identifiers are required' USING ERRCODE = '22023';
+  END IF;
+  IF p_workspace_id IS DISTINCT FROM nullif(current_setting('app.workspace_id', true), '')::uuid THEN
+    RAISE EXCEPTION 'privacy block workspace does not match tenant context' USING ERRCODE = '42501';
+  END IF;
+
+  PERFORM 1
+    FROM privacy_requests
+   WHERE workspace_id = p_workspace_id
+     AND id = p_request_id
+     AND type = 'deletion'
+     AND status = 'running'
+     AND operator_id = p_operator_id
+   FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'privacy block requires a matching running deletion request'
+      USING ERRCODE = '42501';
+  END IF;
+
+  INSERT INTO workspace_privacy_controls
+    (workspace_id, state, deletion_request_id, blocked_at, erased_at)
+  VALUES
+    (p_workspace_id, 'blocking', p_request_id, p_blocked_at, NULL)
+  ON CONFLICT (workspace_id) DO UPDATE
+    SET state = 'blocking',
+        deletion_request_id = excluded.deletion_request_id,
+        blocked_at = CASE
+          WHEN workspace_privacy_controls.state = 'blocking'
+            THEN workspace_privacy_controls.blocked_at
+          ELSE excluded.blocked_at
+        END,
+        erased_at = NULL,
+        generation = workspace_privacy_controls.generation + 1,
+        updated_at = p_blocked_at
+    WHERE workspace_privacy_controls.state = 'active'
+       OR (
+         workspace_privacy_controls.state = 'blocking'
+         AND workspace_privacy_controls.deletion_request_id = excluded.deletion_request_id
+       );
+  GET DIAGNOSTICS changed_controls = ROW_COUNT;
+  IF changed_controls <> 1 THEN
+    RAISE EXCEPTION 'workspace privacy control cannot transition to blocking'
+      USING ERRCODE = '55000';
+  END IF;
+  RETURN 'blocking';
+END;
+$$;--> statement-breakpoint
+
+-- @TASK P1-FINAL-PRIVACY - Mark only the validated blocked deletion as erased
+-- @SPEC final_privacy_fence#mark-workspace-erased
+CREATE FUNCTION privacy_mark_workspace_erased(
+  p_workspace_id uuid,
+  p_request_id uuid,
+  p_operator_id text,
+  p_erased_at timestamptz
+) RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  current_blocked_at timestamptz;
+BEGIN
+  IF p_workspace_id IS NULL OR p_request_id IS NULL OR p_erased_at IS NULL
+     OR p_operator_id IS NULL OR btrim(p_operator_id) = ''
+  THEN
+    RAISE EXCEPTION 'privacy erased identifiers are required' USING ERRCODE = '22023';
+  END IF;
+  IF p_workspace_id IS DISTINCT FROM nullif(current_setting('app.workspace_id', true), '')::uuid THEN
+    RAISE EXCEPTION 'privacy erased workspace does not match tenant context' USING ERRCODE = '42501';
+  END IF;
+
+  PERFORM 1
+    FROM privacy_requests
+   WHERE workspace_id = p_workspace_id
+     AND id = p_request_id
+     AND type = 'deletion'
+     AND status = 'running'
+     AND operator_id = p_operator_id
+   FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'privacy erased transition requires a matching running deletion request'
+      USING ERRCODE = '42501';
+  END IF;
+
+  SELECT blocked_at
+    INTO current_blocked_at
+    FROM workspace_privacy_controls
+   WHERE workspace_id = p_workspace_id
+     AND deletion_request_id = p_request_id
+     AND state IN ('blocking', 'erased')
+   FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'workspace privacy control is not blocked by this deletion request'
+      USING ERRCODE = '55000';
+  END IF;
+  IF p_erased_at < current_blocked_at THEN
+    RAISE EXCEPTION 'privacy erased timestamp precedes blocked timestamp'
+      USING ERRCODE = '22023';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM privacy_request_steps
+     WHERE workspace_id = p_workspace_id AND request_id = p_request_id
+       AND step_key = 'local.erasure' AND status = 'succeeded'
+  ) THEN
+    RAISE EXCEPTION 'privacy erased transition requires completed local erasure'
+      USING ERRCODE = '55000';
+  END IF;
+
+  UPDATE workspace_privacy_controls
+     SET state = 'erased',
+         erased_at = coalesce(erased_at, p_erased_at),
+         generation = CASE WHEN state = 'blocking' THEN generation + 1 ELSE generation END,
+         updated_at = CASE WHEN state = 'blocking' THEN p_erased_at ELSE updated_at END
+   WHERE workspace_id = p_workspace_id
+     AND deletion_request_id = p_request_id;
+  RETURN 'erased';
+END;
+$$;--> statement-breakpoint
+
 -- @TASK P5-PRIVACY - Auditable privacy erasure procedure for immutable reports
 CREATE FUNCTION privacy_erase_workspace(p_workspace_id uuid, p_request_id uuid, p_operator_id text)
 RETURNS void
@@ -959,10 +1583,17 @@ SET search_path = public, pg_temp
 AS $$
 DECLARE
   customer_hash text;
-  storage_keys jsonb;
+  storage_manifest jsonb;
 BEGIN
-  SELECT coalesce(metadata -> 'storageKeys', '[]'::jsonb)
-    INTO storage_keys
+  IF p_workspace_id IS DISTINCT FROM nullif(current_setting('app.workspace_id', true), '')::uuid THEN
+    RAISE EXCEPTION 'privacy erasure workspace does not match tenant context'
+      USING ERRCODE = '42501';
+  END IF;
+  SELECT jsonb_build_object(
+           'storagePrefix', metadata->>'storagePrefix',
+           'storageKeyHashes', coalesce(metadata->'storageKeyHashes', '[]'::jsonb)
+         )
+    INTO storage_manifest
     FROM privacy_requests
    WHERE workspace_id = p_workspace_id
      AND id = p_request_id
@@ -974,9 +1605,21 @@ BEGIN
     RAISE EXCEPTION 'privacy erasure requires a matching running deletion request'
       USING ERRCODE = '42501';
   END IF;
-  IF jsonb_typeof(storage_keys) <> 'array' THEN
-    RAISE EXCEPTION 'privacy erasure storageKeys must be an array'
+  IF storage_manifest->>'storagePrefix' <> 'reports/' || p_workspace_id::text || '/'
+     OR jsonb_typeof(storage_manifest->'storageKeyHashes') <> 'array'
+  THEN
+    RAISE EXCEPTION 'privacy erasure storage manifest is invalid'
       USING ERRCODE = '22023';
+  END IF;
+  PERFORM 1
+    FROM workspace_privacy_controls
+   WHERE workspace_id = p_workspace_id
+     AND deletion_request_id = p_request_id
+     AND state = 'blocking'
+   FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'privacy erasure requires the matching workspace privacy block'
+      USING ERRCODE = '42501';
   END IF;
 
   PERFORM set_config('app.privacy_erasure_request_id', p_request_id::text, true);
@@ -1024,6 +1667,28 @@ BEGIN
          updated_at = now()
    WHERE workspace_id = p_workspace_id;
 
+  UPDATE payments
+     SET order_id = 'erased:' || encode(sha256(order_id::bytea), 'hex'),
+         toss_payment_key = CASE WHEN toss_payment_key IS NULL THEN NULL
+           ELSE 'erased:' || encode(sha256(toss_payment_key::bytea), 'hex') END,
+         failure_message = NULL,
+         updated_at = now()
+   WHERE workspace_id = p_workspace_id;
+
+  UPDATE provider_events
+     SET provider_event_id = 'erased:' || encode(sha256(provider_event_id::bytea), 'hex'),
+         payload = jsonb_build_object('privacyErased', true, 'requestId', p_request_id::text),
+         processing_error = NULL
+   WHERE workspace_id = p_workspace_id;
+
+  UPDATE subscriptions
+     SET status = CASE WHEN status = 'canceled' THEN status ELSE 'canceled'::subscription_status END,
+         payment_method_id = NULL,
+         grace_ends_at = NULL,
+         canceled_at = coalesce(canceled_at, now()),
+         updated_at = now()
+   WHERE workspace_id = p_workspace_id;
+
   UPDATE deliveries
      SET recipient = 'erased:' || encode(sha256(recipient::bytea), 'hex'),
          last_error = NULL
@@ -1041,6 +1706,8 @@ BEGIN
   DELETE FROM naver_observation_sources WHERE workspace_id = p_workspace_id;
   DELETE FROM naver_observations WHERE workspace_id = p_workspace_id;
   DELETE FROM gsc_observations WHERE workspace_id = p_workspace_id;
+  DELETE FROM usage_reservations WHERE workspace_id = p_workspace_id;
+  DELETE FROM provider_calls WHERE workspace_id = p_workspace_id;
   DELETE FROM tracked_queries WHERE workspace_id = p_workspace_id;
   DELETE FROM sites WHERE workspace_id = p_workspace_id;
   DELETE FROM outbox WHERE workspace_id = p_workspace_id;
@@ -1089,7 +1756,12 @@ BEGIN
   VALUES
     (p_workspace_id, p_request_id, 'backup-erasure-required',
      'docs/ops/privacy-erasure-runbook.md',
-     jsonb_build_object('operatorId', p_operator_id, 'createdAt', now(), 'storageKeys', storage_keys))
+     jsonb_build_object(
+       'operatorId', p_operator_id,
+       'createdAt', now(),
+       'storagePrefix', storage_manifest->>'storagePrefix',
+       'storageKeyHashes', storage_manifest->'storageKeyHashes'
+     ))
   ON CONFLICT (workspace_id, request_id, marker_key) DO NOTHING;
 END;
 $$;--> statement-breakpoint
@@ -1108,13 +1780,17 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_billing') THEN CREATE ROLE semforge_billing NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_billing_tenant') THEN CREATE ROLE semforge_billing_tenant NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_privacy') THEN CREATE ROLE semforge_privacy NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_retention') THEN CREATE ROLE semforge_retention NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_privacy_owner') THEN CREATE ROLE semforge_privacy_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_retention_owner') THEN CREATE ROLE semforge_retention_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_secret_scrubber') THEN CREATE ROLE semforge_secret_scrubber NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
 END
 $$;--> statement-breakpoint
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC;--> statement-breakpoint
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;--> statement-breakpoint
-GRANT USAGE ON SCHEMA public TO semforge_web, semforge_auth, semforge_operator, semforge_dispatcher, semforge_scheduler, semforge_worker, semforge_billing, semforge_billing_tenant, semforge_privacy;--> statement-breakpoint
+GRANT USAGE ON SCHEMA public TO semforge_web, semforge_auth, semforge_operator, semforge_dispatcher, semforge_scheduler, semforge_worker, semforge_billing, semforge_billing_tenant, semforge_privacy, semforge_retention;--> statement-breakpoint
 GRANT USAGE ON SCHEMA public TO semforge_secret_scrubber;--> statement-breakpoint
+GRANT USAGE ON SCHEMA public TO semforge_privacy_owner, semforge_retention_owner;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON
   workspaces, memberships, sites, tracked_queries,
   gsc_connections, oauth_states, gsc_property_bindings
@@ -1180,17 +1856,84 @@ GRANT UPDATE (active, replaced_at, updated_at) ON payment_methods TO semforge_bi
 GRANT INSERT (id, workspace_id, subscription_id, order_id, idempotency_key, toss_payment_key, status, amount_krw, billing_period_start, billing_period_end, attempt, failure_code, failure_message, paid_at) ON payments TO semforge_billing_tenant;--> statement-breakpoint
 GRANT UPDATE (status, toss_payment_key, failure_code, failure_message, paid_at, updated_at) ON payments TO semforge_billing_tenant;--> statement-breakpoint
 GRANT INSERT (id, workspace_id, type, entity_id, actor_user_id, request_id, occurred_at, amount_krw, order_id, payment_status, provider_code) ON billing_ledger_events TO semforge_billing_tenant;--> statement-breakpoint
-GRANT SELECT, INSERT, UPDATE, DELETE ON privacy_requests, privacy_request_steps, privacy_billing_tombstones, backup_deletion_markers,
-  gsc_connections, gsc_property_bindings, oauth_states, report_sections, report_assets, weekly_reports, deliveries,
-  rank_observations, aio_observations, aio_citations, naver_observations, naver_observation_sources, gsc_observations,
-  tracked_queries, sites, outbox, jobs, sessions, password_resets, billing_customers, payment_methods, billing_ledger_events, users
-TO semforge_privacy;--> statement-breakpoint
-GRANT SELECT ON workspaces, memberships, legal_acceptances TO semforge_privacy;--> statement-breakpoint
-GRANT UPDATE (name, updated_at) ON workspaces TO semforge_privacy;--> statement-breakpoint
-GRANT SELECT, DELETE ON invites TO semforge_privacy;--> statement-breakpoint
-GRANT SELECT, INSERT, DELETE ON email_suppressions TO semforge_privacy;--> statement-breakpoint
+-- @TASK P1-FINAL-PRIVACY - DSAR executor can observe only its approved request state
+-- @SPEC final_privacy_roles#privacy-executor
+GRANT SELECT ON workspace_privacy_controls
+  TO semforge_web, semforge_auth, semforge_worker, semforge_scheduler, semforge_dispatcher, semforge_billing, semforge_billing_tenant;--> statement-breakpoint
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON
+  workspaces, users, memberships, legal_acceptances, privacy_requests, privacy_request_steps,
+  privacy_billing_tombstones, backup_deletion_markers, email_suppressions,
+  gsc_connections, gsc_property_bindings, oauth_states, weekly_reports, report_sections, report_assets,
+  deliveries, rank_observations, aio_observations, aio_citations, naver_observations,
+  naver_observation_sources, gsc_observations, tracked_queries, sites, outbox, jobs, sessions,
+  password_resets, invites, billing_customers, payment_methods, billing_ledger_events, audit_events,
+  subscriptions, payments, provider_events, provider_calls, usage_reservations,
+  workspace_privacy_controls
+TO semforge_privacy_owner;--> statement-breakpoint
+GRANT SELECT, UPDATE, DELETE ON sessions, invites, password_resets, oauth_states, outbox, jobs,
+  provider_calls, deliveries, backup_deletion_markers TO semforge_retention_owner;--> statement-breakpoint
+
+GRANT CREATE ON SCHEMA public TO semforge_privacy_owner, semforge_retention_owner;--> statement-breakpoint
+ALTER FUNCTION initialize_workspace_privacy_control() OWNER TO semforge_privacy_owner;--> statement-breakpoint
+ALTER FUNCTION privacy_open_request(uuid, text, text, text, timestamptz) OWNER TO semforge_privacy_owner;--> statement-breakpoint
+ALTER FUNCTION privacy_claim_request(uuid, text, text, text, timestamptz) OWNER TO semforge_privacy_owner;--> statement-breakpoint
+ALTER FUNCTION privacy_succeeded_request_steps(uuid, uuid, text) OWNER TO semforge_privacy_owner;--> statement-breakpoint
+ALTER FUNCTION privacy_export_workspace(uuid, uuid, text) OWNER TO semforge_privacy_owner;--> statement-breakpoint
+ALTER FUNCTION privacy_correct_workspace(uuid, uuid, text, text, text, timestamptz) OWNER TO semforge_privacy_owner;--> statement-breakpoint
+ALTER FUNCTION privacy_deletion_targets(uuid, uuid, text) OWNER TO semforge_privacy_owner;--> statement-breakpoint
+ALTER FUNCTION privacy_workspace_lock_key(uuid) OWNER TO semforge_privacy_owner;--> statement-breakpoint
+ALTER FUNCTION privacy_block_workspace(uuid, uuid, text, timestamptz) OWNER TO semforge_privacy_owner;--> statement-breakpoint
+ALTER FUNCTION privacy_mark_workspace_erased(uuid, uuid, text, timestamptz) OWNER TO semforge_privacy_owner;--> statement-breakpoint
+ALTER FUNCTION privacy_erase_workspace(uuid, uuid, text) OWNER TO semforge_privacy_owner;--> statement-breakpoint
+ALTER FUNCTION privacy_record_request_step(uuid, uuid, text, text, text, text, jsonb, timestamptz) OWNER TO semforge_privacy_owner;--> statement-breakpoint
+ALTER FUNCTION privacy_finish_request(uuid, uuid, text, text, timestamptz) OWNER TO semforge_privacy_owner;--> statement-breakpoint
+ALTER FUNCTION privacy_fail_request(uuid, uuid, text, timestamptz) OWNER TO semforge_privacy_owner;--> statement-breakpoint
+ALTER FUNCTION privacy_set_request_storage_manifest(uuid, uuid, text, jsonb) OWNER TO semforge_privacy_owner;--> statement-breakpoint
+ALTER FUNCTION privacy_add_email_suppression(uuid, uuid, text) OWNER TO semforge_privacy_owner;--> statement-breakpoint
+ALTER FUNCTION privacy_retention_count(text, timestamptz) OWNER TO semforge_retention_owner;--> statement-breakpoint
+ALTER FUNCTION privacy_retention_apply(text, timestamptz) OWNER TO semforge_retention_owner;--> statement-breakpoint
+ALTER FUNCTION privacy_retention_storage_workspaces() OWNER TO semforge_retention_owner;--> statement-breakpoint
+REVOKE CREATE ON SCHEMA public FROM semforge_privacy_owner, semforge_retention_owner;--> statement-breakpoint
+
+REVOKE ALL ON FUNCTION privacy_open_request(uuid, text, text, text, timestamptz) FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON FUNCTION initialize_workspace_privacy_control() FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON FUNCTION privacy_claim_request(uuid, text, text, text, timestamptz) FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON FUNCTION privacy_succeeded_request_steps(uuid, uuid, text) FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON FUNCTION privacy_export_workspace(uuid, uuid, text) FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON FUNCTION privacy_correct_workspace(uuid, uuid, text, text, text, timestamptz) FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON FUNCTION privacy_deletion_targets(uuid, uuid, text) FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON FUNCTION privacy_workspace_lock_key(uuid) FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON FUNCTION privacy_block_workspace(uuid, uuid, text, timestamptz) FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON FUNCTION privacy_mark_workspace_erased(uuid, uuid, text, timestamptz) FROM PUBLIC;--> statement-breakpoint
 REVOKE ALL ON FUNCTION privacy_erase_workspace(uuid, uuid, text) FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON FUNCTION privacy_retention_count(text, timestamptz) FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON FUNCTION privacy_retention_apply(text, timestamptz) FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON FUNCTION privacy_retention_storage_workspaces() FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON FUNCTION privacy_record_request_step(uuid, uuid, text, text, text, text, jsonb, timestamptz) FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON FUNCTION privacy_finish_request(uuid, uuid, text, text, timestamptz) FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON FUNCTION privacy_fail_request(uuid, uuid, text, timestamptz) FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON FUNCTION privacy_set_request_storage_manifest(uuid, uuid, text, jsonb) FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON FUNCTION privacy_add_email_suppression(uuid, uuid, text) FROM PUBLIC;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION privacy_open_request(uuid, text, text, text, timestamptz) TO semforge_operator;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION privacy_claim_request(uuid, text, text, text, timestamptz) TO semforge_privacy;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION privacy_succeeded_request_steps(uuid, uuid, text) TO semforge_privacy;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION privacy_export_workspace(uuid, uuid, text) TO semforge_privacy;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION privacy_correct_workspace(uuid, uuid, text, text, text, timestamptz) TO semforge_privacy;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION privacy_deletion_targets(uuid, uuid, text) TO semforge_privacy;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION privacy_workspace_lock_key(uuid)
+  TO semforge_web, semforge_auth, semforge_worker, semforge_scheduler, semforge_dispatcher, semforge_billing, semforge_billing_tenant, semforge_privacy;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION privacy_block_workspace(uuid, uuid, text, timestamptz) TO semforge_privacy;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION privacy_mark_workspace_erased(uuid, uuid, text, timestamptz) TO semforge_privacy;--> statement-breakpoint
 GRANT EXECUTE ON FUNCTION privacy_erase_workspace(uuid, uuid, text) TO semforge_privacy;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION privacy_record_request_step(uuid, uuid, text, text, text, text, jsonb, timestamptz) TO semforge_privacy;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION privacy_finish_request(uuid, uuid, text, text, timestamptz) TO semforge_privacy;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION privacy_fail_request(uuid, uuid, text, timestamptz) TO semforge_privacy;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION privacy_set_request_storage_manifest(uuid, uuid, text, jsonb) TO semforge_privacy;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION privacy_add_email_suppression(uuid, uuid, text) TO semforge_privacy;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION privacy_retention_count(text, timestamptz) TO semforge_retention;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION privacy_retention_apply(text, timestamptz) TO semforge_retention;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION privacy_retention_storage_workspaces() TO semforge_retention;--> statement-breakpoint
 REVOKE DELETE ON weekly_reports, report_sections, report_assets, deliveries FROM semforge_worker, semforge_web, semforge_billing;--> statement-breakpoint
 
 ALTER TABLE gsc_connections ADD CONSTRAINT gsc_connections_encrypted_tokens_ck
@@ -1208,8 +1951,6 @@ CREATE POLICY workspaces_auth_select ON workspaces FOR SELECT TO semforge_auth U
 CREATE POLICY workspaces_auth_insert ON workspaces FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY workspaces_worker_read ON workspaces FOR SELECT TO semforge_worker
   USING (id = nullif(current_setting('app.workspace_id', true), '')::uuid);--> statement-breakpoint
-CREATE POLICY workspaces_privacy_access ON workspaces TO semforge_privacy
-  USING (true) WITH CHECK (true);--> statement-breakpoint
 DO $$
 DECLARE tenant_table text;
 BEGIN
@@ -1306,32 +2047,109 @@ BEGIN
 END
 $$;
 --> statement-breakpoint
-DO $$
-DECLARE privacy_table text;
-BEGIN
-  FOREACH privacy_table IN ARRAY ARRAY[
-    'legal_acceptances', 'privacy_requests', 'privacy_request_steps', 'privacy_billing_tombstones', 'backup_deletion_markers',
-    'gsc_connections', 'gsc_property_bindings', 'oauth_states',
-    'weekly_reports', 'report_sections', 'report_assets', 'deliveries',
-    'rank_observations', 'aio_observations', 'aio_citations', 'naver_observations', 'naver_observation_sources', 'gsc_observations',
-    'tracked_queries', 'sites', 'outbox', 'jobs', 'billing_customers', 'payment_methods', 'billing_ledger_events'
-  ] LOOP
-    EXECUTE format('CREATE POLICY %I ON %I TO semforge_privacy USING (true) WITH CHECK (true)',
-      privacy_table || '_privacy_access', privacy_table);
-  END LOOP;
-END
-$$;--> statement-breakpoint
-CREATE POLICY users_privacy_access ON users TO semforge_privacy USING (true) WITH CHECK (true);--> statement-breakpoint
-CREATE POLICY sessions_privacy_access ON sessions TO semforge_privacy USING (true) WITH CHECK (true);--> statement-breakpoint
-CREATE POLICY password_resets_privacy_access ON password_resets TO semforge_privacy USING (true) WITH CHECK (true);--> statement-breakpoint
-CREATE POLICY memberships_privacy_select ON memberships FOR SELECT TO semforge_privacy USING (true);--> statement-breakpoint
-CREATE POLICY invites_privacy_access ON invites TO semforge_privacy USING (true);--> statement-breakpoint
 ALTER TABLE email_suppressions ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE email_suppressions FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY email_suppressions_worker_select ON email_suppressions FOR SELECT TO semforge_worker
   USING (workspace_id = nullif(current_setting('app.workspace_id', true), '')::uuid);--> statement-breakpoint
-CREATE POLICY email_suppressions_privacy_access ON email_suppressions TO semforge_privacy
+ALTER TABLE workspace_privacy_controls ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE workspace_privacy_controls FORCE ROW LEVEL SECURITY;--> statement-breakpoint
+CREATE POLICY workspace_privacy_controls_tenant_select ON workspace_privacy_controls FOR SELECT
+  TO semforge_web, semforge_auth, semforge_worker, semforge_scheduler, semforge_dispatcher, semforge_billing, semforge_billing_tenant
+  USING (workspace_id = nullif(current_setting('app.workspace_id', true), '')::uuid);--> statement-breakpoint
+CREATE POLICY workspaces_privacy_owner_access ON workspaces TO semforge_privacy_owner
   USING (true) WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY users_privacy_owner_access ON users TO semforge_privacy_owner
+  USING (true) WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY sessions_privacy_owner_access ON sessions TO semforge_privacy_owner
+  USING (true) WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY password_resets_privacy_owner_access ON password_resets TO semforge_privacy_owner
+  USING (true) WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY invites_privacy_owner_access ON invites TO semforge_privacy_owner
+  USING (true) WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY email_suppressions_privacy_owner_access ON email_suppressions TO semforge_privacy_owner
+  USING (true) WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY workspace_privacy_controls_owner_access ON workspace_privacy_controls TO semforge_privacy_owner
+  USING (true) WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY sessions_retention_owner_access ON sessions TO semforge_retention_owner
+  USING (true) WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY password_resets_retention_owner_access ON password_resets TO semforge_retention_owner
+  USING (true) WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY invites_retention_owner_access ON invites TO semforge_retention_owner
+  USING (true) WITH CHECK (true);--> statement-breakpoint
+DO $$
+DECLARE owner_table text;
+BEGIN
+  FOREACH owner_table IN ARRAY ARRAY[
+    'memberships', 'audit_events', 'legal_acceptances', 'privacy_requests', 'privacy_request_steps',
+    'privacy_billing_tombstones', 'backup_deletion_markers', 'sites', 'tracked_queries',
+    'gsc_connections', 'oauth_states', 'gsc_property_bindings', 'provider_calls', 'usage_reservations', 'jobs', 'outbox',
+    'rank_observations', 'aio_observations', 'aio_citations', 'naver_observations',
+    'naver_observation_sources', 'gsc_observations', 'weekly_reports', 'report_sections',
+    'report_assets', 'deliveries', 'billing_customers', 'payment_methods', 'subscriptions', 'payments',
+    'provider_events', 'billing_ledger_events'
+  ] LOOP
+    EXECUTE format('CREATE POLICY %I ON %I TO semforge_privacy_owner USING (true) WITH CHECK (true)',
+      owner_table || '_privacy_owner_access', owner_table);
+  END LOOP;
+  FOREACH owner_table IN ARRAY ARRAY[
+    'backup_deletion_markers', 'oauth_states', 'provider_calls', 'jobs', 'outbox', 'deliveries'
+  ] LOOP
+    EXECUTE format('CREATE POLICY %I ON %I TO semforge_retention_owner USING (true) WITH CHECK (true)',
+      owner_table || '_retention_owner_access', owner_table);
+  END LOOP;
+END
+$$;--> statement-breakpoint
+-- @TASK P1-FINAL-PRIVACY - Missing/non-active controls fail closed for new tenant work
+-- @SPEC final_privacy_fence#write-fence
+CREATE FUNCTION reject_blocked_workspace_insert() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE
+  target_workspace uuid;
+  privacy_state text;
+BEGIN
+  IF current_setting('app.privacy_erasure_procedure', true) = 'privacy_erase_workspace' THEN
+    RETURN NEW;
+  END IF;
+  IF TG_TABLE_NAME = 'workspaces' THEN
+    IF TG_OP = 'INSERT' THEN RETURN NEW; END IF;
+    target_workspace := NEW.id;
+  ELSIF TG_TABLE_NAME = 'invites' THEN
+    target_workspace := NEW.accepted_workspace_id;
+    IF target_workspace IS NULL THEN RETURN NEW; END IF;
+  ELSE
+    target_workspace := nullif(to_jsonb(NEW)->>'workspace_id', '')::uuid;
+  END IF;
+  SELECT state INTO privacy_state FROM workspace_privacy_controls
+   WHERE workspace_id = target_workspace;
+  IF privacy_state IS NULL OR privacy_state = 'erased' THEN
+    RAISE EXCEPTION 'workspace is unavailable by privacy control' USING ERRCODE = '55000';
+  END IF;
+  RETURN NEW;
+END;
+$$;--> statement-breakpoint
+GRANT CREATE ON SCHEMA public TO semforge_privacy_owner;--> statement-breakpoint
+ALTER FUNCTION reject_blocked_workspace_insert() OWNER TO semforge_privacy_owner;--> statement-breakpoint
+REVOKE CREATE ON SCHEMA public FROM semforge_privacy_owner;--> statement-breakpoint
+REVOKE ALL ON FUNCTION reject_blocked_workspace_insert() FROM PUBLIC;--> statement-breakpoint
+DO $$
+DECLARE fenced_table text;
+BEGIN
+  FOREACH fenced_table IN ARRAY ARRAY[
+    'workspaces', 'invites', 'memberships', 'legal_acceptances', 'sessions', 'audit_events',
+    'jobs', 'outbox', 'sites', 'tracked_queries',
+    'gsc_connections', 'gsc_property_bindings', 'oauth_states', 'provider_calls', 'usage_reservations',
+    'rank_observations', 'aio_observations', 'aio_citations',
+    'naver_observations', 'naver_observation_sources', 'gsc_observations', 'weekly_reports',
+    'report_sections', 'report_assets', 'deliveries', 'billing_customers', 'payment_methods',
+    'subscriptions', 'payments', 'provider_events', 'billing_ledger_events'
+  ] LOOP
+    EXECUTE format(
+      'CREATE TRIGGER %I BEFORE INSERT OR UPDATE ON %I FOR EACH ROW EXECUTE FUNCTION reject_blocked_workspace_insert()',
+      fenced_table || '_privacy_write_fence', fenced_table
+    );
+  END LOOP;
+END
+$$;--> statement-breakpoint
 CREATE POLICY jobs_dispatcher_access ON jobs TO semforge_dispatcher
   USING (true) WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY outbox_dispatcher_access ON outbox TO semforge_dispatcher
