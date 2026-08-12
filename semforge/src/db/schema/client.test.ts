@@ -20,6 +20,7 @@ test("auth runtime은 AUTH_DATABASE_URL만 사용하고 migration owner URL을 �
   });
 
   assert.equal(resolveDatabaseUrl("web", env), env.DATABASE_URL);
+  assert.equal(resolveDatabaseUrl("webFence", env), env.DATABASE_URL);
   assert.equal(resolveDatabaseUrl("auth", env), env.AUTH_DATABASE_URL);
   assert.equal(resolveDatabaseUrl("operator", env), env.OPERATOR_DATABASE_URL);
   assert.equal(resolveDatabaseUrl("worker", env), env.WORKER_DATABASE_URL);
@@ -32,4 +33,5 @@ test("auth runtime은 AUTH_DATABASE_URL만 사용하고 migration owner URL을 �
   assert.notEqual(resolveDatabaseUrl("operator", env), env.MIGRATION_DATABASE_URL);
   assert.notEqual(resolveDatabaseUrl("billing", env), env.MIGRATION_DATABASE_URL);
   assert.notEqual(resolveDatabaseUrl("billingTenant", env), env.MIGRATION_DATABASE_URL);
+  assert.notEqual(resolveDatabaseUrl("webFence", env), env.MIGRATION_DATABASE_URL);
 });

@@ -15,7 +15,10 @@ import {
   WorkspacePrivacyOperationBlockedError,
   type WorkspacePrivacyOperationGuard,
 } from "@/server/privacy/operation";
-import { createReportBrandingRouteHandlers } from "@/server/reports/branding/routes";
+import {
+  createReportBrandingRouteHandlers,
+  createRuntimeReportBrandingRouteHandlers,
+} from "@/server/reports/branding/routes";
 import { createReportsRouteHandlers } from "@/server/reports/routes";
 import { generateWeeklyReport } from "@/server/reports/store";
 
@@ -81,6 +84,10 @@ async function body(response: Response) {
     error: { code: string; fields?: Record<string, string> } | null;
   }>;
 }
+
+test("production branding route composition은 concrete privacy guard를 지연 생성한다", () => {
+  assert.doesNotThrow(() => createRuntimeReportBrandingRouteHandlers());
+});
 
 function patchRequest(value: unknown, origin = "https://app.semforge.test") {
   return new Request("https://app.semforge.test/api/v1/reports/branding", {

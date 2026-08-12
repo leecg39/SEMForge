@@ -14,6 +14,7 @@ import {
   type BillingAccessAuthorizer,
 } from "@/server/billing/access";
 import {
+  createRuntimeWorkspacePrivacyOperationGuard,
   missingWorkspacePrivacyOperationGuard,
   WorkspacePrivacyOperationBlockedError,
   type WorkspacePrivacyOperationGuard,
@@ -113,4 +114,10 @@ export function createReportBrandingRouteHandlers(
     }),
   };
   return { branding };
+}
+
+export function createRuntimeReportBrandingRouteHandlers() {
+  return createReportBrandingRouteHandlers({
+    privacyOperation: createRuntimeWorkspacePrivacyOperationGuard(),
+  });
 }

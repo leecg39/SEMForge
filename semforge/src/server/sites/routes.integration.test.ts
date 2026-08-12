@@ -14,7 +14,10 @@ import {
   WorkspacePrivacyOperationBlockedError,
   type WorkspacePrivacyOperationGuard,
 } from "@/server/privacy/operation";
-import { createSitesRouteHandlers } from "@/server/sites/routes";
+import {
+  createRuntimeSitesRouteHandlers,
+  createSitesRouteHandlers,
+} from "@/server/sites/routes";
 
 const pg = new PGlite();
 const migrationsFolder = path.join(process.cwd(), "src", "db", "migrations");
@@ -75,6 +78,10 @@ function handlersFor(
     resolveDomainAddresses: async () => ["8.8.8.8"],
   });
 }
+
+test("production site/tracking route composition은 concrete privacy guard를 지연 생성한다", () => {
+  assert.doesNotThrow(() => createRuntimeSitesRouteHandlers());
+});
 
 test("account_created는 sites/tracking read와 write 직접 API 우회를 403 envelope로 차단한다", async () => {
   const deniedCalls: string[] = [];

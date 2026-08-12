@@ -9,6 +9,7 @@ import type {
   WorkspacePrivacyFenceSql,
 } from "@/server/privacy/fence";
 import {
+  createRuntimeWorkspacePrivacyOperationGuard,
   createWorkspacePrivacyOperationGuard,
   missingWorkspacePrivacyOperationGuard,
   WorkspacePrivacyOperationBlockedError,
@@ -86,4 +87,52 @@ test("guard DI 누락은 identity 실행 없이 fail-closed로 닫힌다", async
     WorkspacePrivacyOperationConfigurationError,
   );
   assert.equal(delegates, 0);
+});
+
+test("runtime operation guard는 dedicated web fence pool의 pinned transaction을 사용한다", async () => {
+  const statements: string[] = [];
+  let released = false;
+  const guard = createRuntimeWorkspacePrivacyOperationGuard({
+    async connect() {
+      return {
+        async query<T>(text: string) {
+          statements.push(text.replace(/\s+/gu, " ").trim());
+          if (text.includes("workspace_privacy_controls")) {
+            return { rows: [{ state: "active" }] as T[] };
+          }
+          if (text.includes("pg_advisory_unlock_shared")) {
+            return { rows: [{ unlocked: true }] as T[] };
+          }
+          return { rows: [] as T[] };
+        },
+        release() {
+          released = true;
+        },
+      };
+    },
+  });
+
+  const value = await guard.withShared(
+    "7f000000-0000-4000-8000-000000000001",
+    async (connection) => {
+      await connection.query("select 'mutation committed under shared lock'");
+      return "done";
+    },
+  );
+
+  assert.equal(value, "done");
+  assert.deepEqual(statements, [
+    "select pg_advisory_lock_shared(privacy_workspace_lock_key($1::uuid))",
+    "begin",
+    "select set_config('app.workspace_id', $1, true)",
+    "select state::text as state from workspace_privacy_controls where workspace_id = $1::uuid and ($2::uuid is null or deletion_request_id = $2::uuid)",
+    "select 'mutation committed under shared lock'",
+    "commit",
+    "select pg_advisory_unlock_shared(privacy_workspace_lock_key($1::uuid)) as unlocked",
+  ]);
+  assert.equal(released, true);
+});
+
+test("runtime operation guard 생성은 첫 mutation 전까지 database 환경을 요구하지 않는다", () => {
+  assert.doesNotThrow(() => createRuntimeWorkspacePrivacyOperationGuard());
 });

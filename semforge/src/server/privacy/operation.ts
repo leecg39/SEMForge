@@ -2,10 +2,13 @@
 // @SPEC docs/ops/privacy-erasure-runbook.md
 // @TEST src/server/sites/routes.integration.test.ts
 // @TEST src/server/reports/branding/routes.integration.test.ts
-import type {
-  WorkspacePrivacyFence,
-  WorkspacePrivacyFenceSql,
-  WorkspacePrivacyState,
+import { getPool } from "@/db/client";
+import {
+  PostgresWorkspacePrivacyFence,
+  type WorkspacePrivacyFence,
+  type WorkspacePrivacyFenceSql,
+  type WorkspacePrivacyFencePool,
+  type WorkspacePrivacyState,
 } from "@/server/privacy/fence";
 
 export interface WorkspacePrivacyOperationGuard {
@@ -43,6 +46,23 @@ export function createWorkspacePrivacyOperationGuard(
       const result = await fence.withShared(workspaceId, operation);
       if (result.disposition === "executed") return result.value;
       throw new WorkspacePrivacyOperationBlockedError(result.state);
+    },
+  };
+}
+
+export function createRuntimeWorkspacePrivacyOperationGuard(
+  pool?: WorkspacePrivacyFencePool,
+): WorkspacePrivacyOperationGuard {
+  if (pool) {
+    return createWorkspacePrivacyOperationGuard(
+      new PostgresWorkspacePrivacyFence(pool),
+    );
+  }
+  return {
+    withShared(workspaceId, operation) {
+      return createWorkspacePrivacyOperationGuard(
+        new PostgresWorkspacePrivacyFence(getPool("webFence")),
+      ).withShared(workspaceId, operation);
     },
   };
 }

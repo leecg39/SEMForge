@@ -19,6 +19,7 @@ import {
   type BillingAccessAuthorizer,
 } from "@/server/billing/access";
 import {
+  createRuntimeWorkspacePrivacyOperationGuard,
   missingWorkspacePrivacyOperationGuard,
   WorkspacePrivacyOperationBlockedError,
   type WorkspacePrivacyOperationGuard,
@@ -274,4 +275,10 @@ export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
   };
 
   return { sites, siteById, tracking, trackingById };
+}
+
+export function createRuntimeSitesRouteHandlers() {
+  return createSitesRouteHandlers({
+    privacyOperation: createRuntimeWorkspacePrivacyOperationGuard(),
+  });
 }

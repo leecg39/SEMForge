@@ -10,6 +10,7 @@ import { getServerEnv, type ServerEnv } from "@/lib/env";
 // @TASK P1-D3 - Dedicated pre-tenant auth and operator runtime roles
 export type DatabaseRole =
   | "web"
+  | "webFence"
   | "auth"
   | "operator"
   | "dispatcher"
@@ -33,6 +34,7 @@ function sslConfig(env: ServerEnv): PoolConfig["ssl"] {
 export function resolveDatabaseUrl(role: DatabaseRole, env: ServerEnv): string {
   const key = {
     web: "DATABASE_URL",
+    webFence: "DATABASE_URL",
     auth: "AUTH_DATABASE_URL",
     operator: "OPERATOR_DATABASE_URL",
     dispatcher: "DISPATCHER_DATABASE_URL",
@@ -59,7 +61,8 @@ export function getPool(role: DatabaseRole = "web"): Pool {
     connectionTimeoutMillis: env.PGPOOL_CONNECTION_TIMEOUT_MS,
     idleTimeoutMillis: env.PGPOOL_IDLE_TIMEOUT_MS,
     statement_timeout: env.PG_STATEMENT_TIMEOUT_MS,
-    application_name: `semforge-${role}`,
+    application_name:
+      role === "webFence" ? "semforge-web-privacy-fence" : `semforge-${role}`,
     ssl: sslConfig(env),
   });
   return pools[role]!;
