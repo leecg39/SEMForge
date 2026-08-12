@@ -317,6 +317,7 @@ test("로그인은 throttle 통과 후 워크스페이스를 검증하고 기존
   assert.match(String(throttleInput?.keyHash), /^[a-f0-9]{64}$/u);
   assert.equal(JSON.stringify(throttleInput).includes("login@example.com"), false);
   assert.equal(rotationInput?.workspaceId, "00000000-0000-4000-8000-000000000002");
+  assert.equal(rotationInput?.expectedPasswordHash, passwordHash);
   assert.equal(
     rotationInput?.currentTokenHash,
     createHash("sha256").update(currentSessionToken).digest("hex"),
@@ -327,6 +328,49 @@ test("로그인은 throttle 통과 후 워크스페이스를 검증하고 기존
   );
   assert.equal((rotationInput?.expiresAt as Date).toISOString(), "2026-09-10T03:00:00.000Z");
   assert.equal(cleared, true);
+});
+
+test("login은 비밀번호 검증 뒤 reset이 선행되면 검증 당시 hash CAS 실패로 새 session을 만들지 않는다", async () => {
+  const passwordHash = await hashPassword("race-password-2026");
+  let resetCommitted = false;
+  let rotations = 0;
+  const service = createAuthService({
+    store: storeFixture({
+      findUserByEmail: async () => ({
+        id: "user-reset-race",
+        email: "race@example.com",
+        passwordHash,
+        displayName: null,
+        disabledAt: null,
+      }),
+      listMembershipsForUser: async () => {
+        resetCommitted = true;
+        return [{
+          workspaceId: "00000000-0000-4000-8000-000000000001",
+          workspaceName: "Race Agency",
+          workspaceSlug: "race-agency",
+          role: "owner",
+        }];
+      },
+      rotateSession: async (input) => {
+        rotations += 1;
+        assert.equal(resetCommitted, true);
+        assert.equal(input.expectedPasswordHash, passwordHash);
+        return null;
+      },
+    }),
+    now: () => NOW,
+  });
+
+  await assert.rejects(
+    () => service.login({
+      email: "race@example.com",
+      password: "race-password-2026",
+    }),
+    (error: unknown) =>
+      error instanceof AuthServiceError && error.code === "INVALID_CREDENTIALS",
+  );
+  assert.equal(rotations, 1);
 });
 
 test("레거시 비밀번호로 로그인하면 성공한 검증값만 CAS로 현재 scrypt 정책에 재해시한다", async () => {

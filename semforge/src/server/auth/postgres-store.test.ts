@@ -680,6 +680,7 @@ test("session rotation은 새 hash 생성과 현재 session revoke를 한 transa
   const rotated = await store.rotateSession({
     userId: accepted.principal.userId,
     workspaceId: accepted.principal.workspaceId,
+    expectedPasswordHash: "scrypt:rotation",
     currentTokenHash: digest("old-session-hash"),
     newTokenHash: digest("new-session-hash"),
     expiresAt: addMs(now, 31 * DAY_MS),
@@ -738,6 +739,7 @@ test("session rotation은 다른 사용자나 workspace의 current token을 revo
   await store.rotateSession({
     userId: userA.principal.userId,
     workspaceId: userA.principal.workspaceId,
+    expectedPasswordHash: "scrypt:a",
     currentTokenHash: digest("rotation-b-session"),
     newTokenHash: digest("rotation-a-new-session"),
     expiresAt: addMs(now, 31 * DAY_MS),
@@ -775,6 +777,7 @@ test("password reset은 token을 한 번만 소비하고 password 변경과 모�
   await store.rotateSession({
     userId: accepted.principal.userId,
     workspaceId: accepted.principal.workspaceId,
+    expectedPasswordHash: "scrypt:old",
     newTokenHash: digest("reset-session-two"),
     expiresAt: addMs(now, 30 * DAY_MS),
     now,
@@ -803,6 +806,61 @@ test("password reset은 token을 한 번만 소비하고 password 변경과 모�
       now: addMs(now, 31 * MINUTE_MS),
     })).status,
     "invalid",
+  );
+});
+
+test("password reset이 검증과 rotation 사이에 commit되면 이전 hash CAS로 새 session 생성을 거부한다", async () => {
+  const { auth: store, operator } = await createStores();
+  const now = testNow();
+  await operator.createInvite({
+    workspaceName: "Reset Race Agency",
+    workspaceSlug: "reset-race-agency",
+    email: "reset-race@example.com",
+    tokenHash: digest("reset-race-invite"),
+    role: "owner",
+    expiresAt: addMs(now, 7 * DAY_MS),
+    now,
+  });
+  const accepted = await store.acceptInviteAtomic({
+    tokenHash: digest("reset-race-invite"),
+    email: "reset-race@example.com",
+    user: { kind: "new", passwordHash: "scrypt:old-race", displayName: "Race Owner" },
+    sessionTokenHash: digest("reset-race-session-old"),
+    sessionExpiresAt: addMs(now, 30 * DAY_MS),
+    now,
+  });
+  assert.equal(accepted.status, "accepted");
+  if (accepted.status !== "accepted") return;
+
+  await store.createPasswordReset({
+    userId: accepted.principal.userId,
+    tokenHash: digest("reset-race-token"),
+    expiresAt: addMs(now, HOUR_MS),
+    now,
+  });
+  assert.deepEqual(
+    await store.resetPasswordAtomic({
+      tokenHash: digest("reset-race-token"),
+      passwordHash: "scrypt:new-race",
+      now: addMs(now, 5 * MINUTE_MS),
+    }),
+    { status: "reset", userId: accepted.principal.userId },
+  );
+
+  const rotated = await store.rotateSession({
+    userId: accepted.principal.userId,
+    workspaceId: accepted.principal.workspaceId,
+    expectedPasswordHash: "scrypt:old-race",
+    newTokenHash: digest("reset-race-session-new"),
+    expiresAt: addMs(now, 30 * DAY_MS),
+    now: addMs(now, 6 * MINUTE_MS),
+  });
+
+  assert.equal(rotated, null);
+  assert.equal(await store.findSessionByTokenHash(digest("reset-race-session-new"), now), null);
+  assert.equal(
+    (await store.findUserById(accepted.principal.userId))?.passwordHash,
+    "scrypt:new-race",
   );
 });
 
