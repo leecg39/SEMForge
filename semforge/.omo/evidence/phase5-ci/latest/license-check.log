@@ -1,10 +1,10 @@
 $ npm run license:check
-startedAt=2026-08-12T15:37:01.004Z
+startedAt=2026-08-12T15:49:29.006Z
 
 > semforge@0.1.0 license:check
 > node scripts/license/generate-third-party-notices.mjs --check && node scripts/license/build-sharp-source-bundle.mjs --manifest-only
 
 
-endedAt=2026-08-12T15:37:01.467Z
+endedAt=2026-08-12T15:49:29.397Z
 exitCode=0
 signal=null
