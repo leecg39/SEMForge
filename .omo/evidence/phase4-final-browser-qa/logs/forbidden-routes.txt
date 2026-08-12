@@ -1,0 +1,6 @@
+/app/analytics/ 404
+/app/keywords/ 404
+/dashboard/ 404
+/api/sites 404
+/api/reports 404
+/api/v0/sites 404

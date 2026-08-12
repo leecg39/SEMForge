@@ -1,0 +1,43 @@
+{
+  "before": [
+    {
+      "name": "name",
+      "value": "QA 담당자",
+      "valid": true,
+      "message": ""
+    },
+    {
+      "name": "password",
+      "value": "abcdefghijkl",
+      "valid": true,
+      "message": ""
+    },
+    {
+      "name": "passwordConfirmation",
+      "value": "abcdefghijkl",
+      "valid": true,
+      "message": ""
+    }
+  ],
+  "pending": {
+    "calls": [
+      {
+        "path": "/api/v1/auth/invites/accept",
+        "body": "{\"name\":\"QA 담당자\",\"password\":\"abcdefghijkl\",\"token\":\"browser-qa-token\"}",
+        "credentials": "same-origin"
+      }
+    ],
+    "button": "처리 중…",
+    "alerts": []
+  },
+  "after": {
+    "url": "http://127.0.0.1:3474/app/",
+    "title": "SEMForge — 주간 검색 가시성 리포트",
+    "w": 360,
+    "h": 800,
+    "sx": 0,
+    "sy": 0,
+    "pw": 345,
+    "ph": 1460
+  }
+}

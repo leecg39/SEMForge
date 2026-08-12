@@ -1,0 +1,1670 @@
+[
+  {
+    "slug": "overview",
+    "width": 360,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/app/?qaState=ready",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "docW": 360,
+      "docH": 1092,
+      "overflow": false,
+      "small": [],
+      "h1": [
+        "주간 가시성 개요"
+      ],
+      "alerts": [],
+      "api": [
+        {
+          "path": "/api/v1/sites",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/reports",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/integrations/gsc/connections",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/0198a219-4d49-7dce-9d9a-536822c04dc0/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/0198a219-4d49-7dce-9d9a-536822c04dc0/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        }
+      ],
+      "runtime": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -60
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "sites",
+    "width": 360,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/app/sites/?qaState=ready",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "docW": 360,
+      "docH": 2051,
+      "overflow": false,
+      "small": [],
+      "h1": [
+        "사이트"
+      ],
+      "alerts": [],
+      "api": [
+        {
+          "path": "/api/v1/sites",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/0198a219-4d49-7dce-9d9a-536822c04da8/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/0198a219-4d49-7dce-9d9a-536822c04da8/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        }
+      ],
+      "runtime": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -60
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "site-detail",
+    "width": 360,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/app/sites/0198a219-4d49-7dce-9d9a-536822c04da8/?qaState=ready",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "docW": 360,
+      "docH": 2559,
+      "overflow": false,
+      "small": [],
+      "h1": [
+        "사이트 상세"
+      ],
+      "alerts": [],
+      "api": [
+        {
+          "path": "/api/v1/sites/0198a219-4d49-7dce-9d9a-536822c04da8",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        }
+      ],
+      "runtime": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -60
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "reports",
+    "width": 360,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/app/reports/?qaState=ready",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "docW": 360,
+      "docH": 1047,
+      "overflow": false,
+      "small": [],
+      "h1": [
+        "주간 리포트"
+      ],
+      "alerts": [],
+      "api": [
+        {
+          "path": "/api/v1/reports",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/0198a219-4d49-7dce-9d9a-536822c04dc0/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/0198a219-4d49-7dce-9d9a-536822c04dc0/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        }
+      ],
+      "runtime": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -60
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "report-detail",
+    "width": 360,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/app/reports/0198a219-4d49-7dce-9d9a-536822c04dc0/?qaState=ready",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "docW": 360,
+      "docH": 2915,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "a",
+          "text": "서울 공방",
+          "w": 51,
+          "h": 19,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "주간 리포트 상세"
+      ],
+      "alerts": [],
+      "api": [
+        {
+          "path": "/api/v1/reports/0198a219-4d49-7dce-9d9a-536822c04dc0",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        }
+      ],
+      "runtime": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -60
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "billing",
+    "width": 360,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/app/billing/?qaState=ready",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "docW": 360,
+      "docH": 1980,
+      "overflow": false,
+      "small": [],
+      "h1": [
+        "결제"
+      ],
+      "alerts": [],
+      "api": [
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        }
+      ],
+      "runtime": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -60
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "settings",
+    "width": 360,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/app/settings/?qaState=ready",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "docW": 360,
+      "docH": 1820,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "input",
+          "text": "리포트 강조색",
+          "w": 36,
+          "h": 32,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "설정"
+      ],
+      "alerts": [],
+      "api": [
+        {
+          "path": "/api/v1/reports/branding",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/integrations/gsc/connections",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/sites",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        }
+      ],
+      "runtime": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -60
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "overview",
+    "width": 768,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/app/?qaState=ready",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "docW": 768,
+      "docH": 1088,
+      "overflow": false,
+      "small": [],
+      "h1": [
+        "주간 가시성 개요"
+      ],
+      "alerts": [],
+      "api": [
+        {
+          "path": "/api/v1/sites",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/reports",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/integrations/gsc/connections",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/0198a219-4d49-7dce-9d9a-536822c04dc0/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/0198a219-4d49-7dce-9d9a-536822c04dc0/",
+          "method": "GET"
+        }
+      ],
+      "runtime": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -60
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "sites",
+    "width": 768,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/app/sites/?qaState=ready",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "docW": 768,
+      "docH": 1365,
+      "overflow": false,
+      "small": [],
+      "h1": [
+        "사이트"
+      ],
+      "alerts": [],
+      "api": [
+        {
+          "path": "/api/v1/sites",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/0198a219-4d49-7dce-9d9a-536822c04da8/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/0198a219-4d49-7dce-9d9a-536822c04da9/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/0198a219-4d49-7dce-9d9a-536822c04da8/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/0198a219-4d49-7dce-9d9a-536822c04da9/",
+          "method": "GET"
+        }
+      ],
+      "runtime": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -60
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "site-detail",
+    "width": 768,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/app/sites/0198a219-4d49-7dce-9d9a-536822c04da8/?qaState=ready",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "docW": 768,
+      "docH": 1787,
+      "overflow": false,
+      "small": [],
+      "h1": [
+        "사이트 상세"
+      ],
+      "alerts": [],
+      "api": [
+        {
+          "path": "/api/v1/sites/0198a219-4d49-7dce-9d9a-536822c04da8",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        }
+      ],
+      "runtime": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -60
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "reports",
+    "width": 768,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/app/reports/?qaState=ready",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "docW": 768,
+      "docH": 1088,
+      "overflow": false,
+      "small": [],
+      "h1": [
+        "주간 리포트"
+      ],
+      "alerts": [],
+      "api": [
+        {
+          "path": "/api/v1/reports",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/0198a219-4d49-7dce-9d9a-536822c04dc0/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/0198a219-4d49-7dce-9d9a-536822c04dc0/",
+          "method": "GET"
+        }
+      ],
+      "runtime": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -60
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "report-detail",
+    "width": 768,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/app/reports/0198a219-4d49-7dce-9d9a-536822c04dc0/?qaState=ready",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "docW": 768,
+      "docH": 2310,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "a",
+          "text": "서울 공방",
+          "w": 51,
+          "h": 19,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "주간 리포트 상세"
+      ],
+      "alerts": [],
+      "api": [
+        {
+          "path": "/api/v1/reports/0198a219-4d49-7dce-9d9a-536822c04dc0",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        }
+      ],
+      "runtime": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -60
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "billing",
+    "width": 768,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/app/billing/?qaState=ready",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "docW": 768,
+      "docH": 1263,
+      "overflow": false,
+      "small": [],
+      "h1": [
+        "결제"
+      ],
+      "alerts": [],
+      "api": [
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        }
+      ],
+      "runtime": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -60
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "settings",
+    "width": 768,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/app/settings/?qaState=ready",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "docW": 768,
+      "docH": 1460,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "input",
+          "text": "리포트 강조색",
+          "w": 36,
+          "h": 32,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "설정"
+      ],
+      "alerts": [],
+      "api": [
+        {
+          "path": "/api/v1/reports/branding",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/integrations/gsc/connections",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/sites",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        }
+      ],
+      "runtime": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -60
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "overview",
+    "width": 1440,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/app/?qaState=ready",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "docW": 1440,
+      "docH": 1000,
+      "overflow": false,
+      "small": [],
+      "h1": [
+        "주간 가시성 개요"
+      ],
+      "alerts": [],
+      "api": [
+        {
+          "path": "/api/v1/sites",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/reports",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/integrations/gsc/connections",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/0198a219-4d49-7dce-9d9a-536822c04dc0/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/0198a219-4d49-7dce-9d9a-536822c04dc0/",
+          "method": "GET"
+        }
+      ],
+      "runtime": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -8
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "sites",
+    "width": 1440,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/app/sites/?qaState=ready",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "docW": 1440,
+      "docH": 1333,
+      "overflow": false,
+      "small": [],
+      "h1": [
+        "사이트"
+      ],
+      "alerts": [],
+      "api": [
+        {
+          "path": "/api/v1/sites",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/0198a219-4d49-7dce-9d9a-536822c04da8/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/0198a219-4d49-7dce-9d9a-536822c04da9/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/0198a219-4d49-7dce-9d9a-536822c04da8/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/0198a219-4d49-7dce-9d9a-536822c04da9/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        }
+      ],
+      "runtime": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -2
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "site-detail",
+    "width": 1440,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/app/sites/0198a219-4d49-7dce-9d9a-536822c04da8/?qaState=ready",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "docW": 1440,
+      "docH": 1790,
+      "overflow": false,
+      "small": [],
+      "h1": [
+        "사이트 상세"
+      ],
+      "alerts": [],
+      "api": [
+        {
+          "path": "/api/v1/sites/0198a219-4d49-7dce-9d9a-536822c04da8",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        }
+      ],
+      "runtime": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": 4
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "reports",
+    "width": 1440,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/app/reports/?qaState=ready",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "docW": 1440,
+      "docH": 1000,
+      "overflow": false,
+      "small": [],
+      "h1": [
+        "주간 리포트"
+      ],
+      "alerts": [],
+      "api": [
+        {
+          "path": "/api/v1/reports",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/0198a219-4d49-7dce-9d9a-536822c04dc0/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/0198a219-4d49-7dce-9d9a-536822c04dc0/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        }
+      ],
+      "runtime": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -2
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "report-detail",
+    "width": 1440,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/app/reports/0198a219-4d49-7dce-9d9a-536822c04dc0/?qaState=ready",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "docW": 1425,
+      "docH": 2297,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "a",
+          "text": "서울 공방",
+          "w": 51,
+          "h": 19,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "주간 리포트 상세"
+      ],
+      "alerts": [],
+      "api": [
+        {
+          "path": "/api/v1/reports/0198a219-4d49-7dce-9d9a-536822c04dc0",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        }
+      ],
+      "runtime": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -1
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "billing",
+    "width": 1440,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/app/billing/?qaState=ready",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "docW": 1425,
+      "docH": 1250,
+      "overflow": false,
+      "small": [],
+      "h1": [
+        "결제"
+      ],
+      "alerts": [],
+      "api": [
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        }
+      ],
+      "runtime": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -10
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "settings",
+    "width": 1440,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/app/settings/?qaState=ready",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "docW": 1425,
+      "docH": 1382,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "input",
+          "text": "리포트 강조색",
+          "w": 36,
+          "h": 32,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "설정"
+      ],
+      "alerts": [],
+      "api": [
+        {
+          "path": "/api/v1/reports/branding",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/integrations/gsc/connections",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/sites",
+          "method": "GET"
+        },
+        {
+          "path": "/api/v1/billing/subscription",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/sites/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/reports/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/billing/",
+          "method": "GET"
+        },
+        {
+          "path": "/app/settings/",
+          "method": "GET"
+        }
+      ],
+      "runtime": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -10
+      }
+    },
+    "errors": []
+  }
+]
