@@ -7,6 +7,48 @@ import { test } from "node:test";
 
 import { EnvironmentValidationError, parseServerEnv } from "@/lib/env";
 
+const approvedLegalReleaseManifest = JSON.stringify({
+  schemaVersion: 1,
+  release: {
+    status: "approved",
+    documentVersion: "2026-08-12.1",
+    approvedAt: "2026-08-12T09:00:00+09:00",
+    approvedBy: "법무 검토 책임자",
+    attestation: "paid-beta-legal-review-approved",
+  },
+  operator: {
+    businessName: "검증용 주식회사",
+    representativeName: "검증 책임자",
+    businessRegistrationNumber: "123-45-67890",
+    mailOrderRegistration: null,
+    businessAddress: "서울특별시 검증구 검증로 100",
+    supportEmail: "support@approved-fixture.co.kr",
+    supportPhone: "02-1234-5678",
+  },
+  privacy: {
+    effectiveDate: "2026-08-19",
+    officerName: "개인정보 보호책임자",
+    contactEmail: "privacy@approved-fixture.co.kr",
+    rightsRequestMethod: "개인정보 문의 이메일로 본인 확인 후 요청합니다.",
+    deletionProcedure: "목적 달성 후 복구할 수 없는 방식으로 지체 없이 파기합니다.",
+    securityMeasures: "접근 권한 통제, 전송구간 보호, 암호화와 감사 로그를 운영합니다.",
+    retentionRules: [{ category: "계정 정보", period: "계약 종료 후 30일", basis: "계약 이행" }],
+    processors: [],
+    thirdPartyDisclosures: [],
+    overseasTransfers: [],
+  },
+  terms: {
+    effectiveDate: "2026-08-19",
+    priceKrw: 49000,
+    vatIncluded: true,
+    billingPeriod: "monthly",
+    cancellationTiming: "end_of_current_period",
+    refundPolicy: "중복·오류 결제와 법정 환불 사유를 확인한 뒤 처리합니다.",
+    withdrawalPolicy: "관련 법령상 청약철회 가능 여부와 절차를 개별 안내합니다.",
+    disputeProcedure: "고객지원 문의 후 합의가 되지 않으면 관할 절차를 따릅니다.",
+  },
+});
+
 const productionEnv = {
   NODE_ENV: "production",
   DATABASE_URL: "postgresql://semforge_web_login:test@db.example.com:5432/semforge",
@@ -39,6 +81,7 @@ const productionEnv = {
   S3_ACCESS_KEY_ID: "semforge-production-access-key",
   S3_SECRET_ACCESS_KEY: "semforge-production-secret-key-material",
   CHROMIUM_EXECUTABLE_PATH: "/usr/bin/chromium",
+  LEGAL_RELEASE_MANIFEST: approvedLegalReleaseManifest,
 };
 
 test("production은 database, encryption, billing, Google, NAVER 자격증명을 모두 요구한다", () => {
@@ -73,6 +116,7 @@ test("production은 database, encryption, billing, Google, NAVER 자격증명을
     "S3_ACCESS_KEY_ID",
     "S3_SECRET_ACCESS_KEY",
     "CHROMIUM_EXECUTABLE_PATH",
+    "LEGAL_RELEASE_MANIFEST",
   ] as const) {
     const candidate = { ...productionEnv };
     delete candidate[missing];
@@ -321,6 +365,42 @@ test("build profile은 image build 중 운영 secret을 읽지 않는다", () =>
 
   assert.equal(env.SEMFORGE_SERVICE, "build");
   assert.equal(env.DATABASE_URL, undefined);
+});
+
+test("production web과 all은 승인된 법률 release manifest 없이는 시작하지 않는다", () => {
+  for (const service of ["web", "all"] as const) {
+    const candidate: Record<string, string | undefined> = {
+      ...productionEnv,
+      SEMFORGE_SERVICE: service,
+    };
+    delete candidate.LEGAL_RELEASE_MANIFEST;
+    assert.throws(
+      () => parseServerEnv(candidate),
+      (error: unknown) => {
+        assert.ok(error instanceof EnvironmentValidationError);
+        assert.deepEqual(error.issues, [
+          "LEGAL_RELEASE_MANIFEST is required in production",
+        ]);
+        return true;
+      },
+    );
+  }
+});
+
+test("production web은 손상되거나 placeholder인 법률 manifest를 거부한다", () => {
+  for (const invalid of [
+    "{",
+    approvedLegalReleaseManifest.replace("검증용 주식회사", "TODO"),
+  ]) {
+    assert.throws(
+      () => parseServerEnv({
+        ...productionEnv,
+        SEMFORGE_SERVICE: "web",
+        LEGAL_RELEASE_MANIFEST: invalid,
+      }),
+      EnvironmentValidationError,
+    );
+  }
 });
 
 test("production object storage endpoint는 https만 허용한다", () => {
