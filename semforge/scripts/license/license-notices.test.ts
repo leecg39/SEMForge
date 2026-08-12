@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -269,7 +269,8 @@ test("설치된 sharp WASM은 exact application/source/relink manifest가 없으
   assert.match(notice, /28 static library artifacts/u);
   assert.match(notice, /sharp-wasm-relink\.md/u);
 
-  const incompatibleManifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+  const compatibleManifest = await readFile(manifestPath, "utf8");
+  const incompatibleManifest = JSON.parse(compatibleManifest) as {
     distribution: { wasmSha256: string };
   };
   incompatibleManifest.distribution.wasmSha256 = "0".repeat(64);
@@ -288,5 +289,43 @@ test("설치된 sharp WASM은 exact application/source/relink manifest가 없으
       manifestPath,
     ]),
     /sharp WASM compliance gate failed[\s\S]*WASM SHA-256/u,
+  );
+
+  await writeFile(manifestPath, compatibleManifest);
+  await rm(packageDirectory, { recursive: true });
+  await execFileAsync(process.execPath, [
+    scriptPath,
+    "--package-lock",
+    path.join(directory, "package-lock.json"),
+    "--node-modules",
+    path.join(directory, "node_modules"),
+    "--output",
+    outputPath,
+    "--sharp-wasm-source-manifest",
+    manifestPath,
+  ]);
+  assert.match(
+    await readFile(outputPath, "utf8"),
+    /Statically linked sharp WebAssembly distribution[\s\S]*Locked distribution WASM SHA-256/u,
+  );
+
+  const invalidWithoutInstalledPackage = JSON.parse(compatibleManifest) as {
+    distribution: { wasmSha256: string };
+  };
+  invalidWithoutInstalledPackage.distribution.wasmSha256 = "not-a-sha256";
+  await writeFile(manifestPath, JSON.stringify(invalidWithoutInstalledPackage));
+  await assert.rejects(
+    execFileAsync(process.execPath, [
+      scriptPath,
+      "--package-lock",
+      path.join(directory, "package-lock.json"),
+      "--node-modules",
+      path.join(directory, "node_modules"),
+      "--output",
+      outputPath,
+      "--sharp-wasm-source-manifest",
+      manifestPath,
+    ]),
+    /sharp WASM compliance gate failed[\s\S]*lowercase SHA-256/u,
   );
 });

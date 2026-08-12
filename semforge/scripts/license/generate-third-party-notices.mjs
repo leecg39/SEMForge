@@ -209,15 +209,14 @@ function resolveContainedFile(directory, relativePath, label) {
 function validateSharpWasmCompliance({ lockfile, nodeModulesPath, sourceManifestPath }) {
   const packageName = "@img/sharp-wasm32";
   const directory = packageDirectory(nodeModulesPath, packageName);
-  if (!existsSync(directory)) {
+  const lockEntry = lockfile.packages?.[`node_modules/${packageName}`];
+  if (!lockEntry) {
     return null;
   }
 
   try {
     const manifest = readJsonFile(sourceManifestPath, "sharp WASM source manifest");
     const distribution = manifest.distribution;
-    const lockEntry = lockfile.packages?.[`node_modules/${packageName}`];
-    const installedPackage = readJsonFile(path.join(directory, "package.json"), `${packageName} package metadata`);
 
     if (manifest.schemaVersion !== 1) {
       throw new Error("source manifest schemaVersion must be 1");
@@ -225,26 +224,15 @@ function validateSharpWasmCompliance({ lockfile, nodeModulesPath, sourceManifest
     if (distribution?.package !== packageName || distribution?.version !== "0.35.3") {
       throw new Error(`source manifest must bind ${packageName}@0.35.3`);
     }
+    if (
+      typeof distribution.wasmPath !== "string" ||
+      !distribution.wasmPath.endsWith(".node.wasm") ||
+      !/^[0-9a-f]{64}$/u.test(distribution.wasmSha256 ?? "")
+    ) {
+      throw new Error("source manifest must bind the WASM path and lowercase SHA-256");
+    }
     if (lockEntry?.version !== distribution.version || lockEntry?.integrity !== distribution.integrity) {
       throw new Error("package-lock version/integrity does not match the source manifest");
-    }
-    if (installedPackage.name !== packageName || installedPackage.version !== distribution.version) {
-      throw new Error("installed package metadata does not match the source manifest");
-    }
-    if (installedPackage.license !== "Apache-2.0 AND LGPL-3.0-or-later AND MIT") {
-      throw new Error("installed package license expression is unexpected");
-    }
-    const installedVersions = readJsonFile(path.join(directory, "versions.json"), `${packageName} versions`);
-    if (!sameJsonRecord(installedVersions, distribution.versions)) {
-      throw new Error("installed bundled-library versions do not match the source manifest");
-    }
-    const wasmPath = resolveContainedFile(directory, distribution.wasmPath, "distribution.wasmPath");
-    if (!existsSync(wasmPath)) {
-      throw new Error(`installed WASM artifact is missing: ${distribution.wasmPath}`);
-    }
-    const wasmDigest = sha256(readFileSync(wasmPath));
-    if (wasmDigest !== distribution.wasmSha256) {
-      throw new Error(`installed WASM SHA-256 ${wasmDigest} does not match ${distribution.wasmSha256}`);
     }
     if (manifest.applicationSource?.commit !== sharpWasmApplicationCommit) {
       throw new Error(`application source must bind sharp commit ${sharpWasmApplicationCommit}`);
@@ -324,6 +312,29 @@ function validateSharpWasmCompliance({ lockfile, nodeModulesPath, sourceManifest
       throw new Error("source manifest must identify the sharp WASM relink document");
     }
 
+    let wasmDigest = distribution.wasmSha256;
+    if (existsSync(directory)) {
+      const installedPackage = readJsonFile(path.join(directory, "package.json"), `${packageName} package metadata`);
+      if (installedPackage.name !== packageName || installedPackage.version !== distribution.version) {
+        throw new Error("installed package metadata does not match the source manifest");
+      }
+      if (installedPackage.license !== "Apache-2.0 AND LGPL-3.0-or-later AND MIT") {
+        throw new Error("installed package license expression is unexpected");
+      }
+      const installedVersions = readJsonFile(path.join(directory, "versions.json"), `${packageName} versions`);
+      if (!sameJsonRecord(installedVersions, distribution.versions)) {
+        throw new Error("installed bundled-library versions do not match the source manifest");
+      }
+      const wasmPath = resolveContainedFile(directory, distribution.wasmPath, "distribution.wasmPath");
+      if (!existsSync(wasmPath)) {
+        throw new Error(`installed WASM artifact is missing: ${distribution.wasmPath}`);
+      }
+      wasmDigest = sha256(readFileSync(wasmPath));
+      if (wasmDigest !== distribution.wasmSha256) {
+        throw new Error(`installed WASM SHA-256 ${wasmDigest} does not match ${distribution.wasmSha256}`);
+      }
+    }
+
     return { manifest, packageName, version: distribution.version, wasmDigest };
   } catch (error) {
     throw new Error(`sharp WASM compliance gate failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -338,9 +349,9 @@ function renderSharpWasmDistributionNotice(compliance) {
   return [
     "## Statically linked sharp WebAssembly distribution",
     "",
-    `The installed \`${packageName}@${version}\` artifact is a statically linked Combined Work. It is not covered by the dynamic native-libvips replacement procedure.`,
+    `The lockfile includes optional \`${packageName}@${version}\`, a statically linked Combined Work when installed. It is not covered by the dynamic native-libvips replacement procedure.`,
     "",
-    `- Installed WASM SHA-256: \`${wasmDigest}\``,
+    `- Locked distribution WASM SHA-256: \`${wasmDigest}\` (verified again when this optional package is installed)`,
     `- Sharp application source: ${manifest.applicationSource.repository} tag ${manifest.applicationSource.tag}, commit \`${manifest.applicationSource.commit}\``,
     `- Sharp-libvips build/source: ${manifest.librarySource.repository} tag ${manifest.librarySource.tag}, commit \`${manifest.librarySource.commit}\``,
     `- Relink input: \`${manifest.devPackage.package}@${manifest.devPackage.version}\` (${manifest.devPackage.integrity})`,

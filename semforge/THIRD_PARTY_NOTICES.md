@@ -3091,9 +3091,9 @@ ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ## Statically linked sharp WebAssembly distribution
 
-The installed `@img/sharp-wasm32@0.35.3` artifact is a statically linked Combined Work. It is not covered by the dynamic native-libvips replacement procedure.
+The lockfile includes optional `@img/sharp-wasm32@0.35.3`, a statically linked Combined Work when installed. It is not covered by the dynamic native-libvips replacement procedure.
 
-- Installed WASM SHA-256: `1a53f5983c8bd3f90b90b58a4800673e434cbe02779fdb1fa1a952328b8c3ab2`
+- Locked distribution WASM SHA-256: `1a53f5983c8bd3f90b90b58a4800673e434cbe02779fdb1fa1a952328b8c3ab2` (verified again when this optional package is installed)
 - Sharp application source: https://github.com/lovell/sharp tag v0.35.3, commit `1018449164723ba0203c1beffaba0e21f7829c18`
 - Sharp-libvips build/source: https://github.com/lovell/sharp-libvips tag v1.3.2, commit `4da6d14c0d59866adfb9d8cf52bcaa53846dc4f6`
 - Relink input: `@img/sharp-libvips-dev-wasm32@1.3.2` (sha512-WYWUA7413vd+Tl0LDQ7/8z5FJYgQTVbNMp47jS4TfeT5G9/iWdRLvpjRRdJ3GJGqpjxqX0Tm/pH6Ey0d4o6mcQ==)
