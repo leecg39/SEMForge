@@ -48,6 +48,84 @@ CREATE TABLE "audit_events" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "legal_acceptances" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"workspace_id" uuid NOT NULL,
+	"user_id" uuid NOT NULL,
+	"terms_version" text NOT NULL,
+	"terms_sha256" text NOT NULL,
+	"privacy_version" text NOT NULL,
+	"privacy_sha256" text NOT NULL,
+	"presented_at" timestamp with time zone NOT NULL,
+	"accepted_at" timestamp with time zone NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "legal_acceptances_workspace_id_uq" UNIQUE("workspace_id","id"),
+	CONSTRAINT "legal_acceptances_workspace_user_uq" UNIQUE("workspace_id","user_id"),
+	CONSTRAINT "legal_acceptances_terms_sha_ck" CHECK ("legal_acceptances"."terms_sha256" ~ '^[0-9a-f]{64}$'),
+	CONSTRAINT "legal_acceptances_privacy_sha_ck" CHECK ("legal_acceptances"."privacy_sha256" ~ '^[0-9a-f]{64}$'),
+	CONSTRAINT "legal_acceptances_time_ck" CHECK ("legal_acceptances"."accepted_at" >= "legal_acceptances"."presented_at")
+);
+--> statement-breakpoint
+CREATE TABLE "privacy_requests" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"workspace_id" uuid NOT NULL,
+	"request_id" text NOT NULL,
+	"type" text NOT NULL,
+	"status" text DEFAULT 'queued' NOT NULL,
+	"operator_id" text NOT NULL,
+	"subject_user_id" uuid,
+	"metadata" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"requested_at" timestamp with time zone NOT NULL,
+	"completed_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "privacy_requests_workspace_id_uq" UNIQUE("workspace_id","id"),
+	CONSTRAINT "privacy_requests_request_id_uq" UNIQUE("workspace_id","request_id"),
+	CONSTRAINT "privacy_requests_type_ck" CHECK ("privacy_requests"."type" in ('export', 'correction', 'deletion')),
+	CONSTRAINT "privacy_requests_status_ck" CHECK ("privacy_requests"."status" in ('queued', 'running', 'completed', 'failed'))
+);
+--> statement-breakpoint
+CREATE TABLE "privacy_request_steps" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"workspace_id" uuid NOT NULL,
+	"request_id" uuid NOT NULL,
+	"step_key" text NOT NULL,
+	"status" text NOT NULL,
+	"attempts" integer DEFAULT 1 NOT NULL,
+	"last_error" text,
+	"metadata" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"completed_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "privacy_request_steps_workspace_id_uq" UNIQUE("workspace_id","id"),
+	CONSTRAINT "privacy_request_steps_key_uq" UNIQUE("workspace_id","request_id","step_key"),
+	CONSTRAINT "privacy_request_steps_status_ck" CHECK ("privacy_request_steps"."status" in ('pending', 'succeeded', 'failed', 'skipped')),
+	CONSTRAINT "privacy_request_steps_attempts_ck" CHECK ("privacy_request_steps"."attempts" > 0)
+);
+--> statement-breakpoint
+CREATE TABLE "privacy_billing_tombstones" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"workspace_id" uuid NOT NULL,
+	"request_id" uuid NOT NULL,
+	"customer_key_hash" text NOT NULL,
+	"legal_hold" boolean DEFAULT true NOT NULL,
+	"retained_reason" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "privacy_billing_tombstones_workspace_id_uq" UNIQUE("workspace_id","id"),
+	CONSTRAINT "privacy_billing_tombstones_request_uq" UNIQUE("workspace_id","request_id"),
+	CONSTRAINT "privacy_billing_tombstones_hash_ck" CHECK ("privacy_billing_tombstones"."customer_key_hash" ~ '^[0-9a-f]{64}$')
+);
+--> statement-breakpoint
+CREATE TABLE "backup_deletion_markers" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"workspace_id" uuid NOT NULL,
+	"request_id" uuid NOT NULL,
+	"marker_key" text NOT NULL,
+	"runbook_ref" text NOT NULL,
+	"metadata" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "backup_deletion_markers_workspace_id_uq" UNIQUE("workspace_id","id"),
+	CONSTRAINT "backup_deletion_markers_request_marker_uq" UNIQUE("workspace_id","request_id","marker_key")
+);
+--> statement-breakpoint
 CREATE TABLE "billing_customers" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"workspace_id" uuid NOT NULL,
@@ -565,6 +643,11 @@ ALTER TABLE "aio_citations" ADD CONSTRAINT "aio_citations_observation_fk" FOREIG
 ALTER TABLE "aio_observations" ADD CONSTRAINT "aio_observations_query_fk" FOREIGN KEY ("workspace_id","site_id","tracked_query_id","query_type") REFERENCES "public"."tracked_queries"("workspace_id","site_id","id","type") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "aio_observations" ADD CONSTRAINT "aio_observations_provider_call_fk" FOREIGN KEY ("workspace_id","provider_call_id") REFERENCES "public"."provider_calls"("workspace_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "audit_events" ADD CONSTRAINT "audit_events_actor_membership_fk" FOREIGN KEY ("workspace_id","actor_user_id") REFERENCES "public"."memberships"("workspace_id","user_id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "legal_acceptances" ADD CONSTRAINT "legal_acceptances_membership_fk" FOREIGN KEY ("workspace_id","user_id") REFERENCES "public"."memberships"("workspace_id","user_id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "privacy_requests" ADD CONSTRAINT "privacy_requests_workspace_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "privacy_request_steps" ADD CONSTRAINT "privacy_request_steps_request_fk" FOREIGN KEY ("workspace_id","request_id") REFERENCES "public"."privacy_requests"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "privacy_billing_tombstones" ADD CONSTRAINT "privacy_billing_tombstones_request_fk" FOREIGN KEY ("workspace_id","request_id") REFERENCES "public"."privacy_requests"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "backup_deletion_markers" ADD CONSTRAINT "backup_deletion_markers_request_fk" FOREIGN KEY ("workspace_id","request_id") REFERENCES "public"."privacy_requests"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "billing_customers" ADD CONSTRAINT "billing_customers_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "deliveries" ADD CONSTRAINT "deliveries_report_fk" FOREIGN KEY ("workspace_id","report_id") REFERENCES "public"."weekly_reports"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "gsc_connections" ADD CONSTRAINT "gsc_connections_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -672,6 +755,13 @@ FOR EACH ROW EXECUTE FUNCTION enforce_tracked_query_limit();--> statement-breakp
 CREATE FUNCTION protect_weekly_report_snapshot() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = public, pg_temp AS $$
 BEGIN
+  IF TG_OP = 'DELETE'
+    AND current_setting('app.privacy_erasure_request_id', true) ~ '^[0-9a-fA-F-]{36}$'
+    AND current_setting('app.privacy_erasure_procedure', true) = 'privacy_erase_workspace'
+  THEN
+    RETURN OLD;
+  END IF;
+
   IF OLD.status = 'delivered' OR OLD.delivered_at IS NOT NULL THEN
     RAISE EXCEPTION 'delivered report cannot be mutated' USING ERRCODE = '55000';
   END IF;
@@ -714,6 +804,12 @@ BEGIN
   SELECT snapshot_ready_at INTO parent_ready_at
     FROM weekly_reports
    WHERE workspace_id = target_workspace_id AND id = target_report_id;
+  IF TG_OP = 'DELETE'
+    AND current_setting('app.privacy_erasure_request_id', true) ~ '^[0-9a-fA-F-]{36}$'
+    AND current_setting('app.privacy_erasure_procedure', true) = 'privacy_erase_workspace'
+  THEN
+    RETURN OLD;
+  END IF;
   IF parent_ready_at IS NOT NULL THEN
     RAISE EXCEPTION 'immutable report sections cannot be changed' USING ERRCODE = '55000';
   END IF;
@@ -723,6 +819,92 @@ $$;--> statement-breakpoint
 CREATE TRIGGER report_sections_protect_snapshot
 BEFORE INSERT OR UPDATE OR DELETE ON report_sections
 FOR EACH ROW EXECUTE FUNCTION protect_report_sections();--> statement-breakpoint
+
+-- @TASK P5-PRIVACY - Auditable privacy erasure procedure for immutable reports
+CREATE FUNCTION privacy_erase_workspace(p_workspace_id uuid, p_request_id uuid, p_operator_id text)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  customer_hash text;
+BEGIN
+  PERFORM set_config('app.privacy_erasure_request_id', p_request_id::text, true);
+  PERFORM set_config('app.privacy_erasure_procedure', 'privacy_erase_workspace', true);
+
+  SELECT encode(sha256(coalesce(string_agg(toss_customer_key, ',' order by toss_customer_key), '')::bytea), 'hex')
+    INTO customer_hash
+    FROM billing_customers
+   WHERE workspace_id = p_workspace_id;
+
+  INSERT INTO privacy_billing_tombstones
+    (workspace_id, request_id, customer_key_hash, legal_hold, retained_reason)
+  VALUES
+    (p_workspace_id, p_request_id, coalesce(customer_hash, repeat('0', 64)), true,
+     'billing ledger retained for legal, tax, dispute, refund, and chargeback handling')
+  ON CONFLICT (workspace_id, request_id) DO NOTHING;
+
+  UPDATE billing_ledger_events
+     SET entity_id = encode(sha256(entity_id::bytea), 'hex'),
+         order_id = CASE WHEN order_id IS NULL THEN NULL ELSE encode(sha256(order_id::bytea), 'hex') END,
+         metadata = jsonb_build_object('privacyErased', true, 'requestId', p_request_id::text)
+   WHERE workspace_id = p_workspace_id;
+
+  UPDATE billing_customers
+     SET toss_customer_key = 'erased:' || encode(sha256(toss_customer_key::bytea), 'hex'),
+         updated_at = now()
+   WHERE workspace_id = p_workspace_id;
+
+  UPDATE payment_methods
+     SET billing_key_encrypted = 'enc:v1:erased',
+         billing_key_fingerprint = encode(sha256((billing_key_fingerprint || p_request_id::text)::bytea), 'hex'),
+         card_brand = NULL,
+         card_last4 = NULL,
+         active = false,
+         replaced_at = coalesce(replaced_at, now()),
+         updated_at = now()
+   WHERE workspace_id = p_workspace_id;
+
+  UPDATE deliveries
+     SET recipient = 'erased:' || encode(sha256(recipient::bytea), 'hex'),
+         last_error = NULL
+   WHERE workspace_id = p_workspace_id;
+
+  DELETE FROM report_sections WHERE workspace_id = p_workspace_id;
+  DELETE FROM report_assets WHERE workspace_id = p_workspace_id;
+  DELETE FROM weekly_reports WHERE workspace_id = p_workspace_id;
+  DELETE FROM gsc_property_bindings WHERE workspace_id = p_workspace_id;
+  DELETE FROM gsc_connections WHERE workspace_id = p_workspace_id;
+  DELETE FROM oauth_states WHERE workspace_id = p_workspace_id;
+  DELETE FROM rank_observations WHERE workspace_id = p_workspace_id;
+  DELETE FROM aio_citations WHERE workspace_id = p_workspace_id;
+  DELETE FROM aio_observations WHERE workspace_id = p_workspace_id;
+  DELETE FROM naver_observation_sources WHERE workspace_id = p_workspace_id;
+  DELETE FROM naver_observations WHERE workspace_id = p_workspace_id;
+  DELETE FROM gsc_observations WHERE workspace_id = p_workspace_id;
+  DELETE FROM tracked_queries WHERE workspace_id = p_workspace_id;
+  DELETE FROM sites WHERE workspace_id = p_workspace_id;
+  DELETE FROM outbox WHERE workspace_id = p_workspace_id;
+  DELETE FROM jobs WHERE workspace_id = p_workspace_id;
+  UPDATE users
+     SET email = 'erased+' || encode(sha256((users.id::text || p_request_id::text)::bytea), 'hex') || '@privacy.semforge.invalid',
+         display_name = NULL,
+         disabled_at = coalesce(disabled_at, now()),
+         updated_at = now()
+   WHERE id IN (SELECT user_id FROM memberships WHERE workspace_id = p_workspace_id);
+  DELETE FROM sessions WHERE workspace_id = p_workspace_id;
+  DELETE FROM password_resets
+   WHERE user_id IN (SELECT user_id FROM memberships WHERE workspace_id = p_workspace_id);
+  INSERT INTO backup_deletion_markers
+    (workspace_id, request_id, marker_key, runbook_ref, metadata)
+  VALUES
+    (p_workspace_id, p_request_id, 'backup-erasure-required',
+     'docs/ops/privacy-erasure-runbook.md',
+     jsonb_build_object('operatorId', p_operator_id, 'createdAt', now()))
+  ON CONFLICT (workspace_id, request_id, marker_key) DO NOTHING;
+END;
+$$;--> statement-breakpoint
 
 -- @TASK P1-D3 - Web/auth/operator/worker role boundary and tenant RLS
 -- semforge_* runtime roles are NOLOGIN privilege groups. Infrastructure must provision
@@ -736,11 +918,12 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_scheduler') THEN CREATE ROLE semforge_scheduler NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_worker') THEN CREATE ROLE semforge_worker NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_billing') THEN CREATE ROLE semforge_billing NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'semforge_privacy') THEN CREATE ROLE semforge_privacy NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF;
 END
 $$;--> statement-breakpoint
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC;--> statement-breakpoint
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;--> statement-breakpoint
-GRANT USAGE ON SCHEMA public TO semforge_web, semforge_auth, semforge_operator, semforge_dispatcher, semforge_scheduler, semforge_worker, semforge_billing;--> statement-breakpoint
+GRANT USAGE ON SCHEMA public TO semforge_web, semforge_auth, semforge_operator, semforge_dispatcher, semforge_scheduler, semforge_worker, semforge_billing, semforge_privacy;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON
   workspaces, memberships, sites, tracked_queries,
   gsc_connections, oauth_states, gsc_property_bindings
@@ -748,7 +931,7 @@ TO semforge_web;--> statement-breakpoint
 GRANT SELECT, INSERT ON audit_events, provider_calls, usage_reservations, jobs, outbox TO semforge_web;--> statement-breakpoint
 GRANT SELECT ON rank_observations, aio_observations, aio_citations, naver_observations,
   naver_observation_sources, gsc_observations, weekly_reports, report_sections, report_assets, deliveries,
-  payments, provider_events, billing_ledger_events TO semforge_web;--> statement-breakpoint
+  payments, provider_events, billing_ledger_events, legal_acceptances TO semforge_web;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE ON users TO semforge_auth;--> statement-breakpoint
 GRANT SELECT ON invites TO semforge_auth;--> statement-breakpoint
 GRANT UPDATE (accepted_at, accepted_workspace_id, accepted_by_user_id) ON invites TO semforge_auth;--> statement-breakpoint
@@ -757,6 +940,7 @@ GRANT SELECT, INSERT, UPDATE ON password_resets TO semforge_auth;--> statement-b
 GRANT SELECT, INSERT, UPDATE, DELETE ON auth_action_throttles TO semforge_auth;--> statement-breakpoint
 GRANT SELECT, INSERT ON workspaces, memberships TO semforge_auth;--> statement-breakpoint
 GRANT INSERT ON billing_customers, subscriptions TO semforge_auth;--> statement-breakpoint
+GRANT INSERT ON legal_acceptances TO semforge_auth;--> statement-breakpoint
 GRANT INSERT (workspace_id, topic, payload, idempotency_key, available_at, created_at) ON outbox TO semforge_auth;--> statement-breakpoint
 GRANT SELECT ON invites TO semforge_operator;--> statement-breakpoint
 GRANT INSERT (email, token_hash, workspace_name, workspace_slug, expires_at) ON invites TO semforge_operator;--> statement-breakpoint
@@ -787,6 +971,13 @@ GRANT INSERT ON audit_events TO semforge_worker;--> statement-breakpoint
 GRANT SELECT ON sessions, memberships TO semforge_billing;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE ON billing_customers, payment_methods, subscriptions, payments, provider_events TO semforge_billing;--> statement-breakpoint
 GRANT INSERT ON billing_ledger_events TO semforge_billing;--> statement-breakpoint
+GRANT SELECT, INSERT, UPDATE, DELETE ON privacy_requests, privacy_request_steps, privacy_billing_tombstones, backup_deletion_markers,
+  gsc_connections, gsc_property_bindings, oauth_states, report_sections, report_assets, weekly_reports, deliveries,
+  rank_observations, aio_observations, aio_citations, naver_observations, naver_observation_sources, gsc_observations,
+  tracked_queries, sites, outbox, jobs, sessions, password_resets, billing_customers, payment_methods, billing_ledger_events, users
+TO semforge_privacy;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION privacy_erase_workspace(uuid, uuid, text) TO semforge_privacy;--> statement-breakpoint
+REVOKE DELETE ON weekly_reports, report_sections, report_assets, deliveries FROM semforge_worker, semforge_web, semforge_billing;--> statement-breakpoint
 
 ALTER TABLE gsc_connections ADD CONSTRAINT gsc_connections_encrypted_tokens_ck
   CHECK (access_token_encrypted ~ '^enc:v[0-9]+:' AND refresh_token_encrypted ~ '^enc:v[0-9]+:');--> statement-breakpoint
@@ -806,9 +997,11 @@ CREATE POLICY workspaces_worker_read ON workspaces FOR SELECT TO semforge_worker
 DO $$
 DECLARE tenant_table text;
 BEGIN
-  FOREACH tenant_table IN ARRAY ARRAY[
-    'memberships', 'audit_events', 'sites', 'tracked_queries',
-    'gsc_connections', 'oauth_states', 'gsc_property_bindings',
+	  FOREACH tenant_table IN ARRAY ARRAY[
+	    'memberships', 'audit_events', 'legal_acceptances',
+	    'privacy_requests', 'privacy_request_steps', 'privacy_billing_tombstones', 'backup_deletion_markers',
+	    'sites', 'tracked_queries',
+	    'gsc_connections', 'oauth_states', 'gsc_property_bindings',
     'provider_calls', 'usage_reservations', 'jobs', 'outbox',
     'rank_observations', 'aio_observations', 'aio_citations',
     'naver_observations', 'naver_observation_sources', 'gsc_observations',
@@ -829,6 +1022,7 @@ $$;--> statement-breakpoint
 CREATE POLICY memberships_auth_select ON memberships FOR SELECT TO semforge_auth USING (true);--> statement-breakpoint
 CREATE POLICY memberships_auth_insert ON memberships FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY memberships_billing_select ON memberships FOR SELECT TO semforge_billing USING (true);--> statement-breakpoint
+CREATE POLICY legal_acceptances_auth_insert ON legal_acceptances FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY billing_customers_auth_insert ON billing_customers FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY subscriptions_auth_insert ON subscriptions FOR INSERT TO semforge_auth WITH CHECK (true);--> statement-breakpoint
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
@@ -880,9 +1074,9 @@ CREATE POLICY auth_action_throttles_auth_delete ON auth_action_throttles FOR DEL
 DO $$
 DECLARE worker_table text;
 BEGIN
-  FOREACH worker_table IN ARRAY ARRAY[
-    'memberships', 'sites', 'tracked_queries', 'gsc_connections', 'gsc_property_bindings',
-    'provider_calls', 'usage_reservations',
+	  FOREACH worker_table IN ARRAY ARRAY[
+	    'memberships', 'sites', 'tracked_queries', 'gsc_connections', 'gsc_property_bindings',
+	    'provider_calls', 'usage_reservations',
     'rank_observations', 'aio_observations', 'aio_citations', 'naver_observations', 'naver_observation_sources', 'gsc_observations',
     'weekly_reports', 'report_sections', 'report_assets', 'deliveries',
     'billing_customers', 'payment_methods', 'subscriptions', 'payments', 'provider_events', 'billing_ledger_events'
@@ -893,6 +1087,24 @@ BEGIN
 END
 $$;
 --> statement-breakpoint
+DO $$
+DECLARE privacy_table text;
+BEGIN
+  FOREACH privacy_table IN ARRAY ARRAY[
+    'legal_acceptances', 'privacy_requests', 'privacy_request_steps', 'privacy_billing_tombstones', 'backup_deletion_markers',
+    'gsc_connections', 'gsc_property_bindings', 'oauth_states',
+    'weekly_reports', 'report_sections', 'report_assets', 'deliveries',
+    'rank_observations', 'aio_observations', 'aio_citations', 'naver_observations', 'naver_observation_sources', 'gsc_observations',
+    'tracked_queries', 'sites', 'outbox', 'jobs', 'billing_customers', 'payment_methods', 'billing_ledger_events'
+  ] LOOP
+    EXECUTE format('CREATE POLICY %I ON %I TO semforge_privacy USING (true) WITH CHECK (true)',
+      privacy_table || '_privacy_access', privacy_table);
+  END LOOP;
+END
+$$;--> statement-breakpoint
+CREATE POLICY users_privacy_access ON users TO semforge_privacy USING (true) WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY sessions_privacy_access ON sessions TO semforge_privacy USING (true) WITH CHECK (true);--> statement-breakpoint
+CREATE POLICY password_resets_privacy_access ON password_resets TO semforge_privacy USING (true) WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY jobs_dispatcher_access ON jobs TO semforge_dispatcher
   USING (true) WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY outbox_dispatcher_access ON outbox TO semforge_dispatcher

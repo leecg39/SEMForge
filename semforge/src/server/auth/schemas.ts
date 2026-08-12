@@ -42,6 +42,12 @@ export const acceptInviteInputSchema = z.object({
   email: normalizedEmailSchema,
   password: credentialPasswordSchema,
   displayName: z.string().trim().min(1).max(100).optional(),
+  legalAccepted: z.boolean(),
+  legalTermsVersion: z.string().trim().min(1).max(80),
+  legalTermsSha256: z.string().trim().regex(/^[0-9a-f]{64}$/u),
+  legalPrivacyVersion: z.string().trim().min(1).max(80),
+  legalPrivacySha256: z.string().trim().regex(/^[0-9a-f]{64}$/u),
+  legalPresentedAt: z.string().trim().datetime({ offset: true }),
   currentSessionToken: opaqueTokenSchema.optional(),
 }).strict();
 

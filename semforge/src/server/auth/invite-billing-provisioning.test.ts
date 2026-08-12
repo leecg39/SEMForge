@@ -26,7 +26,7 @@ before(async () => {
 after(async () => pg.close());
 
 test("acceptInviteAtomic provisions billing_customers and account_created subscription in the same transaction", async () => {
-  const now = new Date("2026-08-11T03:00:00.000Z");
+  const now = new Date();
   const tokenHash = sha256("invite-billing-token");
   const store = new PostgresAuthStore(drizzle(pg) as never);
 

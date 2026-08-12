@@ -10,6 +10,7 @@ import {
   authActionThrottles,
   billingCustomers,
   invites,
+  legalAcceptances,
   memberships,
   outbox,
   passwordResets,
@@ -44,6 +45,7 @@ import {
   DEFAULT_AUTH_THROTTLE_WINDOW_MS,
 } from "@/server/auth/store";
 import { createInviteInputSchema } from "@/server/auth/schemas";
+import { currentLegalDocuments } from "@/server/privacy/legal-documents";
 
 function normalizeEmail(value: string): string {
   return value.normalize("NFKC").trim().toLocaleLowerCase("en-US");
@@ -308,6 +310,26 @@ export class PostgresAuthStore implements AuthStore {
             updatedAt: input.now,
           })
           .onConflictDoNothing();
+
+        const legalDocuments = currentLegalDocuments();
+        const legalAcceptance = input.legalAcceptance ?? {
+          termsVersion: legalDocuments.terms.version,
+          termsSha256: legalDocuments.terms.sha256,
+          privacyVersion: legalDocuments.privacy.version,
+          privacySha256: legalDocuments.privacy.sha256,
+          presentedAt: input.now,
+        };
+        await tx.insert(legalAcceptances).values({
+          workspaceId: workspace.id,
+          userId: user.id,
+          termsVersion: legalAcceptance.termsVersion,
+          termsSha256: legalAcceptance.termsSha256,
+          privacyVersion: legalAcceptance.privacyVersion,
+          privacySha256: legalAcceptance.privacySha256,
+          presentedAt: legalAcceptance.presentedAt,
+          acceptedAt: input.now,
+          createdAt: input.now,
+        });
 
         const consumed = await tx
           .update(invites)

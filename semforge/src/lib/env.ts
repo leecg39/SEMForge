@@ -19,7 +19,7 @@ const rawServerEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   // @TASK P4-O1-T1 - Keep web, worker, and migration containers least-privileged.
   SEMFORGE_SERVICE: z
-    .enum(["web", "worker", "relay", "scheduler", "migrate", "build", "all"])
+    .enum(["web", "worker", "relay", "scheduler", "privacy", "migrate", "build", "all"])
     .default("all"),
   DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   // @TASK P1-D3 - Never reuse the migration owner DSN for auth or operator runtime access.
@@ -29,6 +29,7 @@ const rawServerEnvSchema = z.object({
   DISPATCHER_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   SCHEDULER_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   BILLING_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
+  PRIVACY_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   MIGRATION_DATABASE_URL: z.string().trim().startsWith("postgresql://").optional(),
   APP_PUBLIC_URL: z.string().trim().url().optional(),
   AUTH_TRUST_PROXY_HEADERS: booleanStringSchema,
@@ -118,6 +119,7 @@ const productionRequiredByService = {
     "DISPATCHER_DATABASE_URL",
     "SCHEDULER_DATABASE_URL",
     "BILLING_DATABASE_URL",
+    "PRIVACY_DATABASE_URL",
     "MIGRATION_DATABASE_URL",
     "APP_PUBLIC_URL",
     "APP_SECRET",
@@ -187,6 +189,7 @@ const productionRequiredByService = {
   ],
   relay: ["DISPATCHER_DATABASE_URL"],
   scheduler: ["SCHEDULER_DATABASE_URL"],
+  privacy: ["PRIVACY_DATABASE_URL"],
   migrate: ["MIGRATION_DATABASE_URL"],
   build: [],
 } as const satisfies Record<
@@ -202,6 +205,7 @@ const databaseUrlKeys = [
   "DISPATCHER_DATABASE_URL",
   "SCHEDULER_DATABASE_URL",
   "BILLING_DATABASE_URL",
+  "PRIVACY_DATABASE_URL",
   "MIGRATION_DATABASE_URL",
 ] as const satisfies readonly (keyof z.infer<typeof rawServerEnvSchema>)[];
 

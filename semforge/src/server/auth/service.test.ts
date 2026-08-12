@@ -10,8 +10,21 @@ import {
 import { hashPassword, verifyPassword } from "@/server/auth/password";
 import { createAuthService } from "@/server/auth/service";
 import type { AuthStore, OperatorInviteStore } from "@/server/auth/store";
+import { currentLegalDocuments } from "@/server/privacy/legal-documents";
 
 const NOW = new Date("2026-08-11T03:00:00.000Z");
+
+function legalConsent() {
+  const documents = currentLegalDocuments();
+  return {
+    legalAccepted: true,
+    legalTermsVersion: documents.terms.version,
+    legalTermsSha256: documents.terms.sha256,
+    legalPrivacyVersion: documents.privacy.version,
+    legalPrivacySha256: documents.privacy.sha256,
+    legalPresentedAt: "2026-08-11T02:59:00.000Z",
+  };
+}
 
 function storeFixture(overrides: Partial<AuthStore> = {}): AuthStore {
   return {
@@ -105,6 +118,7 @@ test("신규 사용자는 강한 비밀번호로 초대를 원자 수락하고 r
     password: "긴비밀번호-for-beta-2026",
     displayName: "  새 사용자  ",
     currentSessionToken,
+    ...legalConsent(),
   });
 
   assert.equal(result.principal, principal);
@@ -164,6 +178,7 @@ test("기존 사용자는 현재 비밀번호를 검증하되 해시를 덮어�
     email: "existing@example.com",
     password: "existing-password-2026",
     displayName: "공격자가 바꾸려는 이름",
+    ...legalConsent(),
   });
 
   assert.deepEqual(acceptedUser, {
@@ -214,6 +229,7 @@ test("초대 preflight 실패와 기존 사용자 비밀번호 실패는 같은 
       email: "existing@example.com",
       password: "x",
       currentSessionToken: "y".repeat(43),
+      ...legalConsent(),
     }),
     assertInvalidInvite,
   );
@@ -222,6 +238,7 @@ test("초대 preflight 실패와 기존 사용자 비밀번호 실패는 같은 
       token: "d".repeat(43),
       email: "existing@example.com",
       password: "wrong-password-2026",
+      ...legalConsent(),
     }),
     assertInvalidInvite,
   );

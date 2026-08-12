@@ -11,6 +11,7 @@ import {
   type AuthHttpDependencies,
   type AuthHttpService,
 } from "@/server/auth/http";
+import { currentLegalDocuments } from "@/server/privacy/legal-documents";
 
 const NOW = new Date("2026-08-11T05:00:00.000Z");
 const EXPIRES_AT = new Date("2026-09-10T05:00:00.000Z");
@@ -86,6 +87,18 @@ function jsonRequest(path: string, body: unknown, headers: HeadersInit = {}): Re
 
 async function payload(response: Response): Promise<Record<string, unknown>> {
   return response.json() as Promise<Record<string, unknown>>;
+}
+
+function legalConsentBody() {
+  const documents = currentLegalDocuments();
+  return {
+    legalAccepted: true,
+    legalTermsVersion: documents.terms.version,
+    legalTermsSha256: documents.terms.sha256,
+    legalPrivacyVersion: documents.privacy.version,
+    legalPrivacySha256: documents.privacy.sha256,
+    legalPresentedAt: "2026-08-11T04:59:00.000Z",
+  };
 }
 
 test("login은 same-origin JSON만 받고 raw session token을 쿠키에만 기록한다", async () => {
@@ -326,6 +339,7 @@ test("invite 수락도 session token을 body에서 제거하고 cookie로만 반
         email: "owner@example.com",
         password: "strong-password-1234",
         displayName: "운영자",
+        ...legalConsentBody(),
       },
       { cookie: `${SESSION_COOKIE_NAME}=${"c".repeat(43)}` },
     ),
@@ -351,6 +365,7 @@ test("invite 수락 body의 server-only currentSessionToken은 거부한다", as
       token: RAW_INVITE_TOKEN,
       email: "owner@example.com",
       password: "strong-password-1234",
+      ...legalConsentBody(),
       currentSessionToken: "x".repeat(43),
     }),
     undefined,
@@ -494,6 +509,7 @@ test("AuthServiceError는 route별 안전한 public 오류로 변환된다", asy
         token: RAW_INVITE_TOKEN,
         email: "owner@example.com",
         password: "strong-password-1234",
+        ...legalConsentBody(),
       }),
       undefined,
     );
@@ -512,6 +528,7 @@ test("AuthServiceError는 route별 안전한 public 오류로 변환된다", asy
         token: RAW_INVITE_TOKEN,
         email: "owner@example.com",
         password: "weak-password",
+        ...legalConsentBody(),
       }),
       undefined,
     );

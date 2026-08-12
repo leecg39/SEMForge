@@ -28,6 +28,11 @@ import {
 const requiredTenantTables = [
   "memberships",
   "audit_events",
+  "legal_acceptances",
+  "privacy_requests",
+  "privacy_request_steps",
+  "privacy_billing_tombstones",
+  "backup_deletion_markers",
   "sites",
   "tracked_queries",
   "gsc_connections",

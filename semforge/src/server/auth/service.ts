@@ -23,6 +23,7 @@ import {
   type ResetPasswordInput,
 } from "@/server/auth/schemas";
 import { createOpaqueToken, hashOpaqueToken } from "@/server/auth/tokens";
+import { requireCurrentLegalAcceptance } from "@/server/privacy/legal-documents";
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
@@ -136,6 +137,20 @@ export function createAuthService(dependencies: AuthServiceDependencies) {
       if (!store) throw configurationError("auth store");
       const parsed = acceptInviteInputSchema.parse(input);
       const acceptedAt = now();
+      const legalAcceptance = (() => {
+        try {
+          return requireCurrentLegalAcceptance({
+            termsVersion: parsed.legalTermsVersion,
+            termsSha256: parsed.legalTermsSha256,
+            privacyVersion: parsed.legalPrivacyVersion,
+            privacySha256: parsed.legalPrivacySha256,
+            presentedAt: parsed.legalPresentedAt,
+            accepted: parsed.legalAccepted,
+          });
+        } catch {
+          throw invalidInvite();
+        }
+      })();
       const tokenHash = hashOpaqueToken(parsed.token);
       const prepared = await store.prepareInviteAcceptance({
         tokenHash,
@@ -169,6 +184,7 @@ export function createAuthService(dependencies: AuthServiceDependencies) {
         email: parsed.email,
         user: inviteUser,
         sessionTokenHash: hashOpaqueToken(token),
+        legalAcceptance,
         ...(parsed.currentSessionToken
           ? { currentSessionTokenHash: hashOpaqueToken(parsed.currentSessionToken) }
           : {}),
