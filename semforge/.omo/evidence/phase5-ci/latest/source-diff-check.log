@@ -1,0 +1,6 @@
+$ git diff --check -- . :(exclude).omo/evidence/**
+startedAt=2026-08-12T08:48:17.854Z
+
+endedAt=2026-08-12T08:48:17.884Z
+exitCode=0
+signal=null

@@ -1,0 +1,80 @@
+$ npm run build
+startedAt=2026-08-12T08:48:05.016Z
+
+> semforge@0.1.0 build
+> SEMFORGE_SERVICE=build next build
+
+▲ Next.js 16.3.0 (Turbopack)
+✓ Running next.config.ts took 19ms
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 926ms
+  Running TypeScript ...
+  Finished TypeScript in 2.3s ...
+  Collecting page data using 7 workers ...
+  Generating static pages using 7 workers (0/33) ...
+  Generating static pages using 7 workers (8/33)
+
+  Generating static pages using 7 workers (16/33)
+
+  Generating static pages using 7 workers (24/33)
+
+✓ Generating static pages using 7 workers (33/33) in 616ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/v1/auth/invites/accept
+├ ƒ /api/v1/auth/login
+├ ƒ /api/v1/auth/logout
+├ ƒ /api/v1/auth/password/forgot
+├ ƒ /api/v1/auth/password/reset
+├ ƒ /api/v1/auth/session
+├ ƒ /api/v1/billing/authorize
+├ ƒ /api/v1/billing/cancel
+├ ƒ /api/v1/billing/checkout
+├ ƒ /api/v1/billing/payment-method
+├ ƒ /api/v1/billing/retry
+├ ƒ /api/v1/billing/subscription
+├ ƒ /api/v1/insights/naver
+├ ƒ /api/v1/integrations/gsc/bindings
+├ ƒ /api/v1/integrations/gsc/callback
+├ ƒ /api/v1/integrations/gsc/connect
+├ ƒ /api/v1/integrations/gsc/connections
+├ ƒ /api/v1/integrations/gsc/connections/[connectionId]
+├ ƒ /api/v1/integrations/gsc/connections/[connectionId]/properties
+├ ƒ /api/v1/reports
+├ ƒ /api/v1/reports/[reportId]
+├ ƒ /api/v1/reports/[reportId]/pdf
+├ ƒ /api/v1/reports/branding
+├ ƒ /api/v1/sites
+├ ƒ /api/v1/sites/[siteId]
+├ ƒ /api/v1/tracking
+├ ƒ /api/v1/tracking/[trackingId]
+├ ƒ /api/v1/visibility/aio
+├ ƒ /api/v1/webhooks/toss
+├ ○ /app
+├ ○ /app/billing
+├ ○ /app/reports
+├ ƒ /app/reports/[reportId]
+├ ○ /app/settings
+├ ○ /app/sites
+├ ƒ /app/sites/[siteId]
+├ ○ /forgot-password
+├ ƒ /health/live
+├ ƒ /health/ready
+├ ƒ /invite/[token]
+├ ƒ /legal/privacy
+├ ƒ /legal/terms
+├ ○ /login
+└ ƒ /reset-password/[token]
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+endedAt=2026-08-12T08:48:14.615Z
+exitCode=0
+signal=null

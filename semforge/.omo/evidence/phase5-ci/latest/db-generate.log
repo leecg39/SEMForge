@@ -1,0 +1,55 @@
+$ npm run db:generate
+startedAt=2026-08-12T08:48:16.770Z
+
+> semforge@0.1.0 db:generate
+> drizzle-kit generate
+
+No config path provided, using default 'drizzle.config.ts'
+Reading config file '/Users/user01/Music/SEMForge-worktrees/phase-5-finalize/semforge/drizzle.config.ts'
+40 tables
+aio_citations 7 columns 0 indexes 1 fks
+aio_observations 10 columns 1 indexes 2 fks
+audit_events 9 columns 1 indexes 1 fks
+auth_action_throttles 6 columns 0 indexes 0 fks
+backup_deletion_markers 7 columns 0 indexes 1 fks
+billing_customers 5 columns 0 indexes 1 fks
+billing_ledger_events 13 columns 1 indexes 1 fks
+deliveries 11 columns 0 indexes 1 fks
+email_suppressions 4 columns 0 indexes 1 fks
+gsc_connections 10 columns 0 indexes 1 fks
+gsc_observations 14 columns 1 indexes 2 fks
+gsc_property_bindings 6 columns 0 indexes 2 fks
+invites 13 columns 3 indexes 1 fks
+jobs 18 columns 2 indexes 1 fks
+legal_acceptances 10 columns 0 indexes 1 fks
+memberships 4 columns 1 indexes 2 fks
+naver_observation_sources 8 columns 0 indexes 2 fks
+naver_observations 13 columns 0 indexes 1 fks
+oauth_states 10 columns 1 indexes 1 fks
+outbox 16 columns 2 indexes 1 fks
+password_resets 6 columns 1 indexes 1 fks
+payment_methods 11 columns 1 indexes 1 fks
+payments 16 columns 0 indexes 1 fks
+privacy_billing_tombstones 7 columns 0 indexes 1 fks
+privacy_request_steps 10 columns 0 indexes 1 fks
+privacy_requests 11 columns 0 indexes 1 fks
+provider_calls 11 columns 1 indexes 1 fks
+provider_events 9 columns 1 indexes 1 fks
+rank_observations 11 columns 1 indexes 2 fks
+report_assets 9 columns 0 indexes 1 fks
+report_sections 8 columns 0 indexes 1 fks
+sessions 7 columns 1 indexes 1 fks
+sites 8 columns 2 indexes 1 fks
+subscriptions 12 columns 0 indexes 2 fks
+tracked_queries 9 columns 1 indexes 1 fks
+usage_reservations 13 columns 0 indexes 1 fks
+users 8 columns 1 indexes 0 fks
+weekly_reports 16 columns 0 indexes 1 fks
+workspace_privacy_controls 8 columns 0 indexes 2 fks
+workspaces 7 columns 0 indexes 0 fks
+
+No schema changes, nothing to migrate 😴
+
+endedAt=2026-08-12T08:48:17.824Z
+exitCode=0
+signal=null

@@ -1,0 +1,7 @@
+$ npm audit --omit=dev --audit-level=high
+startedAt=2026-08-12T08:48:15.487Z
+found 0 vulnerabilities
+
+endedAt=2026-08-12T08:48:16.481Z
+exitCode=0
+signal=null

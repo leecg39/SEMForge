@@ -1,0 +1,11 @@
+$ npm run ci:nine-site
+startedAt=2026-08-12T08:48:24.848Z
+
+> semforge@0.1.0 ci:nine-site
+> node scripts/ci/nine-site-harness.mjs
+
+nine-site synthetic limit fixture passed: workspaces=3 sites=9 observations=360 reports=9
+
+endedAt=2026-08-12T08:48:25.061Z
+exitCode=0
+signal=null
