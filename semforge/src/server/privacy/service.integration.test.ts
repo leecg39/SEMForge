@@ -27,6 +27,7 @@ const workspaceA = "00000000-0000-4000-8000-00000000a501";
 const workspaceB = "00000000-0000-4000-8000-00000000b501";
 const userA = "00000000-0000-4000-8000-00000000a502";
 const userB = "00000000-0000-4000-8000-00000000b502";
+const userASecondMember = "00000000-0000-4000-8000-00000000a508";
 const userWithoutDelivery = "00000000-0000-4000-8000-00000000a507";
 const reportA = "00000000-0000-4000-8000-00000000a503";
 const siteA = "00000000-0000-4000-8000-00000000a504";
@@ -122,12 +123,16 @@ async function seedPrivacySubject(pg: PGlite) {
 
 async function openRequest(
   pg: PGlite,
-  input: { requestId: string; type: "export" | "correction" | "deletion" },
+  input: {
+    requestId: string;
+    type: "export" | "correction" | "erasure" | "workspace_deletion";
+    subjectUserId?: string | null;
+  },
 ): Promise<void> {
   await pg.query(
     `select *
-       from privacy_open_request($1::uuid, $2::text, $3::text, 'operator-1', now())`,
-    [workspaceA, input.requestId, input.type],
+       from privacy_open_request($1::uuid, $2::text, $3::text, 'operator-1', now(), $4::uuid)`,
+    [workspaceA, input.requestId, input.type, input.subjectUserId ?? null],
   );
 }
 
@@ -215,27 +220,303 @@ test("retention policy는 운영자가 주입한 명시 JSON만 허용하고 기
 test("운영자 DSAR export는 tenant 경계를 지키고 token/billing key 원문을 내보내지 않는다", async () => {
   const pg = await migratedDb();
   await seedPrivacySubject(pg);
-  await openRequest(pg, { requestId: "dsar-export-1", type: "export" });
+  await openRequest(pg, { requestId: "dsar-export-1", type: "export", subjectUserId: userA });
   const service = createPrivacyService({ db: pg });
 
   const exported = await service.exportWorkspaceSubject({
     workspaceId: workspaceA,
     operatorId: "operator-1",
     requestId: "dsar-export-1",
+    subjectUserId: userA,
     now: new Date("2026-08-12T02:00:00.000Z"),
   });
 
   assert.equal(exported.workspace.id, workspaceA);
-  assert.equal(exported.users[0]?.email, "owner-a@example.test");
-  assert.equal(exported.users.some((user) => user.id === userB), false);
+  assert.equal(exported.subject.email, "owner-a@example.test");
   assert.equal(JSON.stringify(exported).includes("enc:v1:"), false);
   assert.equal(JSON.stringify(exported).includes("customer-b"), false);
+  assert.equal(JSON.stringify(exported).includes("Site A"), false);
+  assert.equal(JSON.stringify(exported).includes(reportA), false);
+});
+
+test("subject-bound DSAR export는 같은 workspace의 다른 멤버를 노출하지 않는다", async () => {
+  const pg = await migratedDb();
+  await seedPrivacySubject(pg);
+  await pg.query(
+    `insert into users (id, email, password_hash, display_name, email_verified_at)
+     values ($1, 'member-a2@example.test', 'scrypt:a2', 'Member A2', now())`,
+    [userASecondMember],
+  );
+  await pg.query(
+    "insert into memberships (workspace_id, user_id, role) values ($1, $2, 'member')",
+    [workspaceA, userASecondMember],
+  );
+  await openRequest(pg, {
+    requestId: "dsar-export-subject-a",
+    type: "export",
+    subjectUserId: userA,
+  });
+  const service = createPrivacyService({ db: pg });
+
+  const exported = await service.exportWorkspaceSubject({
+    workspaceId: workspaceA,
+    operatorId: "operator-1",
+    requestId: "dsar-export-subject-a",
+    subjectUserId: userA,
+    now: new Date("2026-08-12T02:10:00.000Z"),
+  });
+
+  assert.equal(exported.subject.email, "owner-a@example.test");
+  assert.equal(JSON.stringify(exported).includes("member-a2@example.test"), false);
+  assert.equal(JSON.stringify(exported).includes("a.example.test"), false);
+});
+
+test("subject-bound correction은 승인된 subject만 변경하고 같은 workspace의 다른 멤버는 보존한다", async () => {
+  const pg = await migratedDb();
+  await seedPrivacySubject(pg);
+  await pg.query(
+    `insert into users (id, email, password_hash, display_name, email_verified_at)
+     values ($1, 'member-a2@example.test', 'scrypt:a2', 'Member A2', now())`,
+    [userASecondMember],
+  );
+  await pg.query(
+    "insert into memberships (workspace_id, user_id, role) values ($1, $2, 'member')",
+    [workspaceA, userASecondMember],
+  );
+  await openRequest(pg, {
+    requestId: "dsar-correct-subject-a",
+    type: "correction",
+    subjectUserId: userA,
+  });
+  const service = createPrivacyService({ db: pg });
+
+  await service.correctWorkspaceSubject({
+    workspaceId: workspaceA,
+    operatorId: "operator-1",
+    requestId: "dsar-correct-subject-a",
+    subjectUserId: userA,
+    displayName: "Corrected Owner A",
+    now: new Date("2026-08-12T02:20:00.000Z"),
+  });
+
+  const users = await pg.query<{ id: string; display_name: string | null }>(
+    "select id::text, display_name from users where id = any($1::uuid[]) order by id",
+    [[userA, userASecondMember]],
+  );
+  assert.deepEqual(users.rows, [
+    { id: userA, display_name: "Corrected Owner A" },
+    { id: userASecondMember, display_name: "Member A2" },
+  ]);
+});
+
+test("subject-bound 요청은 승인 subject와 실행 subject가 다르면 거부한다", async () => {
+  const pg = await migratedDb();
+  await seedPrivacySubject(pg);
+  await pg.query(
+    `insert into users (id, email, password_hash, display_name, email_verified_at)
+     values ($1, 'member-a2@example.test', 'scrypt:a2', 'Member A2', now())`,
+    [userASecondMember],
+  );
+  await pg.query(
+    "insert into memberships (workspace_id, user_id, role) values ($1, $2, 'member')",
+    [workspaceA, userASecondMember],
+  );
+  await openRequest(pg, {
+    requestId: "dsar-export-wrong-subject",
+    type: "export",
+    subjectUserId: userA,
+  });
+  const service = createPrivacyService({ db: pg });
+
+  await assert.rejects(
+    service.exportWorkspaceSubject({
+      workspaceId: workspaceA,
+      operatorId: "operator-1",
+      requestId: "dsar-export-wrong-subject",
+      subjectUserId: userASecondMember,
+      now: new Date("2026-08-12T02:30:00.000Z"),
+    }),
+    /PRIVACY_REQUEST_NOT_APPROVED|privacy claim requires exact approved request/u,
+  );
+});
+
+test("workspace deletion은 subject가 포함된 실행을 거부하고 workspace 자산을 보존한다", async () => {
+  const pg = await migratedDb();
+  await seedPrivacySubject(pg);
+  await openRequest(pg, {
+    requestId: "workspace-delete-no-subject",
+    type: "workspace_deletion",
+  });
+  const processor: PrivacyProcessorClient = {
+    revokeGscConnection: async () => {
+      throw new Error("workspace deletion must not begin with a subject");
+    },
+    deleteObject: async () => {
+      throw new Error("workspace deletion must not begin with a subject");
+    },
+    deleteWorkspaceObjects: async () => {
+      throw new Error("workspace deletion must not begin with a subject");
+    },
+    markEmailSuppressed: async () => {
+      throw new Error("workspace deletion must not begin with a subject");
+    },
+  };
+  const service = createPrivacyService({ db: pg, processor, erasureFence: immediateErasureFence(pg) });
+
+  await assert.rejects(
+    service.deleteWorkspaceSubject({
+      workspaceId: workspaceA,
+      operatorId: "operator-1",
+      requestId: "workspace-delete-no-subject",
+      subjectUserId: userA,
+      now: new Date("2026-08-12T02:40:00.000Z"),
+    }),
+    /PRIVACY_REQUEST_NOT_APPROVED|privacy claim requires exact approved request/u,
+  );
+
+  const state = await pg.query<{
+    workspace_a_membership: number;
+    reports: number;
+    gsc: number;
+    user_email: string;
+  }>(
+    `select
+       (select count(*)::int from memberships where workspace_id = $1 and user_id = $2) workspace_a_membership,
+       (select count(*)::int from weekly_reports where workspace_id = $1) reports,
+       (select count(*)::int from gsc_connections where workspace_id = $1) gsc,
+       (select email from users where id = $2) user_email`,
+    [workspaceA, userA],
+  );
+  assert.deepEqual(state.rows[0], {
+    workspace_a_membership: 1,
+    reports: 1,
+    gsc: 1,
+    user_email: "owner-a@example.test",
+  });
+});
+
+test("subject erasure는 last owner가 아니면 대상 workspace 멤버십만 제거하고 다른 workspace 계정은 보존한다", async () => {
+  const pg = await migratedDb();
+  await seedPrivacySubject(pg);
+  await pg.query(
+    `insert into users (id, email, password_hash, display_name, email_verified_at)
+     values ($1, 'member-a2@example.test', 'scrypt:a2', 'Member A2', now())`,
+    [userASecondMember],
+  );
+  await pg.query(
+    "insert into memberships (workspace_id, user_id, role) values ($1, $2, 'owner'), ($3, $4, 'member')",
+    [workspaceA, userASecondMember, workspaceB, userA],
+  );
+  await pg.query(
+    `insert into sessions (workspace_id, user_id, token_hash, expires_at, created_at)
+     values ($1, $2, $3, now() + interval '1 day', now()),
+            ($4, $2, $5, now() + interval '1 day', now())`,
+    [workspaceA, userA, digest("session-a"), workspaceB, digest("session-b")],
+  );
+  await openRequest(pg, {
+    requestId: "dsar-erasure-subject-a",
+    type: "erasure",
+    subjectUserId: userA,
+  });
+  const calls: string[] = [];
+  const processor: PrivacyProcessorClient = {
+    revokeGscConnection: async () => {
+      throw new Error("subject erasure must not revoke workspace GSC");
+    },
+    deleteObject: async () => {
+      throw new Error("subject erasure must not delete report object keys");
+    },
+    deleteWorkspaceObjects: async () => {
+      throw new Error("subject erasure must not purge workspace report prefix");
+    },
+    markEmailSuppressed: async ({ emailHash }) => {
+      calls.push(`email:${emailHash}`);
+    },
+  };
+  const service = createPrivacyService({ db: pg, processor });
+
+  const result = await service.deleteWorkspaceSubject({
+    workspaceId: workspaceA,
+    operatorId: "operator-1",
+    requestId: "dsar-erasure-subject-a",
+    subjectUserId: userA,
+    now: new Date("2026-08-12T02:50:00.000Z"),
+  });
+
+  assert.equal(result.status, "completed");
+  assert.deepEqual(calls, [`email:${digest("owner-a@example.test")}`]);
+  const erasureState = await pg.query<{
+    workspace_a_membership: number;
+    workspace_b_membership: number;
+    workspace_a_sessions: number;
+    workspace_b_sessions: number;
+    reports: number;
+    gsc: number;
+    user_email: string;
+    user_disabled: boolean;
+    plain_delivery: number;
+  }>(
+    `select
+       (select count(*)::int from memberships where workspace_id = $1 and user_id = $2) workspace_a_membership,
+       (select count(*)::int from memberships where workspace_id = $3 and user_id = $2) workspace_b_membership,
+       (select count(*)::int from sessions where workspace_id = $1 and user_id = $2) workspace_a_sessions,
+       (select count(*)::int from sessions where workspace_id = $3 and user_id = $2) workspace_b_sessions,
+       (select count(*)::int from weekly_reports where workspace_id = $1) reports,
+       (select count(*)::int from gsc_connections where workspace_id = $1) gsc,
+       (select email from users where id = $2) user_email,
+       (select disabled_at is not null from users where id = $2) user_disabled,
+       (select count(*)::int from deliveries where workspace_id = $1 and recipient = 'owner-a@example.test') plain_delivery`,
+    [workspaceA, userA, workspaceB],
+  );
+  assert.deepEqual(erasureState.rows[0], {
+    workspace_a_membership: 0,
+    workspace_b_membership: 1,
+    workspace_a_sessions: 0,
+    workspace_b_sessions: 1,
+    reports: 1,
+    gsc: 1,
+    user_email: "owner-a@example.test",
+    user_disabled: false,
+    plain_delivery: 0,
+  });
+});
+
+test("subject erasure는 last owner 삭제를 거부하고 ownership transfer나 workspace_deletion을 요구한다", async () => {
+  const pg = await migratedDb();
+  await seedPrivacySubject(pg);
+  await openRequest(pg, {
+    requestId: "dsar-erasure-last-owner",
+    type: "erasure",
+    subjectUserId: userA,
+  });
+  const processor: PrivacyProcessorClient = {
+    revokeGscConnection: async () => undefined,
+    deleteObject: async () => undefined,
+    deleteWorkspaceObjects: async () => undefined,
+    markEmailSuppressed: async () => undefined,
+  };
+  const service = createPrivacyService({ db: pg, processor });
+
+  await assert.rejects(
+    service.deleteWorkspaceSubject({
+      workspaceId: workspaceA,
+      operatorId: "operator-1",
+      requestId: "dsar-erasure-last-owner",
+      subjectUserId: userA,
+      now: new Date("2026-08-12T02:55:00.000Z"),
+    }),
+    /ownership transfer or workspace_deletion/u,
+  );
+  assert.deepEqual((await pg.query<{ count: number }>(
+    "select count(*)::int as count from memberships where workspace_id = $1 and user_id = $2",
+    [workspaceA, userA],
+  )).rows[0], { count: 1 });
 });
 
 test("삭제 workflow는 외부 processor 실패 시 local immutable report 삭제를 실행하지 않고 failed audit으로 닫는다", async () => {
   const pg = await migratedDb();
   await seedPrivacySubject(pg);
-  await openRequest(pg, { requestId: "dsar-delete-failed", type: "deletion" });
+  await openRequest(pg, { requestId: "dsar-delete-failed", type: "workspace_deletion" });
   const processor: PrivacyProcessorClient = {
     revokeGscConnection: async () => {
       throw new Error("google revoke failed");
@@ -276,7 +557,7 @@ test("삭제 workflow는 외부 processor 실패 시 local immutable report 삭�
 test("삭제 workflow 성공 시 GSC revoke·object delete 후 privacy erasure procedure로 immutable report와 workspace PII를 제거한다", async () => {
   const pg = await migratedDb();
   await seedPrivacySubject(pg);
-  await openRequest(pg, { requestId: "dsar-delete-ok", type: "deletion" });
+  await openRequest(pg, { requestId: "dsar-delete-ok", type: "workspace_deletion" });
   await pg.query(
     `insert into users (id, email, password_hash, display_name, email_verified_at)
      values ($1, 'member-without-delivery@example.test', 'scrypt:c', 'Member C', now())`,
@@ -346,7 +627,7 @@ test("삭제 workflow 성공 시 GSC revoke·object delete 후 privacy erasure p
 test("삭제 재실행은 성공한 대상별 step을 건너뛰고 실패 지점부터 재개하며 local erasure를 중복 실행하지 않는다", async () => {
   const pg = await migratedDb();
   await seedPrivacySubject(pg);
-  await openRequest(pg, { requestId: "dsar-delete-resume", type: "deletion" });
+  await openRequest(pg, { requestId: "dsar-delete-resume", type: "workspace_deletion" });
   const calls: string[] = [];
   let failObjectOnce = true;
   const processor: PrivacyProcessorClient = {
@@ -530,7 +811,7 @@ test("retention apply는 backup restore로 되살아난 report object key를 매
   const request = await pg.query<{ id: string }>(
     `insert into privacy_requests
        (workspace_id, request_id, type, status, operator_id, requested_at, completed_at)
-     values ($1, 'restored-object-erasure', 'deletion', 'completed', 'operator-1', now(), now())
+     values ($1, 'restored-object-erasure', 'workspace_deletion', 'completed', 'operator-1', now(), now())
      returning id::text`,
     [workspaceA],
   );

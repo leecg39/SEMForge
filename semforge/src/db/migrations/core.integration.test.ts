@@ -391,7 +391,7 @@ test("privacy erasure만 immutable report 삭제를 수행하고 billing ledger�
     [workspaceId],
   );
   await pg.query(
-    "insert into privacy_requests (id, workspace_id, request_id, type, status, operator_id, requested_at) values ($1, $2, 'req-privacy', 'deletion', 'running', 'operator@example.com', now())",
+    "insert into privacy_requests (id, workspace_id, request_id, type, status, operator_id, requested_at) values ($1, $2, 'req-privacy', 'workspace_deletion', 'running', 'operator@example.com', now())",
     [privacyRequestId, workspaceId],
   );
 

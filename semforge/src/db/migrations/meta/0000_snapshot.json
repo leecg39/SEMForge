@@ -3311,6 +3311,19 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
+        },
+        "privacy_requests_subject_user_fk": {
+          "name": "privacy_requests_subject_user_fk",
+          "tableFrom": "privacy_requests",
+          "tableTo": "users",
+          "columnsFrom": [
+            "subject_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3336,7 +3349,7 @@
       "checkConstraints": {
         "privacy_requests_type_ck": {
           "name": "privacy_requests_type_ck",
-          "value": "\"privacy_requests\".\"type\" in ('export', 'correction', 'deletion')"
+          "value": "\"privacy_requests\".\"type\" in ('export', 'correction', 'erasure', 'workspace_deletion')"
         },
         "privacy_requests_status_ck": {
           "name": "privacy_requests_status_ck",

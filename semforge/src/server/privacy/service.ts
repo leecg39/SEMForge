@@ -41,6 +41,7 @@ export interface PrivacyRequestInput {
   readonly workspaceId: string;
   readonly operatorId: string;
   readonly requestId: string;
+  readonly subjectUserId?: string | null;
   readonly now: Date;
 }
 
@@ -61,11 +62,21 @@ export interface PrivacyRetentionResult {
 }
 
 interface PrivacyExportPayload {
-  readonly workspace: { readonly id: string; readonly name: string; readonly slug: string; readonly logo_url: string | null };
-  readonly users: readonly { readonly id: string; readonly email: string; readonly display_name: string | null }[];
+  readonly request: {
+    readonly id: string;
+    readonly external_id: string;
+    readonly type: string;
+    readonly subject_user_id: string;
+  };
+  readonly workspace: { readonly id: string };
+  readonly subject: {
+    readonly id: string;
+    readonly email: string;
+    readonly display_name: string | null;
+    readonly role: string;
+  };
   readonly legalAcceptances: readonly unknown[];
-  readonly sites: readonly unknown[];
-  readonly reports: readonly unknown[];
+  readonly sessions: readonly unknown[];
 }
 
 interface PrivacyDeletionTargets {
@@ -143,13 +154,20 @@ async function withTenantTransaction<T>(
 
 async function claimRequest(
   db: PrivacySql,
-  input: PrivacyRequestInput & { type: "export" | "correction" | "deletion" },
+  input: PrivacyRequestInput & { type: "export" | "correction" | "erasure" | "workspace_deletion" },
 ): Promise<{ id: string; status: "running" | "completed" }> {
   const row = (
     await db.query<{ id: string; status: "running" | "completed" }>(
       `select id::text, status::text
-         from privacy_claim_request($1::uuid, $2::text, $3::text, $4::text, $5::timestamptz)`,
-      [input.workspaceId, input.requestId, input.type, input.operatorId, input.now],
+         from privacy_claim_request($1::uuid, $2::text, $3::text, $4::text, $5::timestamptz, $6::uuid)`,
+      [
+        input.workspaceId,
+        input.requestId,
+        input.type,
+        input.operatorId,
+        input.now,
+        input.subjectUserId ?? null,
+      ],
     )
   ).rows[0];
   if (!row || (row.status !== "running" && row.status !== "completed")) {
@@ -226,10 +244,12 @@ function decodeJsonObject(value: unknown, code: string): Record<string, unknown>
 
 function decodeExport(value: unknown): PrivacyExportPayload {
   const payload = decodeJsonObject(value, "PRIVACY_EXPORT_INVALID");
-  if (!payload.workspace || typeof payload.workspace !== "object" || Array.isArray(payload.workspace)) {
+  if (!payload.request || typeof payload.request !== "object" || Array.isArray(payload.request) ||
+      !payload.workspace || typeof payload.workspace !== "object" || Array.isArray(payload.workspace) ||
+      !payload.subject || typeof payload.subject !== "object" || Array.isArray(payload.subject)) {
     throw new Error("PRIVACY_EXPORT_INVALID");
   }
-  for (const key of ["users", "legalAcceptances", "sites", "reports"] as const) {
+  for (const key of ["legalAcceptances", "sessions"] as const) {
     if (!Array.isArray(payload[key])) throw new Error("PRIVACY_EXPORT_INVALID");
   }
   return payload as unknown as PrivacyExportPayload;
@@ -254,6 +274,11 @@ function decodeDeletionTargets(value: unknown): PrivacyDeletionTargets {
     throw new Error("PRIVACY_DELETION_TARGETS_INVALID");
   }
   return payload as unknown as PrivacyDeletionTargets;
+}
+
+function requireSubjectUserId(input: PrivacyRequestInput): string {
+  if (!input.subjectUserId?.trim()) throw new Error("PRIVACY_SUBJECT_REQUIRED");
+  return input.subjectUserId;
 }
 
 export function parsePrivacyRetentionPolicy(raw: string | undefined): PrivacyRetentionPolicy {
@@ -354,11 +379,12 @@ export function createPrivacyService(options: {
   return {
     async exportWorkspaceSubject(input: PrivacyRequestInput) {
       return withTenantTransaction(db, input.workspaceId, async (database) => {
+        const subjectUserId = requireSubjectUserId(input);
         const request = await claimRequest(database, { ...input, type: "export" });
         const payloadRow = (
           await database.query<{ payload: unknown }>(
-            `select privacy_export_workspace($1::uuid, $2::uuid, $3::text) as payload`,
-            [input.workspaceId, request.id, input.operatorId],
+            `select privacy_export_workspace($1::uuid, $2::uuid, $3::text, $4::uuid) as payload`,
+            [input.workspaceId, request.id, input.operatorId, subjectUserId],
           )
         ).rows[0];
         const payload = decodeExport(payloadRow?.payload);
@@ -371,9 +397,9 @@ export function createPrivacyService(options: {
             status: "succeeded",
             now: input.now,
             metadata: {
-              users: payload.users.length,
-              sites: payload.sites.length,
-              reports: payload.reports.length,
+              subjectUserId,
+              legalAcceptances: payload.legalAcceptances.length,
+              sessions: payload.sessions.length,
             },
           });
           await finishRequest(database, { ...input, requestUuid: request.id });
@@ -384,24 +410,25 @@ export function createPrivacyService(options: {
 
     async correctWorkspaceSubject(input: PrivacyRequestInput & {
       displayName?: string;
-      workspaceName?: string;
     }): Promise<{ requestId: string; status: "completed" }> {
       return withTenantTransaction(db, input.workspaceId, async (database) => {
+        const subjectUserId = requireSubjectUserId(input);
         const request = await claimRequest(database, { ...input, type: "correction" });
         if (request.status === "completed") {
           return { requestId: input.requestId, status: "completed" };
         }
         await database.query(
           `select privacy_correct_workspace(
-             $1::uuid, $2::uuid, $3::text, $4::text, $5::text, $6::timestamptz
+             $1::uuid, $2::uuid, $3::text, $4::text, $5::text, $6::timestamptz, $7::uuid
            )`,
           [
             input.workspaceId,
             request.id,
             input.operatorId,
             input.displayName ?? null,
-            input.workspaceName ?? null,
+            null,
             input.now,
+            subjectUserId,
           ],
         );
         await recordStep(database, {
@@ -424,9 +451,67 @@ export function createPrivacyService(options: {
       if (!options.processor && !options.processorFactory) {
         throw new Error("PRIVACY_PROCESSOR_NOT_CONFIGURED");
       }
+      if (input.subjectUserId?.trim()) {
+        return withTenantTransaction(db, input.workspaceId, async (database) => {
+          const subjectUserId = requireSubjectUserId(input);
+          const request = await claimRequest(database, { ...input, type: "erasure" });
+          if (request.status === "completed") {
+            return { requestId: input.requestId, status: "completed" };
+          }
+          const targetRow = (
+            await database.query<{ email: string }>(
+              `select email
+                 from privacy_erasure_subject($1::uuid, $2::uuid, $3::text, $4::uuid)`,
+              [input.workspaceId, request.id, input.operatorId, subjectUserId],
+            )
+          ).rows[0];
+          if (!targetRow?.email) throw new Error("PRIVACY_ERASURE_SUBJECT_INVALID");
+          const completedSteps = await succeededSteps(database, {
+            workspaceId: input.workspaceId,
+            requestUuid: request.id,
+            operatorId: input.operatorId,
+          });
+          const emailHash = digest(targetRow.email.trim().toLowerCase());
+          const suppressionStep = `email.suppress:${emailHash}`;
+          if (!completedSteps.has(suppressionStep)) {
+            const processor = options.processorFactory?.(database as WorkspacePrivacyFenceSql) ?? options.processor!;
+            await processor.markEmailSuppressed({
+              workspaceId: input.workspaceId,
+              emailHash,
+              requestUuid: request.id,
+            });
+            await recordStep(database, {
+              workspaceId: input.workspaceId,
+              requestUuid: request.id,
+              operatorId: input.operatorId,
+              stepKey: suppressionStep,
+              status: "succeeded",
+              now: input.now,
+              metadata: { recipientHash: emailHash },
+            });
+            completedSteps.add(suppressionStep);
+          }
+          if (!completedSteps.has("local.subject_erasure")) {
+            await database.query(
+              `select privacy_erase_subject($1::uuid, $2::uuid, $3::text, $4::uuid, $5::timestamptz)`,
+              [input.workspaceId, request.id, input.operatorId, subjectUserId, input.now],
+            );
+            await recordStep(database, {
+              workspaceId: input.workspaceId,
+              requestUuid: request.id,
+              operatorId: input.operatorId,
+              stepKey: "local.subject_erasure",
+              status: "succeeded",
+              now: input.now,
+            });
+          }
+          await finishRequest(database, { ...input, requestUuid: request.id });
+          return { requestId: input.requestId, status: "completed" };
+        });
+      }
       if (!options.erasureFence) throw new Error("PRIVACY_ERASURE_FENCE_NOT_CONFIGURED");
       const request = await withTenantTransaction(db, input.workspaceId, (database) =>
-        claimRequest(database, { ...input, type: "deletion" }));
+        claimRequest(database, { ...input, type: "workspace_deletion" }));
       if (request.status === "completed") {
         return { requestId: input.requestId, status: "completed" };
       }

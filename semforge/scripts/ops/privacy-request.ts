@@ -6,22 +6,23 @@ import { pathToFileURL } from "node:url";
 
 import { getPool } from "@/db/client";
 
-type PrivacyRequestType = "export" | "correction" | "deletion";
+type PrivacyRequestType = "export" | "correction" | "erasure" | "workspace_deletion";
 
 export interface PrivacyRequestArguments {
   readonly workspaceId: string;
   readonly requestId: string;
   readonly operatorId: string;
   readonly type: PrivacyRequestType;
+  readonly subjectUserId: string | null;
 }
 
-const SUPPORTED_TYPES = ["export", "correction", "deletion"] as const;
+const SUPPORTED_TYPES = ["export", "correction", "erasure", "workspace_deletion"] as const;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 export class PrivacyRequestUsageError extends Error {
   constructor() {
     super(
-      "Usage: privacy-request --workspace <uuid> --request <id> --operator <id> --type export|correction|deletion",
+      "Usage: privacy-request --workspace <uuid> --request <id> --operator <id> --type export|correction|erasure|workspace_deletion [--subject-user <uuid>]",
     );
     this.name = "PrivacyRequestUsageError";
   }
@@ -29,7 +30,7 @@ export class PrivacyRequestUsageError extends Error {
 
 export function parsePrivacyRequestArgs(argv: readonly string[]): PrivacyRequestArguments {
   const values = new Map<string, string>();
-  const supported = new Set(["--workspace", "--request", "--operator", "--type"]);
+  const supported = new Set(["--workspace", "--request", "--operator", "--type", "--subject-user"]);
   for (let index = 0; index < argv.length; index += 2) {
     const key = argv[index];
     const value = argv[index + 1];
@@ -42,15 +43,17 @@ export function parsePrivacyRequestArgs(argv: readonly string[]): PrivacyRequest
   const requestId = values.get("--request") ?? "";
   const operatorId = values.get("--operator") ?? "";
   const type = values.get("--type") ?? "";
+  const subjectUserId = values.get("--subject-user") ?? null;
   if (
     !UUID_PATTERN.test(workspaceId) ||
     !requestId || requestId !== requestId.trim() || requestId.length > 200 ||
     !operatorId || operatorId !== operatorId.trim() || operatorId.length > 200 ||
-    !SUPPORTED_TYPES.includes(type as PrivacyRequestType)
+    !SUPPORTED_TYPES.includes(type as PrivacyRequestType) ||
+    (type === "workspace_deletion" ? subjectUserId !== null : !subjectUserId || !UUID_PATTERN.test(subjectUserId))
   ) {
     throw new PrivacyRequestUsageError();
   }
-  return { workspaceId, requestId, operatorId, type: type as PrivacyRequestType };
+  return { workspaceId, requestId, operatorId, type: type as PrivacyRequestType, subjectUserId };
 }
 
 export async function runPrivacyRequest(
@@ -75,13 +78,14 @@ export async function runPrivacyRequest(
         const row = (
           await db.query<{ id: string; status: string }>(
             `select id::text, status
-               from privacy_open_request($1::uuid, $2::text, $3::text, $4::text, $5::timestamptz)`,
+               from privacy_open_request($1::uuid, $2::text, $3::text, $4::text, $5::timestamptz, $6::uuid)`,
             [
               request.workspaceId,
               request.requestId,
               request.type,
               request.operatorId,
               request.requestedAt,
+              request.subjectUserId,
             ],
           )
         ).rows[0];

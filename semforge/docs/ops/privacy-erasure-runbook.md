@@ -1,14 +1,21 @@
 # Privacy request approval, execution, and backup marker runbook
 
-This runbook is the beta operational contract for DSAR deletion requests.
+This runbook is the beta operational contract for subject-bound DSAR export/correction/erasure and workspace closure deletion requests.
 
-Every export, correction, and deletion uses two isolated production roles. The approver runs `privacy-request` with only `OPERATOR_DATABASE_URL`; the executor then runs the matching `privacy-export`, `privacy-correct`, or `privacy-delete` command with only `PRIVACY_DATABASE_URL`, application encryption keys, and S3 credentials. The workspace, external request id, operator id, and request type must match across both steps. The executor fails closed when `privacy_open_request(...)` has not opened that exact request.
+Every export, correction, erasure, and workspace closure deletion uses two isolated production roles. The approver runs `privacy-request` with only `OPERATOR_DATABASE_URL`; the executor then runs the matching `privacy-export`, `privacy-correct`, `privacy-delete`, or direct `delete-workspace` privacy CLI command with only `PRIVACY_DATABASE_URL`, application encryption keys, and S3 credentials. The workspace, external request id, operator id, request type, and subject user id must match across both steps. Export, correction, and erasure require `--subject-user`; workspace closure uses request type `workspace_deletion` and must not include a subject. Subject erasure refuses the last workspace owner; transfer ownership first or approve explicit `workspace_deletion`. The executor fails closed when `privacy_open_request(...)` has not opened that exact request.
 
 ```bash
 NODE_ENV=production PGSSLMODE=verify-full npm run privacy:request -- \
   --workspace "$WORKSPACE_ID" --request "$REQUEST_ID" \
-  --operator "$OPERATOR_ID" --type deletion
+  --operator "$OPERATOR_ID" --type erasure --subject-user "$SUBJECT_USER_ID"
 NODE_ENV=production PGSSLMODE=verify-full npm run privacy:delete -- \
+  --workspace "$WORKSPACE_ID" --request "$REQUEST_ID" \
+  --operator "$OPERATOR_ID" --subject-user "$SUBJECT_USER_ID"
+
+NODE_ENV=production PGSSLMODE=verify-full npm run privacy:request -- \
+  --workspace "$WORKSPACE_ID" --request "$REQUEST_ID" \
+  --operator "$OPERATOR_ID" --type workspace_deletion
+NODE_ENV=production PGSSLMODE=verify-full node --import tsx scripts/privacy/privacy.ts delete-workspace -- \
   --workspace "$WORKSPACE_ID" --request "$REQUEST_ID" --operator "$OPERATOR_ID"
 ```
 

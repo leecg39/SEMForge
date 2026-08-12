@@ -14,15 +14,16 @@ import {
   runPrivacyRetention,
 } from "@/server/privacy/service";
 
-type Command = "export" | "correct" | "delete" | "retention";
+type Command = "export" | "correct" | "delete" | "delete-workspace" | "retention";
 
 function usage(): never {
   throw new Error(
     [
       "Usage:",
-      "  tsx scripts/privacy/privacy.ts export --workspace <uuid> --request <id> --operator <id>",
-      "  tsx scripts/privacy/privacy.ts correct --workspace <uuid> --request <id> --operator <id> [--display-name <name>] [--workspace-name <name>]",
-      "  tsx scripts/privacy/privacy.ts delete --workspace <uuid> --request <id> --operator <id>",
+      "  tsx scripts/privacy/privacy.ts export --workspace <uuid> --request <id> --operator <id> --subject-user <uuid>",
+      "  tsx scripts/privacy/privacy.ts correct --workspace <uuid> --request <id> --operator <id> --subject-user <uuid> --display-name <name>",
+      "  tsx scripts/privacy/privacy.ts delete --workspace <uuid> --request <id> --operator <id> --subject-user <uuid>",
+      "  tsx scripts/privacy/privacy.ts delete-workspace --workspace <uuid> --request <id> --operator <id>",
       "  tsx scripts/privacy/privacy.ts retention --dry-run true|false",
     ].join("\n"),
   );
@@ -48,7 +49,7 @@ function required(input: Map<string, string>, key: string): string {
 
 async function main() {
   const command = process.argv[2] as Command | undefined;
-  if (!command || !["export", "correct", "delete", "retention"].includes(command)) usage();
+  if (!command || !["export", "correct", "delete", "delete-workspace", "retention"].includes(command)) usage();
   const input = args(process.argv.slice(3));
   const now = new Date();
 
@@ -78,15 +79,18 @@ async function main() {
     workspaceId: required(input, "workspace"),
     requestId: required(input, "request"),
     operatorId: required(input, "operator"),
+    subjectUserId: command === "delete-workspace" ? null : required(input, "subject-user"),
     now,
   };
   const db = getPool("privacy");
   try {
     const service = createPrivacyService({
       db,
-      ...(command === "delete"
+      ...(command === "delete" || command === "delete-workspace"
         ? {
-          erasureFence: new PostgresWorkspacePrivacyFence(db),
+          ...(command === "delete-workspace"
+            ? { erasureFence: new PostgresWorkspacePrivacyFence(db) }
+            : {}),
           processorFactory: (exclusiveDb) =>
             createProductionPrivacyProcessor({ db: exclusiveDb, env: process.env }),
         }
@@ -98,10 +102,14 @@ async function main() {
       process.stdout.write(`${JSON.stringify(await service.correctWorkspaceSubject({
         ...base,
         displayName: input.get("display-name"),
-        workspaceName: input.get("workspace-name"),
       }), null, 2)}\n`);
-    } else {
+    } else if (command === "delete") {
       process.stdout.write(`${JSON.stringify(await service.deleteWorkspaceSubject(base), null, 2)}\n`);
+    } else {
+      process.stdout.write(`${JSON.stringify(await service.deleteWorkspaceSubject({
+        ...base,
+        subjectUserId: null,
+      }), null, 2)}\n`);
     }
   } finally {
     await db.end();

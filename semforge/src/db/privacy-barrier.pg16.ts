@@ -112,7 +112,7 @@ async function openApprovedDeletion(input: {
   try {
     const opened = await operator.query<{ id: string }>(
       `select id::text
-         from privacy_open_request($1::uuid, $2::text, 'deletion', $3::text, now())`,
+         from privacy_open_request($1::uuid, $2::text, 'workspace_deletion', $3::text, now())`,
       [input.workspaceId, input.requestId, input.operatorId],
     );
     const requestUuid = opened.rows[0]!.id;
@@ -122,7 +122,7 @@ async function openApprovedDeletion(input: {
       await client.query("select set_config('app.workspace_id', $1, true)", [input.workspaceId]);
       await client.query(
         `select *
-           from privacy_claim_request($1::uuid, $2::text, 'deletion', $3::text, now())`,
+           from privacy_claim_request($1::uuid, $2::text, 'workspace_deletion', $3::text, now())`,
         [input.workspaceId, input.requestId, input.operatorId],
       );
       await client.query(

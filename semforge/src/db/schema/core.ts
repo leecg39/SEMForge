@@ -335,7 +335,12 @@ export const privacyRequests = pgTable(
       foreignColumns: [workspaces.id],
       name: "privacy_requests_workspace_fk",
     }).onDelete("cascade"),
-    check("privacy_requests_type_ck", sql`${table.type} in ('export', 'correction', 'deletion')`),
+    foreignKey({
+      columns: [table.subjectUserId],
+      foreignColumns: [users.id],
+      name: "privacy_requests_subject_user_fk",
+    }).onDelete("restrict"),
+    check("privacy_requests_type_ck", sql`${table.type} in ('export', 'correction', 'erasure', 'workspace_deletion')`),
     check("privacy_requests_status_ck", sql`${table.status} in ('queued', 'running', 'completed', 'failed')`),
   ],
 );

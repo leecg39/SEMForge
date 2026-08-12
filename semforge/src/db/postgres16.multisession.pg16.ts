@@ -770,9 +770,9 @@ test("PostgreSQL 16 privacy erasure procedure는 workspace의 실행 중 deletio
     `insert into privacy_requests
        (id, workspace_id, request_id, type, status, operator_id, requested_at, completed_at)
      values
-       ($1, $4, 'running-deletion', 'deletion', 'running', 'privacy-operator', now(), null),
+       ($1, $4, 'running-deletion', 'workspace_deletion', 'running', 'privacy-operator', now(), null),
        ($2, $4, 'running-export', 'export', 'running', 'privacy-operator', now(), null),
-       ($3, $4, 'completed-deletion', 'deletion', 'completed', 'privacy-operator', now(), now())`,
+       ($3, $4, 'completed-deletion', 'workspace_deletion', 'completed', 'privacy-operator', now(), now())`,
     [runningDeletionId, exportId, completedDeletionId, workspaceId],
   );
 
@@ -880,7 +880,7 @@ test("PostgreSQL 16 workspace 파기는 공유 계정을 보존하고 전용 계
   await pool.query(
     `insert into privacy_requests
        (id, workspace_id, request_id, type, status, operator_id, metadata, requested_at)
-     values ($1, $2, 'workspace-delete', 'deletion', 'running', 'privacy-operator',
+     values ($1, $2, 'workspace-delete', 'workspace_deletion', 'running', 'privacy-operator',
        jsonb_build_object(
          'storagePrefix', 'reports/' || $2::uuid::text || '/',
          'storageKeyHashes', jsonb_build_array(repeat('a', 64), repeat('b', 64))
@@ -1003,8 +1003,8 @@ test("PostgreSQL 16 email suppression은 privacy request에 귀속되고 worker�
   await pool.query(
     `insert into privacy_requests
        (id, workspace_id, request_id, type, status, operator_id, requested_at)
-     values ($1, $3, 'suppression-a', 'deletion', 'running', 'privacy-operator', now()),
-            ($2, $4, 'suppression-b', 'deletion', 'running', 'privacy-operator', now())`,
+     values ($1, $3, 'suppression-a', 'workspace_deletion', 'running', 'privacy-operator', now()),
+            ($2, $4, 'suppression-b', 'workspace_deletion', 'running', 'privacy-operator', now())`,
     [requestA, requestB, workspaceA, workspaceB],
   );
   await pool.query(
@@ -1153,9 +1153,18 @@ test("PostgreSQL 16 privacy 운영 역할은 raw table 대신 승인 request 함
 test("PostgreSQL 16 privacy issuer/executor와 retention은 요청 위조 및 직접 domain DML을 거부한다", async () => {
   const workspaceA = "f6900000-0000-4000-8000-000000000001";
   const workspaceB = "f6900000-0000-4000-8000-000000000002";
+  const subjectUser = "f6900000-0000-4000-8000-000000000003";
   await pool.query(
     "insert into workspaces (id, name, slug) values ($1, 'Privacy roles A', 'privacy-roles-a'), ($2, 'Privacy roles B', 'privacy-roles-b')",
     [workspaceA, workspaceB],
+  );
+  await pool.query(
+    "insert into users (id, email, password_hash, display_name) values ($1, 'privacy-roles-subject@example.test', 'scrypt:subject', 'Subject')",
+    [subjectUser],
+  );
+  await pool.query(
+    "insert into memberships (workspace_id, user_id, role) values ($1, $2, 'owner')",
+    [workspaceA, subjectUser],
   );
   const ownerRoles = await pool.query<{
     rolname: string;
@@ -1183,7 +1192,7 @@ test("PostgreSQL 16 privacy issuer/executor와 retention은 요청 위조 및 �
     await operator.query("begin");
     await operator.query("set local role semforge_operator");
     const opened = await operator.query<{ id: string; status: string }>(
-      "select id::text, status from privacy_open_request($1::uuid, 'approved-delete', 'deletion', 'operator-a', now())",
+      "select id::text, status from privacy_open_request($1::uuid, 'approved-delete', 'workspace_deletion', 'operator-a', now())",
       [workspaceA],
     );
     requestId = opened.rows[0]!.id;
@@ -1191,7 +1200,7 @@ test("PostgreSQL 16 privacy issuer/executor와 retention은 요청 위조 및 �
     await operator.query("savepoint direct_request");
     await assert.rejects(
       operator.query(
-        "insert into privacy_requests (workspace_id, request_id, type, status, operator_id, requested_at) values ($1, 'forged', 'deletion', 'running', 'operator-a', now())",
+        "insert into privacy_requests (workspace_id, request_id, type, status, operator_id, requested_at) values ($1, 'forged', 'workspace_deletion', 'running', 'operator-a', now())",
         [workspaceA],
       ),
       /permission denied/i,
@@ -1200,8 +1209,8 @@ test("PostgreSQL 16 privacy issuer/executor와 retention은 요청 위조 및 �
     await operator.query("savepoint duplicate_mismatch");
     await assert.rejects(
       operator.query(
-        "select * from privacy_open_request($1::uuid, 'approved-delete', 'export', 'operator-a', now())",
-        [workspaceA],
+        "select * from privacy_open_request($1::uuid, 'approved-delete', 'export', 'operator-a', now(), $2::uuid)",
+        [workspaceA, subjectUser],
       ),
       /duplicate identity mismatch/i,
     );
@@ -1221,14 +1230,14 @@ test("PostgreSQL 16 privacy issuer/executor와 retention은 요청 위조 및 �
     await privacy.query("select set_config('app.workspace_id', $1, true)", [workspaceA]);
     assert.deepEqual(
       (await privacy.query<{ id: string; status: string }>(
-        "select id::text, status from privacy_claim_request($1::uuid, 'approved-delete', 'deletion', 'operator-a', now())",
+        "select id::text, status from privacy_claim_request($1::uuid, 'approved-delete', 'workspace_deletion', 'operator-a', now())",
         [workspaceA],
       )).rows,
       [{ id: requestId, status: "running" }],
     );
     for (const sql of [
       `insert into privacy_requests (workspace_id, request_id, type, status, operator_id, requested_at)
-       values ('${workspaceA}', 'forged', 'deletion', 'running', 'operator-a', now())`,
+       values ('${workspaceA}', 'forged', 'workspace_deletion', 'running', 'operator-a', now())`,
       "update privacy_requests set operator_id = 'attacker' where id = '" + requestId + "'::uuid",
       "delete from privacy_requests where id = '" + requestId + "'::uuid",
       "delete from jobs where false",
@@ -1288,7 +1297,7 @@ test("PostgreSQL 16 workspace privacy control은 active 자동 생성 후 단방
     [{ state: "active", generation: 0 }],
   );
   const opened = await pool.query<{ id: string }>(
-    "select id::text from privacy_open_request($1::uuid, 'fence-delete', 'deletion', 'operator-fence', now())",
+    "select id::text from privacy_open_request($1::uuid, 'fence-delete', 'workspace_deletion', 'operator-fence', now())",
     [workspaceId],
   );
   const requestId = opened.rows[0]!.id;
@@ -1298,7 +1307,7 @@ test("PostgreSQL 16 workspace privacy control은 active 자동 생성 후 단방
     await privacy.query("set local role semforge_privacy");
     await privacy.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
     await privacy.query(
-      "select * from privacy_claim_request($1::uuid, 'fence-delete', 'deletion', 'operator-fence', now())",
+      "select * from privacy_claim_request($1::uuid, 'fence-delete', 'workspace_deletion', 'operator-fence', now())",
       [workspaceId],
     );
     assert.deepEqual(
