@@ -18,6 +18,7 @@ export const createInviteInputSchema = z.object({
     .max(100)
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u),
   email: normalizedEmailSchema,
+  releaseTarget: z.enum(["sandbox", "staging", "paid-production"]).default("paid-production"),
 }).strict();
 
 export const opaqueTokenSchema = z

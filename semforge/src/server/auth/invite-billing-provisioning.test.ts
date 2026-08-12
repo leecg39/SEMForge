@@ -31,13 +31,14 @@ test("acceptInviteAtomic provisions billing_customers and account_created subscr
   const store = new PostgresAuthStore(drizzle(pg) as never);
 
   await pg.query(
-    `insert into invites (email, token_hash, workspace_name, workspace_slug, expires_at)
-     values ($1, $2, $3, $4, $5)`,
+    `insert into invites (email, token_hash, workspace_name, workspace_slug, created_at, expires_at)
+     values ($1, $2, $3, $4, $5, $6)`,
     [
       "billing-owner@example.com",
       tokenHash,
       "Billing Agency",
       "billing-agency",
+      now,
       new Date(now.getTime() + 86_400_000),
     ],
   );

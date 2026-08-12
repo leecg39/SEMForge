@@ -1170,7 +1170,7 @@ test("operator role은 NOLOGIN 권한 그룹이며 invites SELECT/INSERT 권한�
   );
   assert.deepEqual(
     inviteInsertColumns.rows.map((grant) => grant.column_name),
-    ["email", "expires_at", "token_hash", "workspace_name", "workspace_slug"],
+    ["email", "expires_at", "release_target", "token_hash", "workspace_name", "workspace_slug"],
   );
   const inviteUpdateColumns = await pg.query<{ column_name: string }>(
     "select column_name from information_schema.role_column_grants where grantee = 'semforge_operator' and table_schema = 'public' and table_name = 'invites' and privilege_type = 'UPDATE' order by column_name",
@@ -1202,22 +1202,24 @@ test("operator는 7일 초대를 발급하지만 인증·사이트·결제 데�
   try {
     await pg.query("set local role semforge_operator");
     await pg.query(
-      "insert into invites (email, token_hash, workspace_name, workspace_slug, expires_at) values ('design-partner@example.com', repeat('c', 64), 'Design Partner', 'design-partner', now() + interval '7 days')",
+      "insert into invites (email, token_hash, workspace_name, workspace_slug, release_target, expires_at) values ('design-partner@example.com', repeat('c', 64), 'Design Partner', 'design-partner', 'paid-production', now() + interval '7 days')",
     );
     const visible = await pg.query<{
       email: string;
       workspace_name: string;
       workspace_slug: string;
+      release_target: string;
       role: string;
       accepted_at: Date | null;
     }>(
-      "select email, workspace_name, workspace_slug, role::text, accepted_at from invites where token_hash = repeat('c', 64)",
+      "select email, workspace_name, workspace_slug, release_target, role::text, accepted_at from invites where token_hash = repeat('c', 64)",
     );
     assert.deepEqual(visible.rows, [
       {
         email: "design-partner@example.com",
         workspace_name: "Design Partner",
         workspace_slug: "design-partner",
+        release_target: "paid-production",
         role: "owner",
         accepted_at: null,
       },
@@ -1228,6 +1230,7 @@ test("operator는 7일 초대를 발급하지만 인증·사이트·결제 데�
       ["accepted field injection", `insert into invites (email, token_hash, workspace_name, workspace_slug, expires_at, accepted_at, accepted_workspace_id, accepted_by_user_id) values ('forged@example.com', repeat('e', 64), 'Forged', 'forged', now() + interval '1 day', now(), '${workspaceId}', '${userId}')`],
       ["created at injection", "insert into invites (email, token_hash, workspace_name, workspace_slug, expires_at, created_at) values ('future@example.com', repeat('f', 64), 'Future', 'future', now() + interval '14 days', now() + interval '7 days')"],
       ["member role injection", "insert into invites (email, token_hash, workspace_name, workspace_slug, role, expires_at) values ('member@example.com', repeat('0', 64), 'Member', 'member', 'member', now() + interval '1 day')"],
+      ["bad release target", "insert into invites (email, token_hash, workspace_name, workspace_slug, release_target, expires_at) values ('bad-target@example.com', repeat('1a', 32), 'Bad Target', 'bad-target', 'demo', now() + interval '1 day')"],
       ["invite update", "update invites set email = 'changed@example.com' where token_hash = repeat('c', 64)"],
       ["invite delete", "delete from invites where token_hash = repeat('c', 64)"],
       ["users", "select * from users"],

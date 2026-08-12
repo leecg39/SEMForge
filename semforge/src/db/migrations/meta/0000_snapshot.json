@@ -1230,6 +1230,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "release_target": {
+          "name": "release_target",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'paid-production'"
+        },
         "role": {
           "name": "role",
           "type": "membership_role",
@@ -1374,6 +1381,10 @@
         "invites_owner_role_ck": {
           "name": "invites_owner_role_ck",
           "value": "\"invites\".\"role\" = 'owner'"
+        },
+        "invites_release_target_ck": {
+          "name": "invites_release_target_ck",
+          "value": "\"invites\".\"release_target\" in ('sandbox', 'staging', 'paid-production')"
         },
         "invites_intent_text_ck": {
           "name": "invites_intent_text_ck",
