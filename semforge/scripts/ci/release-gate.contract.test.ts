@@ -51,6 +51,18 @@ test("release gate runner는 필수 검증 단계와 evidence 산출물을 선�
   );
 });
 
+test("최종 evidence index는 canonical v2 결과를 재기록하지 않고 안정적인 포인터만 제공한다", () => {
+  const finalIndex = read(".omo/evidence/final-20260812/summary.md");
+
+  assert.match(finalIndex, /phase5-ci\/latest\/summary\.json/);
+  assert.match(finalIndex, /phase5-ci\/latest\/summary\.md/);
+  assert.match(finalIndex, /canonical[\s\S]*v2/i);
+  assert.doesNotMatch(finalIndex, /[0-9a-f]{40}/i);
+  assert.doesNotMatch(finalIndex, /\b\d+\s+tests\b/i);
+  assert.doesNotMatch(finalIndex, /\b\d+\s+(?:passed|failed|skipped)\b/i);
+  assert.doesNotMatch(finalIndex, /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:/);
+});
+
 test("route/forbidden-surface와 3파트너 9사이트 harness는 직접 실행 가능한 npm entrypoint다", () => {
   const manifest = JSON.parse(read("package.json")) as { scripts?: Record<string, string> };
 
