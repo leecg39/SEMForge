@@ -131,6 +131,7 @@ export interface BillingStore {
     readonly account: BillingAccount;
     readonly attempt: PaymentAttempt;
     readonly created: boolean;
+    readonly blocked?: boolean;
   }>;
   settleCharge(input: {
     readonly workspaceId: string;
@@ -422,15 +423,6 @@ export function createBillingService(options: BillingServiceOptions): BillingSer
     occurredAt: Date;
   }): Promise<BillingChargeResult> {
     const settlement = providerSettlement(input.attempt, input.payment, input.occurredAt);
-    if (settlement.status === "paid") {
-      assertSubscriptionTransition(input.account.subscription.status, "active");
-    } else if (
-      settlement.status === "failed" ||
-      settlement.status === "canceled" ||
-      settlement.status === "refunded"
-    ) {
-      assertSubscriptionTransition(input.account.subscription.status, "past_due");
-    }
     const result = await options.store.settleCharge({
       workspaceId: input.attempt.workspaceId,
       orderId: input.attempt.orderId,
@@ -560,6 +552,12 @@ export function createBillingService(options: BillingServiceOptions): BillingSer
         paymentStatus: "pending",
       }),
     });
+    if (reservation.blocked) {
+      throw new BillingServiceError(
+        "INVALID_STATE",
+        `결제를 시작할 수 없는 구독 상태: ${reservation.account.subscription.status}`,
+      );
+    }
     if (!reservation.created) {
       if (reservation.attempt.status === "paid") {
         return { outcome: "paid", account: reservation.account };
@@ -907,10 +905,13 @@ export function createBillingService(options: BillingServiceOptions): BillingSer
           policy: subscriptionCancellationPolicy,
         };
       }
-      if (account.subscription.status !== "active" || !account.subscription.currentPeriodEnd) {
-        throw new BillingServiceError("INVALID_STATE", "활성 구독만 기간 말 취소할 수 있습니다.");
+      if (
+        (account.subscription.status !== "active" && account.subscription.status !== "past_due") ||
+        !account.subscription.currentPeriodEnd
+      ) {
+        throw new BillingServiceError("INVALID_STATE", "활성 또는 미납 구독만 기간 말 취소할 수 있습니다.");
       }
-      assertSubscriptionTransition("active", "cancel_at_period_end");
+      assertSubscriptionTransition(account.subscription.status, "cancel_at_period_end");
       const result = await options.store.scheduleCancellation({
         workspaceId: input.workspaceId,
         effectiveAt: account.subscription.currentPeriodEnd,
@@ -923,9 +924,18 @@ export function createBillingService(options: BillingServiceOptions): BillingSer
           occurredAt,
         }),
       });
+      if (
+        !result.changed &&
+        result.account.subscription.status !== "cancel_at_period_end"
+      ) {
+        throw new BillingServiceError("INVALID_STATE", "구독 상태가 변경되어 취소를 예약하지 못했습니다.");
+      }
+      if (!result.account.subscription.currentPeriodEnd) {
+        throw new BillingServiceError("INVARIANT_VIOLATION", "취소 효력일이 없습니다.");
+      }
       return {
         account: result.account,
-        effectiveAt: account.subscription.currentPeriodEnd,
+        effectiveAt: result.account.subscription.currentPeriodEnd,
         policy: subscriptionCancellationPolicy,
       };
     },

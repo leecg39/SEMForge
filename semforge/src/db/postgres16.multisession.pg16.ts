@@ -1158,6 +1158,83 @@ test("PostgreSQL 16 cancel 예약 뒤 stale 실패 정산은 구독을 past_due�
   }
 });
 
+test("PostgreSQL 16 취소 예약 뒤 새 charge reservation은 payment·ledger·Toss 호출 seam을 만들지 않는다", async () => {
+  const workspaceId = "f5460000-0000-4000-8000-000000000001";
+  const customerId = "f5460000-0000-4000-8000-000000000002";
+  const subscriptionId = "f5460000-0000-4000-8000-000000000003";
+  const paymentId = "f5460000-0000-4000-8000-000000000004";
+  await pool.query(
+    "insert into workspaces (id, name, slug) values ($1, 'PG canceled reserve', 'pg-canceled-reserve')",
+    [workspaceId],
+  );
+  await pool.query(
+    "insert into billing_customers (id, workspace_id, toss_customer_key) values ($1, $2, 'pg-canceled-reserve')",
+    [customerId, workspaceId],
+  );
+  await pool.query(
+    `insert into subscriptions
+      (id, workspace_id, billing_customer_id, status, current_period_start, current_period_end, canceled_at)
+     values ($1, $2, $3, 'cancel_at_period_end', '2026-08-01', '2026-09-01', now())`,
+    [subscriptionId, workspaceId, customerId],
+  );
+  const tenantRuntimePool = new Pool({
+    connectionString: databaseUrl,
+    max: 1,
+    ssl: false,
+    options: "-c role=semforge_billing_tenant",
+  });
+  try {
+    const store = createPostgresBillingStore({
+      pool: tenantRuntimePool,
+      fingerprintSecret: "pg16-canceled-reserve-secret-32-bytes",
+      scope: "tenant",
+    });
+    const result = await store.reserveCharge({
+      workspaceId,
+      attempt: {
+        id: paymentId,
+        workspaceId,
+        subscriptionId,
+        orderId: "pg16-canceled-reserve-order",
+        idempotencyKey: "pg16-canceled-reserve-key",
+        tossPaymentKey: null,
+        status: "pending",
+        amountKrw: 49_000,
+        billingPeriodStart: new Date("2026-08-01T00:00:00.000Z"),
+        billingPeriodEnd: new Date("2026-09-01T00:00:00.000Z"),
+        attempt: 2,
+        failureCode: null,
+        failureMessage: null,
+        paidAt: null,
+      },
+      ledger: {
+        id: "f5460000-0000-4000-8000-000000000005",
+        workspaceId,
+        type: "charge.requested",
+        entityId: paymentId,
+        actorUserId: null,
+        requestId: "pg16-canceled-reserve-request",
+        occurredAt: new Date("2026-08-12T06:00:00.000Z"),
+        amountKrw: 49_000,
+        orderId: "pg16-canceled-reserve-order",
+        paymentStatus: "pending",
+      },
+    });
+    assert.equal(result.created, false);
+    assert.equal(result.blocked, true);
+    assert.equal(result.account.subscription.status, "cancel_at_period_end");
+    const persisted = await pool.query<{ payments: number; ledger: number }>(
+      `select
+         (select count(*)::int from payments where workspace_id = $1) as payments,
+         (select count(*)::int from billing_ledger_events where workspace_id = $1) as ledger`,
+      [workspaceId],
+    );
+    assert.deepEqual(persisted.rows[0], { payments: 0, ledger: 0 });
+  } finally {
+    await tenantRuntimePool.end();
+  }
+});
+
 // @TASK P5-PRIVACY - Privacy erasure database authorization and tenant lifecycle
 // @SPEC docs/ops/privacy-erasure-runbook.md
 test("PostgreSQL 16 password reset delivery fence는 worker 역할로 suppression을 읽고 dispatcher 역할을 거부한다", async () => {

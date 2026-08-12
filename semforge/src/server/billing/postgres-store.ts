@@ -407,6 +407,38 @@ export function createPostgresBillingStore(options: {
 
     async reserveCharge(input) {
       return workspaceTransaction(input.workspaceId, async (client) => {
+        const lockedSubscription = await lockSubscriptionForWorkspace(client, input.workspaceId);
+        if (!lockedSubscription || lockedSubscription.id !== input.attempt.subscriptionId) {
+          throw new Error("billing subscription not found");
+        }
+        const existingAttempt = await loadPaymentByIdempotencyKey(
+          client,
+          input.workspaceId,
+          input.attempt.idempotencyKey,
+        );
+        if (existingAttempt) {
+          const replayAccount = await loadAccount(client, input.workspaceId);
+          if (!replayAccount) throw new Error("billing account not found");
+          return {
+            account: replayAccount,
+            attempt: existingAttempt,
+            created: false,
+          };
+        }
+        if (
+          lockedSubscription.status !== "billing_authorized" &&
+          lockedSubscription.status !== "active" &&
+          lockedSubscription.status !== "past_due"
+        ) {
+          const unchanged = await loadAccount(client, input.workspaceId);
+          if (!unchanged) throw new Error("billing account not found");
+          return {
+            account: unchanged,
+            attempt: input.attempt,
+            created: false,
+            blocked: true,
+          };
+        }
         const inserted = await client.query<{ id: string }>(
           `insert into payments
             (id, workspace_id, subscription_id, order_id, idempotency_key, toss_payment_key,
@@ -532,7 +564,10 @@ export function createPostgresBillingStore(options: {
       return workspaceTransaction(input.workspaceId, async (client) => {
         const currentSubscription = await lockSubscriptionForWorkspace(client, input.workspaceId);
         if (!currentSubscription) throw new Error("billing account not found");
-        if (currentSubscription.status !== "active") {
+        if (
+          currentSubscription.status !== "active" &&
+          currentSubscription.status !== "past_due"
+        ) {
           const current = await loadAccount(client, input.workspaceId);
           if (!current) throw new Error("billing account not found");
           return { account: current, changed: false };

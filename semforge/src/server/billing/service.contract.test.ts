@@ -524,3 +524,85 @@ test("취소는 현재 결제기간 끝으로 예약하고 일할환불을 만�
   assert.equal(result.policy.statutoryExceptionsApply, true);
   assert.equal(store.ledger.some((entry) => entry.type === "payment.refunded"), false);
 });
+
+test("취소 요청과 past_due 전환이 경쟁하면 저장되지 않은 취소를 성공으로 응답하지 않는다", async () => {
+  const store = new MemoryBillingStore();
+  store.account = {
+    ...store.account,
+    subscription: {
+      ...store.account.subscription,
+      status: "active",
+      currentPeriodStart: new Date("2026-08-01T00:00:00.000Z"),
+      currentPeriodEnd: new Date("2026-09-01T00:00:00.000Z"),
+    },
+  };
+  store.scheduleCancellation = async () => {
+    store.account = {
+      ...store.account,
+      subscription: { ...store.account.subscription, status: "past_due" },
+    };
+    return { account: cloneAccount(store.account), changed: false };
+  };
+  const { service } = serviceFixture(store);
+
+  await assert.rejects(
+    service.cancelAtPeriodEnd({
+      workspaceId: WORKSPACE_ID,
+      actorUserId: USER_ID,
+      requestId: "request-cancel-race",
+    }),
+    (error: unknown) => error instanceof BillingServiceError && error.code === "INVALID_STATE",
+  );
+  assert.equal(store.account.subscription.status, "past_due");
+});
+
+test("취소 예약 뒤 중복 DONE webhook은 settle no-op으로 처리하고 취소를 보존한다", async () => {
+  const store = new MemoryBillingStore();
+  const attempt: PaymentAttempt = {
+    id: "0198f06a-1b42-7000-8000-000000000099",
+    workspaceId: WORKSPACE_ID,
+    subscriptionId: SUBSCRIPTION_ID,
+    orderId: "order-paid-before-cancel",
+    idempotencyKey: "paid-before-cancel",
+    tossPaymentKey: "payment-key-secret",
+    status: "paid",
+    amountKrw: 49_000,
+    billingPeriodStart: new Date("2026-08-01T00:00:00.000Z"),
+    billingPeriodEnd: new Date("2026-09-01T00:00:00.000Z"),
+    attempt: 1,
+    failureCode: null,
+    failureMessage: null,
+    paidAt: NOW,
+  };
+  store.attempts = [attempt];
+  store.account = {
+    ...store.account,
+    latestPayment: attempt,
+    subscription: {
+      ...store.account.subscription,
+      status: "cancel_at_period_end",
+      currentPeriodStart: attempt.billingPeriodStart,
+      currentPeriodEnd: attempt.billingPeriodEnd,
+      canceledAt: NOW,
+    },
+  };
+  const { service } = serviceFixture(store, createTossStub({
+    async queryPaymentByPaymentKey() {
+      return tossPayment(attempt.orderId, "DONE");
+    },
+  }));
+
+  const result = await service.handleWebhook({
+    transmissionId: "duplicate-done-after-cancel",
+    event: {
+      eventType: "PAYMENT_STATUS_CHANGED",
+      createdAt: "2026-08-11T12:02:00.000000+09:00",
+      data: { orderId: attempt.orderId, paymentKey: "payment-key-secret", status: "DONE" },
+    },
+    receivedAt: new Date("2026-08-11T03:02:00.000Z"),
+  });
+
+  assert.equal(result.outcome, "processed");
+  assert.equal(store.account.subscription.status, "cancel_at_period_end");
+  assert.equal(store.ledger.length, 0);
+});
