@@ -5,6 +5,12 @@
 // @TEST src/lib/env.test.ts
 import { z } from "zod";
 
+import {
+  LegalReleaseConfigurationError,
+  parseLegalReleaseManifest,
+  type LegalReleaseManifest,
+} from "@/app/legal/release";
+
 const keyIdSchema = z.string().trim().min(1).max(64).regex(/^[A-Za-z0-9._-]+$/);
 const secretSchema = z
   .string()
@@ -58,6 +64,8 @@ const rawServerEnvSchema = z.object({
   S3_SECRET_ACCESS_KEY: z.string().min(1).max(1024).optional(),
   CHROMIUM_EXECUTABLE_PATH: z.string().trim().startsWith("/").optional(),
   BILLING_FINGERPRINT_SECRET: secretSchema.optional(),
+  // Public operating facts and explicit legal-review attestation. This is not a secret.
+  LEGAL_RELEASE_MANIFEST: z.string().min(1).max(64 * 1024).optional(),
   PGPOOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
   PGPOOL_CONNECTION_TIMEOUT_MS: z.coerce.number().int().min(100).max(60_000).default(5_000),
   PGPOOL_IDLE_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(600_000).default(30_000),
@@ -107,6 +115,7 @@ export function parsePreviousSecretKeys(raw: string | undefined): PreviousSecret
 
 export type ServerEnv = Omit<z.infer<typeof rawServerEnvSchema>, "APP_SECRET_PREVIOUS_KEYS"> & {
   APP_SECRET_PREVIOUS_KEYS: PreviousSecretKeys;
+  LEGAL_RELEASE: LegalReleaseManifest | undefined;
 };
 
 const productionRequiredByService = {
@@ -141,6 +150,7 @@ const productionRequiredByService = {
     "S3_ACCESS_KEY_ID",
     "S3_SECRET_ACCESS_KEY",
     "CHROMIUM_EXECUTABLE_PATH",
+    "LEGAL_RELEASE_MANIFEST",
   ],
   web: [
     "DATABASE_URL",
@@ -160,6 +170,7 @@ const productionRequiredByService = {
     "S3_BUCKET",
     "S3_ACCESS_KEY_ID",
     "S3_SECRET_ACCESS_KEY",
+    "LEGAL_RELEASE_MANIFEST",
   ],
   worker: [
     "AUTH_DATABASE_URL",
@@ -214,6 +225,7 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
   }
 
   const issues: string[] = [];
+  let legalRelease: LegalReleaseManifest | undefined;
   if (parsed.data.NODE_ENV === "production") {
     for (const required of productionRequiredByService[parsed.data.SEMFORGE_SERVICE]) {
       if (!parsed.data[required]) issues.push(`${required} is required in production`);
@@ -255,11 +267,23 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
   ) {
     issues.push("S3_ENDPOINT must use https in production");
   }
+  if (parsed.data.LEGAL_RELEASE_MANIFEST) {
+    try {
+      legalRelease = parseLegalReleaseManifest(parsed.data.LEGAL_RELEASE_MANIFEST);
+    } catch (error) {
+      if (error instanceof LegalReleaseConfigurationError) {
+        issues.push(...error.issues);
+      } else {
+        issues.push("LEGAL_RELEASE_MANIFEST could not be validated");
+      }
+    }
+  }
   if (issues.length > 0) throw new EnvironmentValidationError(issues);
 
   return {
     ...parsed.data,
     APP_SECRET_PREVIOUS_KEYS: parsePreviousSecretKeys(parsed.data.APP_SECRET_PREVIOUS_KEYS),
+    LEGAL_RELEASE: legalRelease,
   };
 }
 
