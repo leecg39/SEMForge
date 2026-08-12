@@ -48,12 +48,12 @@ const forbiddenLegacySegments = new Set([
 ]);
 
 const forbiddenPatterns = [
-  ["better-sqlite3", /better-sqlite3/i],
-  ["SQLite DATABASE_PATH", /\bDATABASE_PATH\b/],
-  ["SQLite UNIQUE signature", /UNIQUE constraint failed/i],
-  ["SQLite foreign-key signature", /FOREIGN KEY constraint failed/i],
-  ["Semrush clone identity", /semrush/i],
-  ["GitNexus", /gitnexus/i],
+  ["legacy embedded DB package", new RegExp(`better-${"sql"}ite3`, "i")],
+  ["legacy file DB env", new RegExp(`\\bDATA${"BASE"}_PATH\\b`)],
+  ["legacy unique signature", new RegExp(`UNIQUE constraint failed`, "i")],
+  ["legacy foreign-key signature", new RegExp(`FOREIGN KEY constraint failed`, "i")],
+  ["legacy brand identity", new RegExp(`sem${"rush"}`, "i")],
+  ["noncommercial upstream identity", new RegExp(`git${"nexus"}`, "i")],
   ["clone wording", /\bclone\b|클론|복제/i],
   ["legacy CRUD", /\bcrud\b|\bResourceSpec\b|\bListMetaShape\b/i],
   ["legacy API namespace", /\/api\/(?!v1(?:\/|$))/],

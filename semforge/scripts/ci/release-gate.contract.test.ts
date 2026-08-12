@@ -7,6 +7,7 @@ import path from "node:path";
 import test from "node:test";
 
 const projectRoot = process.cwd();
+const repoRoot = path.resolve(projectRoot, "..");
 
 function read(relativePath: string): string {
   return fs.readFileSync(path.join(projectRoot, relativePath), "utf8");
@@ -54,10 +55,13 @@ test("route/forbidden-surface와 3파트너 9사이트 harness는 직접 실행 
 });
 
 test("GitHub Actions workflow는 Node 24, PostgreSQL 16, Chromium을 release gate에 공급한다", () => {
-  const workflow = read(".github/workflows/release-gate.yml");
+  const workflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "release-gate.yml"), "utf8");
 
   assert.match(workflow, /node-version:\s*24/);
   assert.match(workflow, /postgres:16/);
   assert.match(workflow, /CHROMIUM_EXECUTABLE_PATH/);
+  assert.match(workflow, /working-directory:\s*semforge/);
+  assert.match(workflow, /cache-dependency-path:\s*semforge\/package-lock\.json/);
+  assert.match(workflow, /path:\s*semforge\/\.omo\/evidence\/phase5-ci\/latest/);
   assert.match(workflow, /npm run ci:release-gate/);
 });

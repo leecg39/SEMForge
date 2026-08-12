@@ -16,6 +16,7 @@ function writeJson(fileName, value) {
 function runStep(name, command, args, options = {}) {
   const logPath = path.join(evidenceDir, `${name}.log`);
   const startedAt = new Date().toISOString();
+  const nodeBinDir = path.dirname(process.execPath);
 
   return new Promise((resolve) => {
     const child = spawn(command, args, {
@@ -23,6 +24,7 @@ function runStep(name, command, args, options = {}) {
       env: {
         ...process.env,
         CI: "true",
+        PATH: `${nodeBinDir}${path.delimiter}${process.env.PATH ?? ""}`,
         SEMFORGE_EXTERNAL_NETWORK: "disabled",
         ...options.env,
       },
