@@ -21,7 +21,13 @@ const allowedLicenseTokens = new Set([
 const forbiddenLicensePattern = /\b(?:AGPL|GPL|SSPL)\b|PolyForm|Noncommercial|NonCommercial|UNLICENSED|UNKNOWN|SEE LICEN[CS]E/i;
 const licenseFilePattern = /^(licen[cs]e|copying|notice|copyright)(?:$|[-_.])/i;
 const distributionFilePattern = /^(licen[cs]e|copying|notice|copyright|readme)(?:$|[-_.])/i;
+const gplLicenseTextPath = new URL("./licenses/GPL-3.0-only.txt", import.meta.url);
 const lgplLicenseTextPath = new URL("./licenses/LGPL-3.0-or-later.txt", import.meta.url);
+const sharpLibvipsSourceReference = {
+  commit: "4da6d14c0d59866adfb9d8cf52bcaa53846dc4f6",
+  tag: "v1.3.2",
+  url: "https://github.com/lovell/sharp-libvips/tree/4da6d14c0d59866adfb9d8cf52bcaa53846dc4f6",
+};
 
 function parseArgs(argv) {
   const args = {
@@ -178,7 +184,11 @@ function renderLgplDistributionNotice({ packages, nodeModulesPath }) {
     return [];
   }
 
+  const gplLicenseText = readFileSync(gplLicenseTextPath, "utf8").replace(/\r\n/gu, "\n").trim();
   const lgplLicenseText = readFileSync(lgplLicenseTextPath, "utf8").replace(/\r\n/gu, "\n").trim();
+  if (!/GNU GENERAL PUBLIC LICENSE/u.test(gplLicenseText)) {
+    throw new Error("GPL-3.0-only license artifact is missing canonical GPL text");
+  }
   if (!/GNU LESSER GENERAL PUBLIC LICENSE/u.test(lgplLicenseText)) {
     throw new Error("LGPL-3.0-or-later license artifact is missing canonical LGPL text");
   }
@@ -197,9 +207,27 @@ function renderLgplDistributionNotice({ packages, nodeModulesPath }) {
         )}\``,
     ),
     "",
-    "SEMForge does not add contractual restrictions on reverse engineering for debugging modifications to those LGPL libraries. Release operators distributing a production image must keep this notice, keep the installed package files, and provide the Corresponding Source for the exact LGPL libraries shipped in that image through the product's documented legal/support channel when required.",
+    "Pinned upstream source reference for the sharp-libvips package version used by this lockfile:",
     "",
-    "The package README/licensing tables above identify the bundled libraries and upstream project. The canonical LGPL-3.0-or-later license artifact vendored for this distribution notice is copied below.",
+    `- Repository/tag: https://github.com/lovell/sharp-libvips ${sharpLibvipsSourceReference.tag}`,
+    `- Commit: ${sharpLibvipsSourceReference.commit}`,
+    `- Source URL: ${sharpLibvipsSourceReference.url}`,
+    "",
+    "Operator distribution gate: before distributing a production container image, attach evidence that the exact source bundle for the LGPL libraries shipped in that image is accessible from the release record. If the upstream source URL is unavailable or the shipped package version changes, block distribution until an accessible source bundle or equivalent release artifact is recorded.",
+    "",
+    "Relink/install verification gate: do not rely on this notice alone as proof that modified LGPL libraries can be relinked. For each distributed image target, verify and record the sharp/libvips runtime lookup and replacement procedure, or record the alternative source/application-code delivery method selected by legal review.",
+    "",
+    "SEMForge does not add contractual restrictions on reverse engineering for debugging modifications to those LGPL libraries. The production image retains the installed package files under `node_modules` so operators can inspect the exact shared-library artifacts that were distributed.",
+    "",
+    "The package README/licensing tables above identify the bundled libraries and upstream project. LGPLv3 incorporates GPLv3 terms, so the canonical GPL-3.0-only and LGPL-3.0-or-later license artifacts vendored for this distribution notice are copied below.",
+    "",
+    "### GNU General Public License v3",
+    "",
+    "```text",
+    codeFence(gplLicenseText),
+    "```",
+    "",
+    "### GNU Lesser General Public License v3",
     "",
     "```text",
     codeFence(lgplLicenseText),

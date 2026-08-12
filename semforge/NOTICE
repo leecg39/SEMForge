@@ -8,6 +8,9 @@ copyright and license notices are listed in THIRD_PARTY_NOTICES.md.
 Production container images regenerate THIRD_PARTY_NOTICES.md after
 installing platform-specific optional packages so bundled sharp/libvips
 runtime notices are included with the distributed image.
+Operators must keep release evidence for the accessible sharp-libvips
+source bundle and the verified relink/install procedure before
+distributing a production container image.
 
 Container runtime images also include Debian operating-system packages
 installed by the Dockerfile, including Chromium and fonts-noto-cjk.

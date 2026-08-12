@@ -132,6 +132,10 @@ test("distribution notice는 설치된 optional sharp-libvips README와 LGPL 고
   assert.match(notice, /@img\/sharp-libvips-linux-x64/u);
   assert.match(notice, /Prebuilt libvips and dependencies/u);
   assert.match(notice, /LGPL-3\.0-or-later distribution notice/u);
+  assert.match(notice, /GNU GENERAL PUBLIC LICENSE/u);
   assert.match(notice, /GNU LESSER GENERAL PUBLIC LICENSE/u);
   assert.match(notice, /Corresponding Source/u);
+  assert.match(notice, /https:\/\/github\.com\/lovell\/sharp-libvips\/tree\/4da6d14c0d59866adfb9d8cf52bcaa53846dc4f6/u);
+  assert.match(notice, /Operator distribution gate/u);
+  assert.match(notice, /Relink\/install verification gate/u);
 });
