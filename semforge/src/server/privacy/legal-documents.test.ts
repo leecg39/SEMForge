@@ -7,6 +7,7 @@ import { test } from "node:test";
 import { parseLegalReleaseManifest } from "@/app/legal/release";
 import {
   currentLegalDocuments,
+  legalDocumentArtifactsFromManifest,
   legalDocumentCanonicalSubsets,
   requireCurrentLegalAcceptance,
 } from "@/server/privacy/legal-documents";
@@ -35,6 +36,7 @@ test("초대 수락 문서 identity는 승인 manifest의 documentVersion과 can
   const manifest = parseLegalReleaseManifest(approvedLegalReleaseManifest);
   const documents = currentLegalDocuments(approvedLegalReleaseSource);
   const subsets = legalDocumentCanonicalSubsets(manifest);
+  const artifacts = legalDocumentArtifactsFromManifest(manifest);
 
   assert.deepEqual(documents, {
     terms: {
@@ -51,6 +53,9 @@ test("초대 수락 문서 identity는 승인 manifest의 documentVersion과 can
   assert.match(documents.terms.sha256, /^[0-9a-f]{64}$/u);
   assert.match(documents.privacy.sha256, /^[0-9a-f]{64}$/u);
   assert.notEqual(documents.terms.sha256, documents.privacy.sha256);
+  assert.deepEqual(subsets, artifacts);
+  assert.match(JSON.stringify(subsets.terms), /월 49,000원\(VAT 포함\)/u);
+  assert.match(JSON.stringify(subsets.privacy), /Search Console 읽기 전용 연결 토큰/u);
 });
 
 test("manifest 없는 production invite legal identity는 fail closed 한다", () => {

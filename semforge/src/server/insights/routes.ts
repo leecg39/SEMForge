@@ -2,8 +2,9 @@
 // @SPEC docs/planning/06-tasks.md#api-v1
 // @TEST src/server/insights/routes.integration.test.ts
 import { z } from "zod";
+import type { Pool } from "pg";
 
-import { getPool } from "@/db/client";
+import { getPool, withWorkspacePoolTransaction } from "@/db/client";
 import { ApiError, apiSuccess, withApiV1 } from "@/lib/api-v1";
 import {
   resolveApiSession,
@@ -21,12 +22,9 @@ export interface InsightSqlQueryable {
   ): Promise<{ rows: T[] }>;
 }
 
-interface ReleasableSqlQueryable extends InsightSqlQueryable {
-  release?: () => void | Promise<void>;
-}
-
 export interface InsightRouteDependencies {
   readonly db?: InsightSqlQueryable;
+  readonly pool?: Pick<Pool, "connect">;
   readonly resolveSession?: ApiSessionResolver;
   readonly authorizeBilling?: BillingAccessAuthorizer;
 }
@@ -166,15 +164,11 @@ function parseMetadata(value: unknown): Readonly<Record<string, unknown>> {
 
 async function withRouteDb<T>(
   deps: InsightRouteDependencies,
+  workspaceId: string,
   operation: (db: InsightSqlQueryable) => Promise<T>,
 ): Promise<T> {
   if (deps.db) return operation(deps.db);
-  const client = (await getPool("web").connect()) as ReleasableSqlQueryable;
-  try {
-    return await operation(client);
-  } finally {
-    await client.release?.();
-  }
+  return withWorkspacePoolTransaction(deps.pool ?? getPool("web"), workspaceId, operation);
 }
 
 function parseReadQuery(request: Request): ReadQuery {
@@ -495,7 +489,7 @@ export function createInsightRouteHandlers(deps: InsightRouteDependencies = {}) 
         const session = await resolveSessionForRoute(request);
         const query = parseReadQuery(request);
         return apiSuccess(
-          await withRouteDb(deps, async (db) => {
+          await withRouteDb(deps, session.workspaceId, async (db) => {
             await assertSiteInWorkspace(db, session.workspaceId, query.siteId);
             await requireReadAccess(session.workspaceId);
             return readNaver(db, session.workspaceId, query);
@@ -508,7 +502,7 @@ export function createInsightRouteHandlers(deps: InsightRouteDependencies = {}) 
         const session = await resolveSessionForRoute(request);
         const query = parseReadQuery(request);
         return apiSuccess(
-          await withRouteDb(deps, async (db) => {
+          await withRouteDb(deps, session.workspaceId, async (db) => {
             await assertSiteInWorkspace(db, session.workspaceId, query.siteId);
             await requireReadAccess(session.workspaceId);
             return readAio(db, session.workspaceId, query);

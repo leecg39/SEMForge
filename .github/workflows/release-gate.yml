@@ -29,8 +29,8 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      DATABASE_URL: postgres://semforge:semforge@localhost:5432/semforge_test
-      OPERATOR_DATABASE_URL: postgres://semforge:semforge@localhost:5432/semforge_test
+      DATABASE_URL: postgresql://semforge:semforge@localhost:5432/semforge_test
+      OPERATOR_DATABASE_URL: postgresql://semforge:semforge@localhost:5432/semforge_test
       CHROMIUM_EXECUTABLE_PATH: /usr/bin/chromium
       SEMFORGE_EXTERNAL_NETWORK: disabled
     steps:

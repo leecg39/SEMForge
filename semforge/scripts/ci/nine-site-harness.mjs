@@ -71,6 +71,9 @@ const weeklyReports = workspaces.flatMap((workspace) =>
 
 const summary = {
   status: "passed",
+  evidenceKind: "synthetic-limit-fixture",
+  proves: "workspace/site/query/report cardinality fixture only",
+  doesNotProve: "real partner onboarding, live provider collection, payment, PDF rendering, or email delivery",
   externalNetworkCalls: touchedNetwork.length,
   workspaceCount: workspaces.length,
   siteCount,
@@ -103,5 +106,5 @@ if (
 
 fs.writeFileSync(path.join(evidenceDir, "nine-site-harness.json"), `${JSON.stringify(summary, null, 2)}\n`);
 console.log(
-  `nine-site harness passed: workspaces=${summary.workspaceCount} sites=${summary.siteCount} observations=${summary.observationCount} reports=${summary.reportCount}`,
+  `nine-site synthetic limit fixture passed: workspaces=${summary.workspaceCount} sites=${summary.siteCount} observations=${summary.observationCount} reports=${summary.reportCount}`,
 );
