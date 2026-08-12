@@ -19,9 +19,14 @@ export const REPORT_TOPIC_TO_JOB_TYPE = {
   "report.email.deliver": "report.email.deliver",
 } as const;
 
+export const AUTH_TOPIC_TO_JOB_TYPE = {
+  "email.password_reset": "email.password_reset",
+} as const;
+
 export const PRODUCTION_TOPIC_TO_JOB_TYPE = {
   ...COLLECTION_TOPIC_TO_JOB_TYPE,
   ...REPORT_TOPIC_TO_JOB_TYPE,
+  ...AUTH_TOPIC_TO_JOB_TYPE,
 } as const;
 
 export type ProductionOutboxTopic = keyof typeof PRODUCTION_TOPIC_TO_JOB_TYPE;

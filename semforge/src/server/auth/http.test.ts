@@ -118,9 +118,7 @@ test("login은 same-origin JSON만 받고 raw session token을 쿠키에만 기�
   assert.equal(response.status, 200);
   assert.equal(received?.email, "owner@example.com");
   assert.equal(received?.currentSessionToken, "c".repeat(43));
-  assert.match(String(received?.throttleKey), /^[a-f0-9]{64}$/u);
-  assert.notEqual(received?.throttleKey, "198.51.100.99");
-  assert.notEqual(received?.throttleKey, "203.0.113.10");
+  assert.equal(received?.clientAddressHash, undefined);
   assert.equal(JSON.stringify(received).includes("198.51.100.99"), false);
   assert.equal(JSON.stringify(received).includes("203.0.113.10"), false);
   assert.match(response.headers.get("set-cookie") ?? "", new RegExp(`${SESSION_COOKIE_NAME}=${RAW_SESSION_TOKEN}`));
@@ -140,11 +138,11 @@ test("login은 same-origin JSON만 받고 raw session token을 쿠키에만 기�
   });
 });
 
-test("login throttleKey는 피해자 이메일만으로 고정되지 않고 클라이언트 신호를 해시한다", async () => {
+test("login clientAddressHash는 UA·언어 변경으로 우회할 수 없고 신뢰 proxy 없이는 전달되지 않는다", async () => {
   const received: string[] = [];
   const authService = service({
     async login(input) {
-      received.push(String(input.throttleKey));
+      received.push(String(input.clientAddressHash));
       return {
         token: RAW_SESSION_TOKEN,
         expiresAt: EXPIRES_AT,
@@ -171,17 +169,14 @@ test("login throttleKey는 피해자 이메일만으로 고정되지 않고 클�
   );
 
   assert.equal(received.length, 2);
-  assert.match(received[0]!, /^[a-f0-9]{64}$/u);
-  assert.match(received[1]!, /^[a-f0-9]{64}$/u);
-  assert.notEqual(received[0], received[1]);
-  assert.equal(received.some((key) => key.includes("victim@example.com")), false);
+  assert.deepEqual(received, ["undefined", "undefined"]);
 });
 
-test("login throttleKey는 trusted proxy opt-in 없이는 spoofed forwarded IP를 무시한다", async () => {
+test("login clientAddressHash는 명시적 trusted proxy에서 오른쪽 실제 hop만 사용해 spoofed XFF prefix를 무시한다", async () => {
   const received: string[] = [];
   const authService = service({
     async login(input) {
-      received.push(String(input.throttleKey));
+      received.push(String(input.clientAddressHash));
       return {
         token: RAW_SESSION_TOKEN,
         expiresAt: EXPIRES_AT,
@@ -214,16 +209,66 @@ test("login throttleKey는 trusted proxy opt-in 없이는 spoofed forwarded IP�
   await handlers(authService, { trustedProxyHeaders: true }).login(
     jsonRequest("/api/v1/auth/login", body, {
       ...commonHeaders,
-      "x-forwarded-for": "203.0.113.1, 10.0.0.1",
-      "x-real-ip": "203.0.113.2",
+      "x-forwarded-for": "203.0.113.1, 198.51.100.40",
+      "x-real-ip": "198.51.100.40",
+    }),
+    undefined,
+  );
+  await handlers(authService, { trustedProxyHeaders: true }).login(
+    jsonRequest("/api/v1/auth/login", body, {
+      ...commonHeaders,
+      "x-forwarded-for": "192.0.2.99, 198.51.100.40",
+      "x-real-ip": "198.51.100.40",
+    }),
+    undefined,
+  );
+  await handlers(authService, { trustedProxyHeaders: true }).login(
+    jsonRequest("/api/v1/auth/login", body, {
+      ...commonHeaders,
+      "x-forwarded-for": "192.0.2.99, 198.51.100.41",
+      "x-real-ip": "198.51.100.41",
     }),
     undefined,
   );
 
-  assert.equal(received.length, 3);
+  assert.equal(received.length, 5);
   assert.equal(received[0], received[1]);
   assert.notEqual(received[1], received[2]);
-  assert.equal(received.some((key) => key.includes("203.0.113.1")), false);
+  assert.equal(received[2], received[3]);
+  assert.notEqual(received[3], received[4]);
+  assert.match(received[2]!, /^[a-f0-9]{64}$/u);
+  assert.equal(received.some((key) => key.includes("198.51.100")), false);
+});
+
+test("trusted proxy는 16개 초과 spoofed XFF prefix와 긴 선행값에도 X-Real-IP bucket을 유지한다", async () => {
+  const received: string[] = [];
+  const authService = service({
+    async login(input) {
+      received.push(String(input.clientAddressHash));
+      return { token: RAW_SESSION_TOKEN, expiresAt: EXPIRES_AT, principal: PRINCIPAL };
+    },
+  });
+  const realIp = "198.51.100.77";
+  const spoofed = Array.from({ length: 24 }, (_, index) => `192.0.2.${index + 1}`).join(", ");
+  const headers = {
+    "x-forwarded-for": `${spoofed}, ${realIp}`,
+    "x-real-ip": realIp,
+  };
+  await handlers(authService, { trustedProxyHeaders: true }).login(
+    jsonRequest("/api/v1/auth/login", { email: "owner@example.com", password: "correct-password" }, headers),
+    undefined,
+  );
+  await handlers(authService, { trustedProxyHeaders: true }).login(
+    jsonRequest("/api/v1/auth/login", { email: "owner@example.com", password: "correct-password" }, {
+      ...headers,
+      "x-forwarded-for": `${"x".repeat(3_000)}, ${realIp}`,
+    }),
+    undefined,
+  );
+
+  assert.equal(received.length, 2);
+  assert.match(received[0]!, /^[a-f0-9]{64}$/u);
+  assert.equal(received[0], received[1]);
 });
 
 test("login은 cross-origin 요청을 service 실행 전에 거부한다", async () => {
@@ -418,9 +463,7 @@ test("forgot password는 존재 여부와 무관한 202 응답만 반환한다",
   );
 
   assert.equal(response.status, 202);
-  assert.match(String(received?.throttleKey), /^[a-f0-9]{64}$/u);
-  assert.notEqual(received?.throttleKey, "198.51.100.99");
-  assert.notEqual(received?.throttleKey, "203.0.113.20");
+  assert.equal(received?.clientAddressHash, undefined);
   assert.equal(JSON.stringify(received).includes("unknown@example.com"), true);
   assert.equal(JSON.stringify(received).includes("198.51.100.99"), false);
   assert.deepEqual((await payload(response)).data, { accepted: true });

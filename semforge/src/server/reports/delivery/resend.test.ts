@@ -115,3 +115,33 @@ test("Resend 409는 idempotency 충돌 종류에 따라 terminal과 retryable을
     });
   }
 });
+
+test("Resend transactional email은 attachment 없이 같은 provider idempotency 경계를 재사용한다", async () => {
+  const requests: Request[] = [];
+  const sender = new ResendEmailSender({
+    apiKey: "re_test_password_reset",
+    from: "SEMForge <accounts@semforge.example>",
+    fetch: async (input, init) => {
+      requests.push(new Request(input, init));
+      return Response.json({ id: "password-reset-message-1" });
+    },
+  });
+
+  const result = await sender.sendTransactional({
+    recipient: "owner@example.com",
+    subject: "비밀번호 재설정",
+    html: "<p>30분 안에 링크를 사용하세요.</p>",
+    idempotencyKey: "password-reset:10000000-0000-4000-8000-000000000001",
+  });
+
+  assert.deepEqual(result, { providerMessageId: "password-reset-message-1" });
+  assert.equal(requests.length, 1);
+  const request = requests[0]!;
+  assert.equal(request.headers.get("idempotency-key"), "password-reset:10000000-0000-4000-8000-000000000001");
+  assert.deepEqual(await request.json(), {
+    from: "SEMForge <accounts@semforge.example>",
+    to: ["owner@example.com"],
+    subject: "비밀번호 재설정",
+    html: "<p>30분 안에 링크를 사용하세요.</p>",
+  });
+});

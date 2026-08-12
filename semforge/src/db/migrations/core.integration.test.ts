@@ -101,14 +101,15 @@ test("web role은 transaction-local workspace 밖의 row를 볼 수 없다", asy
   }
 });
 
-test("web, dispatcher, scheduler, worker, billing role은 BYPASSRLS가 아니다", async () => {
+test("모든 runtime과 secret scrubber role은 BYPASSRLS가 아니다", async () => {
   const roles = await pg.query<{ rolname: string; rolbypassrls: boolean }>(
-    "select rolname, rolbypassrls from pg_roles where rolname in ('semforge_billing', 'semforge_dispatcher', 'semforge_scheduler', 'semforge_web', 'semforge_worker') order by rolname",
+    "select rolname, rolbypassrls from pg_roles where rolname in ('semforge_billing', 'semforge_dispatcher', 'semforge_scheduler', 'semforge_secret_scrubber', 'semforge_web', 'semforge_worker') order by rolname",
   );
   assert.deepEqual(roles.rows, [
     { rolname: "semforge_billing", rolbypassrls: false },
     { rolname: "semforge_dispatcher", rolbypassrls: false },
     { rolname: "semforge_scheduler", rolbypassrls: false },
+    { rolname: "semforge_secret_scrubber", rolbypassrls: false },
     { rolname: "semforge_web", rolbypassrls: false },
     { rolname: "semforge_worker", rolbypassrls: false },
   ]);
@@ -403,6 +404,107 @@ test("dispatcher role은 jobs/outbox만 전역 처리하고 tenant domain row는
     await pg.query("savepoint dispatcher_provider_denied");
     await assert.rejects(pg.query("select id from provider_calls"));
     await pg.query("rollback to savepoint dispatcher_provider_denied");
+  } finally {
+    await pg.query("rollback");
+  }
+});
+
+test("dispatcher는 임의 payload UPDATE 없이 password reset 전용 scrub 함수만 실행한다", async () => {
+  const workspaceId = "00000000-0000-4000-8000-000000000211";
+  const jobId = "00000000-0000-4000-8000-000000000212";
+  const resetId = "00000000-0000-4000-8000-000000000213";
+  const encrypted = {
+    kind: "password_reset",
+    resetId,
+    encryptedDelivery: "enc:v1:test:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAA:YWJj",
+    expiresAt: "2026-08-12T06:00:00.000Z",
+  };
+  await pg.query(
+    "insert into workspaces (id, name, slug) values ($1, 'Reset Scrub', 'reset-scrub')",
+    [workspaceId],
+  );
+  await pg.query(
+    `insert into jobs (id, workspace_id, type, payload, idempotency_key)
+     values ($1, $2, 'email.password_reset', $3::jsonb, $4)`,
+    [jobId, workspaceId, JSON.stringify(encrypted), `outbox:email.password_reset:password-reset:${resetId}`],
+  );
+  await pg.query(
+    `insert into outbox (workspace_id, topic, payload, idempotency_key)
+     values ($1, 'email.password_reset', $2::jsonb, $3)`,
+    [workspaceId, JSON.stringify(encrypted), `password-reset:${resetId}`],
+  );
+
+  await pg.query("begin");
+  try {
+    await pg.query("set local role semforge_dispatcher");
+    await pg.query("savepoint password_reset_payload_denied");
+    await assert.rejects(pg.query("update jobs set payload = '{}'::jsonb where id = $1", [jobId]));
+    await pg.query("rollback to savepoint password_reset_payload_denied");
+    const result = await pg.query<{ scrubbed: boolean }>(
+      "select scrub_password_reset_delivery($1, $2, $3, 'delivered', $4, $5) as scrubbed",
+      [workspaceId, jobId, resetId, "2026-08-12T05:10:00.000Z", "resend-message-1"],
+    );
+    assert.equal(result.rows[0]?.scrubbed, true);
+    const payloads = await pg.query<{ payload: Record<string, unknown> }>(
+      `select payload from jobs where id = $1
+       union all
+       select payload from outbox where workspace_id = $2 and idempotency_key = $3`,
+      [jobId, workspaceId, `password-reset:${resetId}`],
+    );
+    assert.equal(payloads.rows.length, 2);
+    for (const row of payloads.rows) {
+      assert.equal(row.payload.kind, "password_reset_scrubbed");
+      assert.equal(row.payload.state, "delivered");
+      assert.equal(Object.hasOwn(row.payload, "encryptedDelivery"), false);
+    }
+  } finally {
+    await pg.query("rollback");
+  }
+});
+
+test("auth role은 plaintext password reset outbox를 DB 제약에서 거부한다", async () => {
+  const workspaceId = "00000000-0000-4000-8000-000000000221";
+  const resetId = "00000000-0000-4000-8000-000000000222";
+  await pg.query("insert into workspaces (id, name, slug) values ($1, 'Plain Reset', 'plain-reset')", [workspaceId]);
+  await pg.query("begin");
+  try {
+    await pg.query("set local role semforge_auth");
+    await pg.query("savepoint plaintext_rejected");
+    await assert.rejects(
+      pg.query(
+        `insert into outbox (workspace_id, topic, payload, idempotency_key)
+         values ($1, 'email.password_reset', '{"kind":"password_reset","email":"owner@example.com","resetUrl":"https://example.com/reset/raw"}'::jsonb, 'plaintext-reset')`,
+        [workspaceId],
+      ),
+    );
+    await pg.query("rollback to savepoint plaintext_rejected");
+    await pg.query("savepoint malformed_envelope_rejected");
+    await assert.rejects(
+      pg.query(
+        `insert into outbox (workspace_id, topic, payload, idempotency_key)
+         values ($1, 'email.password_reset', $2::jsonb, $3)`,
+        [workspaceId, JSON.stringify({
+          kind: "password_reset",
+          resetId,
+          encryptedDelivery: "enc:v1:key:owner@example.com:https_reset",
+          expiresAt: "2030-08-12T06:00:00.000Z",
+        }), `password-reset:${resetId}`],
+      ),
+    );
+    await pg.query("rollback to savepoint malformed_envelope_rejected");
+    await pg.query("savepoint mismatched_identity_rejected");
+    await assert.rejects(
+      pg.query(
+        `insert into outbox (workspace_id, topic, payload, idempotency_key)
+         values ($1, 'email.password_reset', $2::jsonb, 'password-reset:different')`,
+        [workspaceId, JSON.stringify({
+          kind: "password_reset",
+          resetId,
+          encryptedDelivery: "enc:v1:test:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAA:YWJj",
+          expiresAt: "2030-08-12T06:00:00.000Z",
+        })],
+      ),
+    );
   } finally {
     await pg.query("rollback");
   }
@@ -725,7 +827,7 @@ test("auth role은 password reset outbox를 INSERT만 할 수 있고 tenant outb
   );
   await pg.query(
     `insert into outbox (workspace_id, topic, payload, idempotency_key)
-     values ($1, 'email.password_reset', '{"secret":"other-workspace"}'::jsonb, 'other-secret')`,
+     values ($1, 'report.email.deliver', '{"secret":"other-workspace"}'::jsonb, 'other-secret')`,
     [otherWorkspaceId],
   );
 
@@ -739,7 +841,9 @@ test("auth role은 password reset outbox를 INSERT만 할 수 있고 tenant outb
     );
     await pg.query(
       `insert into outbox (workspace_id, topic, payload, idempotency_key)
-       values ($1, 'email.password_reset', '{"kind":"password_reset"}'::jsonb, 'password-reset-test')`,
+       values ($1, 'email.password_reset',
+         '{"kind":"password_reset","resetId":"00000000-0000-4000-8000-0000000000e5","encryptedDelivery":"enc:v1:test:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAA:YWJj","expiresAt":"2030-08-12T06:00:00.000Z"}'::jsonb,
+         'password-reset:00000000-0000-4000-8000-0000000000e5')`,
       [workspaceId],
     );
 
@@ -768,10 +872,12 @@ test("auth role은 password reset outbox를 INSERT만 할 수 있고 tenant outb
   }
 
   const visibleToOwner = await pg.query<{ idempotency_key: string }>(
-    "select idempotency_key from outbox where workspace_id = $1 and idempotency_key = 'password-reset-test'",
+    "select idempotency_key from outbox where workspace_id = $1 and idempotency_key = 'password-reset:00000000-0000-4000-8000-0000000000e5'",
     [workspaceId],
   );
-  assert.deepEqual(visibleToOwner.rows, [{ idempotency_key: "password-reset-test" }]);
+  assert.deepEqual(visibleToOwner.rows, [{
+    idempotency_key: "password-reset:00000000-0000-4000-8000-0000000000e5",
+  }]);
 });
 
 test("auth role은 billing provisioning INSERT만 허용하고 billing SELECT를 노출하지 않는다", async () => {

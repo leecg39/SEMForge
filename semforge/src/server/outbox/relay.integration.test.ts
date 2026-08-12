@@ -159,6 +159,38 @@ test("만료된 마지막 outbox attempt는 명시적 DLQ가 되고 다시 claim
   }]);
 });
 
+test("job 생성 전 마지막 password reset relay lease가 만료되면 outbox 암호문을 scrub한다", async () => {
+  const workspaceId = "51000000-0000-4000-8000-000000000013";
+  const resetId = "51000000-0000-4000-8000-000000000014";
+  const database = await createDatabase(workspaceId, "password-reset-outbox-dead");
+  const now = new Date("2026-08-12T05:00:00.000Z");
+  await database.query(
+    `insert into outbox (workspace_id, topic, payload, idempotency_key, available_at, max_attempts)
+     values ($1, 'email.password_reset', $2::jsonb, $3, $4, 1)`,
+    [workspaceId, JSON.stringify({
+      kind: "password_reset",
+      resetId,
+      encryptedDelivery: "enc:v1:test:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAA:YWJj",
+      expiresAt: "2026-08-12T05:30:00.000Z",
+    }), `password-reset:${resetId}`, now],
+  );
+  const relay = new PostgresOutboxRelay(database);
+  assert.equal(
+    (await relay.claim({ workerId: "password-reset-relay-dead", now, leaseMs: 60_000 })).length,
+    1,
+  );
+
+  const recovered = await relay.recoverExpired({ now: new Date("2026-08-12T05:01:00.000Z") });
+  assert.equal(recovered[0]?.dead, true);
+  assert.deepEqual(recovered[0]?.record.payload, {
+    kind: "password_reset_scrubbed",
+    resetId,
+    state: "retry_exhausted",
+    scrubbedAt: "2026-08-12T05:01:00+00:00",
+  });
+  assert.equal(JSON.stringify(recovered[0]?.record.payload).includes("enc:v1"), false);
+});
+
 test("기존 job과 canonical 요청이 충돌하면 outbox는 unpublished 상태를 유지한다", async () => {
   const workspaceId = "51000000-0000-4000-8000-000000000004";
   const database = await createDatabase(workspaceId, "outbox-idempotency-conflict");
@@ -193,14 +225,14 @@ test("기존 job과 canonical 요청이 충돌하면 outbox는 unpublished 상�
   assert.deepEqual(state.rows[0]?.payload, { siteId: "different" });
 });
 
-test("production relay는 collection topic만 claim하고 canonical job type으로 publish한다", async () => {
+test("production relay는 collection과 암호화 password reset topic을 canonical job으로 publish한다", async () => {
   const workspaceId = "51000000-0000-4000-8000-000000000005";
   const database = await createDatabase(workspaceId, "outbox-production-topics");
   const now = new Date("2026-08-12T07:00:00.000Z");
   await database.query(
     `insert into outbox (workspace_id, topic, payload, idempotency_key, available_at)
      values ($1, 'collection.google.weekly', '{"siteId":"site-google"}'::jsonb, 'google-weekly', $2),
-            ($1, 'email.password_reset', '{"email":"user@example.com"}'::jsonb, 'email-reset', $2)`,
+            ($1, 'email.password_reset', '{"kind":"password_reset","resetId":"51000000-0000-4000-8000-000000000099","encryptedDelivery":"enc:v1:test:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAA:YWJj","expiresAt":"2026-08-12T07:30:00.000Z"}'::jsonb, 'password-reset:51000000-0000-4000-8000-000000000099', $2)`,
     [workspaceId, now],
   );
   const runtime = new CollectionOutboxRelayRuntime({
@@ -209,18 +241,22 @@ test("production relay는 collection topic만 claim하고 canonical job type으�
     clock: () => now,
   });
 
-  assert.deepEqual(await runtime.runOnce(), { claimed: 1, published: 1, failed: 0 });
+  assert.deepEqual(await runtime.runOnce(), { claimed: 2, published: 2, failed: 0 });
   const jobs = await database.query<{ type: string; payload: Record<string, unknown> }>(
     "select type, payload from jobs where workspace_id = $1",
     [workspaceId],
   );
-  assert.deepEqual(jobs.rows, [{ type: "collect.google", payload: { siteId: "site-google" } }]);
+  assert.deepEqual(jobs.rows.map((row) => row.type).sort(), [
+    "collect.google",
+    "email.password_reset",
+  ]);
+  assert.equal(JSON.stringify(jobs.rows).includes("user@example.com"), false);
   const events = await database.query<{ topic: string; published: boolean }>(
     "select topic, published_at is not null as published from outbox order by topic",
   );
   assert.deepEqual(events.rows, [
     { topic: "collection.google.weekly", published: true },
-    { topic: "email.password_reset", published: false },
+    { topic: "email.password_reset", published: true },
   ]);
 });
 
