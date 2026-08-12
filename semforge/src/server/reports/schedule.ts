@@ -51,6 +51,19 @@ function kstInstant(date: Date, hour: number): Date {
   );
 }
 
+export function cycleMondayForReportSnapshotRun(executedAt: Date): string {
+  if (!Number.isFinite(executedAt.getTime())) throw new RangeError("executedAt must be valid");
+  const kstCalendar = new Date(executedAt.getTime() + KST_OFFSET_HOURS * 60 * 60 * 1000);
+  if (kstCalendar.getUTCDay() !== 1) {
+    throw new RangeError("report snapshot run must execute on KST Monday");
+  }
+  const cycleMonday = formatCalendarDate(kstCalendar);
+  if (executedAt < buildWeeklyReportSchedule(cycleMonday).snapshotAt) {
+    throw new RangeError("report snapshot run must execute at or after KST Monday 08:00");
+  }
+  return cycleMonday;
+}
+
 export function buildWeeklyReportSchedule(cycleMonday: string): WeeklyReportSchedule {
   const monday = parseCalendarDate(cycleMonday);
   if (monday.getUTCDay() !== 1) throw new RangeError("cycleMonday must be a Monday");

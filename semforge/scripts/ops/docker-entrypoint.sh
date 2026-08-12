@@ -4,7 +4,11 @@
 set -eu
 
 profile="${1:-}"
-node scripts/ops/preflight.mjs "$profile"
+preflight_profile="$profile"
+if [ "$profile" = "report-scheduler" ]; then
+  preflight_profile="scheduler"
+fi
+node scripts/ops/preflight.mjs "$preflight_profile"
 
 case "$profile" in
   web)
@@ -18,6 +22,9 @@ case "$profile" in
     ;;
   scheduler)
     exec node --import tsx scripts/ops/scheduler.ts
+    ;;
+  report-scheduler)
+    exec node --import tsx scripts/ops/report-scheduler.ts
     ;;
   migrate)
     exec node --import tsx src/db/migrate.ts

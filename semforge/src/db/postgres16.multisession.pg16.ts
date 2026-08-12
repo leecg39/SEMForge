@@ -9,6 +9,17 @@ import { Pool, type PoolClient } from "pg";
 import { PostgresProviderCallCoordinator } from "@/server/jobs/provider-calls";
 import { PostgresJobQueue } from "@/server/jobs/queue";
 import { PostgresOutboxRelay } from "@/server/outbox/relay";
+import {
+  defineJobHandler,
+  jobSucceeded,
+  type JobExecutionContext,
+  type JobHandlerInput,
+} from "@/server/jobs/contracts";
+import { createBillingAccessGuardedJobHandler } from "@/worker/billing-gate";
+import {
+  PostgresWeeklyCollectionScheduler,
+  PostgresWeeklyReportScheduler,
+} from "@/worker/scheduler";
 
 const databaseUrl = process.env.PG16_TEST_DATABASE_URL;
 if (!databaseUrl) {
@@ -158,7 +169,7 @@ test("PostgreSQL 16 실제 세션은 SKIP LOCKED, provider canonical visibility,
        values ($1, 'collection.google.weekly', '{"siteId":"pg16"}'::jsonb, 'pg16-crash')`,
       [workspaceA],
     );
-    const initialTime = new Date("2026-08-12T00:00:00.000Z");
+    const initialTime = new Date("2026-08-12T03:00:00.000Z");
     await firstClient.query("begin");
     await firstClient.query("set local role semforge_dispatcher");
     const firstLease = (await new PostgresOutboxRelay(firstClient).claim({
@@ -170,13 +181,13 @@ test("PostgreSQL 16 실제 세션은 SKIP LOCKED, provider canonical visibility,
     await secondClient.query("begin");
     await secondClient.query("set local role semforge_dispatcher");
     const recovered = await new PostgresOutboxRelay(secondClient).recoverExpired({
-      now: new Date("2026-08-12T00:00:02.000Z"),
+      now: new Date("2026-08-12T03:00:02.000Z"),
     });
     await secondClient.query("commit");
     assert.equal(recovered.length, 1);
     assert.equal(recovered[0]!.record.id, firstLease.id);
     assert.equal(recovered[0]!.dead, false);
-    const retryTime = new Date("2026-08-12T00:00:03.000Z");
+    const retryTime = new Date("2026-08-12T03:00:03.000Z");
     await firstClient.query("begin");
     await firstClient.query("set local role semforge_dispatcher");
     const recoveredRelay = new PostgresOutboxRelay(firstClient);
@@ -217,5 +228,203 @@ test("PostgreSQL 16 실제 세션은 SKIP LOCKED, provider canonical visibility,
     await rollback(secondClient);
     firstClient.release();
     secondClient.release();
+  }
+});
+
+test("PostgreSQL 16 실제 role은 구독 후보·report 동시 멱등·billing gate와 최소 권한을 강제한다", async () => {
+  const schedulerA = new Pool({
+    connectionString: databaseUrl,
+    max: 1,
+    ssl: false,
+    options: "-c role=semforge_scheduler",
+  });
+  const schedulerB = new Pool({
+    connectionString: databaseUrl,
+    max: 1,
+    ssl: false,
+    options: "-c role=semforge_scheduler",
+  });
+  const worker = new Pool({
+    connectionString: databaseUrl,
+    max: 1,
+    ssl: false,
+    options: "-c role=semforge_worker",
+  });
+  const web = new Pool({
+    connectionString: databaseUrl,
+    max: 1,
+    ssl: false,
+    options: "-c role=semforge_web",
+  });
+
+  const candidates = [
+    { suffix: "101", status: "active", periodEnd: null, allowed: true },
+    { suffix: "102", status: "cancel_at_period_end", periodEnd: "2026-08-18T00:00:00.000Z", allowed: true },
+    { suffix: "103", status: "cancel_at_period_end", periodEnd: "2026-08-16T22:59:59.000Z", allowed: false },
+    { suffix: "104", status: "past_due", periodEnd: "2026-09-01T00:00:00.000Z", allowed: false },
+    { suffix: "105", status: "account_created", periodEnd: null, allowed: false },
+  ] as const;
+
+  try {
+    for (const candidate of candidates) {
+      const workspaceId = `f4000000-0000-4000-8000-${candidate.suffix.padStart(12, "0")}`;
+      const customerId = `f4100000-0000-4000-8000-${candidate.suffix.padStart(12, "0")}`;
+      const subscriptionId = `f4200000-0000-4000-8000-${candidate.suffix.padStart(12, "0")}`;
+      const siteId = `f4300000-0000-4000-8000-${candidate.suffix.padStart(12, "0")}`;
+      const queryId = `f4400000-0000-4000-8000-${candidate.suffix.padStart(12, "0")}`;
+      await pool.query(
+        "insert into workspaces (id, name, slug) values ($1, $2, $3)",
+        [workspaceId, `PG16 billing ${candidate.suffix}`, `pg16-billing-${candidate.suffix}`],
+      );
+      await pool.query(
+        "insert into billing_customers (id, workspace_id, toss_customer_key) values ($1, $2, $3)",
+        [customerId, workspaceId, `pg16-${candidate.suffix}`],
+      );
+      await pool.query(
+        `insert into subscriptions
+           (id, workspace_id, billing_customer_id, status, current_period_start, current_period_end, grace_ends_at)
+         values ($1, $2, $3, $4, '2026-08-01T00:00:00.000Z', $5, '2026-08-30T00:00:00.000Z')`,
+        [subscriptionId, workspaceId, customerId, candidate.status, candidate.periodEnd],
+      );
+      await pool.query(
+        "insert into sites (id, workspace_id, name, domain) values ($1, $2, $3, $4)",
+        [siteId, workspaceId, `Site ${candidate.suffix}`, `pg16-${candidate.suffix}.example`],
+      );
+      await pool.query(
+        `insert into tracked_queries
+           (id, workspace_id, site_id, type, query, normalized_query)
+         values ($1, $2, $3, 'rank', $4, $5)`,
+        [queryId, workspaceId, siteId, `query ${candidate.suffix}`, `query ${candidate.suffix}`],
+      );
+    }
+
+    const executedAt = new Date("2026-08-16T09:00:00.000Z");
+    assert.deepEqual(
+      await new PostgresWeeklyCollectionScheduler(schedulerA).schedule({ executedAt }),
+      { google: 3, naver: 3, gsc: 0 },
+    );
+    assert.deepEqual(
+      await new PostgresWeeklyCollectionScheduler(schedulerA).schedule({ executedAt }),
+      { google: 0, naver: 0, gsc: 0 },
+    );
+
+    const reportAt = new Date("2026-08-16T23:00:00.000Z");
+    const reportBarrier = barrier(2);
+    const scheduled = await Promise.all([
+      (async () => {
+        await reportBarrier();
+        return new PostgresWeeklyReportScheduler(schedulerA).schedule({ executedAt: reportAt });
+      })(),
+      (async () => {
+        await reportBarrier();
+        return new PostgresWeeklyReportScheduler(schedulerB).schedule({ executedAt: reportAt });
+      })(),
+    ]);
+    assert.equal(scheduled.reduce((total, result) => total + result.reports, 0), 2);
+    assert.ok(scheduled.every((result) => result.cycleMonday === "2026-08-17"));
+
+    const reportRows = await pool.query<{ count: number }>(
+      `select count(*)::int as count from outbox
+        where topic = 'report.snapshot' and workspace_id::text like 'f4000000-%'`,
+    );
+    assert.equal(reportRows.rows[0]!.count, 2);
+
+    const schedulerClient = await schedulerA.connect();
+    try {
+      await schedulerClient.query("begin");
+      await schedulerClient.query("savepoint arbitrary_topic");
+      await assert.rejects(
+        schedulerClient.query(
+          `insert into outbox (workspace_id, topic, payload, idempotency_key)
+           values ('f4000000-0000-4000-8000-000000000101', 'billing.charge',
+             '{"siteId":"f4300000-0000-4000-8000-000000000101"}'::jsonb, 'arbitrary')`,
+        ),
+        /row-level security|permission denied/i,
+      );
+      await schedulerClient.query("rollback to savepoint arbitrary_topic");
+      await schedulerClient.query("savepoint cross_tenant");
+      await assert.rejects(
+        schedulerClient.query(
+          `insert into outbox (workspace_id, topic, payload, idempotency_key)
+           values ('f4000000-0000-4000-8000-000000000101', 'report.snapshot',
+             '{"siteId":"f4300000-0000-4000-8000-000000000102","cycleMonday":"2026-08-17"}'::jsonb,
+             'cross-tenant')`,
+        ),
+        /row-level security|permission denied/i,
+      );
+      await schedulerClient.query("rollback to savepoint cross_tenant");
+      await assert.rejects(
+        schedulerClient.query("select payload from outbox limit 1"),
+        /permission denied/i,
+      );
+      await schedulerClient.query("rollback");
+    } finally {
+      schedulerClient.release();
+    }
+
+    const webClient = await web.connect();
+    try {
+      await webClient.query("begin");
+      await webClient.query(
+        "select set_config('app.workspace_id', 'f4000000-0000-4000-8000-000000000101', true)",
+      );
+      const forbidden = [
+        ...["billing_customers", "payment_methods", "subscriptions"].flatMap((table) => [
+          `select * from ${table}`,
+          `insert into ${table} default values`,
+          `update ${table} set workspace_id = workspace_id`,
+          `delete from ${table}`,
+        ]),
+      ];
+      for (const [index, statement] of forbidden.entries()) {
+        await webClient.query(`savepoint web_billing_${index}`);
+        await assert.rejects(webClient.query(statement), /permission denied/i);
+        await webClient.query(`rollback to savepoint web_billing_${index}`);
+      }
+      await webClient.query("rollback");
+    } finally {
+      webClient.release();
+    }
+
+    let providerCalls = 0;
+    const audits: string[] = [];
+    const guarded = createBillingAccessGuardedJobHandler({
+      database: worker,
+      delegate: defineJobHandler(async () => {
+        providerCalls += 1;
+        return jobSucceeded();
+      }),
+    });
+    const job: JobHandlerInput = {
+      id: "f4500000-0000-4000-8000-000000000104",
+      workspaceId: "f4000000-0000-4000-8000-000000000104",
+      type: "collect.google",
+      payload: {},
+      idempotencyKey: "actual-pg-billing-gate",
+      attempt: 1,
+      maxAttempts: 5,
+    };
+    const context: JobExecutionContext = {
+      workspaceId: job.workspaceId,
+      jobId: job.id,
+      attempt: 1,
+      maxAttempts: 5,
+      lease: { owner: "pg16", token: "token", generation: 1, expiresAt: new Date("2026-08-17T00:10:00.000Z") },
+      signal: new AbortController().signal,
+      providerCalls: {} as JobExecutionContext["providerCalls"],
+      now: () => new Date("2026-08-17T00:00:00.000Z"),
+      audit: async (action) => { audits.push(action); },
+    };
+    for (const type of ["collect.google", "report.snapshot"] as const) {
+      const skipped = await guarded({ ...job, type }, context);
+      assert.deepEqual(skipped, {
+        status: "succeeded",
+        metadata: { skipped: true, skipReason: "past_due_grace" },
+      });
+    }
+    assert.equal(providerCalls, 0);
+    assert.deepEqual(audits, ["job.billing_access.skipped", "job.billing_access.skipped"]);
+  } finally {
+    await Promise.all([schedulerA.end(), schedulerB.end(), worker.end(), web.end()]);
   }
 });

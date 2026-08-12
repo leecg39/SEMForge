@@ -62,6 +62,7 @@ COPY --from=builder --chown=semforge:semforge \
   /app/scripts/ops/worker.ts \
   /app/scripts/ops/relay.ts \
   /app/scripts/ops/scheduler.ts \
+  /app/scripts/ops/report-scheduler.ts \
   ./scripts/ops/
 USER semforge
 

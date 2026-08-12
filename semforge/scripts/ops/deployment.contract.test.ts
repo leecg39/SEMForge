@@ -62,10 +62,14 @@ test("Docker worker는 dispatcher claim과 tenant DB가 분리된 production com
   assert.match(production, /createRuntimeReportJobHandlers\(\{/u);
   assert.match(production, /workerDatabase:\s*workerPool/u);
   assert.match(production, /authDatabase:\s*authPool/u);
-  assert.match(production, /composeProductionWorkerJobHandlers\(\{ google, naver, gsc, reports \}\)/u);
+  assert.match(production, /createBillingAccessGuardedJobHandler\(\{ database: workerPool, delegate \}\)/u);
+  assert.match(production, /google:\s*billingGuard\(google\)/u);
+  assert.match(production, /naver:\s*billingGuard\(naver\)/u);
+  assert.match(production, /gsc:\s*billingGuard\(gsc\)/u);
+  assert.match(production, /"report\.snapshot":\s*billingGuard\(reports\["report\.snapshot"\]\)/u);
 });
 
-test("entrypoint와 compose는 migration 성공 뒤 web/worker/relay/scheduler를 분리 실행한다", async () => {
+test("entrypoint와 compose는 migration 성공 뒤 web/worker/relay와 collection/report scheduler를 분리 실행한다", async () => {
   const [entrypoint, compose] = await Promise.all([
     source("scripts/ops/docker-entrypoint.sh"),
     source("docker-compose.yml"),
@@ -76,9 +80,12 @@ test("entrypoint와 compose는 migration 성공 뒤 web/worker/relay/scheduler�
   assert.match(entrypoint, /exec node --import tsx scripts\/ops\/worker\.ts/u);
   assert.match(entrypoint, /exec node --import tsx scripts\/ops\/relay\.ts/u);
   assert.match(entrypoint, /exec node --import tsx scripts\/ops\/scheduler\.ts/u);
+  assert.match(entrypoint, /exec node --import tsx scripts\/ops\/report-scheduler\.ts/u);
   assert.match(entrypoint, /exec node --import tsx src\/db\/migrate\.ts/u);
   assert.match(compose, /release:/u);
-  assert.equal((compose.match(/condition: service_completed_successfully/gu) ?? []).length, 4);
+  assert.equal((compose.match(/condition: service_completed_successfully/gu) ?? []).length, 5);
+  assert.match(compose, /report-scheduler:/u);
+  assert.match(compose, /command:\s*\["report-scheduler"\]/u);
   assert.match(compose, /\/health\/ready/u);
   for (const profile of ["web", "worker", "relay", "scheduler", "migrate"]) {
     assert.match(compose, new RegExp(`SEMFORGE_SERVICE:\\s*${profile}`));
@@ -88,11 +95,16 @@ test("entrypoint와 compose는 migration 성공 뒤 web/worker/relay/scheduler�
   }
 });
 
-test("Kubernetes 예시는 worker/relay/scheduler secret과 실행 역할을 분리한다", async () => {
+test("Kubernetes 예시는 worker/relay와 일요일 collection·월요일 report scheduler를 분리한다", async () => {
   const deployment = await source("deploy/kubernetes/pipeline-runtime.yaml");
   const worker = deployment.match(/name:\s*semforge-worker[\s\S]*?(?=---)/u)?.[0] ?? "";
   const relay = deployment.match(/name:\s*semforge-relay[\s\S]*?(?=---)/u)?.[0] ?? "";
-  const scheduler = deployment.match(/name:\s*semforge-weekly-scheduler[\s\S]*/u)?.[0] ?? "";
+  const collectionScheduler = deployment.match(
+    /name:\s*semforge-weekly-collection-scheduler[\s\S]*?(?=---)/u,
+  )?.[0] ?? "";
+  const reportScheduler = deployment.match(
+    /name:\s*semforge-weekly-report-scheduler[\s\S]*/u,
+  )?.[0] ?? "";
   const reportRuntimeVariables = [
     "APP_PUBLIC_URL",
     "AUTH_DATABASE_URL",
@@ -125,12 +137,16 @@ test("Kubernetes 예시는 worker/relay/scheduler secret과 실행 역할을 분
   }
   assert.match(deployment, /name:\s*semforge-relay/u);
   assert.match(deployment, /SEMFORGE_SERVICE[\s\S]*value:\s*relay/u);
-  assert.match(deployment, /kind:\s*CronJob[\s\S]*name:\s*semforge-weekly-scheduler/u);
-  assert.match(deployment, /name:\s*SCHEDULER_DATABASE_URL/u);
+  assert.match(collectionScheduler, /schedule:\s*"0 9 \* \* 0"/u);
+  assert.match(reportScheduler, /schedule:\s*"0 23 \* \* 0"/u);
+  assert.match(reportScheduler, /args:\s*\["report-scheduler"\]/u);
+  assert.match(collectionScheduler, /name:\s*SCHEDULER_DATABASE_URL/u);
+  assert.match(reportScheduler, /name:\s*SCHEDULER_DATABASE_URL/u);
   assert.doesNotMatch(relay, /WORKER_DATABASE_URL|SCHEDULER_DATABASE_URL/u);
   for (const reportVariable of reportRuntimeVariables) {
     assert.doesNotMatch(relay, new RegExp(`name:\\s*${reportVariable}`));
-    assert.doesNotMatch(scheduler, new RegExp(`name:\\s*${reportVariable}`));
+    assert.doesNotMatch(collectionScheduler, new RegExp(`name:\\s*${reportVariable}`));
+    assert.doesNotMatch(reportScheduler, new RegExp(`name:\\s*${reportVariable}`));
   }
 });
 

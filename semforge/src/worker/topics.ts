@@ -14,6 +14,7 @@ export const COLLECTION_OUTBOX_TOPICS = Object.freeze(
 );
 
 export const REPORT_TOPIC_TO_JOB_TYPE = {
+  "report.snapshot": "report.snapshot",
   "report.pdf.render": "report.pdf.render",
   "report.email.deliver": "report.email.deliver",
 } as const;

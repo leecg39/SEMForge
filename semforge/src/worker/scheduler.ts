@@ -2,6 +2,10 @@
 // @SPEC docs/planning/06-tasks.md#p3-c2-t1--naver와-gsc-주간-수집
 // @TEST src/worker/scheduler.test.ts
 import type { SqlQueryable } from "@/server/jobs/queue";
+import {
+  buildWeeklyReportSchedule,
+  cycleMondayForReportSnapshotRun,
+} from "@/server/reports/schedule";
 
 interface ScheduleInput {
   readonly executedAt: Date;
@@ -11,6 +15,11 @@ export interface WeeklyScheduleResult {
   readonly google: number;
   readonly naver: number;
   readonly gsc: number;
+}
+
+export interface WeeklyReportScheduleResult {
+  readonly cycleMonday: string;
+  readonly reports: number;
 }
 
 type QueryRow = {
@@ -61,15 +70,33 @@ export class PostgresWeeklyCollectionScheduler {
               query.id::text as tracked_query_id, query.type, query.query
          from tracked_queries query
          join sites site on site.workspace_id = query.workspace_id and site.id = query.site_id
+         join subscriptions subscription on subscription.workspace_id = query.workspace_id
         where query.active and site.active
+          and (
+            subscription.status = 'active'
+            or (
+              subscription.status = 'cancel_at_period_end'
+              and subscription.current_period_end > $1::timestamptz
+            )
+          )
         order by query.workspace_id, query.site_id, query.type asc, query.normalized_query, query.id`,
+      [executedAt],
     );
     const bindings = await this.database.query<BindingRow>(
       `select binding.workspace_id::text, binding.site_id::text, binding.id::text as binding_id
          from gsc_property_bindings binding
          join sites site on site.workspace_id = binding.workspace_id and site.id = binding.site_id
+         join subscriptions subscription on subscription.workspace_id = binding.workspace_id
         where site.active
+          and (
+            subscription.status = 'active'
+            or (
+              subscription.status = 'cancel_at_period_end'
+              and subscription.current_period_end > $1::timestamptz
+            )
+          )
         order by binding.workspace_id, binding.site_id, binding.id`,
+      [executedAt],
     );
 
     let google = 0;
@@ -165,5 +192,38 @@ export class PostgresWeeklyCollectionScheduler {
       [input.workspaceId, input.topic, JSON.stringify(input.payload), input.key],
     );
     return result.rows[0]?.inserted ?? 0;
+  }
+}
+
+export class PostgresWeeklyReportScheduler {
+  constructor(private readonly database: SqlQueryable) {}
+
+  async schedule(input: ScheduleInput): Promise<WeeklyReportScheduleResult> {
+    const cycleMonday = cycleMondayForReportSnapshotRun(input.executedAt);
+    const schedule = buildWeeklyReportSchedule(cycleMonday);
+    const result = await this.database.query<{ inserted: number }>(
+      `with inserted as (
+         insert into outbox
+           (workspace_id, topic, payload, idempotency_key, available_at)
+         select site.workspace_id, 'report.snapshot',
+                jsonb_build_object('siteId', site.id::text, 'cycleMonday', $1::text),
+                'weekly:report:' || $1::text || ':' || site.id::text,
+                $2::timestamptz
+           from sites site
+           join subscriptions subscription on subscription.workspace_id = site.workspace_id
+          where site.active
+            and (
+              subscription.status = 'active'
+              or (
+                subscription.status = 'cancel_at_period_end'
+                and subscription.current_period_end > $3::timestamptz
+              )
+            )
+         on conflict (workspace_id, topic, idempotency_key) do nothing
+         returning 1
+       ) select count(*)::int as inserted from inserted`,
+      [cycleMonday, schedule.snapshotAt, input.executedAt.toISOString()],
+    );
+    return { cycleMonday, reports: result.rows[0]?.inserted ?? 0 };
   }
 }
