@@ -441,6 +441,7 @@ test("PostgreSQL 16 worker shared fence와 승인 삭제 retry는 crash 뒤에�
       type: "privacy.barrier",
       payload: { sequence: 1 },
       idempotencyKey: "pg16-privacy-barrier-active",
+      priority: -1_000_000,
     });
     const activeRun = activeRuntime.runOnce();
     await delegateStarted.promise;
@@ -502,6 +503,7 @@ test("PostgreSQL 16 worker shared fence와 승인 삭제 retry는 crash 뒤에�
       type: "privacy.barrier",
       payload: { sequence: 2 },
       idempotencyKey: "pg16-privacy-barrier-late",
+      priority: -1_000_000,
     });
     const lateRuntime = new WorkerRuntime({
       database: lateDispatcher,
