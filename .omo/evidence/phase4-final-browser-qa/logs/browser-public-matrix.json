@@ -1,0 +1,989 @@
+[
+  {
+    "slug": "landing",
+    "width": 360,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "docW": 360,
+      "docH": 3838,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "a",
+          "text": "SEMForge 홈",
+          "w": 124,
+          "h": 38,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "개인정보 처리방침",
+          "w": 107,
+          "h": 22,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "이용약관",
+          "w": 52,
+          "h": 22,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "이번 주 검색 가시성을한 장으로 설명하세요."
+      ],
+      "alerts": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -9
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "login",
+    "width": 360,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/login/",
+      "title": "로그인 · SEMForge",
+      "docW": 360,
+      "docH": 810,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "a",
+          "text": "SEMForge 홈",
+          "w": 320,
+          "h": 39,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "계정에 로그인"
+      ],
+      "alerts": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -8
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "forgot-password",
+    "width": 360,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/forgot-password/",
+      "title": "비밀번호 재설정 요청 · SEMForge",
+      "docW": 360,
+      "docH": 800,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "a",
+          "text": "SEMForge 홈",
+          "w": 320,
+          "h": 39,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "비밀번호 재설정"
+      ],
+      "alerts": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -3
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "invite",
+    "width": 360,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/invite/browser-qa-token/",
+      "title": "초대 수락 · SEMForge",
+      "docW": 360,
+      "docH": 869,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "a",
+          "text": "SEMForge 홈",
+          "w": 320,
+          "h": 39,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "SEMForge 시작하기"
+      ],
+      "alerts": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -9
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "reset-password",
+    "width": 360,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/reset-password/browser-qa-token/",
+      "title": "새 비밀번호 설정 · SEMForge",
+      "docW": 360,
+      "docH": 834,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "a",
+          "text": "SEMForge 홈",
+          "w": 320,
+          "h": 39,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "새 비밀번호 설정"
+      ],
+      "alerts": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -9
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "privacy",
+    "width": 360,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/legal/privacy/",
+      "title": "개인정보 처리방침 · SEMForge",
+      "docW": 360,
+      "docH": 1897,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "a",
+          "text": "SEMForge 홈",
+          "w": 124,
+          "h": 38,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "개인정보 처리방침",
+          "w": 107,
+          "h": 22,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "이용약관",
+          "w": 52,
+          "h": 22,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "개인정보 처리방침"
+      ],
+      "alerts": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -60
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "terms",
+    "width": 360,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/legal/terms/",
+      "title": "이용약관 · SEMForge",
+      "docW": 360,
+      "docH": 2191,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "a",
+          "text": "SEMForge 홈",
+          "w": 124,
+          "h": 38,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "개인정보 처리방침",
+          "w": 107,
+          "h": 22,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "이용약관",
+          "w": 52,
+          "h": 22,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "서비스 이용약관"
+      ],
+      "alerts": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -17
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "landing",
+    "width": 768,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "docW": 768,
+      "docH": 2824,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "a",
+          "text": "SEMForge 홈",
+          "w": 124,
+          "h": 39,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "개인정보",
+          "w": 52,
+          "h": 22,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "이용약관",
+          "w": 52,
+          "h": 22,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "개인정보 처리방침",
+          "w": 107,
+          "h": 22,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "이용약관",
+          "w": 52,
+          "h": 22,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "이번 주 검색 가시성을한 장으로 설명하세요."
+      ],
+      "alerts": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -17
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "login",
+    "width": 768,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/login/",
+      "title": "로그인 · SEMForge",
+      "docW": 768,
+      "docH": 1024,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "a",
+          "text": "SEMForge 홈",
+          "w": 223,
+          "h": 39,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "계정에 로그인"
+      ],
+      "alerts": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -10
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "forgot-password",
+    "width": 768,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/forgot-password/",
+      "title": "비밀번호 재설정 요청 · SEMForge",
+      "docW": 768,
+      "docH": 1024,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "a",
+          "text": "SEMForge 홈",
+          "w": 223,
+          "h": 39,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "비밀번호 재설정"
+      ],
+      "alerts": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -2
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "invite",
+    "width": 768,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/invite/browser-qa-token/",
+      "title": "초대 수락 · SEMForge",
+      "docW": 768,
+      "docH": 1024,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "a",
+          "text": "SEMForge 홈",
+          "w": 223,
+          "h": 39,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "SEMForge 시작하기"
+      ],
+      "alerts": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -1
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "reset-password",
+    "width": 768,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/reset-password/browser-qa-token/",
+      "title": "새 비밀번호 설정 · SEMForge",
+      "docW": 768,
+      "docH": 1024,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "a",
+          "text": "SEMForge 홈",
+          "w": 223,
+          "h": 39,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "새 비밀번호 설정"
+      ],
+      "alerts": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": 4
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "privacy",
+    "width": 768,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/legal/privacy/",
+      "title": "개인정보 처리방침 · SEMForge",
+      "docW": 768,
+      "docH": 1608,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "a",
+          "text": "SEMForge 홈",
+          "w": 124,
+          "h": 39,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "개인정보",
+          "w": 52,
+          "h": 22,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "이용약관",
+          "w": 52,
+          "h": 22,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "개인정보 처리방침",
+          "w": 107,
+          "h": 22,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "이용약관",
+          "w": 52,
+          "h": 22,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "개인정보 처리방침"
+      ],
+      "alerts": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -8
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "terms",
+    "width": 768,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/legal/terms/",
+      "title": "이용약관 · SEMForge",
+      "docW": 768,
+      "docH": 1843,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "a",
+          "text": "SEMForge 홈",
+          "w": 124,
+          "h": 39,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "개인정보",
+          "w": 52,
+          "h": 22,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "이용약관",
+          "w": 52,
+          "h": 22,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "개인정보 처리방침",
+          "w": 107,
+          "h": 22,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "이용약관",
+          "w": 52,
+          "h": 22,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "서비스 이용약관"
+      ],
+      "alerts": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": 9
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "landing",
+    "width": 1440,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/",
+      "title": "SEMForge — 주간 검색 가시성 리포트",
+      "docW": 1440,
+      "docH": 2456,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "a",
+          "text": "SEMForge 홈",
+          "w": 124,
+          "h": 39,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "개인정보",
+          "w": 52,
+          "h": 22,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "이용약관",
+          "w": 52,
+          "h": 22,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "개인정보 처리방침",
+          "w": 107,
+          "h": 22,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "이용약관",
+          "w": 52,
+          "h": 22,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "이번 주 검색 가시성을한 장으로 설명하세요."
+      ],
+      "alerts": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -2
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "login",
+    "width": 1440,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/login/",
+      "title": "로그인 · SEMForge",
+      "docW": 1440,
+      "docH": 1000,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "a",
+          "text": "SEMForge 홈",
+          "w": 468,
+          "h": 39,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "계정에 로그인"
+      ],
+      "alerts": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -2
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "forgot-password",
+    "width": 1440,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/forgot-password/",
+      "title": "비밀번호 재설정 요청 · SEMForge",
+      "docW": 1440,
+      "docH": 1000,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "a",
+          "text": "SEMForge 홈",
+          "w": 468,
+          "h": 39,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "비밀번호 재설정"
+      ],
+      "alerts": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -17
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "invite",
+    "width": 1440,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/invite/browser-qa-token/",
+      "title": "초대 수락 · SEMForge",
+      "docW": 1440,
+      "docH": 1000,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "a",
+          "text": "SEMForge 홈",
+          "w": 468,
+          "h": 39,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "SEMForge 시작하기"
+      ],
+      "alerts": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -2
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "reset-password",
+    "width": 1440,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/reset-password/browser-qa-token/",
+      "title": "새 비밀번호 설정 · SEMForge",
+      "docW": 1440,
+      "docH": 1000,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "a",
+          "text": "SEMForge 홈",
+          "w": 468,
+          "h": 39,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "새 비밀번호 설정"
+      ],
+      "alerts": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -9
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "privacy",
+    "width": 1440,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/legal/privacy/",
+      "title": "개인정보 처리방침 · SEMForge",
+      "docW": 1425,
+      "docH": 1588,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "a",
+          "text": "SEMForge 홈",
+          "w": 124,
+          "h": 39,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "개인정보",
+          "w": 52,
+          "h": 22,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "이용약관",
+          "w": 52,
+          "h": 22,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "개인정보 처리방침",
+          "w": 107,
+          "h": 22,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "이용약관",
+          "w": 52,
+          "h": 22,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "개인정보 처리방침"
+      ],
+      "alerts": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -2
+      }
+    },
+    "errors": []
+  },
+  {
+    "slug": "terms",
+    "width": 1440,
+    "navError": null,
+    "audit": {
+      "url": "http://127.0.0.1:3474/legal/terms/",
+      "title": "이용약관 · SEMForge",
+      "docW": 1425,
+      "docH": 1793,
+      "overflow": false,
+      "small": [
+        {
+          "tag": "a",
+          "text": "SEMForge 홈",
+          "w": 124,
+          "h": 39,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "개인정보",
+          "w": 52,
+          "h": 22,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "이용약관",
+          "w": 52,
+          "h": 22,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "개인정보 처리방침",
+          "w": 107,
+          "h": 22,
+          "disabled": false
+        },
+        {
+          "tag": "a",
+          "text": "이용약관",
+          "w": 52,
+          "h": 22,
+          "disabled": false
+        }
+      ],
+      "h1": [
+        "서비스 이용약관"
+      ],
+      "alerts": []
+    },
+    "focus": {
+      "tag": "A",
+      "text": "본문 바로가기",
+      "outline": "rgb(29, 93, 153) solid 3px",
+      "rect": {
+        "w": 121,
+        "h": 45,
+        "x": 12,
+        "y": -2
+      }
+    },
+    "errors": []
+  }
+]
