@@ -229,16 +229,19 @@ test("production relay는 report PDF·email outbox payload를 그대로 canonica
   const database = await createDatabase(workspaceId, "outbox-production-reports");
   const now = new Date("2026-08-12T08:00:00.000Z");
   const reportId = "51000000-0000-4000-8000-000000000007";
+  const siteId = "51000000-0000-4000-8000-000000000008";
   await database.query(
     `insert into outbox (workspace_id, topic, payload, idempotency_key, available_at)
      values ($1, 'report.pdf.render', $2::jsonb, 'report-pdf', $4),
             ($1, 'report.email.deliver', $3::jsonb, 'report-email', $4),
+            ($1, 'report.snapshot', $5::jsonb, 'report-snapshot', $4),
             ($1, 'arbitrary.worker.topic', '{}'::jsonb, 'arbitrary', $4)`,
     [
       workspaceId,
       JSON.stringify({ reportId }),
       JSON.stringify({ reportId, recipient: "owner@example.test" }),
       now,
+      JSON.stringify({ siteId, cycleMonday: "2026-08-17" }),
     ],
   );
   const runtime = new CollectionOutboxRelayRuntime({
@@ -247,7 +250,7 @@ test("production relay는 report PDF·email outbox payload를 그대로 canonica
     clock: () => now,
   });
 
-  assert.deepEqual(await runtime.runOnce(), { claimed: 2, published: 2, failed: 0 });
+  assert.deepEqual(await runtime.runOnce(), { claimed: 3, published: 3, failed: 0 });
   const jobs = await database.query<{ type: string; payload: Record<string, unknown> }>(
     "select type, payload from jobs where workspace_id = $1 order by type",
     [workspaceId],
@@ -258,6 +261,9 @@ test("production relay는 report PDF·email outbox payload를 그대로 canonica
   }, {
     type: "report.pdf.render",
     payload: { reportId },
+  }, {
+    type: "report.snapshot",
+    payload: { siteId, cycleMonday: "2026-08-17" },
   }]);
   const events = await database.query<{ topic: string; published: boolean }>(
     "select topic, published_at is not null as published from outbox where workspace_id = $1 order by topic",
@@ -267,5 +273,6 @@ test("production relay는 report PDF·email outbox payload를 그대로 canonica
     { topic: "arbitrary.worker.topic", published: false },
     { topic: "report.email.deliver", published: true },
     { topic: "report.pdf.render", published: true },
+    { topic: "report.snapshot", published: true },
   ]);
 });

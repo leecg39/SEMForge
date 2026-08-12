@@ -120,12 +120,12 @@ spec:
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: semforge-weekly-scheduler
+  name: semforge-weekly-collection-scheduler
   labels:
     app.kubernetes.io/name: semforge
     app.kubernetes.io/component: scheduler
 spec:
-  schedule: "0 23 * * 0"
+  schedule: "0 9 * * 0"
   timeZone: Etc/UTC
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 3600
@@ -149,6 +149,51 @@ spec:
             - name: scheduler
               image: registry.example.com/semforge-scheduler@sha256:REPLACE_WITH_DIGEST
               imagePullPolicy: IfNotPresent
+              env:
+                - { name: NODE_ENV, value: production }
+                - { name: SEMFORGE_SERVICE, value: scheduler }
+                - { name: PGSSLMODE, value: verify-full }
+                - name: SCHEDULER_DATABASE_URL
+                  valueFrom: { secretKeyRef: { name: semforge-scheduler, key: database-url } }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: semforge-weekly-report-scheduler
+  labels:
+    app.kubernetes.io/name: semforge
+    app.kubernetes.io/component: report-scheduler
+spec:
+  schedule: "0 23 * * 0"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: semforge
+            app.kubernetes.io/component: report-scheduler
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: report-scheduler
+              image: registry.example.com/semforge-scheduler@sha256:REPLACE_WITH_DIGEST
+              imagePullPolicy: IfNotPresent
+              args: ["report-scheduler"]
               env:
                 - { name: NODE_ENV, value: production }
                 - { name: SEMFORGE_SERVICE, value: scheduler }
