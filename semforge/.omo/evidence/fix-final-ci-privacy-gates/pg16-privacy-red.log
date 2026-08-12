@@ -1,0 +1,65 @@
+ Network semforge-privacy-barrier-pg16_default Creating 
+ Network semforge-privacy-barrier-pg16_default Created 
+ Container semforge-privacy-barrier-pg16-postgres-1 Creating 
+ Container semforge-privacy-barrier-pg16-postgres-1 Created 
+ Container semforge-privacy-barrier-pg16-postgres-1 Starting 
+ Container semforge-privacy-barrier-pg16-postgres-1 Started 
+ Container semforge-privacy-barrier-pg16-postgres-1 Waiting 
+ Container semforge-privacy-barrier-pg16-postgres-1 Healthy 
+
+> semforge@0.1.0 db:migrate
+> tsx src/db/migrate.ts
+
+[db] PostgreSQL migrations applied
+
+> semforge@0.1.0 db:migrate
+> tsx src/db/migrate.ts
+
+[db] PostgreSQL migrations applied
+
+> semforge@0.1.0 test:pg16:privacy
+> tsx --test src/db/privacy-barrier.pg16.ts
+
+✖ PostgreSQL 16 subject erasure는 허용 request suppression, accepted invite 삭제, export completeness를 실제 역할로 보장한다 (59.741333ms)
+✔ PostgreSQL 16 worker shared fence와 승인 삭제 retry는 crash 뒤에도 원자 장벽을 보장한다 (186.522292ms)
+✔ PostgreSQL 16 backend crash와 unlock 검증 실패는 advisory lock을 pool에 남기지 않는다 (31.672667ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 2
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 402.452667
+
+✖ failing tests:
+
+test at src/db/privacy-barrier.pg16.ts:44:346
+✖ PostgreSQL 16 subject erasure는 허용 request suppression, accepted invite 삭제, export completeness를 실제 역할로 보장한다 (59.741333ms)
+  error: privacy email suppression requires matching running deletion request
+      at /Users/user01/Music/SEMForge-worktrees/fix-final-ci-privacy-gates/semforge/node_modules/pg/lib/client.js:652:17
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Object.markEmailSuppressed (/Users/user01/Music/SEMForge-worktrees/fix-final-ci-privacy-gates/semforge/src/db/privacy-barrier.pg16.ts:215:7)
+      at async <anonymous> (/Users/user01/Music/SEMForge-worktrees/fix-final-ci-privacy-gates/semforge/src/server/privacy/service.ts:478:13)
+      at async withTenantTransaction (/Users/user01/Music/SEMForge-worktrees/fix-final-ci-privacy-gates/semforge/src/server/privacy/service.ts:140:19)
+      at async TestContext.<anonymous> (/Users/user01/Music/SEMForge-worktrees/fix-final-ci-privacy-gates/semforge/src/db/privacy-barrier.pg16.ts:313:20)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    length: 212,
+    severity: 'ERROR',
+    code: '42501',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function privacy_add_email_suppression(uuid,uuid,text) line 13 at RAISE',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }

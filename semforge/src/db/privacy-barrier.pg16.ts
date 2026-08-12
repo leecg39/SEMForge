@@ -2,6 +2,7 @@
 // @SPEC docs/ops/privacy-erasure-runbook.md
 // @TEST bash scripts/test-privacy-barrier-pg16.sh
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { after, test } from "node:test";
 
 import { Pool, type PoolClient } from "pg";
@@ -13,6 +14,7 @@ import {
   PostgresWorkspacePrivacyFence,
   type WorkspacePrivacyFenceConnection,
 } from "@/server/privacy/fence";
+import { createPrivacyService, type PrivacyProcessorClient } from "@/server/privacy/service";
 import { WorkerRuntime } from "@/worker/runtime";
 
 const databaseUrl = process.env.PG16_TEST_DATABASE_URL;
@@ -59,6 +61,10 @@ function rolePool(role: string, applicationName: string): Pool {
   });
 }
 
+function digest(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
 async function waitFor<T>(
   operation: () => Promise<T | undefined>,
   description: string,
@@ -76,6 +82,142 @@ async function waitFor<T>(
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
   throw new Error(`timed out waiting for ${description}`, { cause: lastError });
+}
+
+const subjectWorkspaceA = "fb100000-0000-4000-8000-000000000001";
+const subjectWorkspaceB = "fb100000-0000-4000-8000-000000000002";
+const subjectUserA = "fb100000-0000-4000-8000-000000000011";
+const subjectUserB = "fb100000-0000-4000-8000-000000000012";
+const subjectUserSecondOwner = "fb100000-0000-4000-8000-000000000013";
+const subjectSiteA = "fb100000-0000-4000-8000-000000000021";
+const subjectReportA = "fb100000-0000-4000-8000-000000000022";
+
+async function seedPg16SubjectErasureFixture(): Promise<void> {
+  await admin.query("begin");
+  try {
+    await admin.query("select set_config('app.privacy_erasure_procedure', 'privacy_erase_workspace', true)");
+    await admin.query(
+      `insert into users (id, email, password_hash, display_name, email_verified_at)
+       values ($1, 'subject-a@example.test', 'scrypt:subject-a', 'Subject A', now()),
+              ($2, 'subject-b@example.test', 'scrypt:subject-b', 'Subject B', now()),
+              ($3, 'second-owner@example.test', 'scrypt:second-owner', 'Second Owner', now())`,
+      [subjectUserA, subjectUserB, subjectUserSecondOwner],
+    );
+    await admin.query(
+      `insert into workspaces (id, name, slug)
+       values ($1, 'PG16 Subject A', 'pg16-subject-a'),
+              ($2, 'PG16 Subject B', 'pg16-subject-b')`,
+      [subjectWorkspaceA, subjectWorkspaceB],
+    );
+    await admin.query(
+      `insert into workspace_privacy_controls (workspace_id)
+       values ($1), ($2)
+       on conflict (workspace_id) do nothing`,
+      [subjectWorkspaceA, subjectWorkspaceB],
+    );
+    await admin.query(
+      `insert into memberships (workspace_id, user_id, role)
+       values ($1, $2, 'owner'),
+              ($1, $3, 'owner'),
+              ($4, $2, 'owner'),
+              ($4, $5, 'owner')`,
+      [subjectWorkspaceA, subjectUserA, subjectUserSecondOwner, subjectWorkspaceB, subjectUserB],
+    );
+    await admin.query(
+      `insert into sessions (workspace_id, user_id, token_hash, expires_at, created_at)
+       values ($1, $2, $3, now() + interval '1 day', now()),
+              ($4, $2, $5, now() + interval '1 day', now())`,
+      [
+        subjectWorkspaceA,
+        subjectUserA,
+        digest("pg16-subject-session-a"),
+        subjectWorkspaceB,
+        digest("pg16-subject-session-b"),
+      ],
+    );
+    await admin.query(
+      `insert into sites (id, workspace_id, name, domain)
+       values ($1, $2, 'PG16 Subject Site A', 'pg16-subject-a.example.test')`,
+      [subjectSiteA, subjectWorkspaceA],
+    );
+    await admin.query(
+      `insert into weekly_reports
+         (id, workspace_id, site_id, status, period_start, period_end,
+          comparison_start, comparison_end, brand_name, accent_color)
+       values
+         ($1, $2, $3, 'collecting', '2026-08-03', '2026-08-09',
+          '2026-07-27', '2026-08-02', 'PG16 Subject A', '#2563EB')`,
+      [subjectReportA, subjectWorkspaceA, subjectSiteA],
+    );
+    await admin.query(
+      `insert into invites
+         (email, token_hash, workspace_name, workspace_slug, created_at, expires_at,
+          accepted_at, accepted_workspace_id, accepted_by_user_id)
+       values
+         ('subject-a@example.test', $1, 'PG16 Subject A', 'pg16-subject-a',
+          now() - interval '1 day', now() + interval '6 days', now(), $2, $3),
+         ('subject-a@example.test', $4, 'PG16 Subject B', 'pg16-subject-b',
+          now() - interval '1 day', now() + interval '6 days', now(), $5, $3)`,
+      [
+        digest("pg16-subject-invite-a"),
+        subjectWorkspaceA,
+        subjectUserA,
+        digest("pg16-subject-invite-b"),
+        subjectWorkspaceB,
+      ],
+    );
+    await admin.query(
+      `insert into deliveries
+         (workspace_id, report_id, channel, recipient, status, idempotency_key)
+       values ($1, $2, 'email', 'subject-a@example.test', 'delivered', 'pg16-subject-delivery-a')`,
+      [subjectWorkspaceA, subjectReportA],
+    );
+    await admin.query("commit");
+  } catch (error) {
+    await admin.query("rollback").catch(() => undefined);
+    throw error;
+  }
+}
+
+async function openApprovedSubjectErasure(input: {
+  readonly workspaceId: string;
+  readonly requestId: string;
+  readonly operatorId: string;
+  readonly subjectUserId: string;
+}): Promise<void> {
+  const operator = rolePool("semforge_operator", "pg16-privacy-subject-operator");
+  try {
+    await operator.query(
+      `select id::text
+         from privacy_open_request($1::uuid, $2::text, 'erasure', $3::text, now(), $4::uuid)`,
+      [input.workspaceId, input.requestId, input.operatorId, input.subjectUserId],
+    );
+  } finally {
+    await operator.end();
+  }
+}
+
+function dbBackedSuppressionProcessor(database: { query<T = unknown>(
+  text: string,
+  values?: readonly unknown[],
+): Promise<{ rows: T[] }> }): PrivacyProcessorClient {
+  return {
+    async revokeGscConnection() {
+      throw new Error("subject erasure must not revoke workspace provider credentials");
+    },
+    async deleteObject() {
+      throw new Error("subject erasure must not delete report object keys");
+    },
+    async deleteWorkspaceObjects() {
+      throw new Error("subject erasure must not purge workspace report prefix");
+    },
+    async markEmailSuppressed(input) {
+      await database.query(
+        "select privacy_add_email_suppression($1::uuid, $2::uuid, $3::text)",
+        [input.workspaceId, input.requestUuid, input.emailHash],
+      );
+    },
+  };
 }
 
 async function applicationPid(applicationName: string): Promise<number | undefined> {
@@ -144,6 +286,90 @@ async function openApprovedDeletion(input: {
     await Promise.all([operator.end(), privacy.end()]);
   }
 }
+
+test("PostgreSQL 16 subject erasure는 허용 request suppression, accepted invite 삭제, export completeness를 실제 역할로 보장한다", {
+  timeout: 30_000,
+}, async () => {
+  const version = await admin.query<{ server_version: string }>("show server_version");
+  assert.match(version.rows[0]!.server_version, /^16\./u);
+
+  await seedPg16SubjectErasureFixture();
+  const requestId = "pg16-subject-erasure-allowed";
+  const operatorId = "operator:pg16-subject";
+  await openApprovedSubjectErasure({
+    workspaceId: subjectWorkspaceA,
+    requestId,
+    operatorId,
+    subjectUserId: subjectUserA,
+  });
+
+  const privacyPool = rolePool("semforge_privacy", "pg16-privacy-subject-service");
+  try {
+    const service = createPrivacyService({
+      db: privacyPool,
+      processorFactory: (database) => dbBackedSuppressionProcessor(database),
+    });
+
+    const result = await service.deleteWorkspaceSubject({
+      workspaceId: subjectWorkspaceA,
+      operatorId,
+      requestId,
+      subjectUserId: subjectUserA,
+      now: new Date("2026-08-12T03:30:00.000Z"),
+    });
+
+    assert.deepEqual(result, { requestId, status: "completed" });
+  } finally {
+    await privacyPool.end();
+  }
+
+  const state = await admin.query<{
+    workspace_a_membership: number;
+    workspace_b_membership: number;
+    workspace_a_sessions: number;
+    workspace_b_sessions: number;
+    workspace_a_invites: number;
+    workspace_b_invites: number;
+    workspace_a_plain_delivery: number;
+    workspace_a_suppression: number;
+    user_email: string;
+    user_disabled: boolean;
+    request_status: string;
+  }>(
+    `select
+       (select count(*)::int from memberships where workspace_id = $1 and user_id = $2) workspace_a_membership,
+       (select count(*)::int from memberships where workspace_id = $3 and user_id = $2) workspace_b_membership,
+       (select count(*)::int from sessions where workspace_id = $1 and user_id = $2) workspace_a_sessions,
+       (select count(*)::int from sessions where workspace_id = $3 and user_id = $2) workspace_b_sessions,
+       (select count(*)::int from invites where accepted_workspace_id = $1 and accepted_by_user_id = $2) workspace_a_invites,
+       (select count(*)::int from invites where accepted_workspace_id = $3 and accepted_by_user_id = $2) workspace_b_invites,
+       (select count(*)::int from deliveries where workspace_id = $1 and lower(recipient) = 'subject-a@example.test') workspace_a_plain_delivery,
+       (select count(*)::int from email_suppressions where workspace_id = $1 and recipient_hash = $4) workspace_a_suppression,
+       (select email from users where id = $2) user_email,
+       (select disabled_at is not null from users where id = $2) user_disabled,
+       (select status from privacy_requests where workspace_id = $1 and request_id = $5) request_status`,
+    [
+      subjectWorkspaceA,
+      subjectUserA,
+      subjectWorkspaceB,
+      digest("subject-a@example.test"),
+      requestId,
+    ],
+  );
+  assert.deepEqual(state.rows[0], {
+    workspace_a_membership: 0,
+    workspace_b_membership: 1,
+    workspace_a_sessions: 0,
+    workspace_b_sessions: 1,
+    workspace_a_invites: 0,
+    workspace_b_invites: 1,
+    workspace_a_plain_delivery: 0,
+    workspace_a_suppression: 1,
+    user_email: "subject-a@example.test",
+    user_disabled: false,
+    request_status: "completed",
+  });
+});
 
 test("PostgreSQL 16 worker shared fence와 승인 삭제 retry는 crash 뒤에도 원자 장벽을 보장한다", {
   timeout: 60_000,

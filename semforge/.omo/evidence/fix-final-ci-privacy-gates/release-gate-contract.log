@@ -1,0 +1,21 @@
+✔ release gate는 CI에서 호출 가능한 단일 npm entrypoint로 고정된다 (0.732833ms)
+✔ release gate runner는 필수 검증 단계와 evidence 산출물을 선언한다 (1.018ms)
+✔ 최종 evidence index는 canonical v2 결과를 재기록하지 않고 안정적인 포인터만 제공한다 (0.601167ms)
+✔ route/forbidden-surface와 3파트너 9사이트 harness는 직접 실행 가능한 npm entrypoint다 (0.168209ms)
+✔ release gate의 PostgreSQL 16 단계는 privacy barrier subject-erasure harness를 함께 실행한다 (0.787125ms)
+✔ route manifest는 계획에 고정된 NAVER와 AIO 읽기 API를 포함한다 (0.273084ms)
+✔ GitHub Actions workflow는 Node 24, PostgreSQL 16, Chromium을 release gate에 공급한다 (0.469125ms)
+✔ release gate runner는 generated notice/schema drift가 생기면 실패한다 (213.24775ms)
+✔ release gate runner는 커밋된 release-range whitespace도 실패시킨다 (376.613042ms)
+✔ release gate summary는 시작 source SHA와 evidence-only 종료 HEAD의 관계를 기록한다 (433.964208ms)
+✔ release gate는 source SHA로 식별할 수 없는 dirty source에서 실행하지 않는다 (160.286334ms)
+✔ release gate 도중 source-changing HEAD로 이동하면 provenance 단계에서 실패한다 (293.256166ms)
+✔ release gate는 project root 밖 repository source 변경도 거부한다 (138.768041ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1715.124125

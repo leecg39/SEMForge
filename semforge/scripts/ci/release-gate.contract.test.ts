@@ -74,6 +74,18 @@ test("route/forbidden-surface와 3파트너 9사이트 harness는 직접 실행 
   assert.equal(fs.existsSync(path.join(projectRoot, "scripts/ci/nine-site-harness.mjs")), true);
 });
 
+test("release gate의 PostgreSQL 16 단계는 privacy barrier subject-erasure harness를 함께 실행한다", () => {
+  const manifest = JSON.parse(read("package.json")) as { scripts?: Record<string, string> };
+  const pg16Harness = read("scripts/test-pg16.sh");
+  const privacyHarness = read("scripts/test-privacy-barrier-pg16.sh");
+
+  assert.equal(manifest.scripts?.["ci:pg16"], "bash scripts/test-pg16.sh");
+  assert.equal(manifest.scripts?.["test:pg16:privacy"], "tsx --test src/db/privacy-barrier.pg16.ts");
+  assert.match(pg16Harness, /npm run test:pg16:privacy/);
+  assert.match(privacyHarness, /npm run test:pg16:privacy/);
+  assert.match(read("src/db/privacy-barrier.pg16.ts"), /subject erasure/u);
+});
+
 test("route manifest는 계획에 고정된 NAVER와 AIO 읽기 API를 포함한다", () => {
   const manifest = read("scripts/ci/route-manifest.mjs");
 
