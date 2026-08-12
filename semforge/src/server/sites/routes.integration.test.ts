@@ -196,7 +196,7 @@ test("GET /api/v1/sites는 cursor 페이지를 workspace 내부로만 반환한�
   assert.equal((envelope.data as { items: unknown[] }).items.length, 1);
 });
 
-test("privacy operation DI 누락은 mutation을 fail-closed로 막고 GET에는 영향을 주지 않는다", async () => {
+test("privacy operation DI 누락은 read/write 모두 fail-closed로 막는다", async () => {
   const before = (
     await pg.query<{ sites: number; outbox: number }>(
       `select
@@ -233,7 +233,8 @@ test("privacy operation DI 누락은 mutation을 fail-closed로 막고 GET에는
     }),
     undefined,
   );
-  assert.equal(read.status, 200);
+  assert.equal(read.status, 500);
+  assert.equal((await readEnvelope(read)).error?.code, "INTERNAL");
   assert.equal(write.status, 500);
   assert.equal((await readEnvelope(write)).error?.code, "INTERNAL");
 
@@ -248,7 +249,7 @@ test("privacy operation DI 누락은 mutation을 fail-closed로 막고 GET에는
   assert.deepEqual(afterState, before);
 });
 
-test("blocking/erased workspace mutation은 사이트·tracking 저장과 outbox를 남기지 않고 GET은 유지한다", async () => {
+test("blocking/erased workspace read/write는 사이트·tracking 저장과 outbox 없이 409로 차단된다", async () => {
   const activeSiteId = "20000000-0000-4000-8000-000000000021";
   const inactiveSiteId = "20000000-0000-4000-8000-000000000022";
   const activeTrackingId = "20000000-0000-4000-8000-000000000031";
@@ -366,8 +367,10 @@ test("blocking/erased workspace mutation은 사이트·tracking 저장과 outbox
       new Request(`https://app.semforge.test/api/v1/sites/${activeSiteId}`),
       { params: Promise.resolve({ siteId: activeSiteId }) },
     );
-    assert.equal(list.status, 200);
-    assert.equal(detail.status, 200);
+    assert.equal(list.status, 409);
+    assert.equal((await readEnvelope(list)).error?.code, "CONFLICT");
+    assert.equal(detail.status, 409);
+    assert.equal((await readEnvelope(detail)).error?.code, "CONFLICT");
   }
 
   const afterState = (

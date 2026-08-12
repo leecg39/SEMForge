@@ -175,7 +175,7 @@ test("account_created는 브랜딩 GET/PATCH 직접 API 우회를 403으로 차�
   assert.deepEqual(capabilities, ["workspace:read", "workspace:write"]);
 });
 
-test("blocking/erased workspace는 브랜딩 GET을 유지하고 PATCH 저장을 409로 차단한다", async () => {
+test("blocking/erased workspace는 브랜딩 GET/PATCH를 409로 차단하고 저장을 남기지 않는다", async () => {
   for (const state of ["blocking", "erased"] as const) {
     const before = (
       await pg.query<{
@@ -208,7 +208,8 @@ test("blocking/erased workspace는 브랜딩 GET을 유지하고 PATCH 저장을
       }),
       undefined,
     );
-    assert.equal(read.status, 200);
+    assert.equal(read.status, 409);
+    assert.equal((await body(read)).error?.code, "CONFLICT");
     assert.equal(write.status, 409);
     assert.equal((await body(write)).error?.code, "CONFLICT");
 

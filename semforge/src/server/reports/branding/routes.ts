@@ -3,7 +3,6 @@
 // @TEST src/server/reports/branding/routes.integration.test.ts
 import { z } from "zod";
 
-import { getPool } from "@/db/client";
 import { ApiError, apiSuccess, parseJsonBody, withApiV1 } from "@/lib/api-v1";
 import {
   resolveApiSession,
@@ -44,10 +43,6 @@ export interface ReportBrandingRouteDependencies {
   readonly privacyOperation?: WorkspacePrivacyOperationGuard;
 }
 
-function routeDatabase(dependencies: ReportBrandingRouteDependencies): BrandingSqlSource {
-  return dependencies.db ?? (getPool("web") as unknown as BrandingSqlSource);
-}
-
 function mapBrandingError(error: unknown): never {
   if (error instanceof WorkspacePrivacyOperationBlockedError) {
     throw new ApiError("CONFLICT");
@@ -80,10 +75,15 @@ export function createReportBrandingRouteHandlers(
   const branding = {
     GET: withApiV1(async (request) => {
       const session = await resolveSession(request);
-      await requireBilling(session.workspaceId, "workspace:read");
       try {
         return apiSuccess(
-          await getReportBranding(routeDatabase(dependencies), session.workspaceId),
+          await privacyOperation.withShared(
+            session.workspaceId,
+            async (database) => {
+              await requireBilling(session.workspaceId, "workspace:read");
+              return getReportBranding(database, session.workspaceId);
+            },
+          ),
         );
       } catch (error) {
         mapBrandingError(error);
@@ -94,18 +94,20 @@ export function createReportBrandingRouteHandlers(
       if (session.role !== "owner" && session.role !== "admin") {
         throw new ApiError("FORBIDDEN");
       }
-      await requireBilling(session.workspaceId, "workspace:write");
       const body = await parseJsonBody(request, patchBrandingBody);
       try {
         return apiSuccess(
           await privacyOperation.withShared(
             session.workspaceId,
-            (database) => updateReportBranding(
-              database,
-              { workspaceId: session.workspaceId, branding: body },
-              dependencies.resolveLogoAddresses,
-              { transaction: "existing" },
-            ),
+            async (database) => {
+              await requireBilling(session.workspaceId, "workspace:write");
+              return updateReportBranding(
+                database,
+                { workspaceId: session.workspaceId, branding: body },
+                dependencies.resolveLogoAddresses,
+                { transaction: "existing" },
+              );
+            },
           ),
         );
       } catch (error) {

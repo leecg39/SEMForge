@@ -3,7 +3,6 @@
 // @TEST src/server/sites/routes.integration.test.ts
 import { z } from "zod";
 
-import { getPool } from "@/db/client";
 import {
   ApiError,
   apiSuccess,
@@ -53,10 +52,6 @@ const createTrackingBody = z.object({
   query: z.string().trim().min(1).max(200),
 });
 
-interface ReleasableSqlQueryable extends SqlQueryable {
-  release?: () => void;
-}
-
 export interface SitesRouteDependencies {
   db?: SqlQueryable;
   resolveSession?: ApiSessionResolver;
@@ -75,19 +70,6 @@ function requireMutationIdempotencyKey(request: Request): string {
     throw new ApiError("BAD_REQUEST", "Idempotency-Key 헤더가 너무 깁니다.");
   }
   return value;
-}
-
-async function withRouteDb<T>(
-  deps: SitesRouteDependencies,
-  operation: (db: SqlQueryable) => Promise<T>,
-): Promise<T> {
-  if (deps.db) return operation(deps.db);
-  const client = (await getPool("web").connect()) as ReleasableSqlQueryable;
-  try {
-    return await operation(client);
-  } finally {
-    client.release?.();
-  }
 }
 
 function mapStoreError(error: unknown): never {
@@ -131,17 +113,20 @@ export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
   const sites = {
     GET: withApiV1(async (request) => {
       const session = await resolveSessionForRoute(request);
-      await requireBilling(session.workspaceId, "workspace:read");
       const url = new URL(request.url);
       const limit = Number.parseInt(url.searchParams.get("limit") ?? "20", 10);
       const cursor = url.searchParams.get("cursor");
       try {
-        const page = await withRouteDb(deps, (db) =>
-          listSites(db, {
-            workspaceId: session.workspaceId,
-            limit: Number.isFinite(limit) ? limit : 20,
-            cursor,
-          }),
+        const page = await privacyOperation.withShared(
+          session.workspaceId,
+          async (db) => {
+            await requireBilling(session.workspaceId, "workspace:read");
+            return listSites(db, {
+              workspaceId: session.workspaceId,
+              limit: Number.isFinite(limit) ? limit : 20,
+              cursor,
+            });
+          },
         );
         return apiSuccess(page);
       } catch (error) {
@@ -150,26 +135,29 @@ export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
     }),
     POST: withApiV1(async (request, _context, apiContext) => {
       const session = await resolveSessionForRoute(request);
-      await requireBilling(session.workspaceId, "workspace:write");
       const idempotencyKey = requireMutationIdempotencyKey(request);
       const body = await parseJsonBody(request, createSiteBody);
       try {
-        const site = await privacyOperation.withShared(session.workspaceId, (db) =>
-          createSite(
-            db,
-            {
-              workspaceId: session.workspaceId,
-              actorUserId: session.userId,
-              name: body.name,
-              domain: body.domain,
-            },
-            {
-              requestId: apiContext.requestId,
-              idempotencyKey,
-              resolveDomainAddresses: deps.resolveDomainAddresses,
-              transaction: "existing",
-            },
-          ),
+        const site = await privacyOperation.withShared(
+          session.workspaceId,
+          async (db) => {
+            await requireBilling(session.workspaceId, "workspace:write");
+            return createSite(
+              db,
+              {
+                workspaceId: session.workspaceId,
+                actorUserId: session.userId,
+                name: body.name,
+                domain: body.domain,
+              },
+              {
+                requestId: apiContext.requestId,
+                idempotencyKey,
+                resolveDomainAddresses: deps.resolveDomainAddresses,
+                transaction: "existing",
+              },
+            );
+          },
         );
         return apiSuccess(site, { status: 201 });
       } catch (error) {
@@ -182,12 +170,23 @@ export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
     GET: withApiV1(async (request, context: SiteParamsContext) => {
       const session = await resolveSessionForRoute(request);
       const { siteId } = await context.params;
-      const detail = await withRouteDb(deps, (db) =>
-        getSiteDetail(db, { workspaceId: session.workspaceId, siteId }),
-      );
-      if (!detail) throw new ApiError("NOT_FOUND");
-      await requireBilling(session.workspaceId, "workspace:read");
-      return apiSuccess(detail);
+      try {
+        const detail = await privacyOperation.withShared(
+          session.workspaceId,
+          async (db) => {
+            const existing = await getSiteDetail(db, {
+              workspaceId: session.workspaceId,
+              siteId,
+            });
+            if (!existing) throw new ApiError("NOT_FOUND");
+            await requireBilling(session.workspaceId, "workspace:read");
+            return existing;
+          },
+        );
+        return apiSuccess(detail);
+      } catch (error) {
+        mapStoreError(error);
+      }
     }),
     PATCH: withApiV1(async (request, context: SiteParamsContext, apiContext) => {
       const session = await resolveSessionForRoute(request);
@@ -195,23 +194,27 @@ export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
       const body = await parseJsonBody(request, patchActiveBody);
       const { siteId } = await context.params;
       try {
-        const existing = await withRouteDb(deps, (db) =>
-          getSiteDetail(db, { workspaceId: session.workspaceId, siteId }),
-        );
-        if (!existing) throw new ApiError("NOT_FOUND");
-        await requireBilling(session.workspaceId, "workspace:write");
-        const site = await privacyOperation.withShared(session.workspaceId, (db) =>
-          body.active
-            ? reactivateSite(
-                db,
-                { workspaceId: session.workspaceId, siteId },
-                { requestId: apiContext.requestId, idempotencyKey, transaction: "existing" },
-              )
-            : disableSite(
-                db,
-                { workspaceId: session.workspaceId, siteId },
-                { requestId: apiContext.requestId, idempotencyKey, transaction: "existing" },
-              ),
+        const site = await privacyOperation.withShared(
+          session.workspaceId,
+          async (db) => {
+            const existing = await getSiteDetail(db, {
+              workspaceId: session.workspaceId,
+              siteId,
+            });
+            if (!existing) throw new ApiError("NOT_FOUND");
+            await requireBilling(session.workspaceId, "workspace:write");
+            return body.active
+              ? reactivateSite(
+                  db,
+                  { workspaceId: session.workspaceId, siteId },
+                  { requestId: apiContext.requestId, idempotencyKey, transaction: "existing" },
+                )
+              : disableSite(
+                  db,
+                  { workspaceId: session.workspaceId, siteId },
+                  { requestId: apiContext.requestId, idempotencyKey, transaction: "existing" },
+                );
+          },
         );
         return apiSuccess(site);
       } catch (error) {
@@ -223,21 +226,24 @@ export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
   const tracking = {
     POST: withApiV1(async (request, _context, apiContext) => {
       const session = await resolveSessionForRoute(request);
-      await requireBilling(session.workspaceId, "workspace:write");
       const idempotencyKey = requireMutationIdempotencyKey(request);
       const body = await parseJsonBody(request, createTrackingBody);
       try {
-        const trackedQuery = await privacyOperation.withShared(session.workspaceId, (db) =>
-          createTrackedQuery(
-            db,
-            {
-              workspaceId: session.workspaceId,
-              siteId: body.siteId,
-              type: body.type,
-              query: body.query,
-            },
-            { requestId: apiContext.requestId, idempotencyKey, transaction: "existing" },
-          ),
+        const trackedQuery = await privacyOperation.withShared(
+          session.workspaceId,
+          async (db) => {
+            await requireBilling(session.workspaceId, "workspace:write");
+            return createTrackedQuery(
+              db,
+              {
+                workspaceId: session.workspaceId,
+                siteId: body.siteId,
+                type: body.type,
+                query: body.query,
+              },
+              { requestId: apiContext.requestId, idempotencyKey, transaction: "existing" },
+            );
+          },
         );
         return apiSuccess(trackedQuery, { status: 201 });
       } catch (error) {
@@ -254,18 +260,22 @@ export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
       const body = await parseJsonBody(request, patchActiveBody);
       const { trackingId } = await context.params;
       try {
-        const trackedQuery = await privacyOperation.withShared(session.workspaceId, (db) =>
-          body.active
-            ? reactivateTrackedQuery(
-                db,
-                { workspaceId: session.workspaceId, trackingId },
-                { requestId: apiContext.requestId, idempotencyKey, transaction: "existing" },
-              )
-            : disableTrackedQuery(
-                db,
-                { workspaceId: session.workspaceId, trackingId },
-                { requestId: apiContext.requestId, idempotencyKey, transaction: "existing" },
-              ),
+        const trackedQuery = await privacyOperation.withShared(
+          session.workspaceId,
+          async (db) => {
+            await requireBilling(session.workspaceId, "workspace:write");
+            return body.active
+              ? reactivateTrackedQuery(
+                  db,
+                  { workspaceId: session.workspaceId, trackingId },
+                  { requestId: apiContext.requestId, idempotencyKey, transaction: "existing" },
+                )
+              : disableTrackedQuery(
+                  db,
+                  { workspaceId: session.workspaceId, trackingId },
+                  { requestId: apiContext.requestId, idempotencyKey, transaction: "existing" },
+                );
+          },
         );
         return apiSuccess(trackedQuery);
       } catch (error) {

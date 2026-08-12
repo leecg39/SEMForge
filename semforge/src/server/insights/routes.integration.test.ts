@@ -10,6 +10,10 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 
 import type { BillingAccessAuthorizer } from "@/server/billing/access";
+import {
+  WorkspacePrivacyOperationBlockedError,
+  type WorkspacePrivacyOperationGuard,
+} from "@/server/privacy/operation";
 import { createInsightRouteHandlers } from "@/server/insights/routes";
 
 const pg = new PGlite();
@@ -30,6 +34,22 @@ const allowBillingAccess: BillingAccessAuthorizer = async () => ({
   reportPeriodEndBefore: null,
 });
 
+const allowPrivacyOperation: WorkspacePrivacyOperationGuard = {
+  async withShared(_workspaceId, operation) {
+    return operation(pg);
+  },
+};
+
+function blockedPrivacyOperation(
+  state: "blocking" | "erased",
+): WorkspacePrivacyOperationGuard {
+  return {
+    async withShared() {
+      throw new WorkspacePrivacyOperationBlockedError(state);
+    },
+  };
+}
+
 async function readEnvelope(response: Response): Promise<{
   data: unknown;
   error: null | { code: string; message: string };
@@ -45,10 +65,12 @@ async function readEnvelope(response: Response): Promise<{
 function handlersFor(
   workspace = workspaceId,
   authorizeBilling: BillingAccessAuthorizer = allowBillingAccess,
+  privacyOperation: WorkspacePrivacyOperationGuard = allowPrivacyOperation,
 ) {
   return createInsightRouteHandlers({
     db: pg,
     authorizeBilling,
+    privacyOperation,
     resolveSession: async () => ({
       workspaceId: workspace,
       userId,
@@ -277,4 +299,38 @@ test("NAVER/AIO 읽기 API는 siteId와 observation 범위를 검증하고 수�
   assert.equal(missingSite.status, 400);
   assert.equal(invalidRange.status, 400);
   assert.equal(refreshAttempt.status, 400);
+});
+
+test("blocking/erased workspace는 NAVER/AIO read를 409로 차단하고 billing/provider delegate를 호출하지 않는다", async () => {
+  for (const state of ["blocking", "erased"] as const) {
+    const billingCalls: string[] = [];
+    const handlers = handlersFor(
+      workspaceId,
+      async ({ capability }) => {
+        billingCalls.push(capability);
+        return {
+          allowed: true,
+          mode: "full",
+          reason: "active",
+          reportPeriodEndBefore: null,
+        };
+      },
+      blockedPrivacyOperation(state),
+    );
+
+    const naver = await handlers.naver.GET(
+      new Request(`https://app.semforge.test/api/v1/insights/naver?siteId=${siteId}`),
+      undefined,
+    );
+    const aio = await handlers.aio.GET(
+      new Request(`https://app.semforge.test/api/v1/visibility/aio?siteId=${siteId}`),
+      undefined,
+    );
+
+    assert.equal(naver.status, 409);
+    assert.equal((await readEnvelope(naver)).error?.code, "CONFLICT");
+    assert.equal(aio.status, 409);
+    assert.equal((await readEnvelope(aio)).error?.code, "CONFLICT");
+    assert.deepEqual(billingCalls, []);
+  }
 });

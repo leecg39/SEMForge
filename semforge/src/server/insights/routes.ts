@@ -4,7 +4,6 @@
 import { z } from "zod";
 import type { Pool } from "pg";
 
-import { getPool, withWorkspacePoolTransaction } from "@/db/client";
 import { ApiError, apiSuccess, withApiV1 } from "@/lib/api-v1";
 import {
   resolveApiSession,
@@ -14,6 +13,11 @@ import {
   createRuntimeBillingAccessAuthorizer,
   type BillingAccessAuthorizer,
 } from "@/server/billing/access";
+import {
+  createRuntimeWorkspacePrivacyOperationGuard,
+  WorkspacePrivacyOperationBlockedError,
+  type WorkspacePrivacyOperationGuard,
+} from "@/server/privacy/operation";
 
 export interface InsightSqlQueryable {
   query<T = unknown>(
@@ -27,6 +31,7 @@ export interface InsightRouteDependencies {
   readonly pool?: Pick<Pool, "connect">;
   readonly resolveSession?: ApiSessionResolver;
   readonly authorizeBilling?: BillingAccessAuthorizer;
+  readonly privacyOperation?: WorkspacePrivacyOperationGuard;
 }
 
 const querySchema = z.object({
@@ -160,15 +165,6 @@ function parseMetadata(value: unknown): Readonly<Record<string, unknown>> {
     }
   }
   return optionalRecord(value);
-}
-
-async function withRouteDb<T>(
-  deps: InsightRouteDependencies,
-  workspaceId: string,
-  operation: (db: InsightSqlQueryable) => Promise<T>,
-): Promise<T> {
-  if (deps.db) return operation(deps.db);
-  return withWorkspacePoolTransaction(deps.pool ?? getPool("web"), workspaceId, operation);
 }
 
 function parseReadQuery(request: Request): ReadQuery {
@@ -474,6 +470,8 @@ export function createInsightRouteHandlers(deps: InsightRouteDependencies = {}) 
   const resolveSessionForRoute = deps.resolveSession ?? resolveApiSession;
   const authorizeBilling =
     deps.authorizeBilling ?? createRuntimeBillingAccessAuthorizer();
+  const privacyOperation =
+    deps.privacyOperation ?? createRuntimeWorkspacePrivacyOperationGuard(deps.pool);
 
   async function requireReadAccess(workspaceId: string): Promise<void> {
     const decision = await authorizeBilling({
@@ -488,26 +486,40 @@ export function createInsightRouteHandlers(deps: InsightRouteDependencies = {}) 
       GET: withApiV1(async (request) => {
         const session = await resolveSessionForRoute(request);
         const query = parseReadQuery(request);
-        return apiSuccess(
-          await withRouteDb(deps, session.workspaceId, async (db) => {
-            await assertSiteInWorkspace(db, session.workspaceId, query.siteId);
-            await requireReadAccess(session.workspaceId);
-            return readNaver(db, session.workspaceId, query);
-          }),
-        );
+        try {
+          return apiSuccess(
+            await privacyOperation.withShared(session.workspaceId, async (db) => {
+              await assertSiteInWorkspace(db, session.workspaceId, query.siteId);
+              await requireReadAccess(session.workspaceId);
+              return readNaver(db, session.workspaceId, query);
+            }),
+          );
+        } catch (error) {
+          if (error instanceof WorkspacePrivacyOperationBlockedError) {
+            throw new ApiError("CONFLICT");
+          }
+          throw error;
+        }
       }),
     },
     aio: {
       GET: withApiV1(async (request) => {
         const session = await resolveSessionForRoute(request);
         const query = parseReadQuery(request);
-        return apiSuccess(
-          await withRouteDb(deps, session.workspaceId, async (db) => {
-            await assertSiteInWorkspace(db, session.workspaceId, query.siteId);
-            await requireReadAccess(session.workspaceId);
-            return readAio(db, session.workspaceId, query);
-          }),
-        );
+        try {
+          return apiSuccess(
+            await privacyOperation.withShared(session.workspaceId, async (db) => {
+              await assertSiteInWorkspace(db, session.workspaceId, query.siteId);
+              await requireReadAccess(session.workspaceId);
+              return readAio(db, session.workspaceId, query);
+            }),
+          );
+        } catch (error) {
+          if (error instanceof WorkspacePrivacyOperationBlockedError) {
+            throw new ApiError("CONFLICT");
+          }
+          throw error;
+        }
       }),
     },
   };
