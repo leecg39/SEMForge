@@ -217,6 +217,31 @@ test("retention policy는 운영자가 주입한 명시 JSON만 허용하고 기
   );
 });
 
+test("privacy request DB 제약은 subject 요청과 workspace closure를 혼동하지 않는다", async () => {
+  const pg = await migratedDb();
+  await seedPrivacySubject(pg);
+  const common = [workspaceA, "operator-1", new Date("2026-08-12T01:00:00.000Z")];
+
+  await assert.rejects(
+    pg.query(
+      `insert into privacy_requests
+         (workspace_id, request_id, type, status, operator_id, subject_user_id, requested_at)
+       values ($1, 'invalid-export-without-subject', 'export', 'queued', $2, null, $3)`,
+      common,
+    ),
+    /privacy_requests_subject_scope_ck/u,
+  );
+  await assert.rejects(
+    pg.query(
+      `insert into privacy_requests
+         (workspace_id, request_id, type, status, operator_id, subject_user_id, requested_at)
+       values ($1, 'invalid-workspace-delete-subject', 'workspace_deletion', 'queued', $2, $4, $3)`,
+      [...common, userA],
+    ),
+    /privacy_requests_subject_scope_ck/u,
+  );
+});
+
 test("운영자 DSAR export는 tenant 경계를 지키고 token/billing key 원문을 내보내지 않는다", async () => {
   const pg = await migratedDb();
   await seedPrivacySubject(pg);
@@ -253,6 +278,12 @@ test("운영자 DSAR export는 tenant 경계를 지키고 token/billing key 원�
   assert.equal(audits.rows.length, 1);
   assert.equal(audits.rows[0]?.entity_type, "privacy_request");
   assert.equal(audits.rows[0]?.request_id, "dsar-export-1");
+  assert.deepEqual(audits.rows[0]?.metadata, {
+    categories: ["workspace_membership", "subject_profile", "legal_acceptances", "sessions"],
+    legalAcceptanceCount: 0,
+    sessionCount: 0,
+    subjectCount: 1,
+  });
   const auditJson = JSON.stringify(audits.rows[0]);
   assert.equal(auditJson.includes("owner-a@example.test"), false);
   assert.equal(auditJson.includes("enc:v1:"), false);

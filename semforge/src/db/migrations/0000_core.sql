@@ -81,7 +81,8 @@ CREATE TABLE "privacy_requests" (
 	CONSTRAINT "privacy_requests_workspace_id_uq" UNIQUE("workspace_id","id"),
 	CONSTRAINT "privacy_requests_request_id_uq" UNIQUE("workspace_id","request_id"),
 	CONSTRAINT "privacy_requests_type_ck" CHECK ("privacy_requests"."type" in ('export', 'correction', 'erasure', 'workspace_deletion')),
-	CONSTRAINT "privacy_requests_status_ck" CHECK ("privacy_requests"."status" in ('queued', 'running', 'completed', 'failed'))
+	CONSTRAINT "privacy_requests_status_ck" CHECK ("privacy_requests"."status" in ('queued', 'running', 'completed', 'failed')),
+	CONSTRAINT "privacy_requests_subject_scope_ck" CHECK ((("privacy_requests"."type" in ('export', 'correction', 'erasure') and "privacy_requests"."subject_user_id" is not null) or ("privacy_requests"."type" = 'workspace_deletion' and "privacy_requests"."subject_user_id" is null)))
 );
 --> statement-breakpoint
 -- @TASK P1-FINAL-PRIVACY - Durable tenant privacy fence state
@@ -1207,10 +1208,10 @@ BEGIN
   SELECT p_workspace_id, 'privacy.export.read', 'privacy_request', p_request_id::text,
          request.request_id,
          jsonb_build_object(
-           'categories', jsonb_build_array('workspace', 'users', 'legal_acceptances', 'sites', 'reports'),
-           'userCount', jsonb_array_length(result->'users'),
-           'siteCount', jsonb_array_length(result->'sites'),
-           'reportCount', jsonb_array_length(result->'reports')
+           'categories', jsonb_build_array('workspace_membership', 'subject_profile', 'legal_acceptances', 'sessions'),
+           'subjectCount', 1,
+           'legalAcceptanceCount', jsonb_array_length(result->'legalAcceptances'),
+           'sessionCount', jsonb_array_length(result->'sessions')
          )
     FROM privacy_requests request
    WHERE request.workspace_id = p_workspace_id AND request.id = p_request_id;

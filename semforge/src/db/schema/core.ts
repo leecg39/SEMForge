@@ -342,6 +342,10 @@ export const privacyRequests = pgTable(
     }).onDelete("restrict"),
     check("privacy_requests_type_ck", sql`${table.type} in ('export', 'correction', 'erasure', 'workspace_deletion')`),
     check("privacy_requests_status_ck", sql`${table.status} in ('queued', 'running', 'completed', 'failed')`),
+    check(
+      "privacy_requests_subject_scope_ck",
+      sql`(${table.type} in ('export', 'correction', 'erasure') and ${table.subjectUserId} is not null) or (${table.type} = 'workspace_deletion' and ${table.subjectUserId} is null)`,
+    ),
   ],
 );
 

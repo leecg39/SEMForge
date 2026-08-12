@@ -3354,6 +3354,10 @@
         "privacy_requests_status_ck": {
           "name": "privacy_requests_status_ck",
           "value": "\"privacy_requests\".\"status\" in ('queued', 'running', 'completed', 'failed')"
+        },
+        "privacy_requests_subject_scope_ck": {
+          "name": "privacy_requests_subject_scope_ck",
+          "value": "(\"privacy_requests\".\"type\" in ('export', 'correction', 'erasure') and \"privacy_requests\".\"subject_user_id\" is not null) or (\"privacy_requests\".\"type\" = 'workspace_deletion' and \"privacy_requests\".\"subject_user_id\" is null)"
         }
       },
       "isRLSEnabled": false
