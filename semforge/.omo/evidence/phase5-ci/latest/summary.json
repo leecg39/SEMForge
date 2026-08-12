@@ -5,14 +5,14 @@
   "node": "v24.14.0",
   "nodeExecPath": "/Users/user01/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node",
   "platform": "darwin 25.5.0",
-  "startedAt": "2026-08-12T04:41:07.923Z",
+  "startedAt": "2026-08-12T05:39:56.081Z",
   "steps": [
     {
       "name": "node-version",
       "command": "/Users/user01/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node -v",
       "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-release/semforge/.omo/evidence/phase5-ci/latest/node-version.log",
-      "startedAt": "2026-08-12T04:41:07.924Z",
-      "endedAt": "2026-08-12T04:41:07.950Z",
+      "startedAt": "2026-08-12T05:39:56.104Z",
+      "endedAt": "2026-08-12T05:39:56.279Z",
       "exitCode": 0,
       "signal": null,
       "ok": true
@@ -21,8 +21,8 @@
       "name": "npm-verify",
       "command": "npm run verify",
       "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-release/semforge/.omo/evidence/phase5-ci/latest/npm-verify.log",
-      "startedAt": "2026-08-12T04:41:07.950Z",
-      "endedAt": "2026-08-12T04:44:08.059Z",
+      "startedAt": "2026-08-12T05:39:56.281Z",
+      "endedAt": "2026-08-12T05:47:10.526Z",
       "exitCode": 0,
       "signal": null,
       "ok": true
@@ -31,8 +31,8 @@
       "name": "npm-build",
       "command": "npm run build",
       "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-release/semforge/.omo/evidence/phase5-ci/latest/npm-build.log",
-      "startedAt": "2026-08-12T04:44:08.062Z",
-      "endedAt": "2026-08-12T04:44:21.715Z",
+      "startedAt": "2026-08-12T05:47:10.530Z",
+      "endedAt": "2026-08-12T05:47:28.358Z",
       "exitCode": 0,
       "signal": null,
       "ok": true
@@ -41,8 +41,8 @@
       "name": "npm-audit-full",
       "command": "npm audit --audit-level=high",
       "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-release/semforge/.omo/evidence/phase5-ci/latest/npm-audit-full.log",
-      "startedAt": "2026-08-12T04:44:21.716Z",
-      "endedAt": "2026-08-12T04:44:22.912Z",
+      "startedAt": "2026-08-12T05:47:28.359Z",
+      "endedAt": "2026-08-12T05:47:29.380Z",
       "exitCode": 0,
       "signal": null,
       "ok": true
@@ -51,8 +51,18 @@
       "name": "npm-audit-production",
       "command": "npm audit --omit=dev --audit-level=high",
       "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-release/semforge/.omo/evidence/phase5-ci/latest/npm-audit-production.log",
-      "startedAt": "2026-08-12T04:44:22.913Z",
-      "endedAt": "2026-08-12T04:44:23.578Z",
+      "startedAt": "2026-08-12T05:47:29.384Z",
+      "endedAt": "2026-08-12T05:47:30.280Z",
+      "exitCode": 0,
+      "signal": null,
+      "ok": true
+    },
+    {
+      "name": "license-check",
+      "command": "npm run license:check",
+      "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-release/semforge/.omo/evidence/phase5-ci/latest/license-check.log",
+      "startedAt": "2026-08-12T05:47:30.282Z",
+      "endedAt": "2026-08-12T05:47:31.191Z",
       "exitCode": 0,
       "signal": null,
       "ok": true
@@ -61,8 +71,28 @@
       "name": "db-generate",
       "command": "npm run db:generate",
       "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-release/semforge/.omo/evidence/phase5-ci/latest/db-generate.log",
-      "startedAt": "2026-08-12T04:44:23.579Z",
-      "endedAt": "2026-08-12T04:44:24.699Z",
+      "startedAt": "2026-08-12T05:47:31.192Z",
+      "endedAt": "2026-08-12T05:47:33.303Z",
+      "exitCode": 0,
+      "signal": null,
+      "ok": true
+    },
+    {
+      "name": "generated-diff",
+      "command": "git diff --exit-code -- src/db/migrations src/db/schema THIRD_PARTY_NOTICES.md package.json package-lock.json",
+      "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-release/semforge/.omo/evidence/phase5-ci/latest/generated-diff.log",
+      "startedAt": "2026-08-12T05:47:33.304Z",
+      "endedAt": "2026-08-12T05:47:33.331Z",
+      "exitCode": 0,
+      "signal": null,
+      "ok": true
+    },
+    {
+      "name": "source-diff-check",
+      "command": "git diff --check -- . :(exclude).omo/evidence/**",
+      "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-release/semforge/.omo/evidence/phase5-ci/latest/source-diff-check.log",
+      "startedAt": "2026-08-12T05:47:33.332Z",
+      "endedAt": "2026-08-12T05:47:33.347Z",
       "exitCode": 0,
       "signal": null,
       "ok": true
@@ -71,8 +101,8 @@
       "name": "route-manifest",
       "command": "npm run ci:route-manifest",
       "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-release/semforge/.omo/evidence/phase5-ci/latest/route-manifest.log",
-      "startedAt": "2026-08-12T04:44:24.701Z",
-      "endedAt": "2026-08-12T04:44:24.962Z",
+      "startedAt": "2026-08-12T05:47:33.347Z",
+      "endedAt": "2026-08-12T05:47:33.653Z",
       "exitCode": 0,
       "signal": null,
       "ok": true
@@ -81,8 +111,8 @@
       "name": "forbidden-surface",
       "command": "npm run ci:forbidden-surface",
       "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-release/semforge/.omo/evidence/phase5-ci/latest/forbidden-surface.log",
-      "startedAt": "2026-08-12T04:44:24.965Z",
-      "endedAt": "2026-08-12T04:44:25.216Z",
+      "startedAt": "2026-08-12T05:47:33.653Z",
+      "endedAt": "2026-08-12T05:47:34.204Z",
       "exitCode": 0,
       "signal": null,
       "ok": true
@@ -91,8 +121,8 @@
       "name": "pg16",
       "command": "npm run ci:pg16",
       "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-release/semforge/.omo/evidence/phase5-ci/latest/pg16.log",
-      "startedAt": "2026-08-12T04:44:25.217Z",
-      "endedAt": "2026-08-12T04:44:33.921Z",
+      "startedAt": "2026-08-12T05:47:34.204Z",
+      "endedAt": "2026-08-12T05:47:42.878Z",
       "exitCode": 0,
       "signal": null,
       "ok": true
@@ -101,12 +131,12 @@
       "name": "nine-site",
       "command": "npm run ci:nine-site",
       "logPath": "/Users/user01/Music/SEMForge-worktrees/phase-5-release/semforge/.omo/evidence/phase5-ci/latest/nine-site.log",
-      "startedAt": "2026-08-12T04:44:33.921Z",
-      "endedAt": "2026-08-12T04:44:34.080Z",
+      "startedAt": "2026-08-12T05:47:42.878Z",
+      "endedAt": "2026-08-12T05:47:43.099Z",
       "exitCode": 0,
       "signal": null,
       "ok": true
     }
   ],
-  "endedAt": "2026-08-12T04:44:34.080Z"
+  "endedAt": "2026-08-12T05:47:43.099Z"
 }
