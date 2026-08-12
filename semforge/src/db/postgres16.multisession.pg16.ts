@@ -1219,6 +1219,162 @@ test("PostgreSQL 16 subject erasure email suppression은 exact running erasure r
   );
 });
 
+test("PostgreSQL 16 recipient email lock은 sender shared와 erasure exclusive를 같은 recipient hash로 직렬화한다", async () => {
+  const workspaceId = "f6340000-0000-4000-8000-000000000001";
+  const subjectUser = "f6340000-0000-4000-8000-000000000011";
+  const requestId = "f6340000-0000-4000-8000-000000000021";
+  const recipientHash = sha256Hex("recipient-lock@example.test");
+  await pool.query(
+    "insert into workspaces (id, name, slug) values ($1, 'Recipient Lock', 'recipient-lock')",
+    [workspaceId],
+  );
+  await pool.query(
+    `insert into users (id, email, password_hash, email_verified_at)
+     values ($1, 'recipient-lock@example.test', 'scrypt:lock', now())`,
+    [subjectUser],
+  );
+  await pool.query(
+    "insert into memberships (workspace_id, user_id, role) values ($1, $2, 'member')",
+    [workspaceId, subjectUser],
+  );
+  await pool.query(
+    `insert into privacy_requests
+       (id, workspace_id, request_id, type, status, operator_id, subject_user_id, requested_at)
+     values ($1, $2, 'recipient-lock-erasure', 'erasure', 'running', 'privacy-operator', $3, now())`,
+    [requestId, workspaceId, subjectUser],
+  );
+
+  const worker = await pool.connect();
+  try {
+    await worker.query("begin");
+    await worker.query("set local role semforge_worker");
+    await worker.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
+    await worker.query(
+      "select privacy_lock_recipient_email_shared($1::uuid, $2::text)",
+      [workspaceId, recipientHash],
+    );
+    await worker.query("savepoint worker_exclusive_denied");
+    await assert.rejects(
+      worker.query(
+        "select privacy_lock_recipient_email_exclusive($1::uuid, $2::text)",
+        [workspaceId, recipientHash],
+      ),
+      /permission denied/i,
+    );
+    await worker.query("rollback to savepoint worker_exclusive_denied");
+    await worker.query("savepoint invalid_hash");
+    await assert.rejects(
+      worker.query(
+        "select privacy_lock_recipient_email_shared($1::uuid, 'ABC')",
+        [workspaceId],
+      ),
+      /recipient email lock input is invalid/i,
+    );
+    await worker.query("rollback to savepoint invalid_hash");
+    await worker.query("savepoint tenant_mismatch");
+    await assert.rejects(
+      worker.query(
+        "select privacy_lock_recipient_email_shared($1::uuid, $2::text)",
+        ["f6340000-0000-4000-8000-000000000002", recipientHash],
+      ),
+      /recipient email lock input is invalid/i,
+    );
+    await worker.query("rollback to savepoint tenant_mismatch");
+
+    const dispatcher = await pool.connect();
+    try {
+      await dispatcher.query("begin");
+      await dispatcher.query("set local role semforge_dispatcher");
+      await dispatcher.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
+      await dispatcher.query(
+        "select privacy_lock_recipient_email_shared($1::uuid, $2::text)",
+        [workspaceId, recipientHash],
+      );
+      await dispatcher.query("commit");
+    } catch (error) {
+      await rollback(dispatcher);
+      throw error;
+    } finally {
+      dispatcher.release();
+    }
+
+    const auth = await pool.connect();
+    try {
+      await auth.query("begin");
+      await auth.query("set local role semforge_auth");
+      await auth.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
+      await assert.rejects(
+        auth.query(
+          "select privacy_lock_recipient_email_shared($1::uuid, $2::text)",
+          [workspaceId, recipientHash],
+        ),
+        /permission denied/i,
+      );
+    } finally {
+      await rollback(auth);
+      auth.release();
+    }
+
+    const blockedPrivacy = await pool.connect();
+    try {
+      await blockedPrivacy.query("begin");
+      await blockedPrivacy.query("set local role semforge_privacy");
+      await blockedPrivacy.query("set local statement_timeout = '200ms'");
+      await blockedPrivacy.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
+      await assert.rejects(
+        blockedPrivacy.query(
+          "select privacy_add_email_suppression($1::uuid, $2::uuid, $3::text)",
+          [workspaceId, requestId, recipientHash],
+        ),
+        /canceling statement due to statement timeout/i,
+      );
+    } finally {
+      await rollback(blockedPrivacy);
+      blockedPrivacy.release();
+    }
+    await worker.query("commit");
+  } catch (error) {
+    await rollback(worker);
+    throw error;
+  } finally {
+    worker.release();
+  }
+
+  const privacy = await pool.connect();
+  try {
+    await privacy.query("begin");
+    await privacy.query("set local role semforge_privacy");
+    await privacy.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
+    await privacy.query(
+      "select privacy_add_email_suppression($1::uuid, $2::uuid, $3::text)",
+      [workspaceId, requestId, recipientHash],
+    );
+    await privacy.query("savepoint privacy_shared_denied");
+    await assert.rejects(
+      privacy.query(
+        "select privacy_lock_recipient_email_shared($1::uuid, $2::text)",
+        [workspaceId, recipientHash],
+      ),
+      /permission denied/i,
+    );
+    await privacy.query("rollback to savepoint privacy_shared_denied");
+    await privacy.query("commit");
+  } catch (error) {
+    await rollback(privacy);
+    throw error;
+  } finally {
+    privacy.release();
+  }
+
+  assert.deepEqual(
+    (await pool.query<{ count: number }>(
+      "select count(*)::int as count from email_suppressions where workspace_id = $1 and recipient_hash = $2",
+      [workspaceId, recipientHash],
+    )).rows,
+    [{ count: 1 }],
+  );
+});
+
 test("PostgreSQL 16 subject erasure는 accepted invite를 tombstone하고 membership FK에 막히지 않는다", async () => {
   const workspaceId = "f6320000-0000-4000-8000-000000000001";
   const subjectUser = "f6320000-0000-4000-8000-000000000011";

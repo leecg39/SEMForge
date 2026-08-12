@@ -1441,6 +1441,65 @@ AS $$
   SELECT ('x' || substr(md5(p_workspace_id::text), 1, 16))::bit(64)::bigint
 $$;--> statement-breakpoint
 
+-- @TASK P1-FINAL-PRIVACY - Recipient-scoped email send/erasure race fence
+-- @SPEC final_privacy_fence#recipient-email-lock
+CREATE FUNCTION privacy_recipient_email_lock_key(
+  p_workspace_id uuid,
+  p_recipient_hash text
+) RETURNS bigint
+LANGUAGE plpgsql
+IMMUTABLE
+STRICT
+PARALLEL SAFE
+AS $$
+BEGIN
+  IF p_recipient_hash !~ '^[0-9a-f]{64}$' THEN
+    RAISE EXCEPTION 'privacy recipient email lock input is invalid' USING ERRCODE = '42501';
+  END IF;
+  RETURN ('x' || substr(encode(sha256((p_workspace_id::text || ':' || p_recipient_hash)::bytea), 'hex'), 1, 16))::bit(64)::bigint;
+END;
+$$;--> statement-breakpoint
+
+CREATE FUNCTION privacy_lock_recipient_email_shared(
+  p_workspace_id uuid,
+  p_recipient_hash text
+) RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF p_workspace_id IS DISTINCT FROM nullif(current_setting('app.workspace_id', true), '')::uuid
+     OR p_recipient_hash !~ '^[0-9a-f]{64}$'
+  THEN
+    RAISE EXCEPTION 'privacy recipient email lock input is invalid' USING ERRCODE = '42501';
+  END IF;
+  PERFORM pg_advisory_xact_lock_shared(
+    privacy_recipient_email_lock_key(p_workspace_id, p_recipient_hash)
+  );
+END;
+$$;--> statement-breakpoint
+
+CREATE FUNCTION privacy_lock_recipient_email_exclusive(
+  p_workspace_id uuid,
+  p_recipient_hash text
+) RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF p_workspace_id IS DISTINCT FROM nullif(current_setting('app.workspace_id', true), '')::uuid
+     OR p_recipient_hash !~ '^[0-9a-f]{64}$'
+  THEN
+    RAISE EXCEPTION 'privacy recipient email lock input is invalid' USING ERRCODE = '42501';
+  END IF;
+  PERFORM pg_advisory_xact_lock(
+    privacy_recipient_email_lock_key(p_workspace_id, p_recipient_hash)
+  );
+END;
+$$;--> statement-breakpoint
+
 -- @TASK P1-FINAL-PRIVACY - Fixed-predicate retention executor
 -- @SPEC final_privacy_roles#retention-executor
 CREATE FUNCTION privacy_retention_count(p_target text, p_cutoff timestamptz)
@@ -1679,6 +1738,7 @@ BEGIN
     RAISE EXCEPTION 'privacy email suppression requires matching running deletion or erasure request'
       USING ERRCODE = '42501';
   END IF;
+  PERFORM privacy_lock_recipient_email_exclusive(p_workspace_id, p_recipient_hash);
   INSERT INTO email_suppressions (workspace_id, recipient_hash, request_id)
   VALUES (p_workspace_id, p_recipient_hash, p_request_id)
   ON CONFLICT (workspace_id, recipient_hash) DO NOTHING;
@@ -2138,6 +2198,9 @@ ALTER FUNCTION privacy_deletion_targets(uuid, uuid, text) OWNER TO semforge_priv
 ALTER FUNCTION privacy_erasure_subject(uuid, uuid, text, uuid) OWNER TO semforge_privacy_owner;--> statement-breakpoint
 ALTER FUNCTION privacy_erase_subject(uuid, uuid, text, uuid, timestamptz) OWNER TO semforge_privacy_owner;--> statement-breakpoint
 ALTER FUNCTION privacy_workspace_lock_key(uuid) OWNER TO semforge_privacy_owner;--> statement-breakpoint
+ALTER FUNCTION privacy_recipient_email_lock_key(uuid, text) OWNER TO semforge_privacy_owner;--> statement-breakpoint
+ALTER FUNCTION privacy_lock_recipient_email_shared(uuid, text) OWNER TO semforge_privacy_owner;--> statement-breakpoint
+ALTER FUNCTION privacy_lock_recipient_email_exclusive(uuid, text) OWNER TO semforge_privacy_owner;--> statement-breakpoint
 ALTER FUNCTION privacy_block_workspace(uuid, uuid, text, timestamptz) OWNER TO semforge_privacy_owner;--> statement-breakpoint
 ALTER FUNCTION privacy_mark_workspace_erased(uuid, uuid, text, timestamptz) OWNER TO semforge_privacy_owner;--> statement-breakpoint
 ALTER FUNCTION privacy_erase_workspace(uuid, uuid, text) OWNER TO semforge_privacy_owner;--> statement-breakpoint
@@ -2165,6 +2228,9 @@ REVOKE ALL ON FUNCTION privacy_deletion_targets(uuid, uuid, text) FROM PUBLIC;--
 REVOKE ALL ON FUNCTION privacy_erasure_subject(uuid, uuid, text, uuid) FROM PUBLIC;--> statement-breakpoint
 REVOKE ALL ON FUNCTION privacy_erase_subject(uuid, uuid, text, uuid, timestamptz) FROM PUBLIC;--> statement-breakpoint
 REVOKE ALL ON FUNCTION privacy_workspace_lock_key(uuid) FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON FUNCTION privacy_recipient_email_lock_key(uuid, text) FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON FUNCTION privacy_lock_recipient_email_shared(uuid, text) FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON FUNCTION privacy_lock_recipient_email_exclusive(uuid, text) FROM PUBLIC;--> statement-breakpoint
 REVOKE ALL ON FUNCTION privacy_block_workspace(uuid, uuid, text, timestamptz) FROM PUBLIC;--> statement-breakpoint
 REVOKE ALL ON FUNCTION privacy_mark_workspace_erased(uuid, uuid, text, timestamptz) FROM PUBLIC;--> statement-breakpoint
 REVOKE ALL ON FUNCTION privacy_erase_workspace(uuid, uuid, text) FROM PUBLIC;--> statement-breakpoint
@@ -2190,6 +2256,10 @@ GRANT EXECUTE ON FUNCTION privacy_erasure_subject(uuid, uuid, text, uuid) TO sem
 GRANT EXECUTE ON FUNCTION privacy_erase_subject(uuid, uuid, text, uuid, timestamptz) TO semforge_privacy;--> statement-breakpoint
 GRANT EXECUTE ON FUNCTION privacy_workspace_lock_key(uuid)
   TO semforge_web, semforge_auth, semforge_worker, semforge_scheduler, semforge_dispatcher, semforge_billing, semforge_billing_tenant, semforge_privacy;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION privacy_lock_recipient_email_shared(uuid, text)
+  TO semforge_worker, semforge_dispatcher;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION privacy_lock_recipient_email_exclusive(uuid, text)
+  TO semforge_privacy;--> statement-breakpoint
 GRANT EXECUTE ON FUNCTION privacy_block_workspace(uuid, uuid, text, timestamptz) TO semforge_privacy;--> statement-breakpoint
 GRANT EXECUTE ON FUNCTION privacy_mark_workspace_erased(uuid, uuid, text, timestamptz) TO semforge_privacy;--> statement-breakpoint
 GRANT EXECUTE ON FUNCTION privacy_erase_workspace(uuid, uuid, text) TO semforge_privacy;--> statement-breakpoint

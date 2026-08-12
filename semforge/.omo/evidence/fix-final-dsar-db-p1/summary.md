@@ -26,6 +26,10 @@
    - replaces invite email with `erased:<sha256>`;
    - records `accepted_erased_at`.
 4. Subject erasure serializes owner deletion by taking the workspace advisory lock plus workspace/membership row locks before checking owner count.
+5. Recipient-scoped email send/erasure race fencing is exposed through transaction-scoped DB functions:
+   - sender shared lock: `privacy_lock_recipient_email_shared(uuid,text)`, granted to `semforge_worker` and `semforge_dispatcher`;
+   - erasure exclusive lock: `privacy_lock_recipient_email_exclusive(uuid,text)`, granted only to `semforge_privacy`;
+   - `privacy_add_email_suppression(...)` takes the exclusive recipient lock after exact request validation and before inserting suppression.
 
 ## Red evidence
 
@@ -44,11 +48,11 @@ export PATH=/Users/user01/.cache/codex-runtimes/codex-primary-runtime/dependenci
 ```
 
 - `npm run test:pg16:docker`
-  - scenario: real PostgreSQL 16 roles/RLS/functions plus new subject erasure suppression, accepted invite tombstone, and concurrent owner erasure tests
-  - result: `14 pass / 0 fail`
+  - scenario: real PostgreSQL 16 roles/RLS/functions plus new subject erasure suppression, recipient email shared/exclusive lock ACL and blocking, accepted invite tombstone, and concurrent owner erasure tests
+  - result after recipient-lock follow-up: `15 pass / 0 fail`
 - `npm run test:db`
   - scenario: PGlite fresh migration, second migration, schema contract, role grants, env/crypto contracts
-  - result: `68 pass / 0 fail`
+  - result after recipient-lock follow-up: `68 pass / 0 fail`
 - `npx tsx --test src/server/privacy/service.integration.test.ts src/server/privacy/processor.test.ts`
   - scenario: privacy service/processor subject erasure and workspace deletion flow
   - result: `22 pass / 0 fail`
@@ -58,7 +62,7 @@ export PATH=/Users/user01/.cache/codex-runtimes/codex-primary-runtime/dependenci
   - result: pass
 - `npm run db:generate`
   - scenario: canonical Drizzle schema drift check
-  - result: `No schema changes, nothing to migrate`
+  - result after recipient-lock follow-up: `No schema changes, nothing to migrate`
 - `bash scripts/test-privacy-barrier-pg16.sh`
   - scenario: real PostgreSQL 16 privacy fence crash/unlock barrier
   - result: `2 pass / 0 fail`
