@@ -98,6 +98,7 @@ test("blocking workspace 로그인은 session 회전 delegate를 호출하지 �
   const principal = await store.rotateSession({
     userId: user().id,
     workspaceId: WORKSPACE_A,
+    expectedPasswordHash: "scrypt:verified",
     newTokenHash: "a".repeat(64),
     expiresAt: new Date("2026-09-12T07:00:00.000Z"),
     now: NOW,
@@ -181,6 +182,7 @@ test("진행 중 session commit이 끝날 때까지 삭제 drain이 기다리고
   const input = {
     userId: user().id,
     workspaceId: WORKSPACE_A,
+    expectedPasswordHash: "scrypt:verified",
     newTokenHash: "9".repeat(64),
     expiresAt: principal.expiresAt,
     now: NOW,

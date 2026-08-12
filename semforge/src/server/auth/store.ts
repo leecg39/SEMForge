@@ -110,6 +110,11 @@ export type AcceptInviteResult =
 export interface RotateSessionInput {
   readonly userId: string;
   readonly workspaceId: string;
+  /**
+   * 서비스가 비밀번호 검증 직후 확인한 현재 hash다. 동시 password reset/disable이
+   * 검증과 session rotation 사이에 commit되면 새 session 생성을 CAS로 중단한다.
+   */
+  readonly expectedPasswordHash: string;
   readonly newTokenHash: string;
   readonly currentTokenHash?: string;
   readonly expiresAt: Date;

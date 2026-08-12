@@ -252,15 +252,18 @@ export function createAuthService(dependencies: AuthServiceDependencies) {
       if (!user || !passwordVerification.verified || user.disabledAt) {
         throw invalidCredentials();
       }
+      let expectedPasswordHash = user.passwordHash;
       if (passwordVerification.needsRehash) {
+        const upgradedPasswordHash = await hashPassword(parsed.password);
         const upgraded = await store.upgradePasswordHash({
           userId: user.id,
           expectedPasswordHash: user.passwordHash,
-          passwordHash: await hashPassword(parsed.password),
+          passwordHash: upgradedPasswordHash,
           now: loggedInAt,
         });
         // 동시 password reset/disable이 이긴 경우 이전 비밀번호로 session을 만들지 않는다.
         if (!upgraded) throw invalidCredentials();
+        expectedPasswordHash = upgradedPasswordHash;
       }
 
       const memberships = await store.listMembershipsForUser(user.id);
@@ -273,6 +276,7 @@ export function createAuthService(dependencies: AuthServiceDependencies) {
       const principal = await store.rotateSession({
         userId: user.id,
         workspaceId: membership.workspaceId,
+        expectedPasswordHash,
         newTokenHash: hashOpaqueToken(token),
         ...(parsed.currentSessionToken
           ? { currentTokenHash: hashOpaqueToken(parsed.currentSessionToken) }

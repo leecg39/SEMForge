@@ -487,6 +487,9 @@ export class PostgresAuthStore implements AuthStore {
 
   async rotateSession(input: RotateSessionInput): Promise<AuthSessionPrincipal | null> {
     assertFuture(input.expiresAt, input.now, "세션 만료 시각");
+    if (!input.expectedPasswordHash) {
+      throw new TypeError("session rotation에는 검증한 password hash가 필요합니다.");
+    }
     if (!input.newTokenHash) throw new TypeError("새 session token hash가 필요합니다.");
     if (input.currentTokenHash === input.newTokenHash) {
       throw new TypeError("session rotation에는 서로 다른 token hash가 필요합니다.");
@@ -506,6 +509,7 @@ export class PostgresAuthStore implements AuthStore {
           and(
             eq(memberships.userId, input.userId),
             eq(memberships.workspaceId, input.workspaceId),
+            eq(users.passwordHash, input.expectedPasswordHash),
             isNull(users.disabledAt),
           ),
         )

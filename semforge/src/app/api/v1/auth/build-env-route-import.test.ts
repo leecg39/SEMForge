@@ -17,12 +17,12 @@ after(() => {
 });
 
 test("auth route modules are import-safe under the build profile even when CI exposes DATABASE_URL", async () => {
-  process.env.NODE_ENV = "production";
+  Object.assign(process.env, { NODE_ENV: "production" });
   process.env.SEMFORGE_SERVICE = "build";
   process.env.DATABASE_URL = "postgresql://ci-web-login:secret@localhost:5432/semforge_test";
 
-  const modules = await Promise.all([
-    import("./session/route"),
+  const sessionModule = await import("./session/route");
+  const postModules = await Promise.all([
     import("./login/route"),
     import("./logout/route"),
     import("./invites/accept/route"),
@@ -30,8 +30,8 @@ test("auth route modules are import-safe under the build profile even when CI ex
     import("./password/reset/route"),
   ]);
 
-  assert.equal(typeof modules[0].GET, "function");
-  for (const module of modules.slice(1)) {
-    assert.equal(typeof module.POST, "function");
+  assert.equal(typeof sessionModule.GET, "function");
+  for (const routeModule of postModules) {
+    assert.equal(typeof routeModule.POST, "function");
   }
 });
