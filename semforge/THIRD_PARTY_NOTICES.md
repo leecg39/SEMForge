@@ -2,7 +2,7 @@
 
 This product includes third-party production dependencies. This file is generated from `package-lock.json` and installed non-optional production packages in `node_modules`.
 
-Package lock SHA-256: `960b417caf3351415b6d7761a30582e3c0450307352eab4f6bc0279b5c31566c`
+Package lock SHA-256: `045d803b781d898d2e249c01c7d3497cd519d7ef828b94e01a4cd6e3f0222203`
 
 License policy: missing, unknown, GPL, AGPL, SSPL, PolyForm, and noncommercial licenses fail closed.
 

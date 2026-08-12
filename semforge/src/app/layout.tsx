@@ -1,3 +1,4 @@
+import { Agentation } from "agentation";
 import type { Metadata } from "next";
 import "@fontsource/noto-sans-kr/400.css";
 import "@fontsource/noto-sans-kr/500.css";
@@ -30,6 +31,7 @@ export default function RootLayout({
           본문 바로가기
         </a>
         {children}
+        {process.env.NODE_ENV === "development" && <Agentation />}
       </body>
     </html>
   );

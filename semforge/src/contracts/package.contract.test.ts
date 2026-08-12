@@ -43,7 +43,6 @@ const forbiddenRuntimeDependencies = [
   "@radix-ui/react-icons",
   "@radix-ui/react-select",
   "@radix-ui/react-tabs",
-  "agentation",
   "react-markdown",
   "recharts",
   "remark-gfm",
@@ -70,6 +69,7 @@ test("삭제된 레거시 UI 전용 런타임 패키지가 없다", () => {
 
   assert.deepEqual(staleDependencies, []);
   assert.equal("node-html-parser" in (manifest.devDependencies ?? {}), false);
+  assert.equal("agentation" in (manifest.devDependencies ?? {}), true);
 });
 
 test("핵심 웹·PostgreSQL·PDF 자산 의존성은 유지한다", () => {
