@@ -222,6 +222,8 @@ export interface BillingChargeResult {
 }
 
 export interface BillingService {
+  /** Local read-only lookup used before any webhook provider or ledger mutation. */
+  resolveWebhookWorkspace(event: TossBillingWebhook): Promise<string | null>;
   getCheckoutIdentity(input: { readonly workspaceId: string }): Promise<{
     readonly customerKey: string;
     readonly subscriptionStatus: SubscriptionStatus;
@@ -740,6 +742,16 @@ export function createBillingService(options: BillingServiceOptions): BillingSer
   }
 
   return {
+    async resolveWebhookWorkspace(event) {
+      if (event.eventType === "BILLING_DELETED") {
+        if (!options.store.findAccountByBillingKey) return null;
+        const account = await options.store.findAccountByBillingKey(event.billingKey);
+        return account?.subscription.workspaceId ?? null;
+      }
+      const attempt = await options.store.findPaymentByOrderId(event.data.orderId);
+      return attempt?.workspaceId ?? null;
+    },
+
     async getCheckoutIdentity(input) {
       const account = await requiredAccount(input.workspaceId);
       return {

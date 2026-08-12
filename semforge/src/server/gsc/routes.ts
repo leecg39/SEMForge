@@ -14,11 +14,17 @@ import type { BillingAccessAuthorizer } from "@/server/billing/access";
 import type { GscConnectionRecord, GscPropertyBindingRecord } from "@/server/gsc/store";
 import type { GscProperty } from "@/server/gsc/google-client";
 import { GscServiceError, type GscService } from "@/server/gsc/service";
+import {
+  WorkspacePrivacyOperationBlockedError,
+  runWorkspaceSharedOperation,
+  type WorkspaceSharedOperationPort,
+} from "@/server/privacy/access";
 
 export type RequireGscAuth = RequireAuth;
 
 export type GscRouteService = Pick<
   GscService,
+  | "resolveCallbackWorkspace"
   | "startConnection"
   | "completeCallback"
   | "listConnections"
@@ -30,6 +36,7 @@ export type GscRouteService = Pick<
 export interface GscRouteHandlerOptions {
   requireAuth: RequireGscAuth;
   authorizeBilling: BillingAccessAuthorizer;
+  workspaceOperations: WorkspaceSharedOperationPort;
   getService: () => GscRouteService;
 }
 
@@ -51,6 +58,12 @@ const bindingBodySchema = rejectTenantOverride.extend({
 });
 
 function mapGscError(error: unknown): never {
+  if (error instanceof WorkspacePrivacyOperationBlockedError) {
+    throw new ApiError(
+      "CONFLICT",
+      "개인정보 삭제가 진행 중이거나 완료되어 이 작업을 수행할 수 없습니다.",
+    );
+  }
   if (!(error instanceof GscServiceError)) throw error;
   switch (error.code) {
     case "INVALID_STATE":
@@ -112,6 +125,17 @@ export function createGscRouteHandlers(options: GscRouteHandlerOptions) {
     if (!decision.allowed) throw new ApiError("FORBIDDEN");
   }
 
+  function runWorkspaceOperation<T>(
+    workspaceId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    return runWorkspaceSharedOperation(
+      options.workspaceOperations,
+      workspaceId,
+      operation,
+    );
+  }
+
   return {
     connect: {
       POST: withApiV1(async (request, _context, apiContext) => {
@@ -123,12 +147,13 @@ export function createGscRouteHandlers(options: GscRouteHandlerOptions) {
         await requireBilling(principal.workspaceId, "workspace:write");
         const body = await parseJsonBody(request, connectBodySchema);
         try {
-          const result = await options.getService().startConnection({
-            workspaceId: principal.workspaceId,
-            userId: principal.userId,
-            label: body.label,
-            returnPath: body.returnPath,
-          });
+          const result = await runWorkspaceOperation(principal.workspaceId, () =>
+            options.getService().startConnection({
+              workspaceId: principal.workspaceId,
+              userId: principal.userId,
+              label: body.label,
+              returnPath: body.returnPath,
+            }));
           return apiSuccess(result, { status: 201 });
         } catch (error) {
           mapGscError(error);
@@ -149,12 +174,22 @@ export function createGscRouteHandlers(options: GscRouteHandlerOptions) {
         });
         await requireBilling(principal.workspaceId, "workspace:write");
         try {
-          const result = await options.getService().completeCallback({
+          const service = options.getService();
+          const canonicalWorkspaceId = await service.resolveCallbackWorkspace({
             workspaceId: principal.workspaceId,
             userId: principal.userId,
-            code,
             state,
           });
+          if (!canonicalWorkspaceId || canonicalWorkspaceId !== principal.workspaceId) {
+            throw new GscServiceError("INVALID_STATE");
+          }
+          const result = await runWorkspaceOperation(canonicalWorkspaceId, () =>
+            service.completeCallback({
+              workspaceId: principal.workspaceId,
+              userId: principal.userId,
+              code,
+              state,
+            }));
           return apiSuccess({
             returnPath: result.returnPath,
             connection: publicConnection(result.connection),
@@ -190,10 +225,11 @@ export function createGscRouteHandlers(options: GscRouteHandlerOptions) {
         await requireBilling(principal.workspaceId, "workspace:write");
         const { connectionId } = await context.params;
         try {
-          await options.getService().disconnect({
-            workspaceId: principal.workspaceId,
-            connectionId,
-          });
+          await runWorkspaceOperation(principal.workspaceId, () =>
+            options.getService().disconnect({
+              workspaceId: principal.workspaceId,
+              connectionId,
+            }));
           return apiSuccess({ disconnected: true });
         } catch (error) {
           mapGscError(error);
@@ -211,10 +247,11 @@ export function createGscRouteHandlers(options: GscRouteHandlerOptions) {
         await requireBilling(principal.workspaceId, "workspace:read");
         const { connectionId } = await context.params;
         try {
-          const properties = await options.getService().listProperties({
-            workspaceId: principal.workspaceId,
-            connectionId,
-          });
+          const properties = await runWorkspaceOperation(principal.workspaceId, () =>
+            options.getService().listProperties({
+              workspaceId: principal.workspaceId,
+              connectionId,
+            }));
           return apiSuccess({ items: publicProperties(properties) });
         } catch (error) {
           mapGscError(error);
@@ -232,12 +269,13 @@ export function createGscRouteHandlers(options: GscRouteHandlerOptions) {
         await requireBilling(principal.workspaceId, "workspace:write");
         const body = await parseJsonBody(request, bindingBodySchema);
         try {
-          const binding = await options.getService().bindProperty({
-            workspaceId: principal.workspaceId,
-            siteId: body.siteId,
-            connectionId: body.connectionId,
-            propertyUri: body.propertyUri,
-          });
+          const binding = await runWorkspaceOperation(principal.workspaceId, () =>
+            options.getService().bindProperty({
+              workspaceId: principal.workspaceId,
+              siteId: body.siteId,
+              connectionId: body.connectionId,
+              propertyUri: body.propertyUri,
+            }));
           return apiSuccess(publicBinding(binding), { status: 201 });
         } catch (error) {
           mapGscError(error);

@@ -119,6 +119,12 @@ test("callback은 state를 1회 소비하고 단일 readonly scope·refresh toke
     returnPath: "/app/settings",
   });
 
+  assert.equal(await service.resolveCallbackWorkspace({
+    workspaceId,
+    userId,
+    state: started.state,
+  }), workspaceId);
+
   const completed = await service.completeCallback({
     workspaceId,
     userId,

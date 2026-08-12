@@ -10,6 +10,7 @@ import {
   type RequireGscAuth,
 } from "@/server/gsc/routes";
 import type { BillingAccessAuthorizer } from "@/server/billing/access";
+import type { WorkspaceSharedOperationPort } from "@/server/privacy/access";
 
 const principal = {
   userId: "32000000-0000-4000-8000-000000000101",
@@ -25,8 +26,17 @@ const allowBillingAccess: BillingAccessAuthorizer = async () => ({
   reportPeriodEndBefore: null,
 });
 
+const allowWorkspaceOperations: WorkspaceSharedOperationPort = {
+  async withShared(_workspaceId, operation) {
+    return { disposition: "executed", value: await operation() };
+  },
+};
+
 function service(overrides: Partial<GscRouteService> = {}): GscRouteService {
   return {
+    async resolveCallbackWorkspace() {
+      return principal.workspaceId;
+    },
     async startConnection() {
       return {
         authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth?state=raw-state",
@@ -87,6 +97,7 @@ test("connect POST는 실제 auth guard에 CSRF와 owner/admin role을 요구하
   let authOptions: Parameters<RequireGscAuth>[1] | undefined;
   let serviceInput: unknown;
   const handlers = createGscRouteHandlers({
+    workspaceOperations: allowWorkspaceOperations,
     authorizeBilling: allowBillingAccess,
     requireAuth: async (_request, options) => {
       authOptions = options;
@@ -147,11 +158,17 @@ test("connect POST는 실제 auth guard에 CSRF와 owner/admin role을 요구하
 
 test("callback GET은 code/state와 현재 session principal을 service에 전달하고 raw token을 응답하지 않는다", async () => {
   let serviceInput: unknown;
+  let resolvedInput: unknown;
   const handlers = createGscRouteHandlers({
+    workspaceOperations: allowWorkspaceOperations,
     authorizeBilling: allowBillingAccess,
     requireAuth: async () => principal,
     getService: () =>
       service({
+        async resolveCallbackWorkspace(input) {
+          resolvedInput = input;
+          return principal.workspaceId;
+        },
         async completeCallback(input) {
           serviceInput = input;
           return service().completeCallback(input);
@@ -166,6 +183,11 @@ test("callback GET은 code/state와 현재 session principal을 service에 전�
   const serialized = JSON.stringify(body);
 
   assert.equal(response.status, 200);
+  assert.deepEqual(resolvedInput, {
+    workspaceId: principal.workspaceId,
+    userId: principal.userId,
+    state: "raw-state",
+  });
   assert.deepEqual(serviceInput, {
     workspaceId: principal.workspaceId,
     userId: principal.userId,
@@ -176,9 +198,44 @@ test("callback GET은 code/state와 현재 session principal을 service에 전�
   assert.doesNotMatch(serialized, /accessToken|refreshToken|auth-code/);
 });
 
+test("callback은 persisted oauth_state workspace가 principal과 다르면 fence와 token exchange 전에 거부한다", async () => {
+  let fenceCalls = 0;
+  let callbackCalls = 0;
+  const handlers = createGscRouteHandlers({
+    authorizeBilling: allowBillingAccess,
+    requireAuth: async () => principal,
+    workspaceOperations: {
+      async withShared(_workspaceId, operation) {
+        fenceCalls += 1;
+        return { disposition: "executed", value: await operation() };
+      },
+    },
+    getService: () => service({
+      async resolveCallbackWorkspace() {
+        return "32000000-0000-4000-8000-000000000099";
+      },
+      async completeCallback(input) {
+        callbackCalls += 1;
+        return service().completeCallback(input);
+      },
+    }),
+  });
+
+  const response = await handlers.callback.GET(
+    new Request("https://semforge.example/api/v1/integrations/gsc/callback?code=forged&state=foreign-state"),
+    undefined,
+  );
+
+  assert.equal(response.status, 400);
+  assert.equal((await envelope(response)).error?.code, "BAD_REQUEST");
+  assert.equal(fenceCalls, 0);
+  assert.equal(callbackCalls, 0);
+});
+
 test("properties, bindings, disconnect는 인증된 workspace만 사용하고 connection/site ID를 body/header tenant로 덮어쓰지 않는다", async () => {
   const calls: unknown[] = [];
   const handlers = createGscRouteHandlers({
+    workspaceOperations: allowWorkspaceOperations,
     authorizeBilling: allowBillingAccess,
     requireAuth: async () => principal,
     getService: () =>
@@ -248,6 +305,7 @@ test("account_created는 GSC read/write 직접 API 우회를 차단하고 servic
   const capabilities: string[] = [];
   let serviceCalled = false;
   const handlers = createGscRouteHandlers({
+    workspaceOperations: allowWorkspaceOperations,
     requireAuth: async () => principal,
     authorizeBilling: async ({ capability }) => {
       capabilities.push(capability);
@@ -292,4 +350,109 @@ test("account_created는 GSC read/write 직접 API 우회를 차단하고 servic
   assert.equal((await envelope(read)).error?.code, "FORBIDDEN");
   assert.deepEqual(capabilities, ["workspace:write", "workspace:read"]);
   assert.equal(serviceCalled, false);
+});
+
+for (const state of ["blocking", "erased"] as const) {
+  test(`${state} privacy fence는 GSC provider/write API를 409로 막고 service 호출을 0으로 유지한다`, async (t) => {
+    let serviceCalls = 0;
+    let fenceCalls = 0;
+    const handlers = createGscRouteHandlers({
+      requireAuth: async () => principal,
+      authorizeBilling: allowBillingAccess,
+      workspaceOperations: {
+        async withShared() {
+          fenceCalls += 1;
+          return { disposition: "skipped", state };
+        },
+      },
+      getService: () => service({
+        async startConnection() {
+          serviceCalls += 1;
+          return service().startConnection({
+            workspaceId: principal.workspaceId,
+            userId: principal.userId,
+            label: "blocked",
+          });
+        },
+        async completeCallback(input) {
+          serviceCalls += 1;
+          return service().completeCallback(input);
+        },
+        async listProperties() {
+          serviceCalls += 1;
+          return [];
+        },
+        async bindProperty(input) {
+          serviceCalls += 1;
+          return service().bindProperty(input);
+        },
+        async disconnect() {
+          serviceCalls += 1;
+        },
+      }),
+    });
+    const connectionId = "32000000-0000-4000-8000-000000000301";
+    const requests = [
+      ["connect", () => handlers.connect.POST(new Request("https://semforge.example/api/v1/integrations/gsc/connect", {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: "https://semforge.example" },
+        body: JSON.stringify({ label: "Blocked GSC" }),
+      }), undefined)],
+      ["callback", () => handlers.callback.GET(new Request("https://semforge.example/api/v1/integrations/gsc/callback?code=code&state=state"), undefined)],
+      ["properties", () => handlers.properties.GET(new Request(`https://semforge.example/api/v1/integrations/gsc/connections/${connectionId}/properties`), { params: Promise.resolve({ connectionId }) })],
+      ["binding", () => handlers.bindings.POST(new Request("https://semforge.example/api/v1/integrations/gsc/bindings", {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: "https://semforge.example" },
+        body: JSON.stringify({
+          siteId: "32000000-0000-4000-8000-000000000201",
+          connectionId,
+          propertyUri: "sc-domain:example.com",
+        }),
+      }), undefined)],
+      ["disconnect", () => handlers.connection.DELETE(new Request(`https://semforge.example/api/v1/integrations/gsc/connections/${connectionId}`, {
+        method: "DELETE",
+        headers: { origin: "https://semforge.example" },
+      }), { params: Promise.resolve({ connectionId }) })],
+    ] as const;
+
+    for (const [name, invoke] of requests) {
+      await t.test(name, async () => {
+        const response = await invoke();
+        assert.equal(response.status, 409);
+        assert.equal((await envelope(response)).error?.code, "CONFLICT");
+      });
+    }
+    assert.equal(fenceCalls, requests.length);
+    assert.equal(serviceCalls, 0);
+  });
+}
+
+test("privacy blocking 중에도 GSC connection 목록 read-only API는 shared fence 없이 조회한다", async () => {
+  let fenceCalls = 0;
+  let listCalls = 0;
+  const handlers = createGscRouteHandlers({
+    requireAuth: async () => principal,
+    authorizeBilling: allowBillingAccess,
+    workspaceOperations: {
+      async withShared() {
+        fenceCalls += 1;
+        return { disposition: "skipped", state: "blocking" };
+      },
+    },
+    getService: () => service({
+      async listConnections() {
+        listCalls += 1;
+        return [];
+      },
+    }),
+  });
+
+  const response = await handlers.connections.GET(
+    new Request("https://semforge.example/api/v1/integrations/gsc/connections"),
+    undefined,
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(listCalls, 1);
+  assert.equal(fenceCalls, 0);
 });

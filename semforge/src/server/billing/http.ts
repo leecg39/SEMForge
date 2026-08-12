@@ -12,6 +12,11 @@ import type {
   BillingService,
   TossBillingWebhook,
 } from "@/server/billing/service";
+import {
+  WorkspacePrivacyOperationBlockedError,
+  runWorkspaceSharedOperation,
+  type WorkspaceSharedOperationPort,
+} from "@/server/privacy/access";
 
 export interface BillingPrincipal {
   readonly userId: string;
@@ -50,6 +55,7 @@ type BillingMutationServiceResult = {
 };
 
 export interface BillingHttpService {
+  resolveWebhookWorkspace(event: TossBillingWebhook): Promise<string | null>;
   getCheckoutIdentity(input: { readonly workspaceId: string }): Promise<{
     readonly customerKey: string;
     readonly subscriptionStatus: SubscriptionStatus;
@@ -98,6 +104,7 @@ export interface BillingHttpService {
 export interface BillingHttpHandlerOptions {
   readonly requireAuth: RequireAuth;
   readonly getService: (scope: "tenant" | "global") => BillingHttpService;
+  readonly workspaceOperations: WorkspaceSharedOperationPort;
   readonly checkout?: {
     readonly clientKey: string;
     readonly appPublicUrl: string;
@@ -238,7 +245,10 @@ function enforceWebhookRateLimit(request: Request, now: Date): void {
 async function parseBillingBody<T>(
   request: Request,
   schema: z.ZodType<T>,
-  options: { readonly maxBytes?: number } = {},
+  options: {
+    readonly maxBytes?: number;
+    readonly ignoreUntrustedWorkspaceId?: boolean;
+  } = {},
 ): Promise<T> {
   if (!isJsonContentType(request.headers.get("content-type"))) {
     throw new ApiError("UNSUPPORTED_MEDIA_TYPE");
@@ -269,7 +279,8 @@ async function parseBillingBody<T>(
     typeof body === "object" &&
     body !== null &&
     !Array.isArray(body) &&
-    Object.hasOwn(body, "workspaceId")
+    Object.hasOwn(body, "workspaceId") &&
+    options.ignoreUntrustedWorkspaceId !== true
   ) {
     throw new ApiError("BAD_REQUEST", "workspaceId는 인증된 세션에서만 결정됩니다.");
   }
@@ -294,35 +305,57 @@ async function api<T>(
       result.requestId ?? apiRequestId,
     );
   } catch (error) {
-    return errorResponse(error instanceof ApiError ? error : new ApiError("INTERNAL"), apiRequestId);
+    const apiError = error instanceof WorkspacePrivacyOperationBlockedError
+      ? new ApiError(
+          "CONFLICT",
+          "개인정보 삭제가 진행 중이거나 완료되어 이 작업을 수행할 수 없습니다.",
+        )
+      : error instanceof ApiError
+        ? error
+        : new ApiError("INTERNAL");
+    return errorResponse(apiError, apiRequestId);
   }
 }
 
 export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
+  function runWorkspaceOperation<T>(
+    workspaceId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    return runWorkspaceSharedOperation(
+      options.workspaceOperations,
+      workspaceId,
+      operation,
+    );
+  }
+
   return {
     checkout: (request: Request) => api(request, async (apiContextRequestId) => {
       if (new URL(request.url).searchParams.size > 0) {
         throw new ApiError("BAD_REQUEST", "checkout 설정은 query override를 허용하지 않습니다.");
       }
-      if (!options.checkout) throw new ApiError("INTERNAL");
+      const checkout = options.checkout;
+      if (!checkout) throw new ApiError("INTERNAL");
       const principal = await options.requireAuth(request, {
         csrf: false,
         roles: ["owner", "admin"],
       });
-      const identity = await options.getService("tenant").getCheckoutIdentity({
-        workspaceId: principal.workspaceId,
-      });
       const requestId = requestIdFor(principal, apiContextRequestId);
-      return {
-        data: {
-          clientKey: options.checkout.clientKey,
-          customerKey: identity.customerKey,
-          method: "CARD" as const,
-          ...checkoutUrls(options.checkout.appPublicUrl),
-          subscriptionStatus: identity.subscriptionStatus,
-        },
-        requestId,
-      };
+      return runWorkspaceOperation(principal.workspaceId, async () => {
+        const identity = await options.getService("tenant").getCheckoutIdentity({
+          workspaceId: principal.workspaceId,
+        });
+        return {
+          data: {
+            clientKey: checkout.clientKey,
+            customerKey: identity.customerKey,
+            method: "CARD" as const,
+            ...checkoutUrls(checkout.appPublicUrl),
+            subscriptionStatus: identity.subscriptionStatus,
+          },
+          requestId,
+        };
+      });
     }),
 
     summary: (request: Request) => api(request, async (apiContextRequestId) => {
@@ -345,25 +378,27 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
       });
       const body = await parseBillingBody(request, authorizeBodySchema);
       const requestId = requestIdFor(principal, apiContextRequestId);
-      const service = options.getService("tenant");
-      const result = await service.completeAuthorization({
-        workspaceId: principal.workspaceId,
-        actorUserId: principal.userId,
-        authKey: body.authKey,
-        customerKey: body.customerKey,
-        requestId,
-        idempotencyKey,
+      return runWorkspaceOperation(principal.workspaceId, async () => {
+        const service = options.getService("tenant");
+        const result = await service.completeAuthorization({
+          workspaceId: principal.workspaceId,
+          actorUserId: principal.userId,
+          authKey: body.authKey,
+          customerKey: body.customerKey,
+          requestId,
+          idempotencyKey,
+        });
+        const summary = await service.getSummary({
+          workspaceId: principal.workspaceId,
+        });
+        return {
+          data: {
+            outcome: result.outcome,
+            subscription: serializeSummary(summary),
+          },
+          requestId,
+        };
       });
-      const summary = await service.getSummary({
-        workspaceId: principal.workspaceId,
-      });
-      return {
-        data: {
-          outcome: result.outcome,
-          subscription: serializeSummary(summary),
-        },
-        requestId,
-      };
     }),
 
     retry: (request: Request) => api(request, async (apiContextRequestId) => {
@@ -374,24 +409,26 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
       });
       await parseBillingBody(request, emptyBodySchema);
       const requestId = requestIdFor(principal, apiContextRequestId);
-      const service = options.getService("tenant");
-      const result = await service.retryPastDue({
-        workspaceId: principal.workspaceId,
-        actorUserId: principal.userId,
-        requestId,
-        idempotencyKey,
-        force: true,
+      return runWorkspaceOperation(principal.workspaceId, async () => {
+        const service = options.getService("tenant");
+        const result = await service.retryPastDue({
+          workspaceId: principal.workspaceId,
+          actorUserId: principal.userId,
+          requestId,
+          idempotencyKey,
+          force: true,
+        });
+        const summary = await service.getSummary({
+          workspaceId: principal.workspaceId,
+        });
+        return {
+          data: {
+            outcome: result.outcome,
+            subscription: serializeSummary(summary),
+          },
+          requestId,
+        };
       });
-      const summary = await service.getSummary({
-        workspaceId: principal.workspaceId,
-      });
-      return {
-        data: {
-          outcome: result.outcome,
-          subscription: serializeSummary(summary),
-        },
-        requestId,
-      };
     }),
 
     cancel: (request: Request) => api(request, async (apiContextRequestId) => {
@@ -402,22 +439,24 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
       });
       await parseBillingBody(request, emptyBodySchema);
       const requestId = requestIdFor(principal, apiContextRequestId);
-      const service = options.getService("tenant");
-      await service.cancelAtPeriodEnd({
-        workspaceId: principal.workspaceId,
-        actorUserId: principal.userId,
-        requestId,
+      return runWorkspaceOperation(principal.workspaceId, async () => {
+        const service = options.getService("tenant");
+        await service.cancelAtPeriodEnd({
+          workspaceId: principal.workspaceId,
+          actorUserId: principal.userId,
+          requestId,
+        });
+        const summary = await service.getSummary({
+          workspaceId: principal.workspaceId,
+        });
+        return {
+          data: {
+            outcome: "cancel_scheduled" as const,
+            subscription: serializeSummary(summary),
+          },
+          requestId,
+        };
       });
-      const summary = await service.getSummary({
-        workspaceId: principal.workspaceId,
-      });
-      return {
-        data: {
-          outcome: "cancel_scheduled" as const,
-          subscription: serializeSummary(summary),
-        },
-        requestId,
-      };
     }),
 
     webhook: (request: Request) =>
@@ -430,12 +469,29 @@ export function createBillingHttpHandlers(options: BillingHttpHandlerOptions) {
         }
         const event = await parseBillingBody(request, webhookBodySchema, {
           maxBytes: WEBHOOK_MAX_BODY_BYTES,
+          ignoreUntrustedWorkspaceId: true,
         });
-        const result = await options.getService("global").handleWebhook({
-          transmissionId,
-          event,
-          receivedAt,
-        });
+        const service = options.getService("global");
+        const canonicalWorkspaceId = await service.resolveWebhookWorkspace(event);
+        if (!canonicalWorkspaceId) {
+          const result = await service.handleWebhook({
+            transmissionId,
+            event,
+            receivedAt,
+          });
+          return { data: serializeResult(result) };
+        }
+        const fenced = await options.workspaceOperations.withShared(
+          canonicalWorkspaceId,
+          () => service.handleWebhook({
+            transmissionId,
+            event,
+            receivedAt,
+          }),
+        );
+        const result = fenced.disposition === "skipped"
+          ? { outcome: "ignored" as const, reason: "workspace_privacy_blocked" }
+          : fenced.value;
         return { data: serializeResult(result) };
       }),
   };

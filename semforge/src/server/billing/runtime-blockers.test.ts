@@ -319,6 +319,75 @@ test("PAYMENT_STATUS_CHANGED는 Toss Query로 검증할 수 없으면 body의 DO
   assert.equal(store.ledger.some((entry) => entry.type === "charge.succeeded"), false);
 });
 
+test("PAYMENT_STATUS_CHANGED reconciliation은 Toss query-only이며 새 billing key·charge를 만들지 않는다", async () => {
+  const store = new RuntimeBillingStore();
+  store.attempts[0] = { ...store.attempts[0]!, status: "pending" };
+  store.account = {
+    ...store.account,
+    subscription: { ...store.account.subscription, status: "charge_pending" },
+    latestPayment: structuredClone(store.attempts[0]!),
+  };
+  let issueCalls = 0;
+  let chargeCalls = 0;
+  let queryCalls = 0;
+  const billing = service(store, tossStub({
+    async issueBillingKey() {
+      issueCalls += 1;
+      throw new Error("webhook must not issue a billing key");
+    },
+    async chargeBillingKey() {
+      chargeCalls += 1;
+      throw new Error("webhook must not create a charge");
+    },
+    async queryPaymentByPaymentKey() {
+      queryCalls += 1;
+      return payment(store.attempts[0]!.orderId);
+    },
+  }));
+
+  const result = await billing.handleWebhook({
+    transmissionId: "transmission-query-only",
+    event: {
+      eventType: "PAYMENT_STATUS_CHANGED",
+      createdAt: "2026-08-11T12:00:05+09:00",
+      data: {
+        orderId: store.attempts[0]!.orderId,
+        paymentKey: "known-payment-key",
+        status: "DONE",
+      },
+    },
+    receivedAt: new Date("2026-08-11T03:00:05.000Z"),
+  });
+
+  assert.equal(result.outcome, "processed");
+  assert.equal(queryCalls, 1);
+  assert.equal(issueCalls, 0);
+  assert.equal(chargeCalls, 0);
+  assert.equal(store.ledger.filter((entry) => entry.type === "charge.succeeded").length, 1);
+});
+
+test("webhook canonical workspace는 untrusted event가 아니라 local payment/order lookup으로 결정한다", async () => {
+  const store = new RuntimeBillingStore();
+  const billing = service(store, tossStub({
+    async queryPaymentByOrderId() {
+      throw new Error("canonical lookup must remain local");
+    },
+    async queryPaymentByPaymentKey() {
+      throw new Error("canonical lookup must remain local");
+    },
+  }));
+
+  assert.equal(await billing.resolveWebhookWorkspace({
+    eventType: "PAYMENT_STATUS_CHANGED",
+    createdAt: "2026-08-11T12:00:05+09:00",
+    data: {
+      orderId: store.attempts[0]!.orderId,
+      paymentKey: "untrusted-payment-key",
+      status: "DONE",
+    },
+  }), WORKSPACE_ID);
+});
+
 test("BILLING_DELETED resolves tenant by billing key fingerprint and disables the server-known payment method", async () => {
   const store = new RuntimeBillingStore();
   const billing = service(store);

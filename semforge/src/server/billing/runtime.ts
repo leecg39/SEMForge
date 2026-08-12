@@ -15,6 +15,7 @@ import {
 } from "@/server/billing/postgres-store";
 import { createBillingService } from "@/server/billing/service";
 import { createTossBillingClient } from "@/server/billing/toss-client";
+import { createRuntimeWorkspacePrivacyFence } from "@/server/privacy/access";
 
 export function createSessionRequireAuth(
   pool: Pool = getPool("auth"),
@@ -110,6 +111,7 @@ export function createBillingHandlers() {
   return createBillingHttpHandlers({
     requireAuth: createSessionRequireAuth(undefined, env.APP_PUBLIC_URL),
     getService: (scope) => scope === "tenant" ? tenantService : globalService,
+    workspaceOperations: createRuntimeWorkspacePrivacyFence(),
     checkout: {
       clientKey: env.TOSS_CLIENT_KEY,
       appPublicUrl: env.APP_PUBLIC_URL,

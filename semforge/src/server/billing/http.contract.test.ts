@@ -8,6 +8,7 @@ import {
   type BillingHttpService,
   type RequireAuth,
 } from "@/server/billing/http";
+import type { WorkspaceSharedOperationPort } from "@/server/privacy/access";
 
 const principal = {
   userId: "0198f06a-1b42-7000-8000-000000000001",
@@ -16,8 +17,17 @@ const principal = {
   requestId: "request-billing-1",
 };
 
+const allowWorkspaceOperations: WorkspaceSharedOperationPort = {
+  async withShared(_workspaceId, operation) {
+    return { disposition: "executed", value: await operation() };
+  },
+};
+
 function serviceStub(overrides: Partial<BillingHttpService> = {}): BillingHttpService {
   return {
+    async resolveWebhookWorkspace() {
+      return principal.workspaceId;
+    },
     async getCheckoutIdentity() {
       return {
         customerKey: "semforge_0198f06a1b4270008000000000000002",
@@ -56,6 +66,7 @@ test("checkout GET은 owner/admin session tenant의 public clientKey·customerKe
   let authOptions: Parameters<RequireAuth>[1] | undefined;
   let serviceInput: unknown;
   const handlers = createBillingHttpHandlers({
+    workspaceOperations: allowWorkspaceOperations,
     requireAuth: async (_request, options) => {
       authOptions = options;
       return principal;
@@ -98,6 +109,7 @@ test("checkout GET은 query/body workspace override를 받지 않는다", async 
   let authCalls = 0;
   let serviceCalls = 0;
   const handlers = createBillingHttpHandlers({
+    workspaceOperations: allowWorkspaceOperations,
     requireAuth: async () => {
       authCalls += 1;
       return principal;
@@ -136,6 +148,7 @@ test("빌링 callback POST는 CSRF·owner/admin RequireAuth 경계와 필수 멱
     return principal;
   };
   const handlers = createBillingHttpHandlers({
+    workspaceOperations: allowWorkspaceOperations,
     requireAuth,
     getService: () =>
       serviceStub({
@@ -230,6 +243,7 @@ test("빌링 callback POST는 CSRF·owner/admin RequireAuth 경계와 필수 멱
 test("멱등키가 없는 인증·재결제·취소 POST를 서비스 호출 전에 거부한다", async () => {
   let calls = 0;
   const handlers = createBillingHttpHandlers({
+    workspaceOperations: allowWorkspaceOperations,
     requireAuth: async () => principal,
     getService: () =>
       serviceStub({
@@ -256,6 +270,7 @@ test("멱등키가 없는 인증·재결제·취소 POST를 서비스 호출 전
 test("본문 workspaceId를 받지 않아 auth principal의 tenant를 바꿀 수 없다", async () => {
   let calls = 0;
   const handlers = createBillingHttpHandlers({
+    workspaceOperations: allowWorkspaceOperations,
     requireAuth: async () => principal,
     getService: () =>
       serviceStub({
@@ -286,6 +301,7 @@ test("본문 workspaceId를 받지 않아 auth principal의 tenant를 바꿀 수
 
 test("재결제 API는 outcome과 public subscription 요약만 반환한다", async () => {
   const handlers = createBillingHttpHandlers({
+    workspaceOperations: allowWorkspaceOperations,
     requireAuth: async () => principal,
     getService: () =>
       serviceStub({
@@ -362,6 +378,7 @@ test("웹훅은 세션 auth를 요구하지 않고 공식 transmission id로 ded
   let authCalls = 0;
   let webhookInput: unknown;
   const handlers = createBillingHttpHandlers({
+    workspaceOperations: allowWorkspaceOperations,
     requireAuth: async () => {
       authCalls += 1;
       return principal;
@@ -414,6 +431,7 @@ test("웹훅은 세션 auth를 요구하지 않고 공식 transmission id로 ded
 test("웹훅은 과대 본문과 초당 rate limit 초과를 서비스 호출 전에 거부한다", async () => {
   let calls = 0;
   const handlers = createBillingHttpHandlers({
+    workspaceOperations: allowWorkspaceOperations,
     requireAuth: async () => principal,
     getService: () =>
       serviceStub({
@@ -483,6 +501,7 @@ test("웹훅은 과대 본문과 초당 rate limit 초과를 서비스 호출 �
 
 test("취소 API는 예약 outcome과 public subscription 요약만 응답한다", async () => {
   const handlers = createBillingHttpHandlers({
+    workspaceOperations: allowWorkspaceOperations,
     requireAuth: async () => principal,
     getService: () =>
       serviceStub({
@@ -576,6 +595,7 @@ test("취소 API는 예약 outcome과 public subscription 요약만 응답한다
 test("인증 사용자 요청은 tenant service, Toss webhook은 global service만 선택한다", async () => {
   const scopes: string[] = [];
   const handlers = createBillingHttpHandlers({
+    workspaceOperations: allowWorkspaceOperations,
     requireAuth: async () => principal,
     getService(scope) {
       scopes.push(scope);
@@ -608,3 +628,186 @@ test("인증 사용자 요청은 tenant service, Toss webhook은 global service�
 
   assert.deepEqual(scopes, ["tenant", "global"]);
 });
+
+for (const state of ["blocking", "erased"] as const) {
+  test(`${state} privacy fence는 checkout/authorize/retry/cancel 전체를 409로 막고 tenant service를 호출하지 않는다`, async (t) => {
+    let serviceCalls = 0;
+    let fenceCalls = 0;
+    const blockedService = serviceStub({
+      async getCheckoutIdentity() {
+        serviceCalls += 1;
+        return { customerKey: "must-not-leak", subscriptionStatus: "account_created" };
+      },
+      async completeAuthorization() {
+        serviceCalls += 1;
+        return { outcome: "paid", account: {} };
+      },
+      async retryPastDue() {
+        serviceCalls += 1;
+        return { outcome: "paid", account: {} };
+      },
+      async cancelAtPeriodEnd() {
+        serviceCalls += 1;
+        return serviceStub().cancelAtPeriodEnd({
+          workspaceId: principal.workspaceId,
+          actorUserId: principal.userId,
+          requestId: principal.requestId,
+        });
+      },
+      async getSummary() {
+        serviceCalls += 1;
+        return { status: "active", amountKrw: 49_000 };
+      },
+    });
+    const handlers = createBillingHttpHandlers({
+      requireAuth: async () => principal,
+      getService: () => blockedService,
+      workspaceOperations: {
+        async withShared() {
+          fenceCalls += 1;
+          return { disposition: "skipped", state };
+        },
+      },
+      checkout: {
+        clientKey: "test_ck_semforge_client",
+        appPublicUrl: "https://app.semforge.example",
+      },
+    });
+    const jsonHeaders = {
+      "content-type": "application/json",
+      "idempotency-key": "privacy-fence-idempotency",
+    };
+    const requests = [
+      ["checkout", () => handlers.checkout(new Request("https://app.semforge.example/api/v1/billing/checkout"))],
+      ["authorize", () => handlers.authorize(new Request("https://app.semforge.example/api/v1/billing/authorize", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({ authKey: "auth-key", customerKey: "customer-key" }),
+      }))],
+      ["retry", () => handlers.retry(new Request("https://app.semforge.example/api/v1/billing/retry", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: "{}",
+      }))],
+      ["cancel", () => handlers.cancel(new Request("https://app.semforge.example/api/v1/billing/cancel", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: "{}",
+      }))],
+    ] as const;
+
+    for (const [name, invoke] of requests) {
+      await t.test(name, async () => {
+        const response = await invoke();
+        const body = await response.json();
+        assert.equal(response.status, 409);
+        assert.equal(body.error.code, "CONFLICT");
+      });
+    }
+    assert.equal(fenceCalls, requests.length);
+    assert.equal(serviceCalls, 0);
+  });
+}
+
+test("billing summary는 fence 없이 읽고 active canonical webhook만 fence 안에서 법정 ledger 경로를 유지한다", async () => {
+  let fenceCalls = 0;
+  let summaryCalls = 0;
+  let webhookCalls = 0;
+  const handlers = createBillingHttpHandlers({
+    requireAuth: async () => principal,
+    getService: () => serviceStub({
+      async getSummary() {
+        summaryCalls += 1;
+        return { status: "canceled", amountKrw: 49_000 };
+      },
+      async handleWebhook() {
+        webhookCalls += 1;
+        return { outcome: "processed" };
+      },
+    }),
+    workspaceOperations: {
+      async withShared(_workspaceId, operation) {
+        fenceCalls += 1;
+        return { disposition: "executed", value: await operation() };
+      },
+    },
+    now: () => new Date("2026-08-12T04:00:00.000Z"),
+  });
+
+  const summary = await handlers.summary(
+    new Request("https://app.semforge.example/api/v1/billing/subscription"),
+  );
+  const webhook = await handlers.webhook(new Request("https://app.semforge.example/api/v1/webhooks/toss", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "tosspayments-webhook-transmission-id": "privacy-ledger-transmission",
+      "x-forwarded-for": "203.0.113.91",
+    },
+    body: JSON.stringify({
+      eventType: "PAYMENT_STATUS_CHANGED",
+      createdAt: "2026-08-12T13:00:00+09:00",
+      data: { orderId: "ledger-order", paymentKey: "ledger-payment", status: "DONE" },
+    }),
+  }));
+
+  assert.equal(summary.status, 200);
+  assert.equal(webhook.status, 200);
+  assert.equal(summaryCalls, 1);
+  assert.equal(webhookCalls, 1);
+  assert.equal(fenceCalls, 1);
+});
+
+for (const state of ["blocking", "erased"] as const) {
+  test(`${state} canonical billing workspace webhook은 forged body tenant와 무관하게 200 ACK하고 mutable 처리를 0회 유지한다`, async () => {
+    let resolverCalls = 0;
+    let webhookCalls = 0;
+    const lockedWorkspaces: string[] = [];
+    const canonicalWorkspaceId = "0198f06a-1b42-7000-8000-000000000088";
+    const handlers = createBillingHttpHandlers({
+      requireAuth: async () => principal,
+      getService: () => serviceStub({
+        async resolveWebhookWorkspace() {
+          resolverCalls += 1;
+          return canonicalWorkspaceId;
+        },
+        async handleWebhook() {
+          webhookCalls += 1;
+          return { outcome: "processed" };
+        },
+      }),
+      workspaceOperations: {
+        async withShared(workspaceId) {
+          lockedWorkspaces.push(workspaceId);
+          return { disposition: "skipped", state };
+        },
+      },
+      now: () => new Date("2026-08-12T04:01:00.000Z"),
+    });
+
+    const response = await handlers.webhook(new Request("https://app.semforge.example/api/v1/webhooks/toss", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "tosspayments-webhook-transmission-id": `privacy-${state}-transmission`,
+        "x-forwarded-for": `203.0.113.${state === "blocking" ? "92" : "93"}`,
+      },
+      body: JSON.stringify({
+        workspaceId: principal.workspaceId,
+        eventType: "PAYMENT_STATUS_CHANGED",
+        createdAt: "2026-08-12T13:01:00+09:00",
+        data: { orderId: "canonical-erased-order", paymentKey: "forged-payment", status: "DONE" },
+      }),
+    }));
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(body.data, {
+      outcome: "ignored",
+      reason: "workspace_privacy_blocked",
+    });
+    assert.equal(resolverCalls, 1);
+    assert.deepEqual(lockedWorkspaces, [canonicalWorkspaceId]);
+    assert.equal(webhookCalls, 0);
+  });
+}

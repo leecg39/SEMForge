@@ -64,6 +64,11 @@ export interface GscOAuthClient {
 }
 
 export interface GscService {
+  resolveCallbackWorkspace(input: {
+    workspaceId: string;
+    userId: string;
+    state: string;
+  }): Promise<string | null>;
   startConnection(input: {
     workspaceId: string;
     userId: string;
@@ -112,6 +117,36 @@ export interface GscServiceOptions {
   searchConsoleClient?: GoogleSearchConsoleClient;
   now?: () => Date;
   idFactory?: () => string;
+  resolveCallbackWorkspace?: (input: {
+    workspaceId: string;
+    userId: string;
+    state: string;
+    now: Date;
+  }) => Promise<string | null>;
+}
+
+export async function resolveGscCallbackWorkspace(
+  db: SqlQueryable,
+  input: {
+    workspaceId: string;
+    userId: string;
+    state: string;
+    now: Date;
+  },
+): Promise<string | null> {
+  const result = await db.query<{ workspace_id: string }>(
+    `select workspace_id::text
+       from oauth_states
+      where workspace_id = $1
+        and user_id = $2
+        and state_hash = $3
+        and provider = 'gsc'
+        and consumed_at is null
+        and expires_at > $4
+      limit 1`,
+    [input.workspaceId, input.userId, hashOAuthState(input.state), input.now],
+  );
+  return result.rows[0]?.workspace_id ?? null;
 }
 
 function tokenAad(workspaceId: string, connectionId: string, type: "access-token" | "refresh-token"): string {
@@ -200,6 +235,12 @@ export function createGscService(options: GscServiceOptions): GscService {
   }
 
   const service: GscService = {
+    resolveCallbackWorkspace(input) {
+      const resolver = options.resolveCallbackWorkspace ?? ((resolverInput) =>
+        resolveGscCallbackWorkspace(options.db, resolverInput));
+      return resolver({ ...input, now: now() });
+    },
+
     async startConnection(input) {
       const issuedAt = now();
       const state = newOAuthState();
