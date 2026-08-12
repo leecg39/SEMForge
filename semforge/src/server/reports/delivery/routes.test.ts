@@ -5,12 +5,20 @@ import { test } from "node:test";
 
 import { createReportPdfDownloadRouteHandler } from "@/server/reports/delivery/routes";
 import { ReportDeliveryStoreError } from "@/server/reports/delivery/store";
+import type { BillingAccessAuthorizer } from "@/server/billing/access";
 import { snapshotSha256 } from "@/server/reports/rendering/html";
 import type { WeeklyReportSnapshot } from "@/server/reports/types";
 
 const workspaceId = "59000000-0000-4000-8000-000000000001";
 const otherWorkspaceId = "59000000-0000-4000-8000-000000000099";
 const reportId = "59000000-0000-4000-8000-000000000002";
+
+const allowBillingAccess: BillingAccessAuthorizer = async () => ({
+  allowed: true,
+  mode: "full",
+  reason: "active",
+  reportPeriodEndBefore: null,
+});
 
 function snapshot(): WeeklyReportSnapshot {
   const section = (key: "rank" | "aio" | "naver" | "gsc") => ({
@@ -44,6 +52,7 @@ test("인증 tenant의 PDF asset만 60초 signed URL로 반환하고 응답을 �
   const hash = snapshotSha256(value);
   const lookups: unknown[] = [];
   const handler = createReportPdfDownloadRouteHandler({
+    authorizeBilling: allowBillingAccess,
     resolveSession: async () => ({
       userId: "user-1",
       workspaceId,
@@ -52,9 +61,9 @@ test("인증 tenant의 PDF asset만 60초 signed URL로 반환하고 응답을 �
       requestId: "request-1",
     }),
     store: {
-      async loadReportSnapshot(input) {
+      async loadReportForAccess(input) {
         lookups.push(input);
-        return value;
+        return { snapshot: value, periodEnd: "2026-08-06" };
       },
       async findPdfAsset(input) {
         lookups.push(input);
@@ -100,6 +109,7 @@ test("인증 tenant의 PDF asset만 60초 signed URL로 반환하고 응답을 �
 test("다른 tenant session은 asset 존재 여부와 signed URL을 알 수 없다", async () => {
   let signed = false;
   const handler = createReportPdfDownloadRouteHandler({
+    authorizeBilling: allowBillingAccess,
     resolveSession: async () => ({
       userId: "user-2",
       workspaceId: otherWorkspaceId,
@@ -108,7 +118,7 @@ test("다른 tenant session은 asset 존재 여부와 signed URL을 알 수 없�
       requestId: "request-2",
     }),
     store: {
-      async loadReportSnapshot() { throw new ReportDeliveryStoreError("NOT_FOUND"); },
+      async loadReportForAccess() { throw new ReportDeliveryStoreError("NOT_FOUND"); },
       async findPdfAsset() { return null; },
     },
     storage: {
@@ -124,4 +134,54 @@ test("다른 tenant session은 asset 존재 여부와 signed URL을 알 수 없�
   );
   assert.equal(response.status, 404);
   assert.equal(signed, false);
+});
+
+test("past_due grace PDF는 tenant-loaded 실제 periodEnd가 현재기간 전일 때만 서명한다", async () => {
+  let periodEnd = "2026-07-31";
+  let signed = 0;
+  const handler = createReportPdfDownloadRouteHandler({
+    resolveSession: async () => ({
+      userId: "user-1",
+      workspaceId,
+      role: "member",
+      requestId: "past-due-pdf",
+    }),
+    authorizeBilling: async ({ reportPeriodEnd }) => ({
+      allowed: reportPeriodEnd!.getTime() < Date.parse("2026-08-01T00:00:00.000Z"),
+      mode: "past_reports_only",
+      reason: "past_due_grace",
+      reportPeriodEndBefore: new Date("2026-08-01T00:00:00.000Z"),
+    }),
+    store: {
+      async loadReportForAccess() {
+        return { snapshot: snapshot(), periodEnd };
+      },
+      async findPdfAsset(input) {
+        return {
+          id: "asset-1",
+          workspaceId,
+          reportId,
+          storageKey: input.storageKey,
+          checksumSha256: "a".repeat(64),
+          sizeBytes: 123,
+        };
+      },
+    },
+    storage: {
+      async createSignedGetUrl(key) {
+        signed += 1;
+        return {
+          url: `https://objects.example.test/${key}`,
+          expiresAt: new Date("2026-08-12T01:01:00.000Z"),
+        };
+      },
+    },
+  });
+  const request = () => new Request(`https://app.semforge.example/api/v1/reports/${reportId}/pdf`);
+  const context = () => ({ params: Promise.resolve({ reportId }) });
+
+  assert.equal((await handler(request(), context())).status, 200);
+  periodEnd = "2026-08-01";
+  assert.equal((await handler(request(), context())).status, 403);
+  assert.equal(signed, 1);
 });

@@ -15,6 +15,10 @@ import {
   type ApiSessionResolver,
 } from "@/server/auth/api-session";
 import {
+  createRuntimeBillingAccessAuthorizer,
+  type BillingAccessAuthorizer,
+} from "@/server/billing/access";
+import {
   createSite,
   createTrackedQuery,
   disableSite,
@@ -51,6 +55,7 @@ export interface SitesRouteDependencies {
   db?: SqlQueryable;
   resolveSession?: ApiSessionResolver;
   resolveDomainAddresses?: DomainAddressResolver;
+  authorizeBilling?: BillingAccessAuthorizer;
 }
 
 type SiteParamsContext = { params: Promise<{ siteId: string }> };
@@ -101,10 +106,20 @@ function mapStoreError(error: unknown): never {
 
 export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
   const resolveSessionForRoute = deps.resolveSession ?? resolveApiSession;
+  const authorizeBilling = deps.authorizeBilling ?? createRuntimeBillingAccessAuthorizer();
+
+  async function requireBilling(
+    workspaceId: string,
+    capability: "workspace:read" | "workspace:write",
+  ): Promise<void> {
+    const decision = await authorizeBilling({ workspaceId, capability });
+    if (!decision.allowed) throw new ApiError("FORBIDDEN");
+  }
 
   const sites = {
     GET: withApiV1(async (request) => {
       const session = await resolveSessionForRoute(request);
+      await requireBilling(session.workspaceId, "workspace:read");
       const url = new URL(request.url);
       const limit = Number.parseInt(url.searchParams.get("limit") ?? "20", 10);
       const cursor = url.searchParams.get("cursor");
@@ -123,6 +138,7 @@ export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
     }),
     POST: withApiV1(async (request, _context, apiContext) => {
       const session = await resolveSessionForRoute(request);
+      await requireBilling(session.workspaceId, "workspace:write");
       const idempotencyKey = requireMutationIdempotencyKey(request);
       const body = await parseJsonBody(request, createSiteBody);
       try {
@@ -157,6 +173,7 @@ export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
         getSiteDetail(db, { workspaceId: session.workspaceId, siteId }),
       );
       if (!detail) throw new ApiError("NOT_FOUND");
+      await requireBilling(session.workspaceId, "workspace:read");
       return apiSuccess(detail);
     }),
     PATCH: withApiV1(async (request, context: SiteParamsContext, apiContext) => {
@@ -165,6 +182,11 @@ export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
       const body = await parseJsonBody(request, patchActiveBody);
       const { siteId } = await context.params;
       try {
+        const existing = await withRouteDb(deps, (db) =>
+          getSiteDetail(db, { workspaceId: session.workspaceId, siteId }),
+        );
+        if (!existing) throw new ApiError("NOT_FOUND");
+        await requireBilling(session.workspaceId, "workspace:write");
         const site = await withRouteDb(deps, (db) =>
           body.active
             ? reactivateSite(
@@ -188,6 +210,7 @@ export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
   const tracking = {
     POST: withApiV1(async (request, _context, apiContext) => {
       const session = await resolveSessionForRoute(request);
+      await requireBilling(session.workspaceId, "workspace:write");
       const idempotencyKey = requireMutationIdempotencyKey(request);
       const body = await parseJsonBody(request, createTrackingBody);
       try {
@@ -213,6 +236,7 @@ export function createSitesRouteHandlers(deps: SitesRouteDependencies = {}) {
   const trackingById = {
     PATCH: withApiV1(async (request, context: TrackingParamsContext, apiContext) => {
       const session = await resolveSessionForRoute(request);
+      await requireBilling(session.workspaceId, "workspace:write");
       const idempotencyKey = requireMutationIdempotencyKey(request);
       const body = await parseJsonBody(request, patchActiveBody);
       const { trackingId } = await context.params;

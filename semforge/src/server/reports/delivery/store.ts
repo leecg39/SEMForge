@@ -32,6 +32,14 @@ export interface ReportPdfAsset {
   readonly sizeBytes: number;
 }
 
+export interface ReportAccessStore {
+  loadReportForAccess(input: { workspaceId: string; reportId: string }): Promise<{
+    snapshot: WeeklyReportSnapshot;
+    periodEnd: string;
+  }>;
+  findPdfAsset(input: { workspaceId: string; reportId: string; storageKey: string }): Promise<ReportPdfAsset | null>;
+}
+
 export interface ReportDeliveryStore {
   loadReportSnapshot(input: { workspaceId: string; reportId: string }): Promise<WeeklyReportSnapshot>;
   prepareEmail(input: {
@@ -60,7 +68,11 @@ export class ReportDeliveryStoreError extends Error {
   }
 }
 
-type ReportRow = { id: string; snapshot: WeeklyReportSnapshot | string | null };
+type ReportRow = {
+  id: string;
+  period_end?: Date | string;
+  snapshot: WeeklyReportSnapshot | string | null;
+};
 type DeliveryRow = {
   id: string;
   report_id: string;
@@ -120,8 +132,30 @@ const ASSET_COLUMNS = `
   id::text, workspace_id::text, report_id::text, storage_key,
   checksum_sha256, size_bytes`;
 
-export class PostgresReportDeliveryStore implements ReportDeliveryStore {
+export class PostgresReportDeliveryStore implements ReportDeliveryStore, ReportAccessStore {
   constructor(private readonly source: DeliverySqlSource) {}
+
+  async loadReportForAccess(input: {
+    workspaceId: string;
+    reportId: string;
+  }): Promise<{ snapshot: WeeklyReportSnapshot; periodEnd: string }> {
+    return withTransaction(this.source, input.workspaceId, async (database) => {
+      const report = (
+        await database.query<ReportRow>(
+          `select id::text, period_end, snapshot from weekly_reports
+            where workspace_id = $1 and id = $2 and snapshot is not null`,
+          [input.workspaceId, input.reportId],
+        )
+      ).rows[0];
+      if (!report?.snapshot || report.period_end === undefined) {
+        throw new ReportDeliveryStoreError("NOT_FOUND");
+      }
+      const periodEnd = report.period_end instanceof Date
+        ? report.period_end.toISOString().slice(0, 10)
+        : String(report.period_end).slice(0, 10);
+      return { snapshot: jsonValue(report.snapshot), periodEnd };
+    });
+  }
 
   async loadReportSnapshot(input: {
     workspaceId: string;

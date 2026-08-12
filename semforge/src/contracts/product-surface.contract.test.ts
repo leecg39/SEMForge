@@ -26,18 +26,33 @@ const allowedPages = new Set([
   "/app/settings",
 ]);
 
-const allowedApiPrefixes = [
-  "/api/v1/auth",
-  "/api/v1/sites",
-  "/api/v1/integrations/gsc",
-  "/api/v1/tracking",
-  "/api/v1/insights/naver",
-  "/api/v1/visibility/aio",
-  "/api/v1/reports",
-  "/api/v1/billing",
-] as const;
-
 const allowedExactRoutes = new Set([
+  "/api/v1/auth/invites/accept",
+  "/api/v1/auth/login",
+  "/api/v1/auth/logout",
+  "/api/v1/auth/password/forgot",
+  "/api/v1/auth/password/reset",
+  "/api/v1/auth/session",
+  "/api/v1/billing/authorize",
+  "/api/v1/billing/cancel",
+  "/api/v1/billing/checkout",
+  "/api/v1/billing/payment-method",
+  "/api/v1/billing/retry",
+  "/api/v1/billing/subscription",
+  "/api/v1/integrations/gsc/bindings",
+  "/api/v1/integrations/gsc/callback",
+  "/api/v1/integrations/gsc/connect",
+  "/api/v1/integrations/gsc/connections",
+  "/api/v1/integrations/gsc/connections/[connectionId]",
+  "/api/v1/integrations/gsc/connections/[connectionId]/properties",
+  "/api/v1/reports",
+  "/api/v1/reports/[reportId]",
+  "/api/v1/reports/[reportId]/pdf",
+  "/api/v1/reports/branding",
+  "/api/v1/sites",
+  "/api/v1/sites/[siteId]",
+  "/api/v1/tracking",
+  "/api/v1/tracking/[trackingId]",
   "/api/v1/webhooks/toss",
   "/health/live",
   "/health/ready",
@@ -104,13 +119,6 @@ function routePath(file: string): string {
   return `/${segments.join("/")}`;
 }
 
-function isAllowedApiRoute(route: string): boolean {
-  return (
-    allowedExactRoutes.has(route) ||
-    allowedApiPrefixes.some((prefix) => route === prefix || route.startsWith(`${prefix}/`))
-  );
-}
-
 test("발견된 App Router 페이지는 제품 페이지 허용 목록 안에만 존재한다", () => {
   const pageFiles = walkFiles(appRoot).filter((file) => /^page\.(?:ts|tsx|js|jsx)$/.test(path.basename(file)));
   const discovered = pageFiles.map((file) => ({ file: relativeProjectPath(file), route: routePath(file) }));
@@ -128,16 +136,19 @@ test("발견된 App Router 페이지는 제품 페이지 허용 목록 안에만
   );
 });
 
-test("발견된 Route Handler는 v1 제품 API와 health 허용 목록 안에만 존재한다", () => {
+test("발견된 Route Handler는 존재하는 제품 API exact set과 정확히 일치한다", () => {
   const routeFiles = walkFiles(appRoot).filter((file) => /^route\.(?:ts|tsx|js|jsx)$/.test(path.basename(file)));
   const discovered = routeFiles.map((file) => ({ file: relativeProjectPath(file), route: routePath(file) }));
-  const forbidden = discovered.filter(({ route }) => !isAllowedApiRoute(route));
   const duplicateRoutes = discovered
     .map(({ route }) => route)
     .filter((route, index, routes) => routes.indexOf(route) !== index);
 
-  assert.deepEqual(forbidden, [], `허용되지 않은 API:\n${JSON.stringify(forbidden, null, 2)}`);
   assert.deepEqual(duplicateRoutes, [], `중복 API 경로: ${duplicateRoutes.join(", ")}`);
+  assert.deepEqual(
+    discovered.map(({ route }) => route).toSorted(),
+    [...allowedExactRoutes].toSorted(),
+    `API 경로 집합이 제품 계약과 달라졌습니다.\n${JSON.stringify(discovered, null, 2)}`,
+  );
 });
 
 test("제품 소스에는 레거시 기능 경로와 SQLite·복제 제품 흔적이 없다", () => {
@@ -160,6 +171,8 @@ test("제품 소스에는 레거시 기능 경로와 SQLite·복제 제품 흔�
   const forbiddenSourcePatterns = [
     { label: "better-sqlite3", pattern: /better-sqlite3/ },
     { label: "SQLite DATABASE_PATH", pattern: /\bDATABASE_PATH\b/ },
+    { label: "SQLite UNIQUE signature", pattern: /UNIQUE constraint failed/i },
+    { label: "SQLite foreign-key signature", pattern: /FOREIGN KEY constraint failed/i },
     { label: "Semrush clone identity", pattern: /semrush/i },
     { label: "GitNexus", pattern: /gitnexus/i },
     { label: "clone wording", pattern: /\bclone\b|클론|복제/i },

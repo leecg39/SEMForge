@@ -8,6 +8,10 @@ import {
   type ApiSessionResolver,
 } from "@/server/auth/api-session";
 import {
+  createRuntimeBillingAccessAuthorizer,
+  type BillingAccessAuthorizer,
+} from "@/server/billing/access";
+import {
   getReport,
   listReports,
   ReportsStoreError,
@@ -17,6 +21,7 @@ import {
 export interface ReportsRouteDependencies {
   readonly db?: ReportSqlSource;
   readonly resolveSession?: ApiSessionResolver;
+  readonly authorizeBilling?: BillingAccessAuthorizer;
 }
 
 type ReportParamsContext = { params: Promise<{ reportId: string }> };
@@ -33,6 +38,7 @@ function mapStoreError(error: unknown): never {
 
 export function createReportsRouteHandlers(dependencies: ReportsRouteDependencies = {}) {
   const resolveSession = dependencies.resolveSession ?? resolveApiSession;
+  const authorizeBilling = dependencies.authorizeBilling ?? createRuntimeBillingAccessAuthorizer();
 
   const reports = {
     GET: withApiV1(async (request) => {
@@ -40,10 +46,20 @@ export function createReportsRouteHandlers(dependencies: ReportsRouteDependencie
       const url = new URL(request.url);
       const rawLimit = Number.parseInt(url.searchParams.get("limit") ?? "20", 10);
       try {
+        const access = await authorizeBilling({
+          workspaceId: session.workspaceId,
+          capability: "report:read",
+        });
+        const hasPastReportScope =
+          access.mode === "past_reports_only" && access.reportPeriodEndBefore !== null;
+        if (!access.allowed && !hasPastReportScope) {
+          throw new ApiError("FORBIDDEN");
+        }
         const page = await listReports(routeDatabase(dependencies), {
           workspaceId: session.workspaceId,
           limit: Number.isFinite(rawLimit) ? rawLimit : 20,
           cursor: url.searchParams.get("cursor"),
+          periodEndBefore: access.reportPeriodEndBefore,
         });
         return apiSuccess(page);
       } catch (error) {
@@ -58,6 +74,12 @@ export function createReportsRouteHandlers(dependencies: ReportsRouteDependencie
       const { reportId } = await context.params;
       const report = await getReport(routeDatabase(dependencies), session.workspaceId, reportId);
       if (!report) throw new ApiError("NOT_FOUND");
+      const access = await authorizeBilling({
+        workspaceId: session.workspaceId,
+        capability: "report:read",
+        reportPeriodEnd: new Date(`${report.period.end}T00:00:00.000Z`),
+      });
+      if (!access.allowed) throw new ApiError("FORBIDDEN");
       return apiSuccess(report);
     }),
   };

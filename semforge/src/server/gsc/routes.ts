@@ -10,6 +10,7 @@ import {
   withApiV1,
 } from "@/lib/api-v1";
 import type { RequireAuth } from "@/server/auth/guard";
+import type { BillingAccessAuthorizer } from "@/server/billing/access";
 import type { GscConnectionRecord, GscPropertyBindingRecord } from "@/server/gsc/store";
 import type { GscProperty } from "@/server/gsc/google-client";
 import { GscServiceError, type GscService } from "@/server/gsc/service";
@@ -28,6 +29,7 @@ export type GscRouteService = Pick<
 
 export interface GscRouteHandlerOptions {
   requireAuth: RequireGscAuth;
+  authorizeBilling: BillingAccessAuthorizer;
   getService: () => GscRouteService;
 }
 
@@ -102,6 +104,14 @@ function publicProperties(properties: readonly GscProperty[]) {
 }
 
 export function createGscRouteHandlers(options: GscRouteHandlerOptions) {
+  async function requireBilling(
+    workspaceId: string,
+    capability: "workspace:read" | "workspace:write",
+  ): Promise<void> {
+    const decision = await options.authorizeBilling({ workspaceId, capability });
+    if (!decision.allowed) throw new ApiError("FORBIDDEN");
+  }
+
   return {
     connect: {
       POST: withApiV1(async (request, _context, apiContext) => {
@@ -110,6 +120,7 @@ export function createGscRouteHandlers(options: GscRouteHandlerOptions) {
           roles: ["owner", "admin"],
           requestId: apiContext.requestId,
         });
+        await requireBilling(principal.workspaceId, "workspace:write");
         const body = await parseJsonBody(request, connectBodySchema);
         try {
           const result = await options.getService().startConnection({
@@ -136,6 +147,7 @@ export function createGscRouteHandlers(options: GscRouteHandlerOptions) {
           roles: ["owner", "admin"],
           requestId: apiContext.requestId,
         });
+        await requireBilling(principal.workspaceId, "workspace:write");
         try {
           const result = await options.getService().completeCallback({
             workspaceId: principal.workspaceId,
@@ -160,6 +172,7 @@ export function createGscRouteHandlers(options: GscRouteHandlerOptions) {
           roles: ["owner", "admin", "member"],
           requestId: apiContext.requestId,
         });
+        await requireBilling(principal.workspaceId, "workspace:read");
         const connections = await options.getService().listConnections({
           workspaceId: principal.workspaceId,
         });
@@ -174,6 +187,7 @@ export function createGscRouteHandlers(options: GscRouteHandlerOptions) {
           roles: ["owner", "admin"],
           requestId: apiContext.requestId,
         });
+        await requireBilling(principal.workspaceId, "workspace:write");
         const { connectionId } = await context.params;
         try {
           await options.getService().disconnect({
@@ -194,6 +208,7 @@ export function createGscRouteHandlers(options: GscRouteHandlerOptions) {
           roles: ["owner", "admin", "member"],
           requestId: apiContext.requestId,
         });
+        await requireBilling(principal.workspaceId, "workspace:read");
         const { connectionId } = await context.params;
         try {
           const properties = await options.getService().listProperties({
@@ -214,6 +229,7 @@ export function createGscRouteHandlers(options: GscRouteHandlerOptions) {
           roles: ["owner", "admin"],
           requestId: apiContext.requestId,
         });
+        await requireBilling(principal.workspaceId, "workspace:write");
         const body = await parseJsonBody(request, bindingBodySchema);
         try {
           const binding = await options.getService().bindProperty({

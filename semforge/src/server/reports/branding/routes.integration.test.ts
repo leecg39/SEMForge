@@ -10,6 +10,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 
 import type { AuthMembershipRole } from "@/server/auth/contracts";
+import type { BillingAccessAuthorizer } from "@/server/billing/access";
 import { createReportBrandingRouteHandlers } from "@/server/reports/branding/routes";
 import { createReportsRouteHandlers } from "@/server/reports/routes";
 import { generateWeeklyReport } from "@/server/reports/store";
@@ -20,6 +21,13 @@ const workspaceId = "35000000-0000-4000-8000-000000000001";
 const otherWorkspaceId = "35000000-0000-4000-8000-000000000002";
 const siteId = "35000000-0000-4000-8000-000000000011";
 const userId = "35000000-0000-4000-8000-000000000101";
+
+const allowBillingAccess: BillingAccessAuthorizer = async () => ({
+  allowed: true,
+  mode: "full",
+  reason: "active",
+  reportPeriodEndBefore: null,
+});
 
 before(async () => {
   await pg.waitReady;
@@ -41,6 +49,7 @@ after(async () => pg.close());
 function handlers(role: AuthMembershipRole, workspace = workspaceId) {
   return createReportBrandingRouteHandlers({
     db: pg,
+    authorizeBilling: allowBillingAccess,
     resolveSession: async () => ({
       workspaceId: workspace,
       userId,
@@ -106,6 +115,43 @@ test("member는 브랜딩을 읽을 수 있지만 쓰지 못하고 owner/admin�
   });
 });
 
+test("account_created는 브랜딩 GET/PATCH 직접 API 우회를 403으로 차단한다", async () => {
+  const capabilities: string[] = [];
+  const blocked = createReportBrandingRouteHandlers({
+    db: pg,
+    authorizeBilling: async ({ capability }) => {
+      capabilities.push(capability);
+      return {
+        allowed: false,
+        mode: "billing_only",
+        reason: "payment_required",
+        reportPeriodEndBefore: null,
+      };
+    },
+    resolveSession: async () => ({
+      workspaceId,
+      userId,
+      role: "owner",
+      requestId: "branding-account-created",
+    }),
+    resolveLogoAddresses: async () => ["8.8.8.8"],
+  });
+
+  const read = await blocked.branding.GET(
+    new Request("https://app.semforge.test/api/v1/reports/branding"),
+    undefined,
+  );
+  const write = await blocked.branding.PATCH(
+    patchRequest({ name: "Blocked", logoUrl: null, accentColor: "#123456" }),
+    undefined,
+  );
+  assert.equal(read.status, 403);
+  assert.equal((await body(read)).error?.code, "FORBIDDEN");
+  assert.equal(write.status, 403);
+  assert.equal((await body(write)).error?.code, "FORBIDDEN");
+  assert.deepEqual(capabilities, ["workspace:read", "workspace:write"]);
+});
+
 test("브랜딩 PATCH는 tenant override, 길이/색상, 위험 URL과 private DNS를 거부한다", async () => {
   const owner = handlers("owner");
   const invalidBodies = [
@@ -127,6 +173,7 @@ test("브랜딩 PATCH는 tenant override, 길이/색상, 위험 URL과 private D
 
   const privateDnsHandlers = createReportBrandingRouteHandlers({
     db: pg,
+    authorizeBilling: allowBillingAccess,
     resolveSession: async () => ({
       workspaceId,
       userId,
@@ -180,6 +227,7 @@ test("브랜딩 변경은 현재 workspace에만 반영되고 이미 생성된 r
 
   const reports = createReportsRouteHandlers({
     db: pg,
+    authorizeBilling: allowBillingAccess,
     resolveSession: async () => ({
       workspaceId,
       userId,

@@ -4,6 +4,7 @@ import { getPool } from "@/db/client";
 import { type SecretCrypto, decryptSecret, encryptSecret } from "@/lib/crypto";
 import { getServerEnv } from "@/lib/env";
 import { createRuntimeRequireAuth } from "@/server/auth/runtime";
+import { createRuntimeBillingAccessAuthorizer } from "@/server/billing/access";
 import { createGscRouteHandlers } from "@/server/gsc/routes";
 import { createGscService } from "@/server/gsc/service";
 
@@ -39,6 +40,7 @@ export function createRuntimeGscHandlers() {
 
   return createGscRouteHandlers({
     requireAuth: createRuntimeRequireAuth(),
+    authorizeBilling: createRuntimeBillingAccessAuthorizer(),
     getService: () => service,
   });
 }

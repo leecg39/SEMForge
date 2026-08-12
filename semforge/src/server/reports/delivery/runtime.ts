@@ -2,6 +2,7 @@
 // @SPEC docs/planning/06-tasks.md#p4-r1-t1--한글-pdf이메일객체-저장소
 import { getPool } from "@/db/client";
 import { getServerEnv, type ServerEnv } from "@/lib/env";
+import { createRuntimeBillingAccessAuthorizer } from "@/server/billing/access";
 import {
   createReportEmailDeliveryJobHandler,
   createReportPdfRenderJobHandler,
@@ -88,6 +89,7 @@ export function createRuntimeReportDeliveryJobHandlers(options: {
 export function createRuntimeReportPdfDownloadRouteHandler() {
   const env = getServerEnv();
   return createReportPdfDownloadRouteHandler({
+    authorizeBilling: createRuntimeBillingAccessAuthorizer(),
     store: new PostgresReportDeliveryStore(
       getPool("web") as unknown as DeliverySqlSource,
     ),

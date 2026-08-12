@@ -575,7 +575,13 @@ function decodeCursor(value: string): { periodEnd: string; id: string } {
 
 export async function listReports(
   source: ReportSqlSource,
-  input: { workspaceId: string; limit?: number; cursor?: string | null },
+  input: {
+    workspaceId: string;
+    limit?: number;
+    cursor?: string | null;
+    /** Exclusive paid-beta boundary; disallowed reports never enter pagination. */
+    periodEndBefore?: Date | null;
+  },
 ): Promise<ReportPage> {
   const limit = Math.min(Math.max(input.limit ?? 20, 1), 50);
   const cursor = input.cursor ? decodeCursor(input.cursor) : null;
@@ -585,9 +591,16 @@ export async function listReports(
          from weekly_reports
         where workspace_id = $1 and snapshot is not null
           and ($2::date is null or (period_end, id) < ($2::date, $3::uuid))
+          and ($4::timestamptz is null or period_end::timestamp at time zone 'UTC' < $4::timestamptz)
         order by period_end desc, id desc
-        limit $4`,
-      [input.workspaceId, cursor?.periodEnd ?? null, cursor?.id ?? null, limit + 1],
+        limit $5`,
+      [
+        input.workspaceId,
+        cursor?.periodEnd ?? null,
+        cursor?.id ?? null,
+        input.periodEndBefore ?? null,
+        limit + 1,
+      ],
     );
     const rows = result.rows.slice(0, limit);
     const last = rows.at(-1);
